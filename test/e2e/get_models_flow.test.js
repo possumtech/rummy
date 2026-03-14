@@ -1,66 +1,37 @@
 import assert from "node:assert";
-import fs from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
-import SqlRite from "@possumtech/sqlrite";
-import { WebSocket } from "ws";
-import SocketServer from "../../src/socket/SocketServer.js";
+import RpcClient from "../helpers/RpcClient.js";
+import TestDb from "../helpers/TestDb.js";
+import TestServer from "../helpers/TestServer.js";
 
-describe("E2E Flow: getModels", () => {
-	let db;
-	let server;
-	const port = process.env.PORT;
-	const dbPath = `test_e2e_${port}.db`;
+describe("E2E Bedrock: getOpenRouterModels (LIVE)", () => {
+	let tdb;
+	let tserver;
+	let client;
 
 	before(async () => {
-		await fs.unlink(dbPath).catch(() => {});
-		db = await SqlRite.open({
-			path: dbPath,
-			dir: ["migrations", "src"],
-		});
-
-		server = new SocketServer(db, { port });
+		if (!process.env.OPENROUTER_API_KEY) {
+			throw new Error("OPENROUTER_API_KEY is required for live E2E tests");
+		}
+		tdb = await TestDb.create("live_models");
+		tserver = await TestServer.start(tdb.db);
+		client = new RpcClient(tserver.url);
+		await client.connect();
 	});
 
 	after(async () => {
-		if (server) await server.close();
-		if (db) await db.close();
-		await fs.unlink(dbPath).catch(() => {});
+		client.close();
+		await tserver.stop();
+		await tdb.cleanup();
 	});
 
-	it("should respond to getModels request with a list of models over WebSocket", {
-		timeout: 10000,
-	}, async () => {
-		const ws = new WebSocket(`ws://localhost:${port}`);
-
-		const response = await new Promise((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				reject(new Error("Timeout"));
-			}, 8000);
-
-			ws.on("open", () => {
-				ws.send(
-					JSON.stringify({
-						jsonrpc: "2.0",
-						method: "getModels",
-						id: 1,
-					}),
-				);
-			});
-
-			ws.on("message", (data) => {
-				clearTimeout(timeout);
-				resolve(JSON.parse(data.toString()));
-				ws.close();
-			});
-
-			ws.on("error", (err) => {
-				clearTimeout(timeout);
-				reject(err);
-			});
-		});
-
-		assert.strictEqual(response.id, 1);
-		assert.ok(Array.isArray(response.result));
-		assert.ok(response.result.some((m) => m.id === "gpt-4o"));
+	it("should fetch real models from OpenRouter via RPC", async () => {
+		const models = await client.call("getOpenRouterModels");
+		assert.ok(Array.isArray(models), "Should return an array of models");
+		assert.ok(models.length > 100, "Should see a large list of live models");
+		assert.ok(
+			models.some((m) => m.id.includes("gpt-4o")),
+			"Should include gpt-4o in live list",
+		);
 	});
 });

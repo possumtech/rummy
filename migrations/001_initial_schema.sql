@@ -18,10 +18,8 @@ CREATE TABLE IF NOT EXISTS projects (
 	id TEXT PRIMARY KEY
 	, path TEXT UNIQUE NOT NULL
 	, name TEXT
-	, repo_map JSON
 	, last_git_hash TEXT
 	, last_indexed_at DATETIME
-	, metadata JSON
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

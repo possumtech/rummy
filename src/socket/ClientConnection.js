@@ -21,10 +21,19 @@ export default class ClientConnection {
 		this.#ws.on("message", (data) => this.#handleMessage(data));
 	}
 
+	/**
+	 * Exposed for testing purposes.
+	 */
+	async handleMessageForTest(data) {
+		return this.#handleMessage(data);
+	}
+
 	async #handleMessage(data) {
+		let id = null;
 		try {
 			const message = JSON.parse(data.toString());
-			const { method, params, id } = message;
+			const { method, params, id: msgId } = message;
+			id = msgId;
 
 			let result;
 
@@ -45,6 +54,10 @@ export default class ClientConnection {
 					result = await this.#modelAgent.getModels();
 					break;
 
+				case "getOpenRouterModels":
+					result = await this.#modelAgent.getOpenRouterModels();
+					break;
+
 				case "getFiles":
 					if (!this.#context.projectPath) {
 						throw new Error("Project not initialized. Call 'init' first.");
@@ -62,6 +75,19 @@ export default class ClientConnection {
 					);
 					break;
 
+				case "ask":
+					if (!this.#context.sessionId) {
+						throw new Error("Session not initialized. Call 'init' first.");
+					}
+					// params: { model, prompt, activeFiles }
+					result = await this.#projectAgent.ask(
+						this.#context.sessionId,
+						params.model,
+						params.prompt,
+						params.activeFiles || [],
+					);
+					break;
+
 				default:
 					throw new Error(`Method '${method}' not found.`);
 			}
@@ -75,7 +101,7 @@ export default class ClientConnection {
 			this.#send({
 				jsonrpc: "2.0",
 				error: { code: -32603, message: error.message },
-				id: null,
+				id: id || null,
 			});
 		}
 	}

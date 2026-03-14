@@ -1,12 +1,15 @@
 import crypto from "node:crypto";
+import OpenRouterClient from "../core/OpenRouterClient.js";
 import ProjectContext from "../core/ProjectContext.js";
 import RepoMap from "../core/RepoMap.js";
 
 export default class ProjectAgent {
 	#db;
+	#client;
 
 	constructor(db) {
 		this.#db = db;
+		this.#client = new OpenRouterClient(process.env.OPENROUTER_API_KEY);
 	}
 
 	async init(projectPath, projectName, clientId) {
@@ -78,5 +81,71 @@ export default class ProjectAgent {
 		});
 
 		return jobId;
+	}
+
+	async ask(sessionId, model, prompt, activeFiles = []) {
+		const sessions = await this.#db.get_session_by_id.all({ id: sessionId });
+		if (!sessions || sessions.length === 0)
+			throw new Error("Session not found");
+		const project = await this.#db.get_project_by_id.get({
+			id: sessions[0].project_id,
+		});
+
+		const jobId = crypto.randomUUID();
+		await this.#db.create_job.run({
+			id: jobId,
+			session_id: sessionId,
+			type: "ask",
+			config: JSON.stringify({ model, activeFiles }),
+		});
+
+		// 1. Get RepoMap Perspective
+		const ctx = await ProjectContext.open(project.path);
+		const repoMap = new RepoMap(ctx, this.#db, project.id);
+		const perspective = await repoMap.renderPerspective(activeFiles);
+
+		// 2. Build Messages
+		const systemPrompt = `You are a helpful assistant. Here is the project map:\n\n${JSON.stringify(perspective, null, 2)}`;
+		const messages = [
+			{ role: "system", content: systemPrompt },
+			{ role: "user", content: prompt },
+		];
+
+		// 3. Persist Initial Turn (Request)
+		await this.#db.create_turn.run({
+			job_id: jobId,
+			sequence_number: 0,
+			payload: JSON.stringify(messages),
+			usage: null,
+		});
+
+		// 4. Resolve Model (Handle Aliases)
+		let targetModel = model;
+		const envKey = `SNORE_MODEL_${model}`;
+		const envAlias = process.env[envKey];
+
+		if (envAlias) {
+			targetModel = envAlias;
+		}
+
+		// 5. Call Model
+		const result = await this.#client.completion(messages, targetModel);
+
+		// 6. Persist Response Turn
+		const responseMessage = result.choices?.[0]?.message;
+		await this.#db.create_turn.run({
+			job_id: jobId,
+			sequence_number: 1,
+			payload: JSON.stringify(responseMessage),
+			usage: JSON.stringify(result.usage),
+		});
+
+		// 6. Complete Job
+		await this.#db.update_job_status.run({ id: jobId, status: "completed" });
+
+		return {
+			jobId,
+			response: responseMessage?.content,
+		};
 	}
 }

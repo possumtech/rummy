@@ -13,17 +13,29 @@ export default class SocketServer {
 			new ClientConnection(ws, this.#db);
 		});
 
-		this.#wss.on("error", (err) => {
-			if (err.code === "EADDRINUSE") {
-				console.error(`Error: Port ${options.port} is already in use.`);
-				process.exit(1);
-			}
-			throw err;
+		this.#wss.on("error", (_err) => {
+			// We emit the error so the owner can decide what to do (e.g., process.exit)
+			// But we don't kill the process from within the class.
 		});
+	}
+
+	/**
+	 * Exposed for testing to get dynamic port info
+	 */
+	address() {
+		return this.#wss.address();
+	}
+
+	/**
+	 * Handle error event
+	 */
+	on(event, handler) {
+		this.#wss.on(event, handler);
 	}
 
 	close() {
 		return new Promise((resolve) => {
+			if (!this.#wss) return resolve();
 			this.#wss.close(resolve);
 		});
 	}
