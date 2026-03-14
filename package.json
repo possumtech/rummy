@@ -1,0 +1,39 @@
+{
+	"name": "snore",
+	"version": "0.0.1",
+	"description": "Sqlite/Node OpenRouter Engine",
+	"keywords": [
+		"llm"
+	],
+	"homepage": "https://github.com/possumtech/snore#readme",
+	"bugs": {
+		"url": "https://github.com/possumtech/snore/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/possumtech/snore.git"
+	},
+	"license": "MIT",
+	"author": "@wikitopian",
+	"engines": {
+		"node": ">=25",
+		"npm": ">=11"
+	},
+	"type": "module",
+	"main": "service.js",
+	"scripts": {
+		"start": "node --env-file-if-exists=.env.example --env-file-if-exists=.env service.js",
+		"lint": "biome check . --fix --unsafe",
+		"test": "npm run lint && npm run test:unit && npm run test:intg && npm run test:e2e",
+		"test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test src/**/*.test.js",
+		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test test/integration/**/*.test.js",
+		"test:e2e": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test test/e2e/**/*.test.js"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.6"
+	},
+	"dependencies": {
+		"@possumtech/sqlrite": "^1.0.2",
+		"ws": "^8.19.0"
+	}
+}
