@@ -8,6 +8,7 @@ describe("Database Integration", () => {
 	const dbPath = "test_integration.db";
 
 	before(async () => {
+		await fs.unlink(dbPath).catch(() => {});
 		db = new SqlRite({
 			path: dbPath,
 			dir: ["migrations", "src"],

@@ -8,10 +8,11 @@ import SocketServer from "../../src/socket/SocketServer.js";
 describe("E2E Flow: getModels", () => {
 	let db;
 	let server;
-	const dbPath = "test_e2e.db";
 	const port = process.env.PORT;
+	const dbPath = `test_e2e_${port}.db`;
 
 	before(async () => {
+		await fs.unlink(dbPath).catch(() => {});
 		db = new SqlRite({
 			path: dbPath,
 			dir: ["migrations", "src"],
