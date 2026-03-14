@@ -4,38 +4,58 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import RepoMap from "./RepoMap.js";
 
-describe("RepoMap (Hybrid HD/Standard)", () => {
-	const testDir = join(process.cwd(), "test_hybrid");
+describe("RepoMap (Perspective Engine)", () => {
+	const testDir = join(process.cwd(), "test_perspective");
 
 	before(async () => {
 		await fs.mkdir(testDir, { recursive: true });
-		await fs.writeFile(join(testDir, "service.js"), "export class MyClass { method() {} }");
-		await fs.writeFile(join(testDir, "script.py"), "def my_func(): pass");
+		// Active file references 'DepClass'
+		await fs.writeFile(
+			join(testDir, "active.js"),
+			"const x = new DepClass();",
+		);
+		// Dependency file defines 'DepClass' and a method
+		await fs.writeFile(
+			join(testDir, "dependency.js"),
+			"export class DepClass { method(a) {} }",
+		);
 	});
 
 	after(async () => {
 		await fs.rm(testDir, { recursive: true, force: true });
 	});
 
-	it("should use HD for JS and Standard for Python", async () => {
+	it("should build a static index and render a dynamic perspective", async () => {
 		const mockCtx = {
 			root: testDir,
-			getMappableFiles: async () => ["service.js", "script.py"],
+			getMappableFiles: async () => ["active.js", "dependency.js"],
 		};
 
 		const repoMap = new RepoMap(mockCtx);
-		const map = await repoMap.generate();
+		
+		// 1. Build the Static Index (Definitions only)
+		const index = await repoMap.updateIndex();
+		assert.strictEqual(index.length, 2);
+		
+		const depEntry = index.find(f => f.path === "dependency.js");
+		assert.ok(depEntry.symbols.some(s => s.name === "DepClass"));
+		assert.ok(depEntry.symbols.some(s => s.name === "method"));
 
-		const jsFile = map.files.find(f => f.path === "service.js");
-		const pyFile = map.files.find(f => f.path === "script.py");
+		// 2. Render Perspective with 'active.js' focus
+		const perspective = repoMap.renderPerspective(index, ["active.js"]);
 
-		assert.ok(jsFile, "JS file should be mapped");
-		assert.strictEqual(jsFile.source, "hd");
-		assert.ok(jsFile.symbols.some(s => s.name === "MyClass"));
+		const activeFile = perspective.files.find(f => f.path === "active.js");
+		const depFile = perspective.files.find(f => f.path === "dependency.js");
 
-		assert.ok(pyFile, "Python file should be mapped");
-		// Python is not in our HD list, so it shouldn't have source 'hd'
-		assert.notStrictEqual(pyFile.source, "hd");
-		assert.ok(pyFile.symbols.length > 0, "Python should have symbols via Ctags");
+		// Active files are Hot by default
+		assert.strictEqual(activeFile.mode, "hot", "Active file should be hot");
+		
+		// Dependency should be promoted to Hot because DepClass was referenced
+		assert.strictEqual(depFile.mode, "hot", "Referenced dependency should be promoted to hot");
+		
+		// All symbols in a Hot file should retain their detail
+		const methodSymbol = depFile.symbols.find(s => s.name === "method");
+		assert.strictEqual(methodSymbol.params, "(a)", "Method in hot file should retain parameters");
+		assert.ok(methodSymbol.line, "Method in hot file should retain line number");
 	});
 });

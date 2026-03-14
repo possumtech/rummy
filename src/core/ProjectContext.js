@@ -47,7 +47,7 @@ export default class ProjectContext {
 			active: [],
 		};
 
-		const configPath = join(root, ".nzi.json");
+		const configPath = join(root, ".snore.json");
 		try {
 			const raw = readFileSync(configPath, "utf8");
 			const parsed = JSON.parse(raw);

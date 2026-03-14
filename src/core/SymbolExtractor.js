@@ -25,29 +25,19 @@ export default class SymbolExtractor {
 	}
 
 	#setupQueries() {
-		// Use only the node types as captures. 
-		// No field labels, no nested structures.
-		this.#queries.js = new Parser.Query(JavaScript, `
+		const jsQueryStr = `
 (class_declaration) @class
 (function_declaration) @function
 (method_definition) @method
-    `.trim());
+(call_expression) @ref
+(new_expression) @ref
+    `.trim();
 
-		this.#queries.ts = new Parser.Query(TypeScript.typescript, `
-(class_declaration) @class
-(function_declaration) @function
-(method_definition) @method
-    `.trim());
+		this.#queries.js = new Parser.Query(JavaScript, jsQueryStr);
+		this.#queries.ts = new Parser.Query(TypeScript.typescript, jsQueryStr);
+		this.#queries.tsx = new Parser.Query(TypeScript.tsx, jsQueryStr);
 
-		this.#queries.tsx = new Parser.Query(TypeScript.tsx, `
-(class_declaration) @class
-(function_declaration) @function
-(method_definition) @method
-    `.trim());
-
-		this.#queries.html = new Parser.Query(HTML, `
-(element) @tag
-    `.trim());
+		this.#queries.html = new Parser.Query(HTML, `(element) @tag`.trim());
 
 		this.#queries.css = new Parser.Query(CSS, `
 (class_selector) @class
@@ -56,7 +46,7 @@ export default class SymbolExtractor {
 	}
 
 	/**
-	 * Extracts symbols using Tree-sitter.
+	 * Extracts both definitions and references.
 	 */
 	extract(content, ext) {
 		const lang = this.#grammars[ext];
@@ -69,25 +59,50 @@ export default class SymbolExtractor {
 			const tree = this.#parser.parse(content);
 			const captures = query.captures(tree.rootNode);
 
-			return captures.map((c) => {
-				// Search for an 'identifier' or 'property_identifier' child 
-				// to find the actual name.
-				let name = "unknown";
-				
-				for (let i = 0; i < c.node.childCount; i++) {
-					const child = c.node.child(i);
-					if (["identifier", "property_identifier", "tag_name", "class_name", "id_name"].includes(child.type)) {
-						name = child.text;
-						break;
-					}
-				}
+			const definitions = [];
+			const references = new Set();
 
-				return {
-					type: c.name,
-					name,
-					line: c.node.startPosition.row + 1,
-				};
-			});
+			for (const capture of captures) {
+				if (["class", "function", "method", "tag", "id"].includes(capture.name)) {
+					let name = "";
+					let params = "";
+					for (let i = 0; i < capture.node.childCount; i++) {
+						const child = capture.node.child(i);
+						if (["identifier", "property_identifier", "tag_name", "class_name", "id_name"].includes(child.type)) {
+							name = child.text;
+						} else if (child.type === "formal_parameters") {
+							params = child.text;
+						}
+					}
+					
+					if (name) {
+						definitions.push({
+							type: capture.name,
+							name,
+							params,
+							line: capture.node.startPosition.row + 1,
+						});
+					}
+				} else if (capture.name === "ref") {
+					// For call_expression and new_expression, find the identifier
+					// We'll search depth-first for the first identifier
+					const findIdentifier = (node) => {
+						if (node.type === "identifier" || node.type === "property_identifier") return node.text;
+						for (let i = 0; i < node.childCount; i++) {
+							const result = findIdentifier(node.child(i));
+							if (result) return result;
+						}
+						return null;
+					};
+					const refName = findIdentifier(capture.node);
+					if (refName) references.add(refName);
+				}
+			}
+
+			return {
+				definitions,
+				references: Array.from(references),
+			};
 		} catch (err) {
 			console.error(`HD Symbol extraction failed for .${ext}:`, err);
 			return null;
