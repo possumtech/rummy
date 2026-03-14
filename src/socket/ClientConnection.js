@@ -1,7 +1,5 @@
 import ModelAgent from "../agent/ModelAgent.js";
 import ProjectAgent from "../agent/ProjectAgent.js";
-import ProjectContext from "../core/ProjectContext.js";
-import RepoMap from "../core/RepoMap.js";
 
 export default class ClientConnection {
 	#ws;
