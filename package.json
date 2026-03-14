@@ -23,6 +23,7 @@
 	"main": "service.js",
 	"scripts": {
 		"start": "node --env-file-if-exists=.env.example --env-file-if-exists=.env service.js",
+		"dev": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.dev --watch service.js",
 		"lint": "biome check . --fix --unsafe",
 		"test": "npm run lint && npm run test:unit && npm run test:intg && npm run test:e2e",
 		"test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test src/**/*.test.js",
