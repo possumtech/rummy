@@ -44,6 +44,6 @@ describe("E2E Bedrock: Paris Steel Thread (LIVE)", () => {
 			prompt: "What is the capital of France?",
 		});
 
-		assert.ok(askResult.response.includes("Paris"));
+		assert.ok(askResult.choices[0].message.content.includes("Paris"));
 	});
 });

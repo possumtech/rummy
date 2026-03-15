@@ -17,8 +17,8 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 	before(async () => {
 		globalThis.fetch = async () => {
 			return new Response(JSON.stringify({
-				choices: [{ message: { role: "assistant", content: "Original Response" } }],
-				usage: { total_tokens: 10 }
+				choices: [{ message: { role: "assistant", content: "Original Response", reasoning_content: "Thought process" } }],
+				usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 }
 			}), { 
 				status: 200, 
 				headers: { "Content-Type": "application/json" } 
@@ -51,11 +51,13 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 	});
 
 	it("should support lifecycle and file operations", async () => {
-		await client.call("init", {
+		const initResult = await client.call("init", {
 			projectPath,
 			projectName: "Protocol Test",
 			clientId: "test-client",
 		});
+		assert.ok(initResult.context);
+		assert.ok("gitRoot" in initResult.context);
 
 		// updateFiles
 		const updateResult = await client.call("updateFiles", {
@@ -77,6 +79,7 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 			return {
 				...response,
 				content: "Acting... SNORE_TEST_NOTIFY SNORE_TEST_RENDER SNORE_TEST_DIFF",
+				reasoning_content: "I need to notify and diff."
 			};
 		});
 
@@ -88,12 +91,14 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 		// ui/notify
 		const notify = await client.waitForNotification(
 			(n) => n.method === "ui/notify",
+			15000
 		);
 		assert.strictEqual(notify.params.text, "Test notification from SnoreNvimPlugin");
 
 		// ui/render
 		const render = await client.waitForNotification(
 			(n) => n.method === "ui/render",
+			15000
 		);
 		assert.strictEqual(render.params.text, "# Render Test");
 		assert.strictEqual(render.params.append, false);
@@ -101,12 +106,18 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 		// editor/diff
 		const diff = await client.waitForNotification(
 			(n) => n.method === "editor/diff",
+			15000
 		);
 		assert.strictEqual(diff.params.file, "test.txt");
 		assert.ok(diff.params.patch.includes("--- test.txt"));
 
 		const result = await actPromise;
-		assert.ok(result.jobId);
-		assert.ok(result.response.includes("Acting..."));
+		assert.ok(result.id);
+		const message = result.choices[0].message;
+		assert.strictEqual(message.role, "assistant");
+		assert.ok(message.content.includes("Acting..."));
+		assert.strictEqual(message.reasoning_content, "I need to notify and diff.");
+		assert.ok(result.usage);
+		assert.strictEqual(result.usage.total_tokens, 10);
 	});
 });

@@ -55,7 +55,20 @@ export default class ProjectAgent {
 			client_id: clientId,
 		});
 
-		const result = { projectId, sessionId };
+		// Discover project context
+		const { default: GitProvider } = await import("../core/GitProvider.js");
+		const gitRoot = await GitProvider.detectRoot(projectPath);
+		const headHash = gitRoot ? await GitProvider.getHeadHash(gitRoot) : null;
+
+		const result = {
+			projectId,
+			sessionId,
+			context: {
+				gitRoot,
+				headHash,
+			},
+		};
+
 		await this.#hooks.project.init.completed.emit({
 			...result,
 			projectPath,
@@ -181,7 +194,15 @@ export default class ProjectAgent {
 			total_tokens: 0,
 		});
 
-		const targetModel = process.env[`SNORE_MODEL_${model}`] || model;
+		const requestedModel = model || process.env.SNORE_DEFAULT_MODEL;
+		if (!requestedModel) {
+			throw new Error("No model specified and SNORE_DEFAULT_MODEL is not set.");
+		}
+		const targetModel = process.env[`SNORE_MODEL_${requestedModel}`] || requestedModel;
+
+		if (process.env.SNORE_DEBUG === "true") {
+			console.log(`[LLM] Target Model: ${targetModel} (requested: ${requestedModel})`);
+		}
 
 		await this.#hooks.llm.request.started.emit({
 			jobId,
@@ -232,6 +253,16 @@ export default class ProjectAgent {
 			usage,
 		});
 
-		return { jobId, response: finalResponse?.content };
+		// Use the upstream result as the base to preserve all metadata
+		// but ensure the ID matches our DB and the message is filtered.
+		return {
+			...result,
+			id: jobId,
+			choices: result.choices.map((c, i) =>
+				i === 0
+					? { ...c, message: finalResponse }
+					: c,
+			),
+		};
 	}
 }
