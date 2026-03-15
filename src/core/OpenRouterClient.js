@@ -1,25 +1,25 @@
 export default class OpenRouterClient {
 	#apiKey;
-	#baseUrl = "https://openrouter.ai/api/v1";
+	#baseUrl;
 
 	constructor(apiKey) {
+		if (!apiKey) throw new Error("OpenRouterClient: API Key required");
 		this.#apiKey = apiKey;
+		this.#baseUrl = process.env.OPENROUTER_BASE_URL;
+		if (!this.#baseUrl)
+			throw new Error("SNORE Configuration Error: OPENROUTER_BASE_URL missing");
 	}
 
-	/**
-	 * Simple Chat Completion (Paris-ready)
-	 * @param {Object[]} messages - OpenAI format [{role, content}]
-	 * @param {string} model - OpenRouter model ID
-	 * @returns {Promise<Object>} - The raw completion result
-	 */
-	async completion(messages, model = "gpt-4o") {
+	async completion(messages, model) {
+		if (!model) throw new Error("OpenRouterClient: Model ID required");
+
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
 			method: "POST",
 			headers: {
 				Authorization: `Bearer ${this.#apiKey}`,
 				"Content-Type": "application/json",
-				"HTTP-Referer": "https://github.com/possumtech/snore",
-				"X-Title": "SNORE",
+				"HTTP-Referer": process.env.SNORE_HTTP_REFERER || "",
+				"X-Title": process.env.SNORE_X_TITLE || "SNORE",
 			},
 			body: JSON.stringify({
 				model,

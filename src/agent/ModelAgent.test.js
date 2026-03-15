@@ -1,8 +1,12 @@
 import assert from "node:assert";
-import { describe, it, mock } from "node:test";
+import { before, describe, it, mock } from "node:test";
 import ModelAgent from "./ModelAgent.js";
 
 describe("ModelAgent", () => {
+	before(() => {
+		process.env.OPENROUTER_API_KEY = "test-key";
+	});
+
 	it("should return a list of models from the database and environment", async () => {
 		process.env.SNORE_MODEL_TEST_ALIAS = "gpt-4o";
 
@@ -24,13 +28,10 @@ describe("ModelAgent", () => {
 		const alias = models.find((m) => m.id === "TEST_ALIAS");
 		assert.strictEqual(alias.target, "gpt-4o");
 
-		assert.strictEqual(mockDb.get_models.all.mock.callCount(), 1);
-
 		delete process.env.SNORE_MODEL_TEST_ALIAS;
 	});
 
 	it("should fetch models from OpenRouter", async () => {
-		process.env.OPENROUTER_API_KEY = "test-key";
 		const mockData = { data: [{ id: "model-1" }] };
 
 		const fetchMock = mock.method(globalThis, "fetch", async () => ({

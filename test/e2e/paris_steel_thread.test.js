@@ -25,14 +25,14 @@ describe("E2E Bedrock: Paris Steel Thread (LIVE)", () => {
 	});
 
 	after(async () => {
-		client.close();
-		await tserver.stop();
-		await tdb.cleanup();
+		if (client) client.close();
+		if (tserver) await tserver.stop();
+		if (tdb) await tdb.cleanup();
 		await fs.rm(projectPath, { recursive: true, force: true }).catch(() => {});
 	});
 
 	it("should complete the full Paris flow via LIVE OpenRouter", {
-		timeout: 30000, // Higher timeout for real network/API latency
+		timeout: 30000,
 	}, async () => {
 		// 1. Initialize
 		await client.call("init", {
@@ -41,8 +41,8 @@ describe("E2E Bedrock: Paris Steel Thread (LIVE)", () => {
 			clientId: "bedrock-1",
 		});
 
-		// 2. Ask the question (using 'ccp' alias if available, fallback to gpt-4o-mini for speed/cost)
-		const model = process.env.SNORE_MODEL_CCP ? "ccp" : "gpt-4o-mini";
+		// 2. Ask using the system default model
+		const model = process.env.SNORE_DEFAULT_MODEL;
 
 		const askResult = await client.call("ask", {
 			model,
@@ -63,17 +63,10 @@ describe("E2E Bedrock: Paris Steel Thread (LIVE)", () => {
 		const turns = await tdb.db.get_turns_by_job_id.all({
 			job_id: askResult.jobId,
 		});
-		assert.strictEqual(
-			turns.length,
-			2,
-			"Should have request and response turns in DB",
-		);
+		assert.strictEqual(turns.length, 2);
 
-		// 5. Verify usage was recorded from the live API
+		// 5. Verify usage was recorded
 		const usage = JSON.parse(turns[1].usage);
-		assert.ok(
-			usage.total_tokens > 0,
-			"Usage tokens should be recorded from live response",
-		);
+		assert.ok(usage.total_tokens > 0);
 	});
 });

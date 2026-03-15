@@ -11,8 +11,8 @@ describe("ProjectContext", () => {
 	before(async () => {
 		await fs.mkdir(testDir, { recursive: true });
 		await fs.writeFile(join(testDir, "file.js"), "content");
-		await fs.mkdir(join(testDir, "node_modules"), { recursive: true });
-		await fs.writeFile(join(testDir, "node_modules/secret.txt"), "secret");
+		await fs.mkdir(join(testDir, "some_dir"), { recursive: true });
+		await fs.writeFile(join(testDir, "some_dir/file2.js"), "content");
 	});
 
 	after(async () => {
@@ -21,21 +21,21 @@ describe("ProjectContext", () => {
 	});
 
 	it("should handle git projects", async () => {
-		mock.method(GitProvider, "detectRoot", async (_path) => testDir);
+		mock.method(GitProvider, "detectRoot", async () => testDir);
 		mock.method(
 			GitProvider,
 			"getTrackedFiles",
 			async () => new Set(["file.js"]),
 		);
 		mock.method(GitProvider, "isIgnored", async (_root, path) =>
-			path.includes("node_modules"),
+			path.includes("some_dir"),
 		);
 
 		const ctx = await ProjectContext.open(testDir);
 		assert.strictEqual(ctx.isGit, true);
 		assert.strictEqual(await ctx.resolveState("file.js"), FileState.MAPPABLE);
 		assert.strictEqual(
-			await ctx.resolveState("node_modules/secret.txt"),
+			await ctx.resolveState("some_dir/file2.js"),
 			FileState.IGNORED,
 		);
 
@@ -43,35 +43,35 @@ describe("ProjectContext", () => {
 		assert.ok(mappable.includes("file.js"));
 	});
 
-	it("should handle non-git fallback", async () => {
+	it("should handle non-git restrictive mapping", async () => {
 		mock.method(GitProvider, "detectRoot", async () => null);
 
 		const ctx = await ProjectContext.open(testDir);
 		assert.strictEqual(ctx.isGit, false);
 
-		assert.strictEqual(await ctx.resolveState("file.js"), FileState.MAPPABLE);
+		// Implicitly ignored
+		assert.strictEqual(await ctx.resolveState("file.js"), FileState.IGNORED);
+
+		const mappable = await ctx.getMappableFiles();
+		assert.strictEqual(mappable.length, 0);
+	});
+
+	it("should respect explicit DB visibility in non-git", async () => {
+		mock.method(GitProvider, "detectRoot", async () => null);
+
+		const visibility = new Map([
+			["file.js", FileState.ACTIVE],
+			["some_dir/file2.js", FileState.MAPPABLE],
+		]);
+		const ctx = await ProjectContext.open(testDir, visibility);
+
+		assert.strictEqual(await ctx.resolveState("file.js"), FileState.ACTIVE);
 		assert.strictEqual(
-			await ctx.resolveState("node_modules/secret.txt"),
-			FileState.IGNORED,
+			await ctx.resolveState("some_dir/file2.js"),
+			FileState.MAPPABLE,
 		);
 
 		const mappable = await ctx.getMappableFiles();
-		assert.ok(mappable.includes("file.js"));
-		assert.ok(!mappable.includes("node_modules/secret.txt"));
-	});
-
-	it("should handle .snore.json with read_only", async () => {
-		mock.method(GitProvider, "detectRoot", async () => testDir);
-		const config = {
-			read_only: ["file.js"],
-			ignored: ["other.js"],
-		};
-		await fs.writeFile(join(testDir, ".snore.json"), JSON.stringify(config));
-
-		const ctx = await ProjectContext.open(testDir);
-		assert.strictEqual(await ctx.resolveState("file.js"), FileState.READ_ONLY);
-		assert.strictEqual(await ctx.resolveState("other.js"), FileState.IGNORED);
-
-		await fs.unlink(join(testDir, ".snore.json"));
+		assert.strictEqual(mappable.length, 2);
 	});
 });

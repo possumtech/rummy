@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS repo_map_files (
 	, path TEXT NOT NULL
 	, hash TEXT
 	, size INTEGER DEFAULT 0
+	, visibility TEXT NOT NULL DEFAULT 'mappable' CHECK (
+		visibility IN ('active', 'read_only', 'mappable', 'ignored')
+	)
 	, last_indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, UNIQUE (project_id, path)
 );
@@ -80,25 +83,14 @@ CREATE TABLE IF NOT EXISTS repo_map_references (
 	, symbol_name TEXT NOT NULL
 );
 
--- Indexes for performance
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_session_id ON jobs (session_id);
-CREATE INDEX IF NOT EXISTS idx_jobs_parent_job_id ON jobs (parent_job_id);
-CREATE INDEX IF NOT EXISTS idx_turns_job_id ON turns (job_id);
-
 CREATE INDEX IF NOT EXISTS idx_repo_map_files_project_id
 ON repo_map_files (project_id);
+CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_id ON repo_map_tags (file_id);
 
-CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_id
-ON repo_map_tags (file_id);
-
-CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name
-ON repo_map_tags (name);
-
-CREATE INDEX IF NOT EXISTS idx_repo_map_references_file_id
-ON repo_map_references (file_id);
-
--- Initial Data for testing
+-- Initial Data
 INSERT OR IGNORE INTO projects (id, path, name)
 VALUES
 ('snore-project', '/home/frith/repo/snore/main', 'SNORE Main');

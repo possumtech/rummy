@@ -2,6 +2,7 @@
 SELECT
 	f.path
 	, f.size
+	, f.visibility
 	, t.name
 	, t.type
 	, t.params

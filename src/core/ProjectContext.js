@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import FsProvider from "./FsProvider.js";
 import GitProvider from "./GitProvider.js";
 
 export const FileState = {
@@ -16,65 +13,38 @@ export default class ProjectContext {
 	#root;
 	#isGit = false;
 	#trackedFiles = new Set();
-	#config = {
-		ignored: [],
-		read_only: [],
-		active: [],
-	};
+	#visibilityMap = new Map();
 
-	constructor(root, isGit, trackedFiles, config) {
+	constructor(root, isGit, trackedFiles, visibilityMap) {
 		this.#root = root;
 		this.#isGit = isGit;
 		this.#trackedFiles = trackedFiles;
-		this.#config = config;
+		this.#visibilityMap = visibilityMap;
 	}
 
 	/**
-	 * Static factory to initialize a ProjectContext correctly (handling async).
+	 * Static factory to initialize a ProjectContext.
+	 * visibilityOverrides: Map of path -> status from DB
 	 */
-	static async open(path) {
-		const root = (await GitProvider.detectRoot(path)) || path;
-		const isGit = (await GitProvider.detectRoot(path)) !== null;
-		let trackedFiles = new Set();
+	static async open(path, visibilityOverrides = new Map()) {
+		const detectedRoot = await GitProvider.detectRoot(path);
+		const root = detectedRoot || path;
+		const isGit = detectedRoot !== null;
 
+		let trackedFiles = new Set();
 		if (isGit) {
 			trackedFiles = await GitProvider.getTrackedFiles(root);
 		}
 
-		let config = {
-			ignored: [],
-			read_only: [],
-			active: [],
-		};
-
-		const configPath = join(root, ".snore.json");
-		try {
-			const raw = readFileSync(configPath, "utf8");
-			const parsed = JSON.parse(raw);
-			config = {
-				ignored: parsed.ignored || [],
-				read_only: parsed.read_only || [],
-				active: parsed.active || [],
-			};
-		} catch {
-			// Config missing or invalid
-		}
-
-		return new ProjectContext(root, isGit, trackedFiles, config);
+		return new ProjectContext(root, isGit, trackedFiles, visibilityOverrides);
 	}
 
-	/**
-	 * Resolves the state of a file based on the resolution hierarchy.
-	 * @param {string} relPath - Path relative to project root.
-	 * @returns {Promise<string>} - The FileState.
-	 */
 	async resolveState(relPath) {
-		// 1. User Overrides (.nzi.json)
-		if (this.#config.ignored.includes(relPath)) return FileState.IGNORED;
-		if (this.#config.active.includes(relPath)) return FileState.ACTIVE;
-		if (this.#config.read_only.includes(relPath)) return FileState.READ_ONLY;
+		// 1. Manual Overrides (Explicit DB State)
+		const override = this.#visibilityMap.get(relPath);
+		if (override) return override;
 
-		// 2. Git Status
+		// 2. Git Status (Only if in a git repo)
 		if (this.#isGit) {
 			if (this.#trackedFiles.has(relPath)) return FileState.MAPPABLE;
 			if (await GitProvider.isIgnored(this.#root, relPath))
@@ -82,46 +52,30 @@ export default class ProjectContext {
 			return FileState.INVISIBLE;
 		}
 
-		// 3. FS Fallback (Non-Git)
-		const systemIgnores = ["node_modules", ".git", ".venv", ".DS_Store"];
-		const parts = relPath.split("/");
-		if (parts.some((p) => systemIgnores.includes(p))) return FileState.IGNORED;
-
-		return FileState.MAPPABLE;
+		// 3. Restrictive Fallback: If not in Git and not explicitly added, it's ignored.
+		return FileState.IGNORED;
 	}
 
 	get root() {
 		return this.#root;
 	}
-
 	get isGit() {
 		return this.#isGit;
 	}
 
-	/**
-	 * Returns all files that should be considered for mapping.
-	 * @returns {Promise<string[]>}
-	 */
 	async getMappableFiles() {
+		const all = new Set();
+
 		if (this.#isGit) {
-			const all = new Set([...this.#trackedFiles]);
-			for (const p of [...this.#config.active, ...this.#config.read_only]) {
-				all.add(p);
-			}
-			for (const p of this.#config.ignored) {
-				all.delete(p);
-			}
-			return Array.from(all);
+			for (const f of this.#trackedFiles) all.add(f);
 		}
 
-		// Non-Git fallback
-		const files = FsProvider.listFiles(this.#root);
-		const filtered = [];
-		for (const f of files) {
-			if ((await this.resolveState(f)) !== FileState.IGNORED) {
-				filtered.push(f);
-			}
+		// Add everything explicitly marked in DB except ignored
+		for (const [path, status] of this.#visibilityMap.entries()) {
+			if (status === FileState.IGNORED) all.delete(path);
+			else all.add(path);
 		}
-		return filtered;
+
+		return Array.from(all);
 	}
 }

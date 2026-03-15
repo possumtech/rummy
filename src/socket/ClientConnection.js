@@ -39,7 +39,6 @@ export default class ClientConnection {
 
 			switch (method) {
 				case "init":
-					// params: { projectPath, projectName, clientId }
 					result = await this.#projectAgent.init(
 						params.projectPath,
 						params.projectName,
@@ -65,6 +64,17 @@ export default class ClientConnection {
 					result = await this.#projectAgent.getFiles(this.#context.projectPath);
 					break;
 
+				case "updateFiles":
+					if (!this.#context.projectId) {
+						throw new Error("Project not initialized. Call 'init' first.");
+					}
+					// params: { files: [{ path, visibility }] }
+					result = await this.#projectAgent.updateFiles(
+						this.#context.projectId,
+						params.files,
+					);
+					break;
+
 				case "startJob":
 					if (!this.#context.sessionId) {
 						throw new Error("Session not initialized. Call 'init' first.");
@@ -79,7 +89,6 @@ export default class ClientConnection {
 					if (!this.#context.sessionId) {
 						throw new Error("Session not initialized. Call 'init' first.");
 					}
-					// params: { model, prompt, activeFiles }
 					result = await this.#projectAgent.ask(
 						this.#context.sessionId,
 						params.model,

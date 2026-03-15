@@ -1,8 +1,10 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { after, before, describe, it } from "node:test";
+import { after, before, describe, it, mock } from "node:test";
 import SqlRite from "@possumtech/sqlrite";
+import GitProvider from "../../src/core/GitProvider.js";
+import ProjectContext from "../../src/core/ProjectContext.js";
 import RepoMap from "../../src/core/RepoMap.js";
 
 describe("RepoMap Polyglot Integration", () => {
@@ -36,21 +38,28 @@ describe("RepoMap Polyglot Integration", () => {
 			path: testDir,
 			name: "Polyglot Project",
 		});
+
+		// Force non-git so we only see what we explicitly allow
+		mock.method(GitProvider, "detectRoot", async () => null);
 	});
 
 	after(async () => {
+		mock.restoreAll();
 		if (db) await db.close();
 		await fs.unlink(dbPath).catch(() => {});
 		await fs.rm(testDir, { recursive: true, force: true });
 	});
 
 	it("should generate a map for a multi-language project (using ctags)", async () => {
-		const mockCtx = {
-			root: testDir,
-			getMappableFiles: async () => ["main.py", "lib.rs", "app.go"],
-		};
+		// Explicitly map files since we are in non-git mode
+		const visibility = new Map([
+			["main.py", "mappable"],
+			["lib.rs", "mappable"],
+			["app.go", "mappable"],
+		]);
 
-		const repoMap = new RepoMap(mockCtx, db, projectId);
+		const ctx = await ProjectContext.open(testDir, visibility);
+		const repoMap = new RepoMap(ctx, db, projectId);
 		await repoMap.updateIndex();
 
 		const perspective = await repoMap.renderPerspective([]);

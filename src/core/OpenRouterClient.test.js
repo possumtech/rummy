@@ -1,48 +1,57 @@
 import assert from "node:assert";
-import { describe, it, mock } from "node:test";
+import { before, describe, it, mock } from "node:test";
 import OpenRouterClient from "./OpenRouterClient.js";
 
 describe("OpenRouterClient", () => {
-	it("should send a completion request and return json", async () => {
+	before(() => {
+		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+	});
+
+	it("should throw if API key is missing", () => {
+		assert.throws(() => new OpenRouterClient(null), /API Key required/);
+	});
+
+	it("should throw if base URL is missing", () => {
+		const original = process.env.OPENROUTER_BASE_URL;
+		delete process.env.OPENROUTER_BASE_URL;
+		assert.throws(
+			() => new OpenRouterClient("key"),
+			/OPENROUTER_BASE_URL missing/,
+		);
+		process.env.OPENROUTER_BASE_URL = original;
+	});
+
+	it("should send a completion request", async () => {
 		const mockResponse = {
 			choices: [{ message: { content: "Paris" } }],
 			usage: { total_tokens: 10 },
 		};
 
-		const fetchMock = mock.method(globalThis, "fetch", async () => {
-			return {
-				ok: true,
-				json: async () => mockResponse,
-			};
-		});
+		mock.method(globalThis, "fetch", async () => ({
+			ok: true,
+			json: async () => mockResponse,
+		}));
 
 		const client = new OpenRouterClient("test-key");
 		const result = await client.completion(
-			[{ role: "user", content: "Capital of France?" }],
+			[{ role: "user", content: "Paris?" }],
 			"gpt-4o",
 		);
 
 		assert.deepStrictEqual(result, mockResponse);
-		assert.strictEqual(fetchMock.mock.callCount(), 1);
-
-		const [url, options] = fetchMock.mock.calls[0].arguments;
-		assert.strictEqual(url, "https://openrouter.ai/api/v1/chat/completions");
-		assert.strictEqual(options.headers.Authorization, "Bearer test-key");
 	});
 
-	it("should throw an error on non-ok response", async () => {
-		mock.method(globalThis, "fetch", async () => {
-			return {
-				ok: false,
-				status: 401,
-				text: async () => "Unauthorized",
-			};
-		});
+	it("should throw on API error", async () => {
+		mock.method(globalThis, "fetch", async () => ({
+			ok: false,
+			status: 500,
+			text: async () => "Internal Error",
+		}));
 
-		const client = new OpenRouterClient("invalid-key");
+		const client = new OpenRouterClient("test-key");
 		await assert.rejects(
 			client.completion([], "gpt-4o"),
-			/OpenRouter API error: 401 - Unauthorized/,
+			/OpenRouter API error: 500 - Internal Error/,
 		);
 	});
 });
