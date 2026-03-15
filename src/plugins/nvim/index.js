@@ -20,6 +20,14 @@ export default class SnoreNvimPlugin {
 				});
 			}
 
+			if (content.includes("SNORE_TEST_RENDER")) {
+				await hooks.ui.render.emit({
+					sessionId,
+					text: "# Render Test",
+					append: false,
+				});
+			}
+
 			if (content.includes("SNORE_TEST_DIFF")) {
 				await hooks.editor.diff.emit({
 					sessionId,

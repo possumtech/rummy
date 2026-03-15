@@ -8,7 +8,7 @@ import TestServer from "../helpers/TestServer.js";
 
 const originalFetch = globalThis.fetch;
 
-describe("SOCKET_PROTOCOL v0.2.0 Verification", () => {
+describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 	let tdb;
 	let tserver;
 	let client;
@@ -45,18 +45,38 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification", () => {
 		assert.deepStrictEqual(result, {});
 	});
 
-	it("should support 'act' method and notifications", async () => {
+	it("should support 'getModels' method", async () => {
+		const result = await client.call("getModels", {});
+		assert.ok(Array.isArray(result));
+	});
+
+	it("should support lifecycle and file operations", async () => {
 		await client.call("init", {
 			projectPath,
 			projectName: "Protocol Test",
 			clientId: "test-client",
 		});
 
-		// Mock LLM response to trigger notifications via SnoreNvimPlugin
+		// updateFiles
+		const updateResult = await client.call("updateFiles", {
+			files: [
+				{ path: "README.md", visibility: "active" }
+			]
+		});
+		assert.strictEqual(updateResult.status, "ok");
+
+		// getFiles
+		const files = await client.call("getFiles", {});
+		assert.ok(Array.isArray(files));
+		assert.ok(files.some(f => f.path === "README.md"));
+	});
+
+	it("should support 'act' method and all notifications", async () => {
+		// Mock LLM response to trigger all notifications via SnoreNvimPlugin
 		tserver.hooks.addFilter("llm.response", (response) => {
 			return {
 				...response,
-				content: "Acting on files... SNORE_TEST_NOTIFY SNORE_TEST_DIFF",
+				content: "Acting... SNORE_TEST_NOTIFY SNORE_TEST_RENDER SNORE_TEST_DIFF",
 			};
 		});
 
@@ -65,12 +85,20 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification", () => {
 			prompt: "Trigger notifications",
 		});
 
-		// Wait for notifications
+		// ui/notify
 		const notify = await client.waitForNotification(
 			(n) => n.method === "ui/notify",
 		);
 		assert.strictEqual(notify.params.text, "Test notification from SnoreNvimPlugin");
 
+		// ui/render
+		const render = await client.waitForNotification(
+			(n) => n.method === "ui/render",
+		);
+		assert.strictEqual(render.params.text, "# Render Test");
+		assert.strictEqual(render.params.append, false);
+
+		// editor/diff
 		const diff = await client.waitForNotification(
 			(n) => n.method === "editor/diff",
 		);
@@ -79,6 +107,6 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification", () => {
 
 		const result = await actPromise;
 		assert.ok(result.jobId);
-		assert.ok(result.response.includes("Acting on files"));
+		assert.ok(result.response.includes("Acting..."));
 	});
 });
