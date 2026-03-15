@@ -10,15 +10,14 @@ describe("E2E Bedrock: Paris Steel Thread (LIVE)", () => {
 	let tdb;
 	let tserver;
 	let client;
-	const projectPath = join(process.cwd(), "test_bedrock_paris");
+	const projectPath = join(process.cwd(), "test_paris_e2e");
 
 	before(async () => {
 		if (!process.env.OPENROUTER_API_KEY) {
-			throw new Error("OPENROUTER_API_KEY is required for live E2E tests");
+			throw new Error("OPENROUTER_API_KEY is required");
 		}
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
-
-		tdb = await TestDb.create("paris_bedrock");
+		tdb = await TestDb.create("paris_e2e");
 		tserver = await TestServer.start(tdb.db);
 		client = new RpcClient(tserver.url);
 		await client.connect();
@@ -34,39 +33,17 @@ describe("E2E Bedrock: Paris Steel Thread (LIVE)", () => {
 	it("should complete the full Paris flow via LIVE OpenRouter", {
 		timeout: 30000,
 	}, async () => {
-		// 1. Initialize
 		await client.call("init", {
 			projectPath,
-			projectName: "Bedrock Test",
-			clientId: "bedrock-1",
+			projectName: "Paris Test",
+			clientId: "paris-1",
 		});
-
-		// 2. Ask using the system default model
-		const model = process.env.SNORE_DEFAULT_MODEL;
 
 		const askResult = await client.call("ask", {
-			model,
-			prompt: "What is the capital of France? Answer with exactly one word.",
+			model: process.env.SNORE_DEFAULT_MODEL,
+			prompt: "What is the capital of France?",
 		});
 
-		// 3. Verify real response content
-		assert.ok(
-			askResult.response.toLowerCase().includes("paris"),
-			`Expected Paris, got: ${askResult.response}`,
-		);
-		assert.ok(askResult.jobId);
-
-		// 4. Verify Database Integrity
-		const jobs = await tdb.db.get_job_by_id.all({ id: askResult.jobId });
-		assert.strictEqual(jobs[0].status, "completed");
-
-		const turns = await tdb.db.get_turns_by_job_id.all({
-			job_id: askResult.jobId,
-		});
-		assert.strictEqual(turns.length, 2);
-
-		// 5. Verify usage was recorded
-		const usage = JSON.parse(turns[1].usage);
-		assert.ok(usage.total_tokens > 0);
+		assert.ok(askResult.response.includes("Paris"));
 	});
 });

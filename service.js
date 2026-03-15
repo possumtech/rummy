@@ -5,31 +5,34 @@ import { fileURLToPath } from "node:url";
 import SqlRite from "@possumtech/sqlrite";
 import SocketServer from "./src/socket/SocketServer.js";
 import { registerPlugins } from "./src/plugins/index.js";
+import createHooks from "./src/core/Hooks.js";
 
 async function main() {
-	// 1. Resolve SNORE_HOME (Default: ~/.snore)
+	// 1. Initialize Hooks (Agnostic Engine)
+	const debug = process.env.SNORE_DEBUG === "true";
+	const hooks = createHooks(debug);
+
+	// 2. Resolve SNORE_HOME (Default: ~/.snore)
 	const snoreHome = process.env.SNORE_HOME || join(homedir(), ".snore");
 	const userPluginsDir = join(snoreHome, "plugins");
-	
-	// Internal logic is now in src/internal/
 	const internalPluginsDir = fileURLToPath(new URL("./src/internal", import.meta.url));
 
-	// 2. Ensure Directory Structure
+	// 3. Ensure Directory Structure
 	mkdirSync(userPluginsDir, { recursive: true });
 
-	// 3. Resolve Database Path
+	// 4. Register Plugins
+	await registerPlugins([internalPluginsDir, userPluginsDir], hooks);
+
+	// 5. Bootstrap Persistence
 	const dbPath = process.env.SNORE_DB_PATH || join(snoreHome, "snore.db");
 	const db = await SqlRite.open({
 		path: dbPath,
 		dir: ["migrations", "src"],
 	});
 
-	// 4. Register Plugins (Internal first, then User)
-	await registerPlugins([internalPluginsDir, userPluginsDir]);
-
-	// 5. Start RPC Server
+	// 6. Start RPC Server
 	const port = Number.parseInt(process.env.PORT);
-	const server = new SocketServer(db, { port });
+	const server = new SocketServer(db, { port, hooks });
 
 	server.on("error", (err) => {
 		if (err.code === "EADDRINUSE") {

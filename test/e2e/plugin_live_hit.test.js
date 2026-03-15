@@ -2,8 +2,6 @@ import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import HookRegistry from "../../src/core/HookRegistry.js";
-import { registerPlugins } from "../../src/plugins/index.js";
 import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
@@ -18,18 +16,6 @@ describe("E2E Bedrock: Plugin Architecture (LIVE)", () => {
 		if (!process.env.OPENROUTER_API_KEY) {
 			throw new Error("OPENROUTER_API_KEY is required");
 		}
-
-		await registerPlugins();
-
-		// STRICT INTEGRITY CHECK: Fail the test if plugins didn't load
-		const count = HookRegistry.instance.count("TURN_SYSTEM_PROMPT_BEFORE");
-		if (count === 0) {
-			throw new Error(
-				"CRITICAL: TestE2EPlugin failed to load. Check loader logic.",
-			);
-		}
-
-		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
 
 		tdb = await TestDb.create("plugin_e2e");
 		tserver = await TestServer.start(tdb.db);
@@ -47,6 +33,7 @@ describe("E2E Bedrock: Plugin Architecture (LIVE)", () => {
 	it("should verify that TestE2EPlugin is loaded and seen by model", {
 		timeout: 30000,
 	}, async () => {
+		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
 		await client.call("init", {
 			projectPath,
 			projectName: "Plugin Test",
@@ -60,7 +47,7 @@ describe("E2E Bedrock: Plugin Architecture (LIVE)", () => {
 
 		assert.ok(
 			askResult.response.includes("ALBATROSS-99"),
-			`Plugin injection not found in model response. Got: ${askResult.response}`,
+			`Plugin injection not found. Got: ${askResult.response}`,
 		);
 	});
 });

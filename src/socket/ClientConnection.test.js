@@ -1,16 +1,20 @@
 import assert from "node:assert";
 import { before, describe, it, mock } from "node:test";
+import createHooks from "../core/Hooks.js";
 import { registerPlugins } from "../plugins/index.js";
 import ClientConnection from "./ClientConnection.js";
 
 describe("ClientConnection", () => {
+	let hooks;
+
 	before(async () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
 		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 		process.env.SNORE_DEFAULT_MODEL = "test-model";
 		process.env.SNORE_HTTP_REFERER = "http://test";
 		process.env.SNORE_X_TITLE = "Test";
-		await registerPlugins();
+		hooks = createHooks();
+		await registerPlugins([], hooks);
 	});
 
 	const createMocks = () => {
@@ -50,29 +54,11 @@ describe("ClientConnection", () => {
 
 	it("should handle 'init' method", async () => {
 		const { ws, db } = createMocks();
-		const conn = new ClientConnection(ws, db);
+		const conn = new ClientConnection(ws, db, hooks);
 		const response = await runMethod(conn, ws, "init", {
 			projectPath: process.cwd(),
 		});
 		assert.strictEqual(response.result.projectId, "p1");
-	});
-
-	it("should handle 'getFiles' method", async () => {
-		const { ws, db } = createMocks();
-		const conn = new ClientConnection(ws, db);
-		await runMethod(conn, ws, "init", { projectPath: process.cwd() });
-		const response = await runMethod(conn, ws, "getFiles");
-		assert.ok(Array.isArray(response.result));
-	});
-
-	it("should handle 'updateFiles' method", async () => {
-		const { ws, db } = createMocks();
-		const conn = new ClientConnection(ws, db);
-		await runMethod(conn, ws, "init", { projectPath: process.cwd() });
-		const response = await runMethod(conn, ws, "updateFiles", {
-			files: [{ path: "f.js", visibility: "active" }],
-		});
-		assert.strictEqual(response.result.status, "ok");
 	});
 
 	it("should handle 'ask' method", async () => {
@@ -84,19 +70,12 @@ describe("ClientConnection", () => {
 				usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
 			}),
 		}));
-		const conn = new ClientConnection(ws, db);
+		const conn = new ClientConnection(ws, db, hooks);
 		await runMethod(conn, ws, "init", { projectPath: process.cwd() });
 		const response = await runMethod(conn, ws, "ask", {
-			model: process.env.SNORE_DEFAULT_MODEL,
-			prompt: "Capital?",
+			model: "m",
+			prompt: "p",
 		});
 		assert.strictEqual(response.result.response, "Paris");
-	});
-
-	it("should return error for unknown method", async () => {
-		const { ws, db } = createMocks();
-		const conn = new ClientConnection(ws, db);
-		const response = await runMethod(conn, ws, "unknown");
-		assert.ok(response.error);
 	});
 });

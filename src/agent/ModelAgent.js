@@ -1,8 +1,10 @@
 export default class ModelAgent {
 	#db;
+	#hooks;
 
-	constructor(db) {
+	constructor(db, hooks) {
 		this.#db = db;
+		this.#hooks = hooks;
 	}
 
 	/**
@@ -11,7 +13,6 @@ export default class ModelAgent {
 	async getModels() {
 		const dbModels = await this.#db.get_models.all();
 
-		// Add environment-based aliases (e.g., SNORE_MODEL_ccp=openrouter/deepseek-v3)
 		const envModels = Object.keys(process.env)
 			.filter((key) => key.startsWith("SNORE_MODEL_"))
 			.map((key) => {
@@ -24,7 +25,10 @@ export default class ModelAgent {
 				};
 			});
 
-		return [...dbModels, ...envModels];
+		const result = [...dbModels, ...envModels];
+		return await this.#hooks.rpc.response.result.filter(result, {
+			method: "getModels",
+		});
 	}
 
 	/**
@@ -32,8 +36,6 @@ export default class ModelAgent {
 	 */
 	async getOpenRouterModels() {
 		const apiKey = process.env.OPENROUTER_API_KEY;
-		if (!apiKey) throw new Error("OPENROUTER_API_KEY not found in environment");
-
 		const response = await fetch("https://openrouter.ai/api/v1/models", {
 			headers: {
 				Authorization: `Bearer ${apiKey}`,
@@ -45,6 +47,8 @@ export default class ModelAgent {
 		}
 
 		const data = await response.json();
-		return data.data; // OpenRouter returns { data: [...] }
+		return await this.#hooks.rpc.response.result.filter(data.data, {
+			method: "getOpenRouterModels",
+		});
 	}
 }

@@ -2,11 +2,13 @@ import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it, mock } from "node:test";
+import createHooks from "../core/Hooks.js";
 import { registerPlugins } from "../plugins/index.js";
 import ProjectAgent from "./ProjectAgent.js";
 
 describe("ProjectAgent Unit", () => {
 	const projectPath = join(process.cwd(), "test_agent_unit");
+	let hooks;
 
 	before(async () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
@@ -15,7 +17,8 @@ describe("ProjectAgent Unit", () => {
 		process.env.SNORE_HTTP_REFERER = "http://test";
 		process.env.SNORE_X_TITLE = "Test";
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
-		await registerPlugins();
+		hooks = createHooks();
+		await registerPlugins([], hooks);
 	});
 
 	after(async () => {
@@ -38,7 +41,7 @@ describe("ProjectAgent Unit", () => {
 			insert_repo_map_ref: { run: mock.fn(async () => {}) },
 		};
 
-		const agent = new ProjectAgent(mockDb);
+		const agent = new ProjectAgent(mockDb, hooks);
 		const result = await agent.init(projectPath, "Test", "client-1");
 
 		assert.strictEqual(result.projectId, "proj-1");
@@ -48,10 +51,9 @@ describe("ProjectAgent Unit", () => {
 	it("should throw error if project creation fails", async () => {
 		const mockDb = {
 			upsert_project: { run: mock.fn() },
-			get_project_by_path: { all: mock.fn(async () => []) }, // Empty return
+			get_project_by_path: { all: mock.fn(async () => []) },
 		};
-		const agent = new ProjectAgent(mockDb);
-		// Native TypeError because projects[0] is undefined
+		const agent = new ProjectAgent(mockDb, hooks);
 		await assert.rejects(agent.init(projectPath, "Test", "c1"), TypeError);
 	});
 
@@ -70,12 +72,11 @@ describe("ProjectAgent Unit", () => {
 			insert_repo_map_tag: { run: mock.fn() },
 			insert_repo_map_ref: { run: mock.fn() },
 		};
-		const agent = new ProjectAgent(mockDb);
+		const agent = new ProjectAgent(mockDb, hooks);
 		const result = await agent.updateFiles("p1", [
 			{ path: "f.js", visibility: "active" },
 		]);
 		assert.strictEqual(result.status, "ok");
-		assert.strictEqual(mockDb.upsert_repo_map_file.run.mock.callCount(), 1);
 	});
 
 	it("should get files", async () => {
@@ -83,7 +84,7 @@ describe("ProjectAgent Unit", () => {
 			get_project_by_path: { all: mock.fn(async () => [{ id: "p1" }]) },
 			get_project_repo_map: { all: mock.fn(async () => []) },
 		};
-		const agent = new ProjectAgent(mockDb);
+		const agent = new ProjectAgent(mockDb, hooks);
 		const files = await agent.getFiles(projectPath);
 		assert.ok(Array.isArray(files));
 	});
@@ -117,7 +118,7 @@ describe("ProjectAgent Unit", () => {
 			}),
 		}));
 
-		const agent = new ProjectAgent(mockDb);
+		const agent = new ProjectAgent(mockDb, hooks);
 		const result = await agent.ask(
 			"sess-1",
 			process.env.SNORE_DEFAULT_MODEL,

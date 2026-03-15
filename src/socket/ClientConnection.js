@@ -1,6 +1,5 @@
 import ModelAgent from "../agent/ModelAgent.js";
 import ProjectAgent from "../agent/ProjectAgent.js";
-import HookRegistry from "../core/HookRegistry.js";
 
 export default class ClientConnection {
 	#ws;
@@ -14,19 +13,16 @@ export default class ClientConnection {
 		projectPath: null,
 	};
 
-	constructor(ws, db) {
+	constructor(ws, db, hooks) {
 		this.#ws = ws;
 		this.#db = db;
-		this.#projectAgent = new ProjectAgent(db);
-		this.#modelAgent = new ModelAgent(db);
-		this.#hooks = HookRegistry.instance;
+		this.#hooks = hooks;
+		this.#projectAgent = new ProjectAgent(db, hooks);
+		this.#modelAgent = new ModelAgent(db, hooks);
 
 		this.#ws.on("message", (data) => this.#handleMessage(data));
 	}
 
-	/**
-	 * Exposed for testing purposes.
-	 */
 	async handleMessageForTest(data) {
 		return this.#handleMessage(data);
 	}
@@ -34,20 +30,14 @@ export default class ClientConnection {
 	async #handleMessage(data) {
 		let id = null;
 		try {
-			const rawMessage = await this.#hooks.applyFilters(
-				"socket_message_raw",
-				data,
-			);
+			const rawMessage = await this.#hooks.socket.message.raw.filter(data);
 			const message = JSON.parse(rawMessage.toString());
 
-			const {
-				method,
-				params,
-				id: msgId,
-			} = await this.#hooks.applyFilters("rpc_request", message);
+			const filteredRequest = await this.#hooks.rpc.request.filter(message);
+			const { method, params, id: msgId } = filteredRequest;
 			id = msgId;
 
-			await this.#hooks.emitEvent("rpc_started", {
+			await this.#hooks.rpc.started.emit({
 				method,
 				params,
 				id,
@@ -115,11 +105,10 @@ export default class ClientConnection {
 					throw new Error(`Method '${method}' not found.`);
 			}
 
-			const finalResult = await this.#hooks.applyFilters(
-				"rpc_response_result",
-				result,
-				{ method, id },
-			);
+			const finalResult = await this.#hooks.rpc.response.result.filter(result, {
+				method,
+				id,
+			});
 
 			this.#send({
 				jsonrpc: "2.0",
@@ -127,18 +116,14 @@ export default class ClientConnection {
 				id,
 			});
 
-			await this.#hooks.emitEvent("rpc_completed", {
-				method,
-				id,
-				result: finalResult,
-			});
+			await this.#hooks.rpc.completed.emit({ method, id, result: finalResult });
 		} catch (error) {
 			this.#send({
 				jsonrpc: "2.0",
 				error: { code: -32603, message: error.message },
 				id: id || null,
 			});
-			await this.#hooks.emitEvent("rpc_error", { id, error });
+			await this.#hooks.rpc.error.emit({ id, error });
 		}
 	}
 

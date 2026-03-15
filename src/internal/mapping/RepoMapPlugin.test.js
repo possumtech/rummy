@@ -1,19 +1,20 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { after, before, describe, it, mock } from "node:test";
+import { after, before, describe, it } from "node:test";
 import SqlRite from "@possumtech/sqlrite";
-import HookRegistry from "../../core/HookRegistry.js";
-import RepoMapPlugin from "./RepoMapPlugin.js";
+import createHooks from "../../core/Hooks.js";
+import TurnBuilder from "../../core/TurnBuilder.js";
+import RepoMapPlugin from "./mapping.js";
 
-describe("RepoMapPlugin", () => {
+describe("RepoMapPlugin (DOM)", () => {
 	let db;
-	const dbPath = "test_repomap_plugin.db";
-	const testDir = join(process.cwd(), "test_repomap_plugin_dir");
+	const dbPath = "test_repomap_dom.db";
+	const testDir = join(process.cwd(), "test_repomap_dom_dir");
 
 	before(async () => {
 		await fs.mkdir(testDir, { recursive: true });
-		await fs.writeFile(join(testDir, "active.js"), "console.log('hello');");
+		await fs.writeFile(join(testDir, "file.js"), "content");
 		db = await SqlRite.open({ path: dbPath, dir: ["migrations", "src"] });
 	});
 
@@ -23,32 +24,30 @@ describe("RepoMapPlugin", () => {
 		await fs.rm(testDir, { recursive: true, force: true });
 	});
 
-	it("should register hooks and populate files slot", async () => {
-		const hooks = new HookRegistry();
+	it("should inject files into the DOM", async () => {
+		const hooks = createHooks();
 		RepoMapPlugin.register(hooks);
 
 		const projectId = "p1";
 		await db.upsert_project.run({ id: projectId, path: testDir, name: "Test" });
 		await db.upsert_repo_map_file.run({
 			project_id: projectId,
-			path: "active.js",
+			path: "file.js",
 			visibility: "active",
-			size: 10,
+			size: 7,
 			hash: "h1",
 		});
 
-		const slot = { add: mock.fn() };
-		const project = { id: projectId, path: testDir };
-
-		await hooks.doAction("TURN_CONTEXT_FILES", slot, {
-			project,
-			activeFiles: ["active.js"],
+		const builder = new TurnBuilder(hooks);
+		const turn = await builder.build({
+			project: { id: projectId, path: testDir },
 			db,
+			prompt: "test",
+			activeFiles: ["file.js"],
 		});
 
-		assert.ok(slot.add.mock.callCount() >= 1);
-		const firstCall = slot.add.mock.calls[0].arguments[0];
-		assert.strictEqual(firstCall.path, "active.js");
-		assert.ok(firstCall.content.includes("console.log"));
+		const xml = turn.toXml();
+		assert.ok(xml.includes('<file path="file.js" status="hot">'));
+		assert.ok(xml.includes("content"));
 	});
 });

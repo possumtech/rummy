@@ -1,20 +1,11 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import HookRegistry from "../core/HookRegistry.js";
 
 /**
  * Dynamically loads and registers plugins from provided directories.
  */
-export async function registerPlugins(dirs = []) {
-	const hooks = HookRegistry.instance;
-
-	// Default to internal logic if nothing provided
-	if (dirs.length === 0) {
-		const { fileURLToPath } = await import("node:url");
-		dirs = [fileURLToPath(new URL("../internal", import.meta.url))];
-	}
-
+export async function registerPlugins(dirs = [], hooks) {
 	const uniqueDirs = [...new Set(dirs.map((d) => join(d)))];
 
 	for (const dir of uniqueDirs) {
@@ -25,7 +16,6 @@ export async function registerPlugins(dirs = []) {
 async function scanDir(dir, hooks, isRoot = false) {
 	if (!existsSync(dir)) return;
 
-	// Check if it's actually a directory before calling readdir
 	const dirStats = statSync(dir);
 	if (!dirStats.isDirectory()) {
 		if (process.env.SNORE_DEBUG === "true") {

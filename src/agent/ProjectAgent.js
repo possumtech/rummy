@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import HookRegistry from "../core/HookRegistry.js";
+import createHooks from "../core/Hooks.js";
 import OpenRouterClient from "../core/OpenRouterClient.js";
 import ProjectContext from "../core/ProjectContext.js";
 import TurnBuilder from "../core/TurnBuilder.js";
@@ -10,11 +10,11 @@ export default class ProjectAgent {
 	#hooks;
 	#turnBuilder;
 
-	constructor(db) {
+	constructor(db, hooks = createHooks()) {
 		this.#db = db;
-		this.#client = new OpenRouterClient(process.env.OPENROUTER_API_KEY);
-		this.#hooks = HookRegistry.instance;
-		this.#turnBuilder = new TurnBuilder();
+		this.#hooks = hooks;
+		this.#client = new OpenRouterClient(process.env.OPENROUTER_API_KEY, hooks);
+		this.#turnBuilder = new TurnBuilder(hooks);
 	}
 
 	async #getVisibilityMap(projectId) {
@@ -29,7 +29,7 @@ export default class ProjectAgent {
 	}
 
 	async init(projectPath, projectName, clientId) {
-		await this.#hooks.emitEvent("project_init_started", {
+		await this.#hooks.project.init.started.emit({
 			projectPath,
 			projectName,
 			clientId,
@@ -56,7 +56,7 @@ export default class ProjectAgent {
 		});
 
 		const result = { projectId, sessionId };
-		await this.#hooks.emitEvent("project_init_completed", {
+		await this.#hooks.project.init.completed.emit({
 			...result,
 			projectPath,
 			db: this.#db,
@@ -79,7 +79,7 @@ export default class ProjectAgent {
 	}
 
 	async updateFiles(projectId, files) {
-		await this.#hooks.emitEvent("files_update_started", { projectId, files });
+		await this.#hooks.project.files.update.started.emit({ projectId, files });
 
 		for (const f of files) {
 			await this.#db.upsert_repo_map_file.run({
@@ -92,7 +92,7 @@ export default class ProjectAgent {
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		await this.#hooks.emitEvent("files_update_completed", {
+		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
 			files,
@@ -105,7 +105,7 @@ export default class ProjectAgent {
 	async startJob(sessionId, jobConfig) {
 		const jobId = crypto.randomUUID();
 
-		const config = await this.#hooks.applyFilters("job_config", jobConfig, {
+		const config = await this.#hooks.job.config.filter(jobConfig, {
 			sessionId,
 		});
 
@@ -117,7 +117,7 @@ export default class ProjectAgent {
 			config: JSON.stringify(config.config || {}),
 		});
 
-		await this.#hooks.emitEvent("job_started", {
+		await this.#hooks.job.started.emit({
 			jobId,
 			sessionId,
 			type: config.type,
@@ -126,7 +126,7 @@ export default class ProjectAgent {
 	}
 
 	async ask(sessionId, model, prompt, activeFiles = []) {
-		await this.#hooks.emitEvent("ask_started", {
+		await this.#hooks.ask.started.emit({
 			sessionId,
 			model,
 			prompt,
@@ -155,12 +155,12 @@ export default class ProjectAgent {
 			db: this.#db,
 		});
 
-		const messages = turnObj.serialize();
-		const finalMessages = await this.#hooks.applyFilters(
-			"llm_messages",
-			messages,
-			{ model, sessionId, jobId },
-		);
+		const messages = await turnObj.serialize();
+		const finalMessages = await this.#hooks.llm.messages.filter(messages, {
+			model,
+			sessionId,
+			jobId,
+		});
 
 		await this.#db.create_turn.run({
 			job_id: jobId,
@@ -174,18 +174,17 @@ export default class ProjectAgent {
 
 		const targetModel = process.env[`SNORE_MODEL_${model}`] || model;
 
-		await this.#hooks.emitEvent("llm_request_started", {
+		await this.#hooks.llm.request.started.emit({
 			jobId,
 			model: targetModel,
 			messages: finalMessages,
 		});
 		const result = await this.#client.completion(finalMessages, targetModel);
-		await this.#hooks.emitEvent("llm_request_completed", { jobId, result });
+		await this.#hooks.llm.request.completed.emit({ jobId, result });
 
 		const responseMessage = result.choices?.[0]?.message;
 
-		const finalResponse = await this.#hooks.applyFilters(
-			"llm_response",
+		const finalResponse = await this.#hooks.llm.response.filter(
 			responseMessage,
 			{ model, sessionId, jobId },
 		);
@@ -216,7 +215,7 @@ export default class ProjectAgent {
 		}
 		turnObj.assistant.meta.add(usage);
 
-		await this.#hooks.emitEvent("ask_completed", {
+		await this.#hooks.ask.completed.emit({
 			jobId,
 			sessionId,
 			model: targetModel,

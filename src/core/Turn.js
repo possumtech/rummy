@@ -1,235 +1,86 @@
-import Slot from "./Slot.js";
+import { XMLSerializer } from "@xmldom/xmldom";
 
 /**
- * The Turn class represents the structured data of a single LLM round.
+ * The Turn class represents the structured Document of a single LLM round.
  */
 export default class Turn {
-	system = {
-		before: new Slot(),
-		content: new Slot(),
-		after: new Slot(),
-		systemAfter: new Slot(),
-	};
+	#doc;
+	#serializer = new XMLSerializer();
 
-	context = {
-		before: new Slot(),
-		filesBefore: new Slot(),
-		files: new Slot(),
-		filesAfter: new Slot(),
-		gitBefore: new Slot(),
-		gitChanges: new Slot(),
-		gitAfter: new Slot(),
-		errors: new Slot(),
-		warns: new Slot(),
-		infos: new Slot(),
-		after: new Slot(),
-	};
+	constructor(doc) {
+		this.#doc = doc;
+	}
 
-	user = {
-		before: new Slot(),
-		beforePrompt: new Slot(),
-		promptBefore: new Slot(),
-		prompt: new Slot(),
-		promptAfter: new Slot(),
-		afterPrompt: new Slot(),
-	};
+	get doc() {
+		return this.#doc;
+	}
 
-	assistant = {
-		reasoning: new Slot(),
-		content: new Slot(),
-		meta: new Slot(),
-	};
+	/**
+	 * Returns helpers for the assistant section.
+	 */
+	get assistant() {
+		const assistantEl = this.#doc.getElementsByTagName("assistant")[0];
+		const h = (tagName) => {
+			let el = assistantEl.getElementsByTagName(tagName)[0];
+			if (!el) {
+				el = this.#doc.createElement(tagName);
+				assistantEl.appendChild(el);
+			}
+			return {
+				add: (content) => {
+					if (typeof content === "string") {
+						el.appendChild(this.#doc.createTextNode(content));
+					} else {
+						el.appendChild(this.#doc.createTextNode(JSON.stringify(content)));
+					}
+				},
+			};
+		};
 
-	serialize() {
+		return {
+			reasoning: h("reasoning_content"),
+			content: h("content"),
+			meta: h("meta"),
+		};
+	}
+
+	/**
+	 * Serializes only the request portions for the OpenAI messages array.
+	 * Currently handles System and User roles.
+	 */
+	async serialize() {
+		const systemEl = this.#doc.getElementsByTagName("system")[0];
+		const contextEl = this.#doc.getElementsByTagName("context")[0];
+		const userEl = this.#doc.getElementsByTagName("user")[0];
+
+		// system role = <system> + <context>
+		const systemContent = [
+			this.#serializeNode(systemEl),
+			this.#serializeNode(contextEl),
+		]
+			.filter(Boolean)
+			.join("\n");
+
+		// user role = <user>
+		const userContent = this.#serializeNode(userEl);
+
 		return [
-			{ role: "system", content: this.#serializeSystemAndContext() },
-			{ role: "user", content: this.#serializeUser() },
+			{ role: "system", content: systemContent },
+			{ role: "user", content: userContent },
 		];
 	}
 
+	/**
+	 * Serializes the entire turn into a pretty-printed XML document.
+	 */
 	toXml() {
-		const indent = (str, depth = 1) => {
-			if (!str) return "";
-			const spaces = "\t".repeat(depth);
-			return str
-				.split("\n")
-				.map((line) => (line.trim() ? spaces + line : ""))
-				.join("\n");
-		};
-
-		const systemAndContext = this.#serializeSystemAndContext(true);
-		const userSection = this.#serializeUser(true);
-
-		return [
-			"<turn>",
-			systemAndContext,
-			userSection,
-			"\t<assistant>",
-			this.assistant.reasoning.hasContent
-				? `\t\t<reasoning_content>\n${indent(this.assistant.reasoning.toString(), 3)}\n\t\t</reasoning_content>`
-				: "",
-			this.assistant.content.hasContent
-				? `\t\t<content>\n${indent(this.assistant.content.toString(), 3)}\n\t\t</content>`
-				: "",
-			this.assistant.meta.hasContent
-				? `\t\t<meta>\n${indent(this.assistant.meta.toString(), 3)}\n\t\t</meta>`
-				: "",
-			"\t</assistant>",
-			"</turn>",
-		]
-			.filter(Boolean)
-			.join("\n");
+		return this.#serializer.serializeToString(this.#doc);
 	}
 
-	#serializeSystemAndContext(isAudit = false) {
-		const indentStr = isAudit ? "\t" : "";
-
-		const indent = (str, depth) => {
-			const spaces = "\t".repeat(depth);
-			return str
-				.split("\n")
-				.map((line) => (line.trim() ? spaces + line : ""))
-				.join("\n");
-		};
-
-		const parts = [];
-
-		if (
-			this.system.before.hasContent ||
-			this.system.content.hasContent ||
-			this.system.after.hasContent
-		) {
-			parts.push(`${indentStr}<system>`);
-			if (this.system.before.hasContent)
-				parts.push(indent(this.system.before.toString(), isAudit ? 2 : 0));
-			if (this.system.content.hasContent)
-				parts.push(indent(this.system.content.toString(), isAudit ? 2 : 0));
-			if (this.system.after.hasContent)
-				parts.push(indent(this.system.after.toString(), isAudit ? 2 : 0));
-			parts.push(`${indentStr}</system>`);
-		}
-
-		if (this.system.systemAfter.hasContent) {
-			parts.push(indent(this.system.systemAfter.toString(), isAudit ? 1 : 0));
-		}
-
-		if (this.context.before.hasContent) {
-			parts.push(indent(this.context.before.toString(), isAudit ? 1 : 0));
-		}
-
-		const ctxInner = [
-			this.context.filesBefore.hasContent
-				? indent(this.context.filesBefore.toString(), isAudit ? 2 : 0)
-				: "",
-			this.context.files.serializeFiles(isAudit ? "\t\t" : ""),
-			this.context.filesAfter.hasContent
-				? indent(this.context.filesAfter.toString(), isAudit ? 2 : 0)
-				: "",
-			this.context.gitBefore.hasContent
-				? indent(this.context.gitBefore.toString(), isAudit ? 2 : 0)
-				: "",
-			this.#serializeGit(isAudit ? "\t\t" : ""),
-			this.context.gitAfter.hasContent
-				? indent(this.context.gitAfter.toString(), isAudit ? 2 : 0)
-				: "",
-			this.#serializeMessages(
-				"error",
-				this.context.errors,
-				isAudit ? "\t\t" : "",
-			),
-			this.#serializeMessages(
-				"warn",
-				this.context.warns,
-				isAudit ? "\t\t" : "",
-			),
-			this.#serializeMessages(
-				"info",
-				this.context.infos,
-				isAudit ? "\t\t" : "",
-			),
-		]
-			.filter(Boolean)
-			.join("\n");
-
-		if (ctxInner) {
-			parts.push(`${indentStr}<context>`);
-			parts.push(ctxInner);
-			parts.push(`${indentStr}</context>`);
-		}
-
-		if (this.context.after.hasContent) {
-			parts.push(indent(this.context.after.toString(), isAudit ? 1 : 0));
-		}
-
-		return parts.join("\n");
-	}
-
-	#serializeUser(isAudit = false) {
-		const indentStr = isAudit ? "\t" : "";
-		const indent = (str, depth) => {
-			const spaces = "\t".repeat(depth);
-			return str
-				.split("\n")
-				.map((line) => (line.trim() ? spaces + line : ""))
-				.join("\n");
-		};
-
-		const parts = [];
-
-		if (this.user.before.hasContent) {
-			parts.push(indent(this.user.before.toString(), isAudit ? 1 : 0));
-		}
-
-		const userInner = [
-			this.user.beforePrompt.hasContent
-				? indent(this.user.beforePrompt.toString(), isAudit ? 2 : 0)
-				: "",
-			`${isAudit ? "\t\t" : ""}<ask>`,
-			this.user.promptBefore.hasContent
-				? indent(this.user.promptBefore.toString(), isAudit ? 3 : 0)
-				: "",
-			this.user.prompt.hasContent
-				? indent(this.user.prompt.toString(), isAudit ? 3 : 0)
-				: "",
-			this.user.promptAfter.hasContent
-				? indent(this.user.promptAfter.toString(), isAudit ? 3 : 0)
-				: "",
-			`${isAudit ? "\t\t" : ""}</ask>`,
-			this.user.afterPrompt.hasContent
-				? indent(this.user.afterPrompt.toString(), isAudit ? 2 : 0)
-				: "",
-		]
-			.filter(Boolean)
-			.join("\n");
-
-		if (userInner) {
-			parts.push(`${indentStr}<user>`);
-			parts.push(userInner);
-			parts.push(`${indentStr}</user>`);
-		}
-
-		if (this.user.afterPrompt.hasContent) {
-			parts.push(indent(this.user.afterPrompt.toString(), isAudit ? 1 : 0));
-		}
-
-		return parts.join("\n");
-	}
-
-	#serializeGit(indentStr = "") {
-		const content = this.context.gitChanges.toString();
-		if (!content) return "";
-		const indented = content
-			.split("\n")
-			.map((line) => (line.trim() ? `${indentStr}\t${line}` : ""))
-			.join("\n");
-		return `${indentStr}<git_changes>\n${indented}\n${indentStr}</git_changes>`;
-	}
-
-	#serializeMessages(tag, slot, indentStr = "") {
-		const fragments = slot.fragments;
-		if (fragments.length === 0) return "";
-		return fragments
-			.map((f) => `${indentStr}<${tag}>${f.content}</${tag}>`)
-			.join("\n");
+	#serializeNode(node) {
+		if (!node) return "";
+		// serializeToString returns the tag itself.
+		// For LLM messages, we often want the content, but keeping tags is fine for modern models.
+		return this.#serializer.serializeToString(node);
 	}
 }

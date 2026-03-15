@@ -1,82 +1,72 @@
+/**
+ * HookRegistry manages a simple, priority-ordered pipeline of processors.
+ * It also supports basic event emitters for side-effects.
+ */
 export default class HookRegistry {
+	#processors = [];
 	#events = new Map();
 	#filters = new Map();
-	#debug = process.env.SNORE_DEBUG === "true";
+	#debug;
 
-	static #instance;
-	static get instance() {
-		if (!HookRegistry.#instance) HookRegistry.#instance = new HookRegistry();
-		return HookRegistry.#instance;
+	constructor(debug = false) {
+		this.#debug = debug;
 	}
 
 	/**
-	 * Add an Event Listener (Action)
+	 * Register a processor for the Turn XML Document.
 	 */
-	addEvent(tag, callback, priority = 10) {
-		this.#register(this.#events, tag, callback, priority);
+	onTurn(callback, priority = 10) {
+		this.#processors.push({ callback, priority });
+		this.#processors.sort((a, b) => a.priority - b.priority);
 	}
 
 	/**
-	 * Add a Filter (Data Mutator)
+	 * Run all registered Turn processors.
 	 */
-	addFilter(tag, callback, priority = 10) {
-		this.#register(this.#filters, tag, callback, priority);
-	}
-
-	#register(map, tag, callback, priority) {
-		if (!map.has(tag)) map.set(tag, []);
-		map.get(tag).push({ callback, priority });
-		map.get(tag).sort((a, b) => a.priority - b.priority);
-	}
-
-	count(tag) {
-		const eventCount = (this.#events.get(tag) || []).length;
-		const filterCount = (this.#filters.get(tag) || []).length;
-		return eventCount + filterCount;
-	}
-
-	/**
-	 * Trigger all listeners for an event
-	 */
-	async emitEvent(tag, ...args) {
-		const hooks = this.#events.get(tag) || [];
-		if (this.#debug) console.log(`[EVENT] ${tag} (${hooks.length} listeners)`);
-
-		for (const hook of hooks) {
+	async processTurn(snore) {
+		for (const p of this.#processors) {
 			const start = performance.now();
-			await hook.callback(...args);
+			await p.callback(snore);
 			if (this.#debug) {
 				const duration = (performance.now() - start).toFixed(2);
 				console.log(
-					`  -> ${hook.callback.name || "anonymous"} completed in ${duration}ms`,
+					`[PIPELINE] Processor ${p.callback.name || "anonymous"} took ${duration}ms`,
 				);
 			}
 		}
+	}
+
+	/**
+	 * Standard WordPress-style Filters for non-DOM data.
+	 */
+	addFilter(tag, callback, priority = 10) {
+		if (!this.#filters.has(tag)) this.#filters.set(tag, []);
+		this.#filters.get(tag).push({ callback, priority });
+		this.#filters.get(tag).sort((a, b) => a.priority - b.priority);
 	}
 
 	async applyFilters(tag, value, ...args) {
 		const hooks = this.#filters.get(tag) || [];
-		if (this.#debug) console.log(`[FILTER] ${tag} (${hooks.length} mutators)`);
-
-		let filteredValue = value;
-		for (const hook of hooks) {
-			const start = performance.now();
-			filteredValue = await hook.callback(filteredValue, ...args);
-			if (this.#debug) {
-				const duration = (performance.now() - start).toFixed(2);
-				console.log(
-					`  -> ${hook.callback.name || "anonymous"} returned modified value in ${duration}ms`,
-				);
-			}
+		let result = value;
+		for (const h of hooks) {
+			result = await h.callback(result, ...args);
 		}
-		return filteredValue;
+		return result;
 	}
 
-	// Aliases for transition
-	addAction(tag, callback, priority) {
-		this.addEvent(tag, callback, priority);
+	/**
+	 * Standard WordPress-style Events for side-effects.
+	 */
+	addEvent(tag, callback, priority = 10) {
+		if (!this.#events.has(tag)) this.#events.set(tag, []);
+		this.#events.get(tag).push({ callback, priority });
+		this.#events.get(tag).sort((a, b) => a.priority - b.priority);
 	}
-	async doAction(tag, ...args) {
-		await this.emitEvent(tag, ...args);
+
+	async emitEvent(tag, ...args) {
+		const hooks = this.#events.get(tag) || [];
+		for (const h of hooks) {
+			await h.callback(...args);
+		}
 	}
 }

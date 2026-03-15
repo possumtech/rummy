@@ -31,7 +31,6 @@
 		"test": "npm run lint && npm run test:all",
 		"test:all": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80 --test-concurrency=1 --test src/**/*.test.js test/integration/**/*.test.js test/e2e/**/*.test.js",
 		"test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test src/**/*.test.js",
-
 		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test test/integration/**/*.test.js",
 		"test:e2e": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test test/e2e/**/*.test.js"
 	},
@@ -40,6 +39,7 @@
 	},
 	"dependencies": {
 		"@possumtech/sqlrite": "^2.0.3",
+		"@xmldom/xmldom": "^0.8.11",
 		"isomorphic-git": "^1.37.4",
 		"js-tiktoken": "^1.0.21",
 		"tree-sitter": "^0.25.0",

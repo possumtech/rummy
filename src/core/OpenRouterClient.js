@@ -1,9 +1,11 @@
 export default class OpenRouterClient {
 	#apiKey;
 	#baseUrl;
+	#hooks;
 
-	constructor(apiKey) {
+	constructor(apiKey, hooks) {
 		this.#apiKey = apiKey;
+		this.#hooks = hooks;
 		this.#baseUrl = process.env.OPENROUTER_BASE_URL;
 	}
 

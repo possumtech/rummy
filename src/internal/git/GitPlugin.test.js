@@ -1,18 +1,20 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { after, before, describe, it, mock } from "node:test";
-import HookRegistry from "../../core/HookRegistry.js";
-import GitPlugin from "./GitPlugin.js";
+import { after, before, describe, it } from "node:test";
+import SqlRite from "@possumtech/sqlrite";
+import createHooks from "../../core/Hooks.js";
+import TurnBuilder from "../../core/TurnBuilder.js";
+import GitPlugin from "./git.js";
 
-describe("GitPlugin (Delta Engine)", () => {
+describe("GitPlugin (DOM)", () => {
 	let db;
-	const dbPath = "test_git_plugin.db";
-	const testDir = join(process.cwd(), "test_git_plugin_dir");
+	const dbPath = "test_git_dom.db";
+	const testDir = join(process.cwd(), "test_git_dom_dir");
 
 	before(async () => {
 		await fs.mkdir(testDir, { recursive: true });
-		await fs.writeFile(join(testDir, "file.js"), "original content");
+		await fs.writeFile(join(testDir, "file.js"), "original");
 		db = await SqlRite.open({ path: dbPath, dir: ["migrations", "src"] });
 	});
 
@@ -22,49 +24,29 @@ describe("GitPlugin (Delta Engine)", () => {
 		await fs.rm(testDir, { recursive: true, force: true });
 	});
 
-	it("should only list modified files", async () => {
-		const hooks = new HookRegistry();
+	it("should inject git changes into the context", async () => {
+		const hooks = createHooks();
 		GitPlugin.register(hooks);
 
 		const projectId = "p1";
 		await db.upsert_project.run({ id: projectId, path: testDir, name: "Test" });
-
 		await db.upsert_repo_map_file.run({
 			project_id: projectId,
 			path: "file.js",
 			visibility: "mappable",
-			size: 10,
-			hash: "STALE_HASH",
+			size: 8,
+			hash: "STALE",
 		});
 
-		const slot = { add: mock.fn() };
-		await hooks.doAction("TURN_CONTEXT_GIT_CHANGES", slot, {
+		const builder = new TurnBuilder(hooks);
+		const turn = await builder.build({
 			project: { id: projectId, path: testDir },
 			db,
+			prompt: "test",
 		});
 
-		assert.strictEqual(slot.add.mock.callCount(), 1);
-		const arg = slot.add.mock.calls[0].arguments[0];
-		assert.ok(arg.includes("Modified: file.js"));
-	});
-
-	it("should skip files missing on disk", async () => {
-		const hooks = new HookRegistry();
-		GitPlugin.register(hooks);
-
-		await db.upsert_repo_map_file.run({
-			project_id: "p1",
-			path: "missing.js",
-			visibility: "mappable",
-			size: 10,
-			hash: "ANY",
-		});
-
-		const slot = { add: mock.fn() };
-		await hooks.doAction("TURN_CONTEXT_GIT_CHANGES", slot, {
-			project: { id: "p1", path: testDir },
-			db,
-		});
-		assert.strictEqual(slot.add.mock.callCount(), 0);
+		const xml = turn.toXml();
+		assert.ok(xml.includes("<git_changes>"));
+		assert.ok(xml.includes("Modified: file.js"));
 	});
 });
