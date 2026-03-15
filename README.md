@@ -1,51 +1,63 @@
 # SNORE: Sqlite/Node OpenRouter Engine
 
-SNORE is a system-wide service that orchestrates agent sessions for multiple clients (e.g., nvim instances). It uses SQLite as the single source of truth, storing all state, history, and project maps in relational tables.
+SNORE is a high-integrity, system-wide agent service that orchestrates LLM sessions for multiple clients (e.g., Neovim instances). It treats the project codebase as a **Relational Single Source of Truth**, storing state, history, and semantic maps in a shared SQLite database.
 
-## Architecture
+## Key Features
 
-- **Project:** Persistent, shared folder foundation.
-- **Session:** Unique client connection.
-- **Job:** Execution unit (Ask/Act).
-- **Turn:** Request/Response LLM round.
+- **Lean Core:** A modular, plugin-first architecture using WordPress-style hooks and filters.
+- **Dynamic Context:** Automated repository mapping with a "Hot/Cold" lens to optimize token usage.
+- **Relational Integrity:** Strictly enforced database constraints and flattened token metrics.
+- **System-Wide:** One service manages multiple projects and sessions, defaulting to `~/.snore`.
+- **Audit-First:** Prettified XML turn audits for every model exchange.
 
-## Plugin Architecture (Hooks & Filters)
+## Installation
 
-SNORE is built on a "Lean Core" philosophy. Almost all behavior is implemented as modular plugins using a WordPress-style Hook/Filter system.
+```bash
+git clone https://github.com/possumtech/snore
+cd snore/main
+npm install
+cp .env.example .env
+# Add your OPENROUTER_API_KEY to .env
+```
 
-### Hook Map
+## Usage
 
-#### 1. Core Actions (Events)
-- `project_initialized ({ projectId, projectPath, db })`
-- `files_updated ({ projectId, projectPath, files, db })`
-- `job_started ({ jobId, sessionId, type })`
-- `ask_completed ({ jobId, sessionId, response })`
+### Start the Service
+```bash
+npm start   # Production mode
+npm run dev # Watch mode with dev database
+npm run debug # Debug mode on port 3047 with verbose telemetry
+```
 
-#### 2. Core Filters (Mutators)
-- `rpc_request (message)`
-- `rpc_response_result (result, { method, id })`
-- `job_config (config, { sessionId })`
-- `llm_messages (messages, { model, sessionId })`
-- `llm_response (message, { model, sessionId, jobId })`
+### Manual Testing
+You can run the live "Paris" test to verify your installation:
+```bash
+node test/example_paris.js
+```
 
-#### 3. Turn Slots (XML Pipeline)
-| Slot | Target Section |
-| :--- | :--- |
-| `TURN_SYSTEM_PROMPT` | Core instructions for the agent. |
-| `TURN_CONTEXT_FILES` | Injects `<files>` tags (Hot/Cold/Full). |
-| `TURN_CONTEXT_GIT_CHANGES` | Injects `<git_changes>` tags. |
-| `TURN_CONTEXT_ERROR` | Injects `<error>` squiggles. |
-| `TURN_USER_PROMPT` | The actual user request inside `<ask>`. |
+## Plugin Architecture
+
+SNORE is infinitely extensible. Create a JavaScript file in `src/internal/` (for core logic) or `~/.snore/plugins/` (for user customizations).
 
 ### Creating a Plugin
-Create `src/plugins/MyPlugin.js`:
 ```javascript
 export default class MyPlugin {
     static register(hooks) {
         hooks.addAction("TURN_SYSTEM_PROMPT", async (slot) => {
-            slot.add("You are an expert coder.", 1);
+            slot.add("You are an expert pair programmer.", 1);
         });
     }
 }
 ```
-Plugins ending in `Plugin.js` are automatically loaded at boot.
+
+### Hook Map
+
+| Type | Name | Purpose |
+| :--- | :--- | :--- |
+| **Action** | `project_initialized` | Runs after a project is opened. |
+| **Action** | `ask_completed` | Runs after a model response is received. |
+| **Filter** | `rpc_request` | Intercept and modify JSON-RPC calls. |
+| **Slot** | `TURN_SYSTEM_PROMPT` | Inject instructions into the system prompt. |
+| **Slot** | `TURN_CONTEXT_FILES` | Add file content or symbols to context. |
+
+See `AGENTS.md` for the full architectural specification and XML pipeline details.

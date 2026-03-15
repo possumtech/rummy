@@ -2,6 +2,7 @@ import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import HookRegistry from "../../src/core/HookRegistry.js";
 import { registerPlugins } from "../../src/plugins/index.js";
 import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
@@ -18,8 +19,15 @@ describe("E2E Bedrock: Plugin Architecture (LIVE)", () => {
 			throw new Error("OPENROUTER_API_KEY is required");
 		}
 
-		// MANDATORY: Register plugins so the hooks actually exist!
 		await registerPlugins();
+
+		// STRICT INTEGRITY CHECK: Fail the test if plugins didn't load
+		const count = HookRegistry.instance.count("TURN_SYSTEM_PROMPT_BEFORE");
+		if (count === 0) {
+			throw new Error(
+				"CRITICAL: TestE2EPlugin failed to load. Check loader logic.",
+			);
+		}
 
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
 

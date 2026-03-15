@@ -20,7 +20,8 @@ export default class DebugLoggerPlugin {
 		hooks.addAction("ask_completed", async ({ turn }) => {
 			if (process.env.SNORE_DEBUG !== "true") return;
 
-			const auditFile = "audit_last_turn.xml";
+			// Allow overriding the audit file for tests
+			const auditFile = process.env.SNORE_AUDIT_FILE || "audit_last_turn.xml";
 			try {
 				const xml = turn.toXml();
 				writeFileSync(auditFile, xml);

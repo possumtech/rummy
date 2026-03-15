@@ -3,31 +3,16 @@ export default class HookRegistry {
 	#filters = new Map();
 	#debug = process.env.SNORE_DEBUG === "true";
 
-	/**
-	 * Singleton instance for global access
-	 */
 	static #instance;
 	static get instance() {
 		if (!HookRegistry.#instance) HookRegistry.#instance = new HookRegistry();
 		return HookRegistry.#instance;
 	}
 
-	/**
-	 * Add an Action (Event Listener)
-	 * @param {string} tag - Hook name
-	 * @param {Function} callback - Async function
-	 * @param {number} priority - Lower numbers run first (default 10)
-	 */
 	addAction(tag, callback, priority = 10) {
 		this.#register(this.#actions, tag, callback, priority);
 	}
 
-	/**
-	 * Add a Filter (Data Mutator)
-	 * @param {string} tag - Hook name
-	 * @param {Function} callback - Async function(value, ...args) returning modified value
-	 * @param {number} priority - Lower numbers run first (default 10)
-	 */
 	addFilter(tag, callback, priority = 10) {
 		this.#register(this.#filters, tag, callback, priority);
 	}
@@ -39,8 +24,15 @@ export default class HookRegistry {
 	}
 
 	/**
-	 * Execute all callbacks for an action
+	 * Returns the number of listeners for a specific tag.
+	 * Used for integrity verification.
 	 */
+	count(tag) {
+		const actionCount = (this.#actions.get(tag) || []).length;
+		const filterCount = (this.#filters.get(tag) || []).length;
+		return actionCount + filterCount;
+	}
+
 	async doAction(tag, ...args) {
 		const hooks = this.#actions.get(tag) || [];
 		if (this.#debug)
@@ -58,9 +50,6 @@ export default class HookRegistry {
 		}
 	}
 
-	/**
-	 * Apply all filters to a value
-	 */
 	async applyFilters(tag, value, ...args) {
 		const hooks = this.#filters.get(tag) || [];
 		if (this.#debug)

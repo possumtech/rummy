@@ -15,8 +15,6 @@ describe("ProjectAgent Unit", () => {
 		process.env.SNORE_HTTP_REFERER = "http://test";
 		process.env.SNORE_X_TITLE = "Test";
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
-
-		// This now loads recursively, finding our organized internal plugins
 		await registerPlugins();
 	});
 
@@ -45,6 +43,49 @@ describe("ProjectAgent Unit", () => {
 
 		assert.strictEqual(result.projectId, "proj-1");
 		assert.ok(result.sessionId);
+	});
+
+	it("should throw error if project creation fails", async () => {
+		const mockDb = {
+			upsert_project: { run: mock.fn() },
+			get_project_by_path: { all: mock.fn(async () => []) }, // Empty return
+		};
+		const agent = new ProjectAgent(mockDb);
+		// Native TypeError because projects[0] is undefined
+		await assert.rejects(agent.init(projectPath, "Test", "c1"), TypeError);
+	});
+
+	it("should update file visibility", async () => {
+		const mockDb = {
+			upsert_repo_map_file: {
+				run: mock.fn(),
+				get: mock.fn(async () => ({ id: "f1" })),
+			},
+			get_project_by_id: {
+				get: mock.fn(async () => ({ id: "p1", path: projectPath })),
+			},
+			get_project_repo_map: { all: mock.fn(async () => []) },
+			get_repo_map_file: { get: mock.fn(async () => null) },
+			clear_repo_map_file_data: { run: mock.fn() },
+			insert_repo_map_tag: { run: mock.fn() },
+			insert_repo_map_ref: { run: mock.fn() },
+		};
+		const agent = new ProjectAgent(mockDb);
+		const result = await agent.updateFiles("p1", [
+			{ path: "f.js", visibility: "active" },
+		]);
+		assert.strictEqual(result.status, "ok");
+		assert.strictEqual(mockDb.upsert_repo_map_file.run.mock.callCount(), 1);
+	});
+
+	it("should get files", async () => {
+		const mockDb = {
+			get_project_by_path: { all: mock.fn(async () => [{ id: "p1" }]) },
+			get_project_repo_map: { all: mock.fn(async () => []) },
+		};
+		const agent = new ProjectAgent(mockDb);
+		const files = await agent.getFiles(projectPath);
+		assert.ok(Array.isArray(files));
 	});
 
 	it("should handle 'ask' method", async () => {

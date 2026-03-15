@@ -10,7 +10,9 @@ async function main() {
 	// 1. Resolve SNORE_HOME (Default: ~/.snore)
 	const snoreHome = process.env.SNORE_HOME || join(homedir(), ".snore");
 	const userPluginsDir = join(snoreHome, "plugins");
-	const internalPluginsDir = fileURLToPath(new URL("./src/plugins", import.meta.url));
+	
+	// Internal logic is now in src/internal/
+	const internalPluginsDir = fileURLToPath(new URL("./src/internal", import.meta.url));
 
 	// 2. Ensure Directory Structure
 	mkdirSync(userPluginsDir, { recursive: true });

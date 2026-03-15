@@ -1,10 +1,8 @@
 import assert from "node:assert";
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it, mock } from "node:test";
-import SqlRite from "@possumtech/sqlrite";
-import HookRegistry from "../../../core/HookRegistry.js";
+import HookRegistry from "../../core/HookRegistry.js";
 import GitPlugin from "./GitPlugin.js";
 
 describe("GitPlugin (Delta Engine)", () => {
@@ -46,27 +44,20 @@ describe("GitPlugin (Delta Engine)", () => {
 		});
 
 		assert.strictEqual(slot.add.mock.callCount(), 1);
-		assert.ok(
-			slot.add.mock.calls[0].arguments[0].includes("Modified: file.js"),
-		);
+		const arg = slot.add.mock.calls[0].arguments[0];
+		assert.ok(arg.includes("Modified: file.js"));
 	});
 
-	it("should emit nothing if hashes match", async () => {
+	it("should skip files missing on disk", async () => {
 		const hooks = new HookRegistry();
 		GitPlugin.register(hooks);
 
-		const content = await fs.readFile(join(testDir, "file.js"), "utf8");
-		const currentHash = crypto
-			.createHash("sha256")
-			.update(content)
-			.digest("hex");
-
 		await db.upsert_repo_map_file.run({
 			project_id: "p1",
-			path: "file.js",
+			path: "missing.js",
 			visibility: "mappable",
-			size: content.length,
-			hash: currentHash,
+			size: 10,
+			hash: "ANY",
 		});
 
 		const slot = { add: mock.fn() };
@@ -74,7 +65,6 @@ describe("GitPlugin (Delta Engine)", () => {
 			project: { id: "p1", path: testDir },
 			db,
 		});
-
 		assert.strictEqual(slot.add.mock.callCount(), 0);
 	});
 });

@@ -1,47 +1,73 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import HookRegistry from "../core/HookRegistry.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Dynamically loads and registers plugins from provided directories.
  */
 export async function registerPlugins(dirs = []) {
 	const hooks = HookRegistry.instance;
-	const internalDir = join(__dirname, "..", "internal");
-	const scanDirs = [internalDir, ...dirs];
 
-	for (const dir of scanDirs) {
-		await scanAndLoad(dir, hooks);
+	// Default to internal logic if nothing provided
+	if (dirs.length === 0) {
+		const { fileURLToPath } = await import("node:url");
+		dirs = [fileURLToPath(new URL("../internal", import.meta.url))];
+	}
+
+	const uniqueDirs = [...new Set(dirs.map((d) => join(d)))];
+
+	for (const dir of uniqueDirs) {
+		await scanDir(dir, hooks, true); // Root level
 	}
 }
 
-async function scanAndLoad(dir, hooks) {
+async function scanDir(dir, hooks, isRoot = false) {
 	if (!existsSync(dir)) return;
 
-	const entries = readdirSync(dir);
+	// Check if it's actually a directory before calling readdir
+	const dirStats = statSync(dir);
+	if (!dirStats.isDirectory()) {
+		if (process.env.SNORE_DEBUG === "true") {
+			console.error(
+				`[SNORE] Cannot scan plugin directory (not a directory): ${dir}`,
+			);
+		}
+		return;
+	}
+
+	let entries;
+	try {
+		entries = readdirSync(dir);
+	} catch (err) {
+		if (process.env.SNORE_DEBUG === "true") {
+			console.error(`[SNORE] Failed to read directory ${dir}:`, err.message);
+		}
+		return;
+	}
+
 	for (const name of entries) {
+		if (name.endsWith(".test.js")) continue;
+
 		const fullPath = join(dir, name);
-		const stats = statSync(fullPath);
+		let stats;
+		try {
+			stats = statSync(fullPath);
+		} catch (_err) {
+			continue;
+		}
 
-		if (stats.isFile() && name.endsWith(".js") && name !== "index.js") {
-			// Load root-level files
-			await loadPlugin(fullPath, hooks);
-		} else if (stats.isDirectory()) {
-			// Check for FolderName.js or index.js
-			const namedJs = join(fullPath, `${name}.js`);
-			const indexJs = join(fullPath, "index.js");
-
-			if (existsSync(namedJs)) {
-				await loadPlugin(namedJs, hooks);
-			} else if (existsSync(indexJs)) {
-				await loadPlugin(indexJs, hooks);
+		if (stats.isFile() && name.endsWith(".js")) {
+			if (isRoot) {
+				if (name !== "index.js") await loadPlugin(fullPath, hooks);
 			} else {
-				// Recursive scan for nested folders (e.g. internal/git/GitPlugin.js)
-				await scanAndLoad(fullPath, hooks);
+				const folderName = basename(dir);
+				if (name === "index.js" || name === `${folderName}.js`) {
+					await loadPlugin(fullPath, hooks);
+				}
 			}
+		} else if (stats.isDirectory()) {
+			await scanDir(fullPath, hooks, false);
 		}
 	}
 }
@@ -54,7 +80,6 @@ async function loadPlugin(filePath, hooks) {
 			Plugin.register(hooks);
 		}
 	} catch (err) {
-		// Suppress errors during bulk loading unless they are syntax errors
 		if (process.env.SNORE_DEBUG === "true") {
 			console.error(`[SNORE] Plugin load failed at ${filePath}:`, err.message);
 		}
