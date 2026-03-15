@@ -131,8 +131,6 @@ export default class ProjectAgent {
 			config: JSON.stringify({ model, activeFiles }),
 		});
 
-		// --- NEW TURN ARCHITECTURE ---
-		// 1. Build structured turn via hooks
 		const turnObj = await this.#turnBuilder.build({
 			project,
 			sessionId,
@@ -142,14 +140,11 @@ export default class ProjectAgent {
 			db: this.#db,
 		});
 
-		// 2. Serialize to OpenAI messages
 		const messages = turnObj.serialize();
-
-		// 3. Optional filter for the final message array
 		const finalMessages = await this.#hooks.applyFilters(
 			"llm_messages",
 			messages,
-			{ model, sessionId },
+			{ model, sessionId, jobId },
 		);
 
 		await this.#db.create_turn.run({
@@ -182,7 +177,10 @@ export default class ProjectAgent {
 		await this.#hooks.doAction("ask_completed", {
 			jobId,
 			sessionId,
+			model: targetModel,
+			request: finalMessages,
 			response: finalResponse,
+			usage: result.usage,
 		});
 
 		return { jobId, response: finalResponse?.content };

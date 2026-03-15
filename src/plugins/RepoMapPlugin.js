@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import ProjectContext from "../core/ProjectContext.js";
 import RepoMap from "../core/RepoMap.js";
 
@@ -16,13 +18,11 @@ export default class RepoMapPlugin {
 			await RepoMapPlugin.#updateIndex(db, projectId, projectPath);
 		});
 
-		// NEW: Use Action to push files into the slot
 		hooks.addAction(
 			"TURN_CONTEXT_FILES",
 			async (slot, { project, activeFiles, db }) => {
 				if (!project || !db) return;
 
-				// Ensure the index is fresh before an ask
 				await RepoMapPlugin.#updateIndex(db, project.id, project.path);
 
 				const visibilityMap = await RepoMapPlugin.#getVisibilityMap(
@@ -35,20 +35,25 @@ export default class RepoMapPlugin {
 				const perspective = await repoMap.renderPerspective(activeFiles);
 
 				for (const f of perspective.files) {
-					slot.add(
-						{
-							path: f.path,
-							symbols: f.symbols,
-							mode: f.mode,
-						},
-						10,
-						`repomap:${f.path}`,
-					);
+					const fileData = {
+						path: f.path,
+						symbols: f.symbols,
+						mode: f.mode,
+					};
+
+					// If the file is Active, read its full content from disk
+					if (f.mode === "hot" && activeFiles.includes(f.path)) {
+						const fullPath = join(project.path, f.path);
+						if (existsSync(fullPath)) {
+							fileData.content = readFileSync(fullPath, "utf8");
+						}
+					}
+
+					slot.add(fileData, 10, `repomap:${f.path}`);
 				}
 			},
 		);
 
-		// Add default identity
 		hooks.addAction("TURN_SYSTEM_PROMPT", async (slot) => {
 			slot.add("You are SNORE Agent.", 5);
 		});

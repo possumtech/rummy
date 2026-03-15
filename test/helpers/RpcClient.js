@@ -18,9 +18,10 @@ export default class RpcClient {
 
 	async call(method, params = {}, id = Math.random().toString(36).slice(2)) {
 		return new Promise((resolve, reject) => {
+			// Increase timeout for live API calls
 			const timeout = setTimeout(
 				() => reject(new Error(`RPC Timeout: ${method}`)),
-				5000,
+				30000,
 			);
 
 			const handler = (data) => {

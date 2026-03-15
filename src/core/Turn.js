@@ -1,9 +1,5 @@
 import Slot from "./Slot.js";
 
-/**
- * The Turn class represents the structured data of a single LLM round.
- * Every content area is a Slot, allowing priority-based multi-plugin contribution.
- */
 export default class Turn {
 	system = {
 		before: new Slot(),
@@ -35,20 +31,26 @@ export default class Turn {
 		afterPrompt: new Slot(),
 	};
 
-	/**
-	 * Serializes the object into XML-tagged strings for the OpenAI message format.
-	 */
 	serialize() {
-		// 1. System Message
-		const systemContent = [
-			this.system.before.toString(),
-			"<system>",
-			this.system.content.toString(),
-			this.system.after.toString(),
-			"</system>",
-			this.system.systemAfter.toString(),
-			this.context.before.toString(),
-			"<context>",
+		// 1. Build System Content
+		const sysParts = [];
+		if (this.system.before.hasContent)
+			sysParts.push(this.system.before.toString());
+
+		if (this.system.content.hasContent || this.system.after.hasContent) {
+			sysParts.push("<system>");
+			if (this.system.content.hasContent)
+				sysParts.push(this.system.content.toString());
+			if (this.system.after.hasContent)
+				sysParts.push(this.system.after.toString());
+			sysParts.push("</system>");
+		}
+
+		if (this.system.systemAfter.hasContent)
+			sysParts.push(this.system.systemAfter.toString());
+
+		// 2. Build Context Content
+		const ctxInner = [
 			this.context.filesBefore.toString(),
 			this.context.files.serializeFiles(),
 			this.context.filesAfter.toString(),
@@ -58,31 +60,50 @@ export default class Turn {
 			this.#serializeMessages("error", this.context.errors),
 			this.#serializeMessages("warn", this.context.warns),
 			this.#serializeMessages("info", this.context.infos),
-			"</context>",
-			this.context.after.toString(),
 		]
 			.filter(Boolean)
 			.join("\n");
 
-		// 2. User Message
-		const userContent = [
-			this.user.before.toString(),
-			"<user>",
-			this.user.beforePrompt.toString(),
-			"<ask>",
+		if (this.context.before.hasContent)
+			sysParts.push(this.context.before.toString());
+		if (ctxInner) {
+			sysParts.push("<context>");
+			sysParts.push(ctxInner);
+			sysParts.push("</context>");
+		}
+		if (this.context.after.hasContent)
+			sysParts.push(this.context.after.toString());
+
+		// 3. Build User Content
+		const userParts = [];
+		if (this.user.before.hasContent)
+			userParts.push(this.user.before.toString());
+
+		const askInner = [
 			this.user.promptBefore.toString(),
 			this.user.prompt.toString(),
 			this.user.promptAfter.toString(),
-			"</ask>",
-			this.user.afterPrompt.toString(),
-			"</user>",
 		]
 			.filter(Boolean)
 			.join("\n");
 
+		if (this.user.beforePrompt.hasContent || askInner) {
+			userParts.push("<user>");
+			if (this.user.beforePrompt.hasContent)
+				userParts.push(this.user.beforePrompt.toString());
+			if (askInner) {
+				userParts.push("<ask>");
+				userParts.push(askInner);
+				userParts.push("</ask>");
+			}
+			userParts.push("</user>");
+		}
+		if (this.user.afterPrompt.hasContent)
+			userParts.push(this.user.afterPrompt.toString());
+
 		return [
-			{ role: "system", content: systemContent },
-			{ role: "user", content: userContent },
+			{ role: "system", content: sysParts.filter(Boolean).join("\n") },
+			{ role: "user", content: userParts.filter(Boolean).join("\n") },
 		];
 	}
 
