@@ -1,17 +1,31 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import SqlRite from "@possumtech/sqlrite";
 import SocketServer from "./src/socket/SocketServer.js";
-import { registerCorePlugins } from "./src/plugins/index.js";
+import { registerPlugins } from "./src/plugins/index.js";
 
 async function main() {
-	const dbPath = process.env.SNORE_DB_PATH || "snore.db";
+	// 1. Resolve SNORE_HOME (Default: ~/.snore)
+	const snoreHome = process.env.SNORE_HOME || join(homedir(), ".snore");
+	const userPluginsDir = join(snoreHome, "plugins");
+	const internalPluginsDir = fileURLToPath(new URL("./src/plugins", import.meta.url));
+
+	// 2. Ensure Directory Structure
+	mkdirSync(userPluginsDir, { recursive: true });
+
+	// 3. Resolve Database Path
+	const dbPath = process.env.SNORE_DB_PATH || join(snoreHome, "snore.db");
 	const db = await SqlRite.open({
 		path: dbPath,
 		dir: ["migrations", "src"],
 	});
 
-	// Register internal hooks & filters
-	registerCorePlugins();
+	// 4. Register Plugins (Internal first, then User)
+	await registerPlugins([internalPluginsDir, userPluginsDir]);
 
+	// 5. Start RPC Server
 	const port = Number.parseInt(process.env.PORT);
 	const server = new SocketServer(db, { port });
 
@@ -23,7 +37,10 @@ async function main() {
 		throw err;
 	});
 
-	console.log(`SNORE Service Operational [Port ${port}]`);
+	console.log(`SNORE Service Operational`);
+	console.log(`- Home: ${snoreHome}`);
+	console.log(`- DB:   ${dbPath}`);
+	console.log(`- Port: ${port}`);
 }
 
 main().catch((err) => {

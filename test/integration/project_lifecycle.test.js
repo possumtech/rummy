@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it, mock } from "node:test";
 import ProjectAgent from "../../src/agent/ProjectAgent.js";
+import { registerPlugins } from "../../src/plugins/index.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Project Lifecycle Integration", () => {
@@ -12,8 +13,16 @@ describe("Project Lifecycle Integration", () => {
 
 	before(async () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
+		process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+		process.env.SNORE_HTTP_REFERER = "http://test";
+		process.env.SNORE_X_TITLE = "Test";
+
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
 		tdb = await TestDb.create("lifecycle");
+
+		// Ensure plugins are registered for the agent to work (e.g. RepoMapPlugin)
+		await registerPlugins();
+
 		projectAgent = new ProjectAgent(tdb.db);
 	});
 
