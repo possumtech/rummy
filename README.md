@@ -43,14 +43,23 @@ SNORE is infinitely extensible. Create a JavaScript file in `src/internal/` or `
 ```javascript
 export default class MyPlugin {
     static register(hooks) {
-        // Handle an Event (Action)
-        hooks.addEvent("ask_completed", async ({ jobId, response }) => {
-            console.log(`Job ${jobId} finished with: ${response.content}`);
+        // Handle a Lifecycle Event
+        hooks.ask.completed.on(async ({ jobId, turn }) => {
+            console.log(`Job ${jobId} finished.`);
         });
 
-        // Add to a Turn Slot
-        hooks.addEvent("TURN_SYSTEM_PROMPT", async (slot) => {
-            slot.add("You are an expert pair programmer.", 1);
+        // Participate in the XML Pipeline
+        hooks.onTurn(async (snore) => {
+            // Add instructions to the system prompt
+            snore.system.appendChild(
+                snore.doc.createTextNode("\nYou are an expert pair programmer.")
+            );
+
+            // Inject custom context using the .tag() helper
+            const myTag = snore.tag("my_extension", { version: "1.0" }, [
+                "Custom extension data"
+            ]);
+            snore.contextEl.appendChild(myTag);
         });
     }
 }
@@ -60,11 +69,12 @@ export default class MyPlugin {
 
 | Type | Name | Purpose |
 | :--- | :--- | :--- |
-| **Event** | `project_init_started` | Runs before a project is initialized. |
-| **Event** | `project_init_completed`| Runs after a project is opened. |
-| **Event** | `ask_started` | Runs when an LLM turn begins. |
-| **Event** | `ask_completed` | Runs after a model response is received. |
-| **Filter** | `rpc_request` | Intercept and modify JSON-RPC calls. |
-| **Slot** | `TURN_SYSTEM_PROMPT` | Inject instructions into the system prompt. |
+| **Pipeline** | `onTurn` | The primary DOM manipulation hook for the XML document. |
+| **Event** | `project.init.started` | Runs before a project is initialized. |
+| **Event** | `project.init.completed`| Runs after a project is opened. |
+| **Event** | `ask.started` | Runs when an LLM turn begins. |
+| **Event** | `ask.completed` | Runs after a model response is received. |
+| **Filter** | `rpc.request` | Intercept and modify JSON-RPC calls. |
+| **Filter** | `rpc.response.result` | Modify the final result of an RPC method. |
 
 See `AGENTS.md` for the full architectural specification and XML pipeline details.
