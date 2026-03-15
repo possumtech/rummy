@@ -16,10 +16,11 @@ export default class RepoMapPlugin {
 			await RepoMapPlugin.#updateIndex(db, projectId, projectPath);
 		});
 
-		hooks.addFilter(
-			"system_prompt",
-			async (prompt, { project, activeFiles, db }) => {
-				if (!project || !db) return prompt;
+		// NEW: Use Action to push files into the slot
+		hooks.addAction(
+			"TURN_CONTEXT_FILES",
+			async (slot, { project, activeFiles, db }) => {
+				if (!project || !db) return;
 
 				// Ensure the index is fresh before an ask
 				await RepoMapPlugin.#updateIndex(db, project.id, project.path);
@@ -32,12 +33,25 @@ export default class RepoMapPlugin {
 				const repoMap = new RepoMap(ctx, db, project.id);
 
 				const perspective = await repoMap.renderPerspective(activeFiles);
-				const mapString = JSON.stringify(perspective, null, 2);
 
-				return `${prompt}\n\nProject Map:\n\n${mapString}`;
+				for (const f of perspective.files) {
+					slot.add(
+						{
+							path: f.path,
+							symbols: f.symbols,
+							mode: f.mode,
+						},
+						10,
+						`repomap:${f.path}`,
+					);
+				}
 			},
-			50,
-		); // Priority 50 ensures it runs after basic prompt setup
+		);
+
+		// Add default identity
+		hooks.addAction("TURN_SYSTEM_PROMPT", async (slot) => {
+			slot.add("You are SNORE Agent.", 5);
+		});
 	}
 
 	static async #updateIndex(db, projectId, projectPath) {

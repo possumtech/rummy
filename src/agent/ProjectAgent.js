@@ -2,16 +2,19 @@ import crypto from "node:crypto";
 import HookRegistry from "../core/HookRegistry.js";
 import OpenRouterClient from "../core/OpenRouterClient.js";
 import ProjectContext from "../core/ProjectContext.js";
+import TurnBuilder from "../core/TurnBuilder.js";
 
 export default class ProjectAgent {
 	#db;
 	#client;
 	#hooks;
+	#turnBuilder;
 
 	constructor(db) {
 		this.#db = db;
 		this.#client = new OpenRouterClient(process.env.OPENROUTER_API_KEY);
 		this.#hooks = HookRegistry.instance;
+		this.#turnBuilder = new TurnBuilder();
 	}
 
 	async #getVisibilityMap(projectId) {
@@ -94,7 +97,6 @@ export default class ProjectAgent {
 	async startJob(sessionId, jobConfig) {
 		const jobId = crypto.randomUUID();
 
-		// Filter job config before creation
 		const config = await this.#hooks.applyFilters("job_config", jobConfig, {
 			sessionId,
 		});
@@ -129,20 +131,21 @@ export default class ProjectAgent {
 			config: JSON.stringify({ model, activeFiles }),
 		});
 
-		// Filter system prompt
-		const baseSystemPrompt = "You are SNORE Agent.";
-		const systemPrompt = await this.#hooks.applyFilters(
-			"system_prompt",
-			baseSystemPrompt,
-			{ project, sessionId, activeFiles, db: this.#db },
-		);
+		// --- NEW TURN ARCHITECTURE ---
+		// 1. Build structured turn via hooks
+		const turnObj = await this.#turnBuilder.build({
+			project,
+			sessionId,
+			prompt,
+			model,
+			activeFiles,
+			db: this.#db,
+		});
 
-		const messages = [
-			{ role: "system", content: systemPrompt },
-			{ role: "user", content: prompt },
-		];
+		// 2. Serialize to OpenAI messages
+		const messages = turnObj.serialize();
 
-		// Filter messages before sending to LLM
+		// 3. Optional filter for the final message array
 		const finalMessages = await this.#hooks.applyFilters(
 			"llm_messages",
 			messages,
@@ -161,7 +164,6 @@ export default class ProjectAgent {
 
 		const responseMessage = result.choices?.[0]?.message;
 
-		// Filter response message
 		const finalResponse = await this.#hooks.applyFilters(
 			"llm_response",
 			responseMessage,
