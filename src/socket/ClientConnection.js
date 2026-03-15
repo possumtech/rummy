@@ -21,6 +21,38 @@ export default class ClientConnection {
 		this.#modelAgent = new ModelAgent(db, hooks);
 
 		this.#ws.on("message", (data) => this.#handleMessage(data));
+
+		this.#setupNotifications();
+	}
+
+	#setupNotifications() {
+		this.#hooks.ui.render.on((payload) => {
+			if (payload.sessionId === this.#context.sessionId) {
+				this.#sendNotification("ui/render", {
+					text: payload.text,
+					append: payload.append,
+				});
+			}
+		});
+
+		this.#hooks.ui.notify.on((payload) => {
+			if (payload.sessionId === this.#context.sessionId) {
+				this.#sendNotification("ui/notify", {
+					text: payload.text,
+					level: payload.level,
+				});
+			}
+		});
+
+		this.#hooks.editor.diff.on((payload) => {
+			if (payload.sessionId === this.#context.sessionId) {
+				this.#sendNotification("editor/diff", {
+					id: payload.id,
+					file: payload.file,
+					patch: payload.patch,
+				});
+			}
+		});
 	}
 
 	async handleMessageForTest(data) {
@@ -29,8 +61,11 @@ export default class ClientConnection {
 
 	async #handleMessage(data) {
 		let id = null;
+		const debug = process.env.SNORE_DEBUG === "true";
 		try {
 			const rawMessage = await this.#hooks.socket.message.raw.filter(data);
+			if (debug) console.log(`[SOCKET] IN: ${rawMessage.toString()}`);
+
 			const message = JSON.parse(rawMessage.toString());
 
 			const filteredRequest = await this.#hooks.rpc.request.filter(message);
@@ -47,6 +82,10 @@ export default class ClientConnection {
 			let result;
 
 			switch (method) {
+				case "ping":
+					result = {};
+					break;
+
 				case "init":
 					result = await this.#projectAgent.init(
 						params.projectPath,
@@ -101,6 +140,17 @@ export default class ClientConnection {
 					);
 					break;
 
+				case "act":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
+					result = await this.#projectAgent.act(
+						this.#context.sessionId,
+						params.model,
+						params.prompt,
+						params.activeFiles || [],
+					);
+					break;
+
 				default:
 					throw new Error(`Method '${method}' not found.`);
 			}
@@ -118,6 +168,7 @@ export default class ClientConnection {
 
 			await this.#hooks.rpc.completed.emit({ method, id, result: finalResult });
 		} catch (error) {
+			if (debug) console.error(`[SOCKET] ERR: ${error.message}`);
 			this.#send({
 				jsonrpc: "2.0",
 				error: { code: -32603, message: error.message },
@@ -128,8 +179,20 @@ export default class ClientConnection {
 	}
 
 	#send(payload) {
+		const debug = process.env.SNORE_DEBUG === "true";
+		if (debug) {
+			console.log(`[SOCKET] OUT: ${JSON.stringify(payload, null, 2)}`);
+		}
 		if (this.#ws.readyState === 1) {
 			this.#ws.send(JSON.stringify(payload));
 		}
+	}
+
+	#sendNotification(method, params) {
+		this.#send({
+			jsonrpc: "2.0",
+			method,
+			params,
+		});
 	}
 }

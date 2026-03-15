@@ -16,12 +16,13 @@ async function main() {
 	const snoreHome = process.env.SNORE_HOME || join(homedir(), ".snore");
 	const userPluginsDir = join(snoreHome, "plugins");
 	const internalPluginsDir = fileURLToPath(new URL("./src/internal", import.meta.url));
+	const corePluginsDir = fileURLToPath(new URL("./src/plugins", import.meta.url));
 
 	// 3. Ensure Directory Structure
 	mkdirSync(userPluginsDir, { recursive: true });
 
 	// 4. Register Plugins
-	await registerPlugins([internalPluginsDir, userPluginsDir], hooks);
+	await registerPlugins([internalPluginsDir, corePluginsDir, userPluginsDir], hooks);
 
 	// 5. Bootstrap Persistence
 	const dbPath = process.env.SNORE_DB_PATH || join(snoreHome, "snore.db");

@@ -9,12 +9,15 @@ export default class TestServer {
 		const internalDir = fileURLToPath(
 			new URL("../../src/internal", import.meta.url),
 		);
-		await registerPlugins([internalDir], hooks);
+		const pluginsDir = fileURLToPath(
+			new URL("../../src/plugins", import.meta.url),
+		);
+		await registerPlugins([internalDir, pluginsDir], hooks);
 
 		const server = new SocketServer(db, { port: 0, hooks });
 		const address = server.address();
 		const url = `ws://localhost:${address.port}`;
 
-		return { server, url, stop: () => server.close() };
+		return { server, url, hooks, stop: () => server.close() };
 	}
 }

@@ -11,7 +11,10 @@ export default class SocketServer {
 		this.#hooks = options.hooks;
 		this.#wss = new WebSocketServer(options);
 
-		this.#wss.on("connection", (ws) => {
+		this.#wss.on("connection", (ws, req) => {
+			if (process.env.SNORE_DEBUG === "true") {
+				console.log(`[SOCKET] New connection from ${req.socket.remoteAddress}`);
+			}
 			new ClientConnection(ws, this.#db, this.#hooks);
 		});
 

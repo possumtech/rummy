@@ -126,7 +126,16 @@ export default class ProjectAgent {
 	}
 
 	async ask(sessionId, model, prompt, activeFiles = []) {
-		await this.#hooks.ask.started.emit({
+		return this.#executeJob("ask", sessionId, model, prompt, activeFiles);
+	}
+
+	async act(sessionId, model, prompt, activeFiles = []) {
+		return this.#executeJob("act", sessionId, model, prompt, activeFiles);
+	}
+
+	async #executeJob(type, sessionId, model, prompt, activeFiles = []) {
+		const hook = type === "ask" ? this.#hooks.ask : this.#hooks.act;
+		await hook.started.emit({
 			sessionId,
 			model,
 			prompt,
@@ -142,7 +151,7 @@ export default class ProjectAgent {
 		await this.#db.create_job.run({
 			id: jobId,
 			session_id: sessionId,
-			type: "ask",
+			type,
 			config: JSON.stringify({ model, activeFiles }),
 		});
 
@@ -215,7 +224,7 @@ export default class ProjectAgent {
 		}
 		turnObj.assistant.meta.add(usage);
 
-		await this.#hooks.ask.completed.emit({
+		await hook.completed.emit({
 			jobId,
 			sessionId,
 			model: targetModel,

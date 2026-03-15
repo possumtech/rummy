@@ -10,9 +10,55 @@ export default class RpcClient {
 
 	async connect() {
 		this.#ws = new WebSocket(this.#url);
+		this.#ws.on("message", (data) => {
+			const msg = JSON.parse(data.toString());
+			if (msg.method && !msg.id) {
+				// This is a notification
+				this.#handleNotification(msg);
+			}
+		});
+
 		return new Promise((resolve, reject) => {
 			this.#ws.on("open", resolve);
 			this.#ws.on("error", reject);
+		});
+	}
+
+	#notifications = [];
+	#notificationWaiters = [];
+
+	#handleNotification(msg) {
+		this.#notifications.push(msg);
+		const waiters = [...this.#notificationWaiters];
+		this.#notificationWaiters = [];
+		for (const w of waiters) {
+			if (w.filter(msg)) {
+				w.resolve(msg);
+			} else {
+				this.#notificationWaiters.push(w);
+			}
+		}
+	}
+
+	async waitForNotification(filter = () => true, timeout = 5000) {
+		const existing = this.#notifications.find(filter);
+		if (existing) {
+			this.#notifications = this.#notifications.filter((n) => n !== existing);
+			return existing;
+		}
+
+		return new Promise((resolve, reject) => {
+			const t = setTimeout(
+				() => reject(new Error("Timeout waiting for notification")),
+				timeout,
+			);
+			this.#notificationWaiters.push({
+				filter,
+				resolve: (msg) => {
+					clearTimeout(t);
+					resolve(msg);
+				},
+			});
 		});
 	}
 
