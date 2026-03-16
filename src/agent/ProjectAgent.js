@@ -138,6 +138,22 @@ export default class ProjectAgent {
 		return runId;
 	}
 
+	async setSystemPrompt(sessionId, systemPrompt) {
+		await this.#db.update_session_system_prompt.run({ id: sessionId, system_prompt: systemPrompt });
+	}
+
+	async setPersona(sessionId, persona) {
+		await this.#db.update_session_persona.run({ id: sessionId, persona });
+	}
+
+	async addSkill(sessionId, name) {
+		await this.#db.insert_session_skill.run({ session_id: sessionId, name });
+	}
+
+	async removeSkill(sessionId, name) {
+		await this.#db.delete_session_skill.run({ session_id: sessionId, name });
+	}
+
 	async ask(sessionId, model, prompt, activeFiles = [], runId = null) {
 		return this.#executeRun(
 			"ask",
@@ -268,6 +284,7 @@ export default class ProjectAgent {
 		}
 
 		const turnObj = await this.#turnBuilder.build({
+			type,
 			project,
 			sessionId,
 			prompt,

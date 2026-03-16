@@ -152,6 +152,46 @@ export default class ClientConnection {
 					result = { status: "ok" };
 					break;
 
+				case "systemPrompt":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
+					await this.#projectAgent.setSystemPrompt(
+						this.#context.sessionId,
+						params.text,
+					);
+					result = { status: "ok" };
+					break;
+
+				case "persona":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
+					await this.#projectAgent.setPersona(
+						this.#context.sessionId,
+						params.text,
+					);
+					result = { status: "ok" };
+					break;
+
+				case "skill/add":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
+					await this.#projectAgent.addSkill(
+						this.#context.sessionId,
+						params.name,
+					);
+					result = { status: "ok" };
+					break;
+
+				case "skill/remove":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
+					await this.#projectAgent.removeSkill(
+						this.#context.sessionId,
+						params.name,
+					);
+					result = { status: "ok" };
+					break;
+
 				case "ask":
 					if (!this.#context.sessionId)
 						throw new Error("Session not initialized.");

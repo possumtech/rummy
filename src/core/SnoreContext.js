@@ -39,6 +39,14 @@ export default class SnoreContext {
 		return this.#context.activeFiles || [];
 	}
 
+	get type() {
+		return this.#context.type;
+	}
+
+	get sessionId() {
+		return this.#context.sessionId;
+	}
+
 	/**
 	 * Semantic access to standard XML sections.
 	 */

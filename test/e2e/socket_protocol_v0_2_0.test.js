@@ -176,4 +176,51 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 			globalThis.fetch = originalFetch;
 		}
 	});
+
+	it("should support systemPrompt, persona, skills, and inject edit instructions for 'act'", async () => {
+		await client.call("systemPrompt", { text: "You are the base agent." });
+		await client.call("persona", { text: "You are a helpful test bot." });
+		await client.call("skill/add", { name: "test-skill-1" });
+		await client.call("skill/add", { name: "test-skill-2" });
+		await client.call("skill/remove", { name: "test-skill-2" });
+
+		const originalFetch = globalThis.fetch;
+		let lastSentMessages = [];
+		globalThis.fetch = async (_url, options) => {
+			const body = JSON.parse(options.body);
+			lastSentMessages = body.messages;
+			return new Response(
+				JSON.stringify({
+					model: "mock-model",
+					choices: [{ message: { role: "assistant", content: "OK" } }],
+					usage: { total_tokens: 5 },
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
+		};
+
+		try {
+			await client.call("act", {
+				model: "mock-model",
+				prompt: "Check persona",
+			});
+
+			assert.strictEqual(lastSentMessages.length, 2);
+			const systemPrompt = lastSentMessages[0].content;
+			
+			// Verify systemPrompt injected
+			assert.ok(systemPrompt.includes("You are the base agent."));
+			// Verify persona injected
+			assert.ok(systemPrompt.includes("<persona>You are a helpful test bot.</persona>"));
+			// Verify skill injected
+			assert.ok(systemPrompt.includes("<skills><skill>test-skill-1</skill></skills>"));
+			// Verify removed skill is absent
+			assert.ok(!systemPrompt.includes("test-skill-2"));
+			// Verify edit instructions injected because type is 'act'
+			assert.ok(systemPrompt.includes("<instructions><edit_format>"));
+			assert.ok(systemPrompt.includes("<search>"));
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
 });

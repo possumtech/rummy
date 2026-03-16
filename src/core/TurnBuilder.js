@@ -1,6 +1,12 @@
+import fs from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DOMImplementation } from "@xmldom/xmldom";
 import SnoreContext from "./SnoreContext.js";
 import Turn from "./Turn.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_SYSTEM_MD_PATH = join(__dirname, "../../../system.md");
 
 export default class TurnBuilder {
 	#hooks;
@@ -14,7 +20,7 @@ export default class TurnBuilder {
 	 * Build a structured Turn by running the DOM pipeline.
 	 */
 	async build(initialData = {}) {
-		const { prompt, ...contextData } = initialData;
+		const { prompt, sessionId, db, project, ...contextData } = initialData;
 
 		// 1. Create fresh Document
 		const doc = this.#dom.createDocument(null, "turn", null);
@@ -32,7 +38,48 @@ export default class TurnBuilder {
 		root.appendChild(assistant);
 
 		// 3. Create SnoreContext for the Pipeline
-		const snore = new SnoreContext(doc, contextData);
+		const snore = new SnoreContext(doc, { sessionId, db, project, ...contextData });
+
+		let systemPromptText = null;
+
+		// Fetch and Inject System Prompt, Persona, and Skills if db is available
+		if (db && sessionId) {
+			const sessions = await db.get_session_by_id.all({ id: sessionId });
+			if (sessions.length > 0) {
+				const session = sessions[0];
+				
+				if (session.system_prompt) {
+					systemPromptText = session.system_prompt;
+				}
+
+				if (session.persona) {
+					const personaEl = snore.tag("persona", {}, [session.persona]);
+					contextEl.appendChild(personaEl);
+				}
+
+				const skills = await db.get_session_skills.all({ session_id: sessionId });
+				if (skills.length > 0) {
+					const skillsEl = doc.createElement("skills");
+					for (const skill of skills) {
+						skillsEl.appendChild(snore.tag("skill", {}, [skill.name]));
+					}
+					contextEl.appendChild(skillsEl);
+				}
+			}
+		}
+
+		if (!systemPromptText) {
+			try {
+				systemPromptText = await fs.readFile(DEFAULT_SYSTEM_MD_PATH, "utf8");
+			} catch (err) {
+				// Fallback if system.md is missing
+				systemPromptText = "You are a helpful software engineering assistant.";
+			}
+		}
+
+		if (systemPromptText) {
+			system.appendChild(doc.createTextNode(systemPromptText.trim() + "\n"));
+		}
 
 		// 4. Seed the User Prompt
 		const ask = snore.tag("ask", {}, [prompt]);

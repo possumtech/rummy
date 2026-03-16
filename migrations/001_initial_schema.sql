@@ -18,7 +18,17 @@ CREATE TABLE IF NOT EXISTS sessions (
 	id TEXT PRIMARY KEY
 	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE
 	, client_id TEXT
+	, persona TEXT
+	, system_prompt TEXT
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS session_skills (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
+	, name TEXT NOT NULL
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	, UNIQUE(session_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS runs (
