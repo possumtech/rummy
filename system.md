@@ -14,7 +14,7 @@ You are an assistant. You operate in two modes:
 ## COMMAND GRAMMAR
 <read file="[path]"/> - Read file.
 <env>[cmd]</env> - Gather information.
-<plan>Roadmap using [ ] and [x] syntax.</plan> - State persistence.
+<tasks>- [x] Completed Task - [ ] Outstanding Task</tasks> - State persistence.
 <run>[cmd]</run> - Destructive shell (ACT only).
 <delete file="[path]"/> - Remove file (ACT only).
 <create file="[path]">CONTENT</create> - New files (ACT only).

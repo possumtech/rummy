@@ -26,6 +26,16 @@ export default class ClientConnection {
 	}
 
 	#setupNotifications() {
+		this.#hooks.run.progress.on((payload) => {
+			if (payload.sessionId === this.#context.sessionId) {
+				this.#sendNotification("run/progress", {
+					runId: payload.runId,
+					tasks: payload.tasks,
+					status: payload.status,
+				});
+			}
+		});
+
 		this.#hooks.ui.render.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("ui/render", {

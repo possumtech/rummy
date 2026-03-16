@@ -82,8 +82,9 @@ export default class TurnBuilder {
 		}
 
 		// 4. Seed the User Prompt
-		const ask = snore.tag("ask", {}, [prompt]);
-		user.appendChild(ask);
+		const actionTag = initialData.type === "act" ? "act" : "ask";
+		const actionEl = snore.tag(actionTag, {}, [prompt]);
+		user.appendChild(actionEl);
 
 		// 5. Run the Pipeline
 		await this.#hooks.processTurn(snore);

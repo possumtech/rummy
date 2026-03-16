@@ -12,14 +12,21 @@ export default class InstructionsPlugin {
 				const instructions = snore.tag("instructions");
 				
 				const editFormat = snore.tag("edit_format", {}, [
-					"To modify files, you MUST use the exact SEARCH/REPLACE block format.",
-					"Include the exact existing code in the <search> block, and the new code in the <replace> block.",
+					"To modify files, you MUST use the exact SEARCH/REPLACE block format using Git conflict markers.",
+					"Include the exact existing code in the SEARCH block, and the new code in the REPLACE block.",
 					"Do not use line numbers. Do not truncate the replacement with '...'. Provide enough context for a precise match."
 				].join("\n"));
 
+				const exampleStr = [
+					"<<<<<<< SEARCH",
+					"// existing code here",
+					"=======",
+					"// new code here",
+					">>>>>>> REPLACE"
+				].join("\n");
+				
 				const example = snore.tag("example");
-				example.appendChild(snore.tag("search", {}, ["// existing code here"]));
-				example.appendChild(snore.tag("replace", {}, ["// new code here"]));
+				example.appendChild(snore.doc.createCDATASection("\n" + exampleStr + "\n"));
 				
 				editFormat.appendChild(example);
 				instructions.appendChild(editFormat);

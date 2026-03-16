@@ -165,12 +165,12 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 			assert.strictEqual(lastSentMessages.length, 4);
 			assert.strictEqual(
 				lastSentMessages[1].content,
-				"<user><ask>First request</ask></user>",
+				"<user><act>First request</act></user>",
 			);
 			assert.strictEqual(lastSentMessages[2].content, "Proposal 1");
 			assert.strictEqual(
 				lastSentMessages[3].content,
-				"<user><ask>Second request</ask></user>",
+				"<user><act>Second request</act></user>",
 			);
 		} finally {
 			globalThis.fetch = originalFetch;
@@ -218,7 +218,7 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 			assert.ok(!systemPrompt.includes("test-skill-2"));
 			// Verify edit instructions injected because type is 'act'
 			assert.ok(systemPrompt.includes("<instructions><edit_format>"));
-			assert.ok(systemPrompt.includes("<search>"));
+			assert.ok(systemPrompt.includes("<<<<<<< SEARCH"));
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

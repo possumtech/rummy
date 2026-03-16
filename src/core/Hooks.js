@@ -38,6 +38,7 @@ export default function createHooks(debug = false) {
 		},
 		run: {
 			started: createEvent("run.started"),
+			progress: createEvent("run.progress"),
 			config: createFilter("run.config"),
 			turn: createFilter("run.turn"),
 		},

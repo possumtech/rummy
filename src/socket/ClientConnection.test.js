@@ -1,11 +1,13 @@
 import assert from "node:assert";
-import { before, describe, it, mock } from "node:test";
+import { after, before, describe, it, mock } from "node:test";
 import createHooks from "../core/Hooks.js";
 import { registerPlugins } from "../plugins/index.js";
 import ClientConnection from "./ClientConnection.js";
+import TestDb from "../../test/helpers/TestDb.js";
 
 describe("ClientConnection", () => {
 	let hooks;
+	let tdb;
 
 	before(async () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
@@ -15,36 +17,16 @@ describe("ClientConnection", () => {
 		process.env.SNORE_X_TITLE = "Test";
 		hooks = createHooks();
 		await registerPlugins([], hooks);
+		tdb = await TestDb.create("client_connection");
+	});
+
+	after(async () => {
+		if (tdb) await tdb.cleanup();
 	});
 
 	const createMocks = () => {
 		const ws = { on: mock.fn(), send: mock.fn(), readyState: 1 };
-		const db = {
-			upsert_project: { run: mock.fn() },
-			get_project_by_path: { all: mock.fn(async () => [{ id: "p1" }]) },
-			get_project_by_id: {
-				get: mock.fn(async () => ({ id: "p1", path: process.cwd() })),
-			},
-			get_session_by_id: { all: mock.fn(async () => [{ project_id: "p1" }]) },
-			create_session: { run: mock.fn() },
-			get_repo_map_file: { get: mock.fn(async () => null) },
-			upsert_repo_map_file: {
-				run: mock.fn(),
-				get: mock.fn(async () => ({ id: "f1" })),
-			},
-			clear_repo_map_file_data: { run: mock.fn() },
-			insert_repo_map_tag: { run: mock.fn() },
-			insert_repo_map_ref: { run: mock.fn() },
-			get_project_repo_map: { all: mock.fn(async () => []) },
-			get_models: { all: mock.fn(async () => []) },
-			get_file_references: { all: mock.fn(async () => []) },
-			create_run: { run: mock.fn() },
-			create_turn: { run: mock.fn(async () => ({ lastInsertRowid: 123 })) },
-			update_run_status: { run: mock.fn() },
-			insert_finding_diff: { run: mock.fn() },
-			insert_finding_notification: { run: mock.fn() },
-		};
-		return { ws, db };
+		return { ws, db: tdb.db };
 	};
 
 	const runMethod = async (conn, ws, method, params = {}, id = "req") => {
@@ -59,25 +41,35 @@ describe("ClientConnection", () => {
 		const conn = new ClientConnection(ws, db, hooks);
 		const response = await runMethod(conn, ws, "init", {
 			projectPath: process.cwd(),
+			projectName: "Test Project",
+			clientId: "test-client"
 		});
-		assert.strictEqual(response.result.projectId, "p1");
+		assert.ok(response.result.projectId);
+		assert.ok(response.result.sessionId);
 	});
 
 	it("should handle 'ask' method", async () => {
 		const { ws, db } = createMocks();
-		mock.method(globalThis, "fetch", async () => ({
-			ok: true,
-			json: async () => ({
-				choices: [{ message: { content: "Paris" } }],
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async () => new Response(
+			JSON.stringify({
+				model: "test-model",
+				choices: [{ message: { role: "assistant", content: "Paris" } }],
 				usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
 			}),
-		}));
-		const conn = new ClientConnection(ws, db, hooks);
-		await runMethod(conn, ws, "init", { projectPath: process.cwd() });
-		const response = await runMethod(conn, ws, "ask", {
-			model: "m",
-			prompt: "p",
-		});
-		assert.strictEqual(response.result.content, "Paris");
+			{ status: 200, headers: { "Content-Type": "application/json" } }
+		);
+
+		try {
+			const conn = new ClientConnection(ws, db, hooks);
+			await runMethod(conn, ws, "init", { projectPath: process.cwd(), projectName: "T", clientId: "c" });
+			const response = await runMethod(conn, ws, "ask", {
+				model: "test-model",
+				prompt: "p",
+			});
+			assert.strictEqual(response.result.content, "Paris");
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });

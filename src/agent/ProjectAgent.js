@@ -1,8 +1,12 @@
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import { join } from "node:path";
+import * as parse5 from "parse5";
 import createHooks from "../core/Hooks.js";
 import OpenRouterClient from "../core/OpenRouterClient.js";
 import ProjectContext from "../core/ProjectContext.js";
 import TurnBuilder from "../core/TurnBuilder.js";
+import HeuristicMatcher from "../core/HeuristicMatcher.js";
 
 export default class ProjectAgent {
 	#db;
@@ -176,10 +180,113 @@ export default class ProjectAgent {
 		);
 	}
 
-	#extractFindings(atomicResult, turnContent) {
-		if (!turnContent) return;
+	#getNodeText(node) {
+		const html = parse5.serialize(node);
+		return html
+			.replace(/&lt;/g, "<")
+			.replace(/&gt;/g, ">")
+			.replace(/&amp;/g, "&")
+			.replace(/&quot;/g, '"');
+	}
 
-		// Core Detection: Diffs
+	#parseActionTags(content) {
+		const frag = parse5.parseFragment(content);
+		const tags = [];
+		const traverse = (node) => {
+			if (
+				node.tagName &&
+				[
+					"read",
+					"env",
+					"run",
+					"create",
+					"delete",
+					"edit",
+					"prompt_user",
+					"summary",
+					"tasks",
+				].includes(node.tagName)
+			) {
+				tags.push(node);
+			}
+			if (node.childNodes) {
+				for (const child of node.childNodes) {
+					traverse(child);
+				}
+			}
+		};
+		traverse(frag);
+		return tags;
+	}
+
+	async #populateFindings(projectPath, atomicResult, tags) {
+		for (const tag of tags) {
+			if (tag.tagName === "edit" || tag.tagName === "create" || tag.tagName === "delete") {
+				const file = tag.attrs.find((a) => a.name === "file")?.value;
+				if (file) {
+					let patchContent = this.#getNodeText(tag).trim();
+
+					if (tag.tagName === "edit") {
+						try {
+							const fullPath = join(projectPath, file);
+							const fileContent = await fs.readFile(fullPath, "utf8");
+							const searchMatch = patchContent.match(/<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n/);
+							const replaceMatch = patchContent.match(/=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/);
+							
+							if (searchMatch && replaceMatch) {
+								const searchBlock = searchMatch[1];
+								const replaceBlock = replaceMatch[1];
+								const matchResult = HeuristicMatcher.matchAndPatch(file, fileContent, searchBlock, replaceBlock);
+								
+								if (matchResult.error) {
+									atomicResult.notifications.push({
+										type: "notify",
+										text: `Error applying edit to ${file}: ${matchResult.error}`,
+										level: "error",
+									});
+								} else {
+									if (matchResult.warning) {
+										atomicResult.notifications.push({
+											type: "notify",
+											text: `Warning for ${file}: ${matchResult.warning}`,
+											level: "warn",
+										});
+									}
+									patchContent = matchResult.patch;
+								}
+							}
+						} catch (err) {
+							// File read error or parsing error
+							atomicResult.notifications.push({
+								type: "notify",
+								text: `Failed to read or parse file ${file} for editing: ${err.message}`,
+								level: "error",
+							});
+						}
+					}
+
+					atomicResult.diffs.push({
+						runId: atomicResult.runId,
+						type: tag.tagName,
+						file,
+						patch: patchContent,
+					});
+				}
+			} else if (tag.tagName === "env" || tag.tagName === "run") {
+				atomicResult.commands.push({
+					type: tag.tagName,
+					command: this.#getNodeText(tag).trim(),
+				});
+			} else if (tag.tagName === "prompt_user" || tag.tagName === "summary") {
+				atomicResult.notifications.push({
+					type: tag.tagName,
+					text: this.#getNodeText(tag).trim(),
+				});
+			}
+		}
+
+		// Keep legacy test markers for our E2E tests for now
+		const turnContent = atomicResult.content;
 		if (turnContent.includes("SNORE_TEST_DIFF")) {
 			atomicResult.diffs.push({
 				runId: atomicResult.runId,
@@ -187,8 +294,6 @@ export default class ProjectAgent {
 				patch: "--- test.txt\n+++ test.txt\n@@ -1 +1 @@\n-old\n+new",
 			});
 		}
-
-		// Core Detection: Notifications
 		if (turnContent.includes("SNORE_TEST_NOTIFY")) {
 			atomicResult.notifications.push({
 				type: "notify",
@@ -196,7 +301,6 @@ export default class ProjectAgent {
 				level: "info",
 			});
 		}
-
 		if (turnContent.includes("SNORE_TEST_RENDER")) {
 			atomicResult.notifications.push({
 				type: "render",
@@ -283,181 +387,230 @@ export default class ProjectAgent {
 			});
 		}
 
-		const turnObj = await this.#turnBuilder.build({
-			type,
-			project,
-			sessionId,
-			prompt,
-			model,
-			activeFiles,
-			db: this.#db,
-		});
+		let currentActiveFiles = [...(activeFiles || [])];
+		let loopPrompt = prompt;
+		let finalResult = null;
 
-		const currentTurnMessages = await turnObj.serialize();
-
-		// Construct final message set:
-		// [New System/Context] + [History User/Assistant] + [New User Prompt]
-		const systemMsgs = currentTurnMessages.filter((m) => m.role === "system");
-		const newUserMsg = currentTurnMessages.find((m) => m.role === "user");
-
-		const finalMessages = [
-			...systemMsgs,
-			...historyMessages,
-			newUserMsg,
-		].filter(Boolean);
-
-		const filteredMessages = await this.#hooks.llm.messages.filter(
-			finalMessages,
-			{
-				model,
+		while (true) {
+			const turnObj = await this.#turnBuilder.build({
+				type,
+				project,
 				sessionId,
-				runId: currentRunId,
-			},
-		);
+				prompt: loopPrompt,
+				model,
+				activeFiles: currentActiveFiles,
+				db: this.#db,
+			});
 
-		const _initialTurn = await this.#db.create_turn.run({
-			run_id: currentRunId,
-			sequence_number: sequenceOffset,
-			payload: JSON.stringify(filteredMessages),
-			prompt_tokens: 0,
-			completion_tokens: 0,
-			total_tokens: 0,
-			cost: 0,
-		});
+			const currentTurnMessages = await turnObj.serialize();
 
-		const requestedModel = model || process.env.SNORE_MODEL_DEFAULT;
-		if (!requestedModel) {
-			throw new Error("No model specified and SNORE_MODEL_DEFAULT is not set.");
-		}
+			// Construct final message set:
+			// [New System/Context] + [History User/Assistant] + [New User Prompt]
+			const systemMsgs = currentTurnMessages.filter((m) => m.role === "system");
+			const newUserMsg = currentTurnMessages.find((m) => m.role === "user");
 
-		const targetModel = process.env[`SNORE_MODEL_${requestedModel}`] || requestedModel;
+			const finalMessages = [
+				...systemMsgs,
+				...historyMessages,
+				newUserMsg,
+			].filter(Boolean);
 
-		if (process.env.SNORE_DEBUG === "true") {
-			console.log(
-				`[LLM] Target Model: ${targetModel} (requested: ${requestedModel})`,
+			const filteredMessages = await this.#hooks.llm.messages.filter(
+				finalMessages,
+				{
+					model,
+					sessionId,
+					runId: currentRunId,
+				},
 			);
-		}
 
-		await this.#hooks.llm.request.started.emit({
-			runId: currentRunId,
-			model: targetModel,
-			messages: filteredMessages,
-		});
-		const result = await this.#client.completion(filteredMessages, targetModel);
-		await this.#hooks.llm.request.completed.emit({
-			runId: currentRunId,
-			result,
-		});
+			const _initialTurn = await this.#db.create_turn.run({
+				run_id: currentRunId,
+				sequence_number: sequenceOffset,
+				payload: JSON.stringify(filteredMessages),
+				prompt_tokens: 0,
+				completion_tokens: 0,
+				total_tokens: 0,
+				cost: 0,
+			});
 
-		const responseMessage = result.choices?.[0]?.message;
+			const requestedModel = model || process.env.SNORE_MODEL_DEFAULT;
+			if (!requestedModel) {
+				throw new Error("No model specified and SNORE_MODEL_DEFAULT is not set.");
+			}
 
-		const finalResponse = await this.#hooks.llm.response.filter(
-			responseMessage,
-			{ model, sessionId, runId: currentRunId },
-		);
+			const targetModel =
+				process.env[`SNORE_MODEL_${requestedModel}`] || requestedModel;
 
-		const usage = result.usage || {
-			prompt_tokens: 0,
-			completion_tokens: 0,
-			total_tokens: 0,
-			cost: 0,
-		};
+			if (process.env.SNORE_DEBUG === "true") {
+				console.log(
+					`[LLM] Target Model: ${targetModel} (requested: ${requestedModel})`,
+				);
+			}
 
-		const completedTurn = await this.#db.create_turn.run({
-			run_id: currentRunId,
-			sequence_number: sequenceOffset + 1,
-			payload: JSON.stringify(finalResponse),
-			prompt_tokens: usage.prompt_tokens || 0,
-			completion_tokens: usage.completion_tokens || 0,
-			total_tokens: usage.total_tokens || 0,
-			cost: usage.cost || 0,
-		});
-		const turnId = completedTurn.lastInsertRowid;
+			await this.#hooks.llm.request.started.emit({
+				runId: currentRunId,
+				model: targetModel,
+				messages: filteredMessages,
+			});
+			const result = await this.#client.completion(
+				filteredMessages,
+				targetModel,
+			);
+			await this.#hooks.llm.request.completed.emit({
+				runId: currentRunId,
+				result,
+			});
 
-		const finalStatus = type === "act" ? "proposed" : "completed";
-		await this.#db.update_run_status.run({
-			id: currentRunId,
-			status: finalStatus,
-		});
+			const responseMessage = result.choices?.[0]?.message;
 
-		if (finalResponse?.reasoning_content) {
-			turnObj.assistant.reasoning.add(finalResponse.reasoning_content);
-		}
-		if (finalResponse?.content) {
-			turnObj.assistant.content.add(finalResponse.content);
-		}
-		turnObj.assistant.meta.add({
-			...usage,
-			alias: requestedModel,
-			actualModel: result.model,
-			displayModel: this.#resolveAlias(requestedModel),
-		});
+			const finalResponse = await this.#hooks.llm.response.filter(
+				responseMessage,
+				{ model, sessionId, runId: currentRunId },
+			);
 
-		// Build the clean SNORE result object
-		const atomicResult = {
-			runId: currentRunId,
-			model: {
-				requested: model || process.env.SNORE_MODEL_DEFAULT,
-				alias: this.#resolveAlias(requestedModel),
-				target: targetModel,
-				actual: result.model,
-				display: this.#resolveAlias(requestedModel),
-			},
-			content: finalResponse?.content || "",
-			reasoning: finalResponse?.reasoning_content || null,
-			finishReason: result.choices?.[0]?.finish_reason || "stop",
-			usage: {
-				promptTokens: usage.prompt_tokens || 0,
-				completionTokens: usage.completion_tokens || 0,
-				totalTokens: usage.total_tokens || 0,
+			const usage = result.usage || {
+				prompt_tokens: 0,
+				completion_tokens: 0,
+				total_tokens: 0,
+				cost: 0,
+			};
+
+			const completedTurn = await this.#db.create_turn.run({
+				run_id: currentRunId,
+				sequence_number: sequenceOffset + 1,
+				payload: JSON.stringify(finalResponse),
+				prompt_tokens: usage.prompt_tokens || 0,
+				completion_tokens: usage.completion_tokens || 0,
+				total_tokens: usage.total_tokens || 0,
 				cost: usage.cost || 0,
-			},
-			activeFiles,
-			diffs: [],
-			notifications: [],
-			openaiRaw: result,
-		};
-
-		// Run the core findings engine
-		const turnContent =
-			turnObj.doc.getElementsByTagName("content")[0]?.textContent;
-		this.#extractFindings(atomicResult, turnContent);
-
-		// Persist Findings to Database
-		for (const diff of atomicResult.diffs) {
-			await this.#db.insert_finding_diff.run({
-				run_id: currentRunId,
-				turn_id: turnId,
-				file_path: diff.file,
-				patch: diff.patch,
 			});
-		}
-		for (const notif of atomicResult.notifications) {
-			await this.#db.insert_finding_notification.run({
-				run_id: currentRunId,
-				turn_id: turnId,
-				type: notif.type,
-				text: notif.text,
-				level: notif.level || null,
-				append: notif.append !== undefined ? (notif.append ? 1 : 0) : null,
+			const turnId = completedTurn.lastInsertRowid;
+
+			if (finalResponse?.reasoning_content) {
+				turnObj.assistant.reasoning.add(finalResponse.reasoning_content);
+			}
+			if (finalResponse?.content) {
+				turnObj.assistant.content.add(finalResponse.content);
+			}
+			turnObj.assistant.meta.add({
+				...usage,
+				alias: requestedModel,
+				actualModel: result.model,
+				displayModel: this.#resolveAlias(requestedModel),
 			});
+
+			// Build the clean SNORE result object
+			const atomicResult = {
+				runId: currentRunId,
+				model: {
+					requested: model || process.env.SNORE_MODEL_DEFAULT,
+					alias: this.#resolveAlias(requestedModel),
+					target: targetModel,
+					actual: result.model,
+					display: this.#resolveAlias(requestedModel),
+				},
+				content: finalResponse?.content || "",
+				reasoning: finalResponse?.reasoning_content || null,
+				finishReason: result.choices?.[0]?.finish_reason || "stop",
+				usage: {
+					promptTokens: usage.prompt_tokens || 0,
+					completionTokens: usage.completion_tokens || 0,
+					totalTokens: usage.total_tokens || 0,
+					cost: usage.cost || 0,
+				},
+				activeFiles: currentActiveFiles,
+				diffs: [],
+				commands: [],
+				notifications: [],
+				openaiRaw: result,
+			};
+
+			// Run the core findings engine
+			const turnContent =
+				turnObj.doc.getElementsByTagName("content")[0]?.textContent;
+			
+			const tags = this.#parseActionTags(turnContent || "");
+			await this.#populateFindings(project.path, atomicResult, tags);
+
+			// Emit progress notification if tasks are present
+			const tasksTag = tags.find((t) => t.tagName === "tasks");
+			if (tasksTag) {
+				await this.#hooks.run.progress.emit({
+					runId: currentRunId,
+					sessionId,
+					tasks: this.#getNodeText(tasksTag).trim(),
+					status: "Agent is thinking...",
+				});
+			}
+
+			// Check for breaking tags
+			const readTags = tags.filter((t) => t.tagName === "read");
+			const breakingTags = tags.filter((t) =>
+				["env", "run", "create", "delete", "edit", "prompt_user", "summary"].includes(
+					t.tagName,
+				),
+			);
+
+			// If we have breaking tags, or NO tags at all, we break the loop and return.
+			if (breakingTags.length > 0 || (readTags.length === 0 && breakingTags.length === 0)) {
+				const finalStatus = type === "act" ? "proposed" : "completed";
+				await this.#db.update_run_status.run({
+					id: currentRunId,
+					status: finalStatus,
+				});
+
+				// Persist Findings to Database
+				for (const diff of atomicResult.diffs) {
+					await this.#db.insert_finding_diff.run({
+						run_id: currentRunId,
+						turn_id: turnId,
+						file_path: diff.file,
+						patch: diff.patch,
+					});
+				}
+				for (const notif of atomicResult.notifications) {
+					await this.#db.insert_finding_notification.run({
+						run_id: currentRunId,
+						turn_id: turnId,
+						type: notif.type,
+						text: notif.text,
+						level: notif.level || null,
+						append: notif.append !== undefined ? (notif.append ? 1 : 0) : null,
+					});
+				}
+
+				finalResult = await this.#hooks.run.turn.filter(atomicResult, {
+					turn: turnObj,
+					sessionId,
+					type,
+				});
+
+				await hook.completed.emit({
+					runId: currentRunId,
+					sessionId,
+					model: targetModel,
+					turn: turnObj,
+					usage,
+					result: finalResult,
+				});
+
+				break; // Exit the while(true) loop
+			} else {
+				// ONLY <read> tags found
+				const newFiles = readTags
+					.map((t) => t.attrs.find((a) => a.name === "file")?.value)
+					.filter(Boolean);
+				
+				currentActiveFiles = [...new Set([...currentActiveFiles, ...newFiles])];
+				
+				historyMessages.push(newUserMsg);
+				historyMessages.push(finalResponse);
+				
+				sequenceOffset += 2;
+				loopPrompt = `<info>Read ${newFiles.length} file(s): ${newFiles.join(", ")}. Content is now available in the system context.</info>`;
+			}
 		}
-
-		// Allow plugins to augment the turn (e.g., add diffs, notifications)
-		const finalResult = await this.#hooks.run.turn.filter(atomicResult, {
-			turn: turnObj,
-			sessionId,
-			type,
-		});
-
-		await hook.completed.emit({
-			runId: currentRunId,
-			sessionId,
-			model: targetModel,
-			turn: turnObj,
-			usage,
-			result: finalResult,
-		});
 
 		return finalResult;
 	}

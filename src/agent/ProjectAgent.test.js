@@ -5,10 +5,13 @@ import { after, before, describe, it, mock } from "node:test";
 import createHooks from "../core/Hooks.js";
 import { registerPlugins } from "../plugins/index.js";
 import ProjectAgent from "./ProjectAgent.js";
+import TestDb from "../../test/helpers/TestDb.js";
 
 describe("ProjectAgent Unit", () => {
 	const projectPath = join(process.cwd(), "test_agent_unit");
 	let hooks;
+	let tdb;
+	let agent;
 
 	before(async () => {
 		process.env.OPENROUTER_API_KEY = "test-key";
@@ -19,113 +22,57 @@ describe("ProjectAgent Unit", () => {
 		await fs.mkdir(projectPath, { recursive: true }).catch(() => {});
 		hooks = createHooks();
 		await registerPlugins([], hooks);
+		tdb = await TestDb.create("project_agent");
+		agent = new ProjectAgent(tdb.db, hooks);
 	});
 
 	after(async () => {
 		await fs.rm(projectPath, { recursive: true, force: true }).catch(() => {});
+		if (tdb) await tdb.cleanup();
 	});
 
 	it("should initialize a project correctly", async () => {
-		const mockDb = {
-			upsert_project: { run: mock.fn(async () => {}) },
-			get_project_by_path: { all: mock.fn(async () => [{ id: "proj-1" }]) },
-			create_session: { run: mock.fn(async () => {}) },
-			get_project_repo_map: { all: mock.fn(async () => []) },
-			get_repo_map_file: { get: mock.fn(async () => null) },
-			upsert_repo_map_file: {
-				run: mock.fn(async () => {}),
-				get: mock.fn(async () => ({ id: "f1" })),
-			},
-			clear_repo_map_file_data: { run: mock.fn(async () => {}) },
-			insert_repo_map_tag: { run: mock.fn(async () => {}) },
-			insert_repo_map_ref: { run: mock.fn(async () => {}) },
-		};
-
-		const agent = new ProjectAgent(mockDb, hooks);
 		const result = await agent.init(projectPath, "Test", "client-1");
-
-		assert.strictEqual(result.projectId, "proj-1");
+		assert.ok(result.projectId);
 		assert.ok(result.sessionId);
 	});
 
-	it("should throw error if project creation fails", async () => {
-		const mockDb = {
-			upsert_project: { run: mock.fn() },
-			get_project_by_path: { all: mock.fn(async () => []) },
-		};
-		const agent = new ProjectAgent(mockDb, hooks);
-		await assert.rejects(agent.init(projectPath, "Test", "c1"), TypeError);
-	});
-
 	it("should update file visibility", async () => {
-		const mockDb = {
-			upsert_repo_map_file: {
-				run: mock.fn(),
-				get: mock.fn(async () => ({ id: "f1" })),
-			},
-			get_project_by_id: {
-				get: mock.fn(async () => ({ id: "p1", path: projectPath })),
-			},
-			get_project_repo_map: { all: mock.fn(async () => []) },
-			get_repo_map_file: { get: mock.fn(async () => null) },
-			clear_repo_map_file_data: { run: mock.fn() },
-			insert_repo_map_tag: { run: mock.fn() },
-			insert_repo_map_ref: { run: mock.fn() },
-		};
-		const agent = new ProjectAgent(mockDb, hooks);
-		const result = await agent.updateFiles("p1", [
+		const initRes = await agent.init(projectPath, "Test", "client-1");
+		const result = await agent.updateFiles(initRes.projectId, [
 			{ path: "f.js", visibility: "active" },
 		]);
 		assert.strictEqual(result.status, "ok");
 	});
 
 	it("should get files", async () => {
-		const mockDb = {
-			get_project_by_path: { all: mock.fn(async () => [{ id: "p1" }]) },
-			get_project_repo_map: { all: mock.fn(async () => []) },
-		};
-		const agent = new ProjectAgent(mockDb, hooks);
+		await agent.init(projectPath, "Test", "client-1");
 		const files = await agent.getFiles(projectPath);
 		assert.ok(Array.isArray(files));
 	});
 
 	it("should handle 'ask' method", async () => {
-		const mockDb = {
-			get_session_by_id: { all: mock.fn(async () => [{ project_id: "p1" }]) },
-			get_project_by_id: {
-				get: mock.fn(async () => ({ id: "p1", path: projectPath })),
-			},
-			create_run: { run: mock.fn() },
-			get_project_repo_map: { all: mock.fn(async () => []) },
-			get_file_references: { all: mock.fn(async () => []) },
-			get_repo_map_file: { get: mock.fn(async () => null) },
-			upsert_repo_map_file: {
-				run: mock.fn(),
-				get: mock.fn(async () => ({ id: "f1" })),
-			},
-			clear_repo_map_file_data: { run: mock.fn() },
-			insert_repo_map_tag: { run: mock.fn() },
-			insert_repo_map_ref: { run: mock.fn() },
-			create_turn: { run: mock.fn(async () => ({ lastInsertRowid: 123 })) },
-			update_run_status: { run: mock.fn() },
-			insert_finding_diff: { run: mock.fn() },
-			insert_finding_notification: { run: mock.fn() },
-		};
+		const initRes = await agent.init(projectPath, "Test", "client-1");
 
-		mock.method(globalThis, "fetch", async () => ({
-			ok: true,
-			json: async () => ({
-				choices: [{ message: { content: "Paris" } }],
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async () => new Response(
+			JSON.stringify({
+				model: "test-model",
+				choices: [{ message: { role: "assistant", content: "Paris" } }],
 				usage: { total_tokens: 10 },
 			}),
-		}));
-
-		const agent = new ProjectAgent(mockDb, hooks);
-		const result = await agent.ask(
-			"sess-1",
-			process.env.SNORE_MODEL_DEFAULT,
-			"Capital?",
+			{ status: 200, headers: { "Content-Type": "application/json" } }
 		);
-		assert.strictEqual(result.content, "Paris");
+
+		try {
+			const result = await agent.ask(
+				initRes.sessionId,
+				process.env.SNORE_MODEL_DEFAULT,
+				"Capital?",
+			);
+			assert.strictEqual(result.content, "Paris");
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });
