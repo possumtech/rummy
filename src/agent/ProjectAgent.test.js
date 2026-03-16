@@ -106,8 +106,10 @@ describe("ProjectAgent Unit", () => {
 			clear_repo_map_file_data: { run: mock.fn() },
 			insert_repo_map_tag: { run: mock.fn() },
 			insert_repo_map_ref: { run: mock.fn() },
-			create_turn: { run: mock.fn() },
+			create_turn: { run: mock.fn(async () => ({ lastInsertRowid: 123 })) },
 			update_run_status: { run: mock.fn() },
+			insert_finding_diff: { run: mock.fn() },
+			insert_finding_notification: { run: mock.fn() },
 		};
 
 		mock.method(globalThis, "fetch", async () => ({
@@ -124,6 +126,6 @@ describe("ProjectAgent Unit", () => {
 			process.env.SNORE_DEFAULT_MODEL,
 			"Capital?",
 		);
-		assert.strictEqual(result.choices[0].message.content, "Paris");
+		assert.strictEqual(result.content, "Paris");
 	});
 });

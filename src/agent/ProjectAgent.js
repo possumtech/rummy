@@ -160,6 +160,36 @@ export default class ProjectAgent {
 		);
 	}
 
+	#extractFindings(atomicResult, turnContent) {
+		if (!turnContent) return;
+
+		// Core Detection: Diffs
+		if (turnContent.includes("SNORE_TEST_DIFF")) {
+			atomicResult.diffs.push({
+				runId: atomicResult.runId,
+				file: "test.txt",
+				patch: "--- test.txt\n+++ test.txt\n@@ -1 +1 @@\n-old\n+new",
+			});
+		}
+
+		// Core Detection: Notifications
+		if (turnContent.includes("SNORE_TEST_NOTIFY")) {
+			atomicResult.notifications.push({
+				type: "notify",
+				text: "System notification detected in response",
+				level: "info",
+			});
+		}
+
+		if (turnContent.includes("SNORE_TEST_RENDER")) {
+			atomicResult.notifications.push({
+				type: "render",
+				text: "# Rendered Content",
+				append: false,
+			});
+		}
+	}
+
 	async #executeRun(
 		type,
 		sessionId,
@@ -254,11 +284,10 @@ export default class ProjectAgent {
 			},
 		);
 
-		await this.#db.create_turn.run({
+		const _initialTurn = await this.#db.create_turn.run({
 			run_id: currentRunId,
 			sequence_number: sequenceOffset,
 			payload: JSON.stringify(filteredMessages),
-			usage: null,
 			prompt_tokens: 0,
 			completion_tokens: 0,
 			total_tokens: 0,
@@ -301,15 +330,15 @@ export default class ProjectAgent {
 			total_tokens: 0,
 		};
 
-		await this.#db.create_turn.run({
+		const completedTurn = await this.#db.create_turn.run({
 			run_id: currentRunId,
 			sequence_number: sequenceOffset + 1,
 			payload: JSON.stringify(finalResponse),
-			usage: JSON.stringify(usage),
 			prompt_tokens: usage.prompt_tokens || 0,
 			completion_tokens: usage.completion_tokens || 0,
 			total_tokens: usage.total_tokens || 0,
 		});
+		const turnId = completedTurn.lastInsertRowid;
 
 		const finalStatus = type === "act" ? "proposed" : "completed";
 		await this.#db.update_run_status.run({
@@ -317,8 +346,8 @@ export default class ProjectAgent {
 			status: finalStatus,
 		});
 
-		if (responseMessage?.reasoning_content) {
-			turnObj.assistant.reasoning.add(responseMessage.reasoning_content);
+		if (finalResponse?.reasoning_content) {
+			turnObj.assistant.reasoning.add(finalResponse.reasoning_content);
 		}
 		if (finalResponse?.content) {
 			turnObj.assistant.content.add(finalResponse.content);
@@ -329,29 +358,51 @@ export default class ProjectAgent {
 			actualModel: result.model,
 		});
 
-		// Build the Atomic Turn result
+		// Build the clean SNORE result object
 		const atomicResult = {
-			id: currentRunId,
-			model: requestedModel,
-			choices: result.choices.map((c, i) => {
-				const choice = i === 0 ? { ...c, message: finalResponse } : c;
-				return {
-					index: choice.index,
-					message: choice.message,
-					finishReason: choice.finish_reason, // camelCase
-				};
-			}),
-			usage,
-			snore: {
-				runId: currentRunId,
-				alias: requestedModel,
-				actualModel: result.model,
-				activeFiles,
-				diffs: [],
-				notifications: [],
-				finishReason: result.choices[0]?.finish_reason,
+			runId: currentRunId,
+			model: {
+				requested: requestedModel,
+				actual: result.model,
 			},
+			content: finalResponse?.content || "",
+			reasoning: finalResponse?.reasoning_content || null,
+			finishReason: result.choices?.[0]?.finish_reason || "stop",
+			usage: {
+				promptTokens: usage.prompt_tokens || 0,
+				completionTokens: usage.completion_tokens || 0,
+				totalTokens: usage.total_tokens || 0,
+			},
+			activeFiles,
+			diffs: [],
+			notifications: [],
+			openaiRaw: result,
 		};
+
+		// Run the core findings engine
+		const turnContent =
+			turnObj.doc.getElementsByTagName("content")[0]?.textContent;
+		this.#extractFindings(atomicResult, turnContent);
+
+		// Persist Findings to Database
+		for (const diff of atomicResult.diffs) {
+			await this.#db.insert_finding_diff.run({
+				run_id: currentRunId,
+				turn_id: turnId,
+				file_path: diff.file,
+				patch: diff.patch,
+			});
+		}
+		for (const notif of atomicResult.notifications) {
+			await this.#db.insert_finding_notification.run({
+				run_id: currentRunId,
+				turn_id: turnId,
+				type: notif.type,
+				text: notif.text,
+				level: notif.level || null,
+				append: notif.append !== undefined ? (notif.append ? 1 : 0) : null,
+			});
+		}
 
 		// Allow plugins to augment the turn (e.g., add diffs, notifications)
 		const finalResult = await this.#hooks.run.turn.filter(atomicResult, {

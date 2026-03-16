@@ -88,7 +88,8 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 		tserver.hooks.addFilter("llm.response", (response) => {
 			return {
 				...response,
-				content: "Acting... SNORE_TEST_NOTIFY SNORE_TEST_RENDER SNORE_TEST_DIFF",
+				content:
+					"Acting... SNORE_TEST_NOTIFY SNORE_TEST_RENDER SNORE_TEST_DIFF",
 				reasoning_content: "I need to notify and diff.",
 			};
 		});
@@ -99,34 +100,31 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 		});
 
 		// Verify Atomic Turn bundling
-		assert.ok(result.id);
-		assert.strictEqual(result.model, "mock-model");
-		assert.strictEqual(result.snore.alias, "mock-model");
-		assert.ok(result.snore.actualModel);
-		assert.ok(Array.isArray(result.snore.activeFiles));
+		assert.ok(result.runId);
+		assert.strictEqual(result.model.requested, "mock-model");
+		assert.ok(result.model.actual);
+		assert.ok(Array.isArray(result.activeFiles));
 
 		// Verify bundled diffs
-		assert.ok(result.snore.diffs.length > 0);
-		assert.strictEqual(result.snore.diffs[0].file, "test.txt");
-		assert.ok(result.snore.diffs[0].patch.includes("--- test.txt"));
+		assert.ok(result.diffs.length > 0);
+		assert.strictEqual(result.diffs[0].file, "test.txt");
+		assert.ok(result.diffs[0].patch.includes("--- test.txt"));
 
 		// Verify bundled notifications
-		assert.ok(result.snore.notifications.length >= 2);
-		const notify = result.snore.notifications.find((n) => n.type === "notify");
-		const render = result.snore.notifications.find((n) => n.type === "render");
+		assert.ok(result.notifications.length >= 2);
+		const notify = result.notifications.find((n) => n.type === "notify");
+		const render = result.notifications.find((n) => n.type === "render");
 		assert.strictEqual(notify.text, "System notification detected in response");
 		assert.strictEqual(render.text, "# Rendered Content");
 
-		const message = result.choices[0].message;
-		assert.strictEqual(message.role, "assistant");
-		assert.ok(message.content.includes("Acting..."));
-		assert.strictEqual(message.reasoning_content, "I need to notify and diff.");
+		assert.ok(result.content.includes("Acting..."));
+		assert.strictEqual(result.reasoning, "I need to notify and diff.");
 		assert.ok(result.usage);
 	});
 
 	it("should support iterating on a Run (multi-turn context)", async () => {
 		// 1. First act to start a run
-		tserver.hooks.addFilter("llm.response", (response) => ({
+		tserver.hooks.llm.response.addFilter((response) => ({
 			...response,
 			content: "Proposal 1",
 		}));
@@ -135,8 +133,8 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 			model: "mock-model",
 			prompt: "First request",
 		});
-		const runId = res1.id;
-
+		const runId = res1.runId;
+		assert.ok(runId);
 		// 2. Second act with same runId
 		// We mock fetch to verify the messages sent to the LLM
 		const originalFetch = globalThis.fetch;
@@ -161,7 +159,7 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 				runId,
 			});
 
-			assert.strictEqual(res2.id, runId);
+			assert.strictEqual(res2.runId, runId);
 			// Verify history: should have [System, User(1), Assistant(1), User(2)]
 			assert.strictEqual(lastSentMessages.length, 4);
 			assert.strictEqual(

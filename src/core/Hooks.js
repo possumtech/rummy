@@ -1,60 +1,88 @@
 import HookRegistry from "./HookRegistry.js";
 
 /**
- * createHooks returns a proxy-based wrapper around HookRegistry.
- * This allows for a nested, fluent API:
- *   hooks.category.action.emit(payload)
- *   hooks.category.filter.filter(value, context)
- *
- * It also provides access to the core registry methods:
- *   hooks.onTurn(callback)
- *   hooks.processTurn(doc, context, h)
+ * createHooks returns a structured, strictly-typed API for registering
+ * and emitting hooks, removing the dynamic stringly-typed Proxy magic.
  */
 export default function createHooks(debug = false) {
 	const registry = new HookRegistry(debug);
 
-	const createProxy = (path = []) => {
-		const target = () => {};
+	const createEvent = (tag) => ({
+		on: (callback, priority) => registry.addEvent(tag, callback, priority),
+		emit: (...args) => registry.emitEvent(tag, ...args),
+	});
 
-		// Core Registry methods on the root only
-		if (path.length === 0) {
-			target.onTurn = registry.onTurn.bind(registry);
-			target.processTurn = registry.processTurn.bind(registry);
-			target.addFilter = registry.addFilter.bind(registry);
-			target.applyFilters = registry.applyFilters.bind(registry);
-			target.addEvent = registry.addEvent.bind(registry);
-			target.emitEvent = registry.emitEvent.bind(registry);
-		}
+	const createFilter = (tag) => ({
+		addFilter: (callback, priority) =>
+			registry.addFilter(tag, callback, priority),
+		filter: (value, ...args) => registry.applyFilters(tag, value, ...args),
+	});
 
-		return new Proxy(target, {
-			get(obj, prop) {
-				// Return existing root methods
-				if (path.length === 0 && prop in obj) return obj[prop];
+	return {
+		// Core Turn Pipeline
+		onTurn: registry.onTurn.bind(registry),
+		processTurn: registry.processTurn.bind(registry),
 
-				// Special handlers for proxy termination
-				if (prop === "filter") {
-					return (value, ...args) =>
-						registry.applyFilters(path.join("."), value, ...args);
-				}
-				if (prop === "addFilter") {
-					return (callback, priority) =>
-						registry.addFilter(path.join("."), callback, priority);
-				}
-				if (prop === "emit") {
-					return (...args) => registry.emitEvent(path.join("."), ...args);
-				}
-				if (prop === "on") {
-					return (callback, priority) =>
-						registry.addEvent(path.join("."), callback, priority);
-				}
-
-				return createProxy([...path, prop]);
+		// Explicit Hook Schema
+		project: {
+			init: {
+				started: createEvent("project.init.started"),
+				completed: createEvent("project.init.completed"),
 			},
-			apply(_target, _thisArg, args) {
-				return createProxy([...path, ...args]);
+			files: {
+				update: {
+					started: createEvent("project.files.update.started"),
+					completed: createEvent("project.files.update.completed"),
+				},
 			},
-		});
+		},
+		run: {
+			started: createEvent("run.started"),
+			config: createFilter("run.config"),
+			turn: createFilter("run.turn"),
+		},
+		ask: {
+			started: createEvent("ask.started"),
+			completed: createEvent("ask.completed"),
+		},
+		act: {
+			started: createEvent("act.started"),
+			completed: createEvent("act.completed"),
+		},
+		llm: {
+			request: {
+				started: createEvent("llm.request.started"),
+				completed: createEvent("llm.request.completed"),
+			},
+			messages: createFilter("llm.messages"),
+			response: createFilter("llm.response"),
+		},
+		ui: {
+			render: createEvent("ui.render"),
+			notify: createEvent("ui.notify"),
+		},
+		editor: {
+			diff: createEvent("editor.diff"),
+		},
+		socket: {
+			message: {
+				raw: createFilter("socket.message.raw"),
+			},
+		},
+		rpc: {
+			started: createEvent("rpc.started"),
+			completed: createEvent("rpc.completed"),
+			error: createEvent("rpc.error"),
+			request: createFilter("rpc.request"),
+			response: {
+				result: createFilter("rpc.response.result"),
+			},
+		},
+
+		// Utility to add raw filters/events directly if needed for tests
+		addFilter: registry.addFilter.bind(registry),
+		applyFilters: registry.applyFilters.bind(registry),
+		addEvent: registry.addEvent.bind(registry),
+		emitEvent: registry.emitEvent.bind(registry),
 	};
-
-	return createProxy();
 }

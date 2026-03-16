@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -16,7 +17,13 @@ export async function registerPlugins(dirs = [], hooks) {
 async function scanDir(dir, hooks, isRoot = false) {
 	if (!existsSync(dir)) return;
 
-	const dirStats = statSync(dir);
+	let dirStats;
+	try {
+		dirStats = await stat(dir);
+	} catch (_err) {
+		return;
+	}
+
 	if (!dirStats.isDirectory()) {
 		if (process.env.SNORE_DEBUG === "true") {
 			console.error(
@@ -28,7 +35,7 @@ async function scanDir(dir, hooks, isRoot = false) {
 
 	let entries;
 	try {
-		entries = readdirSync(dir);
+		entries = await readdir(dir);
 	} catch (err) {
 		if (process.env.SNORE_DEBUG === "true") {
 			console.error(`[SNORE] Failed to read directory ${dir}:`, err.message);
@@ -42,27 +49,16 @@ async function scanDir(dir, hooks, isRoot = false) {
 		const fullPath = join(dir, name);
 		let stats;
 		try {
-			stats = statSync(fullPath);
+			stats = await stat(fullPath);
 		} catch (_err) {
 			continue;
 		}
 
 		if (stats.isFile() && name.endsWith(".js")) {
-			// Always load any .js file that is not index.js (unless we want index.js)
-			// Wait: to maintain original intent of 'index.js as folder entry point'
 			if (name === "index.js" || name === `${basename(dir)}.js`) {
 				await loadPlugin(fullPath, hooks);
-			} else if (isRoot) {
-				// At root level, load all files except index.js
-				if (name !== "index.js") await loadPlugin(fullPath, hooks);
-			} else {
-				// In a subfolder, and it's not the entry point file. 
-				// We don't load random .js files deep in subfolders unless they follow the naming convention.
-				// This prevents loading tests or helpers.
-				// However, if we want to allow deep organization like findings/findings.js:
-				if (name === `${basename(dir)}.js`) {
-					await loadPlugin(fullPath, hooks);
-				}
+			} else if (isRoot && name !== "index.js") {
+				await loadPlugin(fullPath, hooks);
 			}
 		} else if (stats.isDirectory()) {
 			await scanDir(fullPath, hooks, false);
