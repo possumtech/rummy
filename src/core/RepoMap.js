@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { dirname, extname, join, relative } from "node:path";
 import { getEncoding } from "js-tiktoken";
 import SymbolExtractor from "./SymbolExtractor.js";
 
@@ -43,20 +43,21 @@ export default class RepoMap {
 			if (existing?.hash === hash && existing?.visibility === visibility)
 				continue;
 
+			// Always upsert the file record so it exists in the map even without symbols
+			const { id: fileId } = await this.#db.upsert_repo_map_file.get({
+				project_id: this.#projectId,
+				path: relPath,
+				hash,
+				size,
+				visibility,
+			});
+
+			await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
+
 			const ext = extname(relPath).slice(1);
 			const extraction = this.#hdExtractor.extract(content, ext);
 
 			if (extraction) {
-				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
-					project_id: this.#projectId,
-					path: relPath,
-					hash,
-					size,
-					visibility,
-				});
-
-				await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
-
 				for (const sym of extraction.definitions) {
 					await this.#db.insert_repo_map_tag.run({
 						file_id: fileId,
@@ -122,7 +123,13 @@ export default class RepoMap {
 			budget = Math.floor(options.contextSize * (percent / 100));
 		}
 
-		for (const relPath of activeFiles) {
+		// Normalize active file paths to be relative to project root
+		const normalizedActiveFiles = activeFiles.map((f) =>
+			relative(this.#ctx.root, join(this.#ctx.root, f)),
+		);
+
+		// 1. Identify all symbols referenced in the active context
+		for (const relPath of normalizedActiveFiles) {
 			const refs = await this.#db.get_file_references.all({
 				project_id: this.#projectId,
 				path: relPath,
@@ -130,6 +137,7 @@ export default class RepoMap {
 			for (const r of refs) globalReferences.add(r.symbol_name);
 		}
 
+		// 2. Load all project tags and map them
 		const allTags = await this.#db.get_project_repo_map.all({
 			project_id: this.#projectId,
 		});
@@ -138,9 +146,8 @@ export default class RepoMap {
 			if (!filesMap.has(tag.path)) {
 				filesMap.set(tag.path, {
 					path: tag.path,
-					size: tag.size,
+					visibility: tag.visibility || "mapped",
 					symbols: [],
-					source: tag.source,
 				});
 			}
 			if (tag.name) {
@@ -153,37 +160,115 @@ export default class RepoMap {
 			}
 		}
 
-		const sortedFiles = Array.from(filesMap.values())
-			.map((entry) => {
-				const isActive = activeFiles.includes(entry.path);
-				const isReferenced = entry.symbols.some((s) =>
-					globalReferences.has(s.name),
-				);
-				const isHot = isActive || isReferenced;
-				const rank = isActive ? 2 : isReferenced ? 1 : 0;
+		const activeDirs = new Set(normalizedActiveFiles.map((f) => dirname(f)));
 
-				const symbols = entry.symbols.map((s) => {
-					if (isHot) return s;
-					const { params, line, ...cold } = s;
-					return cold;
-				});
+		// 3. Score and Categorize Files
+		const processedFiles = Array.from(filesMap.values()).map((file) => {
+			const status = normalizedActiveFiles.includes(file.path)
+				? "active"
+				: file.visibility;
 
-				return { ...entry, mode: isHot ? "hot" : "cold", symbols, rank };
-			})
-			.sort((a, b) => b.rank - a.rank || a.path.localeCompare(b.path));
+			// Relevance Heuristic
+			const overlapCount = file.symbols.filter((s) =>
+				globalReferences.has(s.name),
+			).length;
+			const isInActiveDir = activeDirs.has(dirname(file.path));
 
-		const pruned = [];
+			let rank = 0;
+			if (status === "active" || status === "read_only") {
+				rank = 100000; // Always top
+			} else {
+				// Significant boost for directory proximity (1000 pts)
+				// + symbol overlap (10 pts per symbol)
+				rank = (isInActiveDir ? 1000 : 0) + overlapCount * 10;
+			}
+
+			return { ...file, status, rank, overlapCount };
+		});
+
+		// Sort by rank (relevance)
+		const sorted = processedFiles.sort(
+			(a, b) => b.rank - a.rank || a.path.localeCompare(b.path),
+		);
+
+		const finalFiles = [];
 		let currentTokens = 0;
 
-		for (const file of sortedFiles) {
-			const estTokens = this.#tokenizer.encode(JSON.stringify(file)).length;
-			if (currentTokens + estTokens > budget && file.rank === 0) continue;
-			pruned.push(file);
+		// 4. Adaptive Detail Selection ("The Squish")
+		for (const file of sorted) {
+			if (file.status === "ignored") continue;
+
+			let displayFile;
+
+			if (file.status === "active" || file.status === "read_only") {
+				// FULL CONTENT for Active and Read Only
+				const fullPath = join(this.#ctx.root, file.path);
+				let content = "";
+				try {
+					content = readFileSync(fullPath, "utf8");
+				} catch (err) {
+					content = `Error reading file: ${err.message}`;
+				}
+				displayFile = {
+					path: file.path,
+					status: file.status,
+					content,
+				};
+			} else {
+				// MAPPED files start with full detail (Signatures)
+				displayFile = {
+					path: file.path,
+					status: file.status,
+					symbols: file.symbols,
+				};
+			}
+
+			let estTokens = this.#tokenizer.encode(JSON.stringify(displayFile)).length;
+
+			// If we are over budget, attempt to "Squish" before dropping
+			if (currentTokens + estTokens > budget) {
+				if (file.status === "active" || file.status === "read_only") {
+					// Mandatory context - we keep active files even if they blow the budget
+				} else if (file.status === "mapped") {
+					// Tier 1 Squish: Detailed Symbols -> Signatures Only (No params/lines)
+					const signaturesOnly = {
+						path: file.path,
+						status: file.status,
+						symbols: file.symbols.map((s) => ({ name: s.name, type: s.type })),
+					};
+					const sigTokens = this.#tokenizer.encode(
+						JSON.stringify(signaturesOnly),
+					).length;
+
+					if (currentTokens + sigTokens <= budget) {
+						displayFile = signaturesOnly;
+						estTokens = sigTokens;
+					} else {
+						// Tier 2 Squish: Signatures -> Breadcrumbs (Path only)
+						const pathOnly = { path: file.path, status: file.status };
+						const pathTokens = this.#tokenizer.encode(
+							JSON.stringify(pathOnly),
+						).length;
+
+						if (currentTokens + pathTokens <= budget) {
+							displayFile = pathOnly;
+							estTokens = pathTokens;
+						} else {
+							// For cold/mapped files over budget, we skip them entirely
+							continue;
+						}
+					}
+				} else {
+					continue; // Skip ignored or other types
+				}
+			}
+
+			finalFiles.push(displayFile);
 			currentTokens += estTokens;
 		}
 
 		return {
-			files: pruned,
+			files: finalFiles,
 			usage: { tokens: currentTokens, budget },
 		};
 	}

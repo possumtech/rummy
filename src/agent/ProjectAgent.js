@@ -677,13 +677,23 @@ export default class ProjectAgent {
 
 				// Persist Findings to Database
 				for (const diff of atomicResult.diffs) {
-					await this.#db.insert_finding_diff.run({
+					const res = await this.#db.insert_finding_diff.run({
 						run_id: currentRunId,
 						turn_id: turnId,
 						type: diff.type,
 						file_path: diff.file,
 						patch: diff.patch,
 					});
+					diff.id = res.lastInsertRowid;
+				}
+				for (const cmd of atomicResult.commands) {
+					const res = await this.#db.insert_finding_command.run({
+						run_id: currentRunId,
+						turn_id: turnId,
+						type: cmd.type,
+						command: cmd.command,
+					});
+					cmd.id = res.lastInsertRowid;
 				}
 				for (const notif of atomicResult.notifications) {
 					await this.#db.insert_finding_notification.run({

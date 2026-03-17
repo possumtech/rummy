@@ -47,13 +47,8 @@ export default class RepoMapPlugin {
 					fileEl.appendChild(symbolsEl);
 				}
 
-				if (f.mode === "hot" && activeFiles.includes(f.path)) {
-					const fullPath = join(project.path, f.path);
-					if (existsSync(fullPath)) {
-						fileEl.appendChild(
-							rummy.doc.createTextNode(readFileSync(fullPath, "utf8")),
-						);
-					}
+				if (f.mode === "active" && f.content) {
+					fileEl.appendChild(rummy.doc.createTextNode(f.content));
 				}
 
 				filesContainer.appendChild(fileEl);

@@ -1,3 +1,4 @@
+import { isAbsolute, join, relative } from "node:path";
 import GitProvider from "./GitProvider.js";
 
 export const FileState = {
@@ -28,12 +29,25 @@ export default class ProjectContext {
 	 */
 	static async open(path, visibilityOverrides = new Map()) {
 		const detectedRoot = await GitProvider.detectRoot(path);
-		const root = detectedRoot || path;
+		const root = path; // Stay at the requested path level
 		const isGit = detectedRoot !== null;
 
 		let trackedFiles = new Set();
 		if (isGit) {
-			trackedFiles = await GitProvider.getTrackedFiles(root);
+			// Get files relative to our current sub-root
+			const allTracked = await GitProvider.getTrackedFiles(detectedRoot);
+			const relToRoot = relative(detectedRoot, root);
+			
+			for (const f of allTracked) {
+				const fullF = join(detectedRoot, f);
+				const relToProject = relative(root, fullF);
+				
+				// Only include if the file is inside or equal to our project root
+				// relative() returns a path starting with '..' if it's outside.
+				if (!relToProject.startsWith("..") && !isAbsolute(relToProject)) {
+					trackedFiles.add(relToProject);
+				}
+			}
 		}
 
 		return new ProjectContext(root, isGit, trackedFiles, visibilityOverrides);

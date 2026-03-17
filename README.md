@@ -1,14 +1,14 @@
-# RUMMY: Sqlite/Node OpenRouter Engine
+# RUMMY: Relational Underpinned Model Manager & Yield-engine
 
-RUMMY is a high-integrity, system-wide agent service that orchestrates LLM sessions for multiple clients (e.g., Neovim instances). It treats the project codebase as a **Relational Single Source of Truth**, storing state, history, and semantic maps in a shared SQLite database.
+Rummy is a high-integrity agent service that orchestrates LLM sessions via the **Rumsfeld Loop** architecture. It treats your codebase as a relational source of truth, managing state, discovery, and file modifications through a shared SQLite backend.
 
 ## Key Features
 
-- **Lean Core:** A modular, plugin-first architecture using WordPress-style hooks, filters, and events.
-- **Dynamic Context:** Automated repository mapping with a "Hot/Cold" lens to optimize token usage.
-- **Relational Integrity:** Strictly enforced database constraints and flattened token metrics.
-- **System-Wide:** One service manages multiple projects and sessions, defaulting to `~/.rummy`.
-- **Audit-First:** Prettified XML turn audits for every model exchange.
+- **The Rumsfeld Loop:** A strict cognitive lifecycle (Observe, Orient, Decide, Act) that enforces discovery before modification to eliminate hallucinations.
+- **Relational Integrity:** SQLite-backed state machine with declarative diff resolution and mandatory user-approval gates.
+- **Adaptive Context:** Dynamic repository mapping that "squishes" file details (Full -> Signatures -> Paths) based on relevance and token budget.
+- **Atomic Turns:** Consolidated WebSocket protocol that bundles content, diffs, and commands into single, deterministic responses.
+- **Dumb Client Philosophy:** Designed to run lean on hardware like Raspberry Pi 5 by offloading all heavy parsing and state management to the server.
 
 ## Installation
 
@@ -24,57 +24,21 @@ cp .env.example .env
 
 ### Start the Service
 ```bash
-npm start   # Production mode
-npm run dev # Watch mode with dev database
-npm run debug # Debug mode on port 3047 with verbose telemetry
+npm start   # Production mode (port 3044)
+npm run dev # Watch mode with dev database (port 3045)
 ```
 
-### Manual Testing
-You can run the live "Paris" test to verify your installation:
-```bash
-node test/example_paris.js
-```
+### Protocol
+Rummy communicates via JSON-RPC 2.0 over WebSockets. It uses a structured XML pipeline internally to build prompts and parse agent actions.
 
-## Plugin Architecture
+## Cognitive Architecture
 
-RUMMY is infinitely extensible. Create a JavaScript file in `src/internal/` or `~/.rummy/plugins/`.
+Rummy enforces a strict order of operations in every turn:
+1. `<learned>`: What was just discovered.
+2. `<unknown>`: What is still missing.
+3. `<tasks>`: Checklist of objectives.
+4. `ACTION`: One discrete tool call (`read`, `edit`, `run`, etc.).
 
-### Creating a Plugin
-```javascript
-export default class MyPlugin {
-    static register(hooks) {
-        // Handle a Lifecycle Event
-        hooks.ask.completed.on(async ({ runId, turn }) => {
-            console.log(`Run ${runId} finished.`);
-        });
+This ensures the model remains grounded in the current filesystem state and never "guesses" code it hasn't read.
 
-        // Participate in the XML Pipeline
-        hooks.onTurn(async (rummy) => {
-            // Add instructions to the system prompt
-            rummy.system.appendChild(
-                rummy.doc.createTextNode("\nYou are an expert pair programmer.")
-            );
-
-            // Inject custom context using the .tag() helper
-            const myTag = rummy.tag("my_extension", { version: "1.0" }, [
-                "Custom extension data"
-            ]);
-            rummy.contextEl.appendChild(myTag);
-        });
-    }
-}
-```
-
-### Hook & Event Map
-
-| Type | Name | Purpose |
-| :--- | :--- | :--- |
-| **Pipeline** | `onTurn` | The primary DOM manipulation hook for the XML document. |
-| **Event** | `project.init.started` | Runs before a project is initialized. |
-| **Event** | `project.init.completed`| Runs after a project is opened. |
-| **Event** | `ask.started` | Runs when an LLM turn begins. |
-| **Event** | `ask.completed` | Runs after a model response is received. |
-| **Filter** | `rpc.request` | Intercept and modify JSON-RPC calls. |
-| **Filter** | `rpc.response.result` | Modify the final result of an RPC method. |
-
-See `AGENTS.md` for the full architectural specification and XML pipeline details.
+See `AGENTS.md` for the full architectural specification and `SOCKET_PROTOCOL.md` for API details.
