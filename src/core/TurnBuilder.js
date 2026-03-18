@@ -1,12 +1,7 @@
-import fs from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { DOMImplementation } from "@xmldom/xmldom";
+import PromptManager from "./PromptManager.js";
 import RummyContext from "./RummyContext.js";
 import Turn from "./Turn.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SYSTEM_MD_PATH = join(__dirname, "../../../system.md");
 
 export default class TurnBuilder {
 	#hooks;
@@ -20,11 +15,15 @@ export default class TurnBuilder {
 	 * Build a structured Turn by running the DOM pipeline.
 	 */
 	async build(initialData = {}) {
-		const { prompt, sessionId, db, project, ...contextData } = initialData;
+		const { prompt, sessionId, db, project, type, model, ...contextData } =
+			initialData;
 
 		// 1. Create fresh Document
 		const doc = this.#dom.createDocument(null, "turn", null);
 		const root = doc.documentElement;
+		if (initialData.sequence !== undefined) {
+			root.setAttribute("sequence", initialData.sequence);
+		}
 
 		// 2. Scaffold Basic Structure
 		const system = doc.createElement("system");
@@ -38,53 +37,53 @@ export default class TurnBuilder {
 		root.appendChild(assistant);
 
 		// 3. Create RummyContext for the Pipeline
-		const rummy = new RummyContext(doc, { sessionId, db, project, ...contextData });
+		const rummy = new RummyContext(doc, {
+			sessionId,
+			db,
+			project,
+			type,
+			model,
+			...contextData,
+		});
 
-		let systemPromptText = null;
+		let customPrompt = null;
 
-		// Fetch and Inject System Prompt, Persona, and Skills if db is available
+		// Fetch Session Data if db is available
 		if (db && sessionId) {
 			const sessions = await db.get_session_by_id.all({ id: sessionId });
 			if (sessions.length > 0) {
 				const session = sessions[0];
-				
-				if (session.system_prompt) {
-					systemPromptText = session.system_prompt;
-				}
+				customPrompt = session.system_prompt;
 
 				if (session.persona) {
-					const personaEl = rummy.tag("persona", {}, [session.persona]);
-					contextEl.appendChild(personaEl);
+					contextEl.appendChild(rummy.tag("persona", {}, [session.persona]));
 				}
 
-				const skills = await db.get_session_skills.all({ session_id: sessionId });
-				if (skills.length > 0) {
-					const skillsEl = doc.createElement("skills");
-					for (const skill of skills) {
-						skillsEl.appendChild(rummy.tag("skill", {}, [skill.name]));
-					}
-					contextEl.appendChild(skillsEl);
+				const skills = await db.get_session_skills.all({
+					session_id: sessionId,
+				});
+				for (const skill of skills) {
+					const skillsEl =
+						contextEl.getElementsByTagName("skills")[0] ||
+						doc.createElement("skills");
+					if (!skillsEl.parentNode) contextEl.appendChild(skillsEl);
+					skillsEl.appendChild(rummy.tag("skill", {}, [skill.name]));
 				}
 			}
 		}
 
-		if (!systemPromptText) {
-			try {
-				systemPromptText = await fs.readFile(DEFAULT_SYSTEM_MD_PATH, "utf8");
-			} catch (err) {
-				// Fallback if system.md is missing
-				systemPromptText = "You are a helpful software engineering assistant.";
-			}
-		}
+		// Assembly System Prompt
+		const basePrompt = await PromptManager.getSystemPrompt(
+			type,
+			customPrompt || null,
+		);
+		const identity = PromptManager.formatIdentity(model);
 
-		if (systemPromptText) {
-			system.appendChild(doc.createTextNode(systemPromptText.trim() + "\n"));
-		}
+		system.appendChild(doc.createTextNode(`${identity}${basePrompt.trim()}\n`));
 
 		// 4. Seed the User Prompt
-		const actionTag = initialData.type === "act" ? "act" : "ask";
-		const actionEl = rummy.tag(actionTag, {}, [prompt]);
-		user.appendChild(actionEl);
+		const actionTag = type === "act" ? "act" : "ask";
+		user.appendChild(rummy.tag(actionTag, {}, [prompt]));
 
 		// 5. Run the Pipeline
 		await this.#hooks.processTurn(rummy);

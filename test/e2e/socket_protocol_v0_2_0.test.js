@@ -161,8 +161,8 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 			});
 
 			assert.strictEqual(res2.runId, runId);
-			// Verify history: should have [System, User(1), Assistant(1), User(2)]
-			assert.strictEqual(lastSentMessages.length, 4);
+			// Verify history: should have [System, User(1), Assistant(1), User(2), Prefill]
+			assert.strictEqual(lastSentMessages.length, 5);
 			assert.strictEqual(
 				lastSentMessages[1].content,
 				"<user><act>First request</act></user>",
@@ -205,20 +205,28 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 				prompt: "Check persona",
 			});
 
-			assert.strictEqual(lastSentMessages.length, 2);
-			const systemPrompt = lastSentMessages[0].content;
-			
+			// [System, User, Prefill]
+			assert.strictEqual(lastSentMessages.length, 3);
+			const fullSystemMessage = lastSentMessages[0].content;
+
 			// Verify systemPrompt injected
-			assert.ok(systemPrompt.includes("You are the base agent."));
+			assert.ok(fullSystemMessage.includes("You are the base agent."));
 			// Verify persona injected
-			assert.ok(systemPrompt.includes("<persona>You are a helpful test bot.</persona>"));
+			assert.ok(
+				fullSystemMessage.includes(
+					"<persona>You are a helpful test bot.</persona>",
+				),
+			);
 			// Verify skill injected
-			assert.ok(systemPrompt.includes("<skills><skill>test-skill-1</skill></skills>"));
+			assert.ok(
+				fullSystemMessage.includes(
+					"<skills><skill>test-skill-1</skill></skills>",
+				),
+			);
 			// Verify removed skill is absent
-			assert.ok(!systemPrompt.includes("test-skill-2"));
-			// Verify edit instructions injected because type is 'act'
-			assert.ok(systemPrompt.includes("<instructions><edit_format>"));
-			assert.ok(systemPrompt.includes("<<<<<<< SEARCH"));
+			assert.ok(!fullSystemMessage.includes("test-skill-2"));
+			// Verify dynamic identity header
+			assert.match(fullSystemMessage, /AGENT_MODEL: mock-model/i);
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

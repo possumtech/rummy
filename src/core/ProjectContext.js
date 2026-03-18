@@ -32,16 +32,16 @@ export default class ProjectContext {
 		const root = path; // Stay at the requested path level
 		const isGit = detectedRoot !== null;
 
-		let trackedFiles = new Set();
+		const trackedFiles = new Set();
 		if (isGit) {
 			// Get files relative to our current sub-root
 			const allTracked = await GitProvider.getTrackedFiles(detectedRoot);
-			const relToRoot = relative(detectedRoot, root);
-			
+			const _relToRoot = relative(detectedRoot, root);
+
 			for (const f of allTracked) {
 				const fullF = join(detectedRoot, f);
 				const relToProject = relative(root, fullF);
-				
+
 				// Only include if the file is inside or equal to our project root
 				// relative() returns a path starting with '..' if it's outside.
 				if (!relToProject.startsWith("..") && !isAbsolute(relToProject)) {

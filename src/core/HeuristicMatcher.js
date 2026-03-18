@@ -13,25 +13,35 @@ export default class HeuristicMatcher {
 		const exactMatches = fileContent.split(searchBlock).length - 1;
 		if (exactMatches === 1) {
 			const newContent = fileContent.replace(searchBlock, replaceBlock);
-			const patch = createPatch(filePath, fileContent, newContent, "old", "new");
+			const patch = createPatch(
+				filePath,
+				fileContent,
+				newContent,
+				"old",
+				"new",
+			);
 			return { patch, warning: null, error: null };
 		} else if (exactMatches > 1) {
 			return {
 				patch: null,
 				warning: null,
-				error: "The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
+				error:
+					"The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
 			};
 		}
 
 		// 2. Fuzzy Tokenized Match (Ignore leading/trailing whitespace per line)
-		const searchTokens = searchLines.map((l) => l.trim()).filter((l) => l !== "");
+		const searchTokens = searchLines
+			.map((l) => l.trim())
+			.filter((l) => l !== "");
 		const fileTokens = fileLines.map((l) => l.trim());
 
 		if (searchTokens.length === 0) {
 			return {
 				patch: null,
 				warning: null,
-				error: "SEARCH block is empty or only whitespace. Please provide exact lines to replace.",
+				error:
+					"SEARCH block is empty or only whitespace. Please provide exact lines to replace.",
 			};
 		}
 
@@ -45,7 +55,10 @@ export default class HeuristicMatcher {
 			for (let j = 0; j < searchTokens.length; j++) {
 				// Skip empty lines in the target file during fuzzy matching
 				let offset = 0;
-				while (i + j + offset < fileTokens.length && fileTokens[i + j + offset] === "") {
+				while (
+					i + j + offset < fileTokens.length &&
+					fileTokens[i + j + offset] === ""
+				) {
 					offset++;
 				}
 
@@ -75,7 +88,8 @@ export default class HeuristicMatcher {
 			return {
 				patch: null,
 				warning: null,
-				error: "Could not find the SEARCH block in the file. Ensure you are providing an exact match of the existing code, without truncating lines with '...'.",
+				error:
+					"Could not find the SEARCH block in the file. Ensure you are providing an exact match of the existing code, without truncating lines with '...'.",
 			};
 		}
 
@@ -83,22 +97,30 @@ export default class HeuristicMatcher {
 			return {
 				patch: null,
 				warning: null,
-				error: "The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
+				error:
+					"The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
 			};
 		}
 
 		// 3. Indentation Healing
 		// Extract the exact matched lines from the original file
-		const matchedFileLines = fileLines.slice(matchStartIndex, matchEndIndex + 1);
-		
+		const matchedFileLines = fileLines.slice(
+			matchStartIndex,
+			matchEndIndex + 1,
+		);
+
 		// Find the indentation of the first non-empty line in the matched file section
-		const firstFileIndentedLine = matchedFileLines.find(l => l.trim() !== "");
-		const fileIndentMatch = firstFileIndentedLine ? firstFileIndentedLine.match(/^(\s*)/) : null;
+		const firstFileIndentedLine = matchedFileLines.find((l) => l.trim() !== "");
+		const fileIndentMatch = firstFileIndentedLine
+			? firstFileIndentedLine.match(/^(\s*)/)
+			: null;
 		const fileIndent = fileIndentMatch ? fileIndentMatch[1] : "";
 
 		// Find the indentation of the first non-empty line in the SEARCH block
-		const firstSearchIndentedLine = searchLines.find(l => l.trim() !== "");
-		const searchIndentMatch = firstSearchIndentedLine ? firstSearchIndentedLine.match(/^(\s*)/) : null;
+		const firstSearchIndentedLine = searchLines.find((l) => l.trim() !== "");
+		const searchIndentMatch = firstSearchIndentedLine
+			? firstSearchIndentedLine.match(/^(\s*)/)
+			: null;
 		const searchIndent = searchIndentMatch ? searchIndentMatch[1] : "";
 
 		// Apply the delta to the replace block
@@ -107,9 +129,9 @@ export default class HeuristicMatcher {
 
 		if (fileIndent !== searchIndent) {
 			warning = `Indentation healing applied. The file has different indentation ('${fileIndent.replace(/\t/g, "\\t").replace(/ /g, "s")}') than your SEARCH block. Please try to match indentation exactly in future edits.`;
-			
+
 			const replaceLines = replaceBlock.split(/\r?\n/);
-			const healedLines = replaceLines.map(line => {
+			const healedLines = replaceLines.map((line) => {
 				if (line.trim() === "") return line;
 				// Strip the search indent and apply the file indent
 				if (line.startsWith(searchIndent)) {

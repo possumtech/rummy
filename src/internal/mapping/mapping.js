@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import ProjectContext from "../../core/ProjectContext.js";
 import RepoMap from "../../core/RepoMap.js";
 
@@ -37,7 +35,7 @@ export default class RepoMapPlugin {
 			rummy.contextEl.appendChild(filesContainer);
 
 			for (const f of perspective.files) {
-				const status = f.mode || "unknown";
+				const status = f.status || "mappable";
 				const fileEl = rummy.tag("file", { path: f.path, status });
 
 				if (f.symbols?.length) {
@@ -47,7 +45,7 @@ export default class RepoMapPlugin {
 					fileEl.appendChild(symbolsEl);
 				}
 
-				if (f.mode === "active" && f.content) {
+				if (f.status === "active" && f.content) {
 					fileEl.appendChild(rummy.doc.createTextNode(f.content));
 				}
 

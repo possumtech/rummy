@@ -40,15 +40,17 @@ describe("E2E Bedrock: Plugin Architecture (LIVE)", () => {
 			clientId: "p-test-1",
 		});
 
+		const model = process.env.RUMMY_MODEL_DEFAULT;
 		const askResult = await client.call("ask", {
-			model: process.env.RUMMY_MODEL_DEFAULT,
-			prompt: "What is the IDENTITY_KEY? (Answer with only the key)",
+			model,
+			prompt:
+				"Check your system prompt. What is the value of AGENT_MODEL? (Answer with only the value)",
 		});
 
 		const content = askResult.content;
 		assert.ok(
-			content.includes("ALBATROSS-99"),
-			`Plugin injection not found. Got: ${content}`,
+			content.includes(model),
+			`Dynamic model identity injection not found. Got: ${content}`,
 		);
 	});
 });

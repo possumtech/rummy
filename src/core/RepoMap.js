@@ -143,10 +143,12 @@ export default class RepoMap {
 		});
 		const filesMap = new Map();
 		for (const tag of allTags) {
+			if (tag.visibility === "invisible") continue;
+
 			if (!filesMap.has(tag.path)) {
 				filesMap.set(tag.path, {
 					path: tag.path,
-					visibility: tag.visibility || "mapped",
+					visibility: tag.visibility || "mappable",
 					symbols: [],
 				});
 			}
@@ -223,7 +225,9 @@ export default class RepoMap {
 				};
 			}
 
-			let estTokens = this.#tokenizer.encode(JSON.stringify(displayFile)).length;
+			let estTokens = this.#tokenizer.encode(
+				JSON.stringify(displayFile),
+			).length;
 
 			// If we are over budget, attempt to "Squish" before dropping
 			if (currentTokens + estTokens > budget) {

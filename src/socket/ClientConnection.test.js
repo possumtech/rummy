@@ -1,9 +1,9 @@
 import assert from "node:assert";
 import { after, before, describe, it, mock } from "node:test";
+import TestDb from "../../test/helpers/TestDb.js";
 import createHooks from "../core/Hooks.js";
 import { registerPlugins } from "../plugins/index.js";
 import ClientConnection from "./ClientConnection.js";
-import TestDb from "../../test/helpers/TestDb.js";
 
 describe("ClientConnection", () => {
 	let hooks;
@@ -42,7 +42,7 @@ describe("ClientConnection", () => {
 		const response = await runMethod(conn, ws, "init", {
 			projectPath: process.cwd(),
 			projectName: "Test Project",
-			clientId: "test-client"
+			clientId: "test-client",
 		});
 		assert.ok(response.result.projectId);
 		assert.ok(response.result.sessionId);
@@ -51,18 +51,23 @@ describe("ClientConnection", () => {
 	it("should handle 'ask' method", async () => {
 		const { ws, db } = createMocks();
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = async () => new Response(
-			JSON.stringify({
-				model: "test-model",
-				choices: [{ message: { role: "assistant", content: "Paris" } }],
-				usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-			}),
-			{ status: 200, headers: { "Content-Type": "application/json" } }
-		);
+		globalThis.fetch = async () =>
+			new Response(
+				JSON.stringify({
+					model: "test-model",
+					choices: [{ message: { role: "assistant", content: "Paris" } }],
+					usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
 
 		try {
 			const conn = new ClientConnection(ws, db, hooks);
-			await runMethod(conn, ws, "init", { projectPath: process.cwd(), projectName: "T", clientId: "c" });
+			await runMethod(conn, ws, "init", {
+				projectPath: process.cwd(),
+				projectName: "T",
+				clientId: "c",
+			});
 			const response = await runMethod(conn, ws, "ask", {
 				model: "test-model",
 				prompt: "p",

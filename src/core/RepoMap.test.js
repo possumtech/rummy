@@ -54,11 +54,15 @@ describe("RepoMap (Perspective Engine)", () => {
 		// Force tiny budget
 		process.env.RUMMY_MAP_TOKEN_BUDGET = "10";
 		const perspective = await repoMap.renderPerspective(["active.js"]);
-		
+
 		// 'active.js' MUST be present despite budget
-		assert.ok(perspective.files.some(f => f.path === "active.js" && f.status === "active"));
+		assert.ok(
+			perspective.files.some(
+				(f) => f.path === "active.js" && f.status === "active",
+			),
+		);
 		// 'dep.js' should be pruned entirely as budget is tiny
-		assert.ok(!perspective.files.some(f => f.path === "dep.js"));
+		assert.ok(!perspective.files.some((f) => f.path === "dep.js"));
 		await db.close();
 		await fs.unlink(dbPath).catch(() => {});
 	});

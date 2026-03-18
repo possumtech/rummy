@@ -1,11 +1,11 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { after, before, describe, it, mock } from "node:test";
+import { after, before, describe, it } from "node:test";
+import TestDb from "../../test/helpers/TestDb.js";
 import createHooks from "../core/Hooks.js";
 import { registerPlugins } from "../plugins/index.js";
 import ProjectAgent from "./ProjectAgent.js";
-import TestDb from "../../test/helpers/TestDb.js";
 
 describe("ProjectAgent Unit", () => {
 	const projectPath = join(process.cwd(), "test_agent_unit");
@@ -55,14 +55,15 @@ describe("ProjectAgent Unit", () => {
 		const initRes = await agent.init(projectPath, "Test", "client-1");
 
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = async () => new Response(
-			JSON.stringify({
-				model: "test-model",
-				choices: [{ message: { role: "assistant", content: "Paris" } }],
-				usage: { total_tokens: 10 },
-			}),
-			{ status: 200, headers: { "Content-Type": "application/json" } }
-		);
+		globalThis.fetch = async () =>
+			new Response(
+				JSON.stringify({
+					model: "test-model",
+					choices: [{ message: { role: "assistant", content: "Paris" } }],
+					usage: { total_tokens: 10 },
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
 
 		try {
 			const result = await agent.ask(

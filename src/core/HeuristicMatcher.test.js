@@ -13,7 +13,12 @@ describe("HeuristicMatcher", () => {
 		const replace = `function a() {
 	console.log("b");
 }`;
-		const result = HeuristicMatcher.matchAndPatch("test.js", content, search, replace);
+		const result = HeuristicMatcher.matchAndPatch(
+			"test.js",
+			content,
+			search,
+			replace,
+		);
 		assert.strictEqual(result.error, null);
 		assert.strictEqual(result.warning, null);
 		assert.ok(result.patch.includes('+	console.log("b");'));
@@ -32,7 +37,12 @@ describe("HeuristicMatcher", () => {
 		const replace = `function a() {
 	console.log("b");
 }`;
-		const result = HeuristicMatcher.matchAndPatch("test.js", content, search, replace);
+		const result = HeuristicMatcher.matchAndPatch(
+			"test.js",
+			content,
+			search,
+			replace,
+		);
 		assert.strictEqual(result.error, null);
 		assert.ok(result.warning.includes("Indentation healing applied"));
 		assert.ok(result.patch.includes('+\t\tconsole.log("b");')); // Should have 2 tabs now
@@ -47,7 +57,12 @@ function b() {
 }`;
 		const search = `	console.log("a");`;
 		const replace = `	console.log("b");`;
-		const result = HeuristicMatcher.matchAndPatch("test.js", content, search, replace);
+		const result = HeuristicMatcher.matchAndPatch(
+			"test.js",
+			content,
+			search,
+			replace,
+		);
 		assert.ok(result.error);
 		assert.ok(result.error.includes("multiple locations"));
 	});
