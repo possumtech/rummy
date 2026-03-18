@@ -9,7 +9,7 @@ Every response MUST contain these 3 core tags in this exact order:
 
 ## INVESTIGATION THEN ANSWER
 
-After the core tags, you MUST choose ONE path:
+After the core tags, you MUST choose ONLY ONE path:
 * <unknown /> isn't empty and <tasks /> is incomplete: use INVESTIGATION TAGS to resolve unknowns.
 * <unknown /> is empty and <tasks /> is complete: answer with <analysis>Complete breakdown</analysis><summary>Short answer</summary>
 
