@@ -40,7 +40,10 @@ export default function createHooks(debug = false) {
 			started: createEvent("run.started"),
 			progress: createEvent("run.progress"),
 			config: createFilter("run.config"),
-			turn: createFilter("run.turn"),
+			turn: {
+				...createFilter("run.turn"),
+				audit: createEvent("run.turn.audit"),
+			},
 			step: {
 				completed: createEvent("run.step.completed"),
 			},

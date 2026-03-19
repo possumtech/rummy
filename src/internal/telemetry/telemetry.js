@@ -6,7 +6,7 @@ import { join } from "node:path";
  */
 export default class DebugLoggerPlugin {
 	static register(hooks) {
-		hooks.run.step.completed.on(async (payload) => {
+		hooks.run.turn.audit.on(async (payload) => {
 			if (process.env.RUMMY_DEBUG !== "true") return;
 			await DebugLoggerPlugin.#saveAudit(payload);
 		});

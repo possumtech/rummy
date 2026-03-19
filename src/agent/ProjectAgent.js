@@ -91,4 +91,8 @@ export default class ProjectAgent {
 			runId,
 		);
 	}
+
+	async resolve(runId, resolution) {
+		return this.#agentLoop.resolve(runId, resolution);
+	}
 }

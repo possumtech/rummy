@@ -133,11 +133,6 @@ export default class AgentLoop {
 			const prefill = "<tasks>\n- [";
 			const finalMessages = [...filteredMessages, { role: "assistant", content: prefill }];
 
-			await this.#db.create_turn.run({
-				run_id: currentRunId, sequence_number: sequenceOffset, payload: JSON.stringify(newUserMsg),
-				prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost: 0
-			});
-
 			const targetModel = process.env[`RUMMY_MODEL_${requestedModel}`] || requestedModel;
 			const result = await this.#llmProvider.completion(finalMessages, targetModel);
 
@@ -146,15 +141,16 @@ export default class AgentLoop {
 			const finalResponse = await this.#hooks.llm.response.filter({ ...responseMessage, content: mergedContent }, { model: requestedModel, sessionId, runId: currentRunId });
 
 			const usage = result.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost: 0 };
-			const completedTurn = await this.#db.create_turn.run({
-				run_id: currentRunId, sequence_number: sequenceOffset, payload: JSON.stringify(finalResponse),
-				prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, total_tokens: usage.total_tokens || 0, cost: usage.cost || 0
-			});
-
-			const turnId = completedTurn.lastInsertRowid;
+			
 			if (finalResponse?.reasoning_content) turnObj.assistant.reasoning.add(finalResponse.reasoning_content);
 			if (finalResponse?.content) turnObj.assistant.content.add(finalResponse.content);
 			turnObj.assistant.meta.add({ ...usage, alias: requestedModel, actualModel: result.model, displayModel: this.#resolveAlias(requestedModel) });
+
+			const turnRecord = await this.#db.create_turn.run({
+				run_id: currentRunId, sequence_number: sequenceOffset, payload: JSON.stringify(turnObj.toJson()),
+				prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, total_tokens: usage.total_tokens || 0, cost: usage.cost || 0
+			});
+			const turnId = turnRecord.lastInsertRowid;
 
 			const atomicResult = {
 				runId: currentRunId,
@@ -164,19 +160,27 @@ export default class AgentLoop {
 				activeFiles: currentActiveFiles, diffs: [], commands: [], notifications: [], openaiRaw: result
 			};
 
-			const tags = this.#responseParser.parseActionTags(finalResponse?.content || "");
+			const tags = this.#responseParser.parseActionTags(finalResponse.content);
 			await this.#findingsManager.populateFindings(project.path, atomicResult, tags);
-			await this.#hooks.run.step.completed.emit({ runId: currentRunId, sessionId, turn: turnObj });
 
 			const tasksTag = tags.find((t) => t.tagName === "tasks");
 			const tasksText = tasksTag ? this.#responseParser.getNodeText(tasksTag).trim() : "";
 			if (tasksText) await this.#hooks.run.progress.emit({ runId: currentRunId, sessionId, tasks: tasksText, status: "Agent is thinking..." });
 
-			const isChecklistComplete = tasksText.length > 0 && !tasksText.includes("- [ ]");
 			const gatherReadTags = tags.filter((t) => t.tagName === "read");
 			const gatherCmdTags = tags.filter((t) => t.tagName === "env" || t.tagName === "run");
 			const breakingTags = tags.filter((t) => ["create", "delete", "edit", "prompt_user"].includes(t.tagName));
 			const summaryTag = tags.find(t => t.tagName === "summary");
+			const isChecklistComplete = tasksText.length > 0 && !tasksText.includes("- [ ]");
+
+			// AUDIT: Perform the XML audit log BEFORE emitting the notification
+			await this.#hooks.run.turn.audit.emit({ runId: currentRunId, turn: turnObj });
+
+			// NOTIFY: Emit completed step AFTER findings and audits are ready
+			await this.#hooks.run.step.completed.emit({ runId: currentRunId, sessionId, turn: turnObj });
+
+			const currentTurnNumber = sequenceOffset;
+			sequenceOffset += 1;
 
 			// 1. If the model requested information, we MUST continue the loop, 
 			// even if it ALSO provided a summary or marked tasks as complete.
@@ -198,7 +202,6 @@ export default class AgentLoop {
 				}
 				historyMessages.push(newUserMsg);
 				historyMessages.push(finalResponse);
-				sequenceOffset += 1;
 				loopPrompt = `<info>\n${infoParts.join("\n\n")}\n\nContent and results are now available in the system context.</info>`;
 				continue; 
 			}
@@ -212,13 +215,14 @@ export default class AgentLoop {
 					if (n.type === "prompt_user") {
 						await this.#db.insert_finding_notification.run({ 
 							run_id: currentRunId, turn_id: turnId, type: n.type, text: n.text, 
-							level: "info", status: "proposed", config: JSON.stringify(n.config), append: false 
+							level: "info", status: "proposed", config: JSON.stringify(n.config), 
+							append: n.append ? 1 : 0 
 						});
 					}
 				}
 				const finalResult = await this.#hooks.run.turn.filter(atomicResult, { turn: turnObj, sessionId, type });
 				await hook.completed.emit({ runId: currentRunId, sessionId, model: targetModel, turn: turnObj, usage, result: finalResult });
-				return { runId: currentRunId, status: "proposed", turn: sequenceOffset };
+				return { runId: currentRunId, status: "proposed", turn: currentTurnNumber };
 			}
 
 			// 3. Only if no further actions (info-gathering or breaking) were requested,
@@ -228,37 +232,38 @@ export default class AgentLoop {
 				const finalResult = await this.#hooks.run.turn.filter(atomicResult, { turn: turnObj, sessionId, type });
 				if (atomicResult.analysis) finalResult.analysis = atomicResult.analysis;
 				await hook.completed.emit({ runId: currentRunId, sessionId, model: targetModel, turn: turnObj, usage, result: finalResult });
-				return { runId: currentRunId, status: "completed", turn: sequenceOffset };
+				return { runId: currentRunId, status: "completed", turn: currentTurnNumber };
 			}
 
-			sequenceOffset += 1;
 			// If no terminal state reached, break and return current
 			break;
 		}
 
-		return { runId: currentRunId, status: "running", turn: sequenceOffset };
+		return { runId: currentRunId, status: "running", turn: sequenceOffset - 1 };
+	}
+
+	async resolve(runId, resolution) {
+		const run = await this.#db.get_run_by_id.get({ id: runId });
+		if (!run) throw new Error(`Run '${runId}' not found.`);
+
+		const { category, id, action, answer } = resolution;
+		let resumePrompt = "";
+
+		if (category === "notification") {
+			resumePrompt = `<info notification="${id}">${answer || action}</info>`;
+		} else if (category === "diff") {
+			resumePrompt = `<info diff="${id}">${action}</info>`;
+		} else if (category === "command") {
+			resumePrompt = `<info command="${id}">${action}</info>`;
+		}
+
+		// Resume the loop with the generated info prompt
+		return this.run(run.type, run.session_id, null, resumePrompt, [], runId);
 	}
 
 	async getRunHistory(runId) {
 		const turns = await this.#db.get_turns_by_run_id.all({ run_id: runId });
-		const results = [];
-		for (const t of turns) {
-			const payload = JSON.parse(t.payload);
-			// This is a simplification; ideally we'd have the XML stored.
-			// Since we don't have it in the schema yet, we return the payload.
-			results.push({
-				sequenceNumber: t.sequence_number,
-				role: payload.role,
-				content: payload.content,
-				usage: {
-					promptTokens: t.prompt_tokens,
-					completionTokens: t.completion_tokens,
-					totalTokens: t.total_tokens,
-					cost: t.cost
-				}
-			});
-		}
-		return results;
+		return turns.map((t) => JSON.parse(t.payload));
 	}
 
 	#resolveAlias(modelId) {

@@ -81,6 +81,10 @@ describe("Rumsfeld Loop E2E Verification", () => {
 		};
 
 		try {
+			// Track notifications
+			const turns = [];
+			client.on("run/step/completed", (params) => turns.push(params.turn));
+
 			// Trigger the 'act' which should loop internally
 			const result = await client.call("act", {
 				model: "mock-model",
@@ -89,15 +93,21 @@ describe("Rumsfeld Loop E2E Verification", () => {
 
 			// Verify the server looped twice internally
 			assert.strictEqual(callCount, 2);
-			assert.ok(result.content.includes("ALBATROSS-1"));
+			assert.strictEqual(result.status, "completed");
+			assert.strictEqual(result.turn, 1);
 
-			// Verify audits were written
+			// Verify the assistant content from the last turn notification
+			assert.ok(turns[1].role.assistant.content.includes("ALBATROSS-1"));
+
+			// Verify audits were written (sequential 0, 1)
 			const runDir = join(process.cwd(), "audits", `run_${result.runId}`);
-			const turn0 = await fs.readFile(join(runDir, "turn_0.xml"), "utf8");
-			const turn2 = await fs.readFile(join(runDir, "turn_2.xml"), "utf8");
+			// Use readdir to find the files as they are written at the end of each turn
+			const files = await fs.readdir(runDir);
+			assert.ok(files.includes("turn_0.xml"));
+			assert.ok(files.includes("turn_1.xml"));
 
-			assert.ok(turn0.includes('<read file="knowledge.txt"/>'));
-			assert.ok(turn2.includes("<summary>The key is ALBATROSS-1</summary>"));
+			const turn0 = await fs.readFile(join(runDir, "turn_0.xml"), "utf8");
+			assert.ok(turn0.includes('&lt;read file="knowledge.txt"/&gt;'));
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
@@ -127,51 +137,54 @@ describe("Rumsfeld Loop E2E Verification", () => {
 					usage: { total_tokens: 10 },
 				}),
 			);
+try {
+	// 1. First 'act' proposes the edit and BLOCKS
+	const result = await client.call("act", {
+		model: "mock-model",
+		prompt: "Change key to ALBATROSS-2",
+	});
 
-		try {
-			// 1. First 'act' proposes the edit and BLOCKS
-			const result = await client.call("act", {
+	assert.strictEqual(result.status, "proposed");
+	assert.strictEqual(result.turn, 0);
+
+	const findings = await tdb.db.get_findings_by_run_id.all({ run_id: result.runId });
+	assert.strictEqual(findings.length, 1);
+	const diffId = findings[0].id;
+
+	// 2. Sending another 'act' WITHOUT <info> should return the same blocked state immediately
+	const blockedResult = await client.call("act", {
+		model: "mock-model",
+		prompt: "Do it now!",
+		runId: result.runId,
+	});
+	assert.strictEqual(blockedResult.status, "proposed");
+
+	// 3. Resolve via run/resolve
+	globalThis.fetch = async () =>
+		new Response(
+			JSON.stringify({
 				model: "mock-model",
-				prompt: "Change key to ALBATROSS-2",
-			});
+				choices: [
+					{
+						message: {
+							role: "assistant",
+							content:
+								"<learned>Done.</learned><tasks>- [x] Update key</tasks><short>Updated.</short>",
+						},
+					},
+				],
+				usage: { total_tokens: 10 },
+			}),
+		);
 
-			assert.strictEqual(result.diffs.length, 1);
-			const diffId = result.diffs[0].id;
+	const finalResult = await client.call("run/resolve", {
+		runId: result.runId,
+		resolution: { category: "diff", id: diffId, action: "accepted" }
+	});
 
-			// 2. Sending another 'act' WITHOUT <info> should return the same blocked state immediately (no LLM call)
-			const blockedResult = await client.call("act", {
-				model: "mock-model",
-				prompt: "Do it now!",
-				runId: result.runId,
-			});
-			assert.ok(blockedResult.content.includes("Blocked"));
-			assert.strictEqual(blockedResult.diffs[0].id, diffId);
+	assert.strictEqual(finalResult.runId, result.runId);
+	assert.strictEqual(finalResult.turn, 1);
 
-			// 3. Resolve via <info>
-			globalThis.fetch = async () =>
-				new Response(
-					JSON.stringify({
-						model: "mock-model",
-						choices: [
-							{
-								message: {
-									role: "assistant",
-									content:
-										"<learned>Done.</learned><tasks>- [x] Update key</tasks><summary>Updated.</summary>",
-								},
-							},
-						],
-						usage: { total_tokens: 10 },
-					}),
-				);
-
-			const finalResult = await client.call("act", {
-				model: "mock-model",
-				prompt: `<info diff="${diffId}">Accepted</info>`,
-				runId: result.runId,
-			});
-
-			assert.ok(finalResult.content.includes("Updated"));
 
 			// Verify file was actually written to disk
 			const content = await fs.readFile(

@@ -71,6 +71,53 @@ export default class Turn {
 	}
 
 	/**
+	 * Serializes the entire turn into a structured JSON object for the client.
+	 */
+	toJson() {
+		const systemEl = this.#doc.getElementsByTagName("system")[0];
+		const contextEl = this.#doc.getElementsByTagName("context")[0];
+		const userEl = this.#doc.getElementsByTagName("user")[0];
+		const assistantEl = this.#doc.getElementsByTagName("assistant")[0];
+
+		const getTagContent = (parent, tagName) => {
+			const el = parent?.getElementsByTagName(tagName)[0];
+			return el ? el.textContent : null;
+		};
+
+		const files = [];
+		const filesEl = contextEl?.getElementsByTagName("files")[0];
+		if (filesEl) {
+			const fileNodes = filesEl.getElementsByTagName("file");
+			for (let i = 0; i < fileNodes.length; i++) {
+				const f = fileNodes[i];
+				files.push({
+					path: f.getAttribute("path"),
+					status: f.getAttribute("status"),
+					content: f.lastChild?.nodeType === 3 ? f.lastChild.nodeValue : null, // only if text node present
+				});
+			}
+		}
+
+		return {
+			sequence: Number.parseInt(this.#doc.documentElement.getAttribute("sequence") || "0"),
+			role: {
+				system: systemEl?.textContent || "",
+				user: userEl?.textContent || "",
+				assistant: {
+					content: getTagContent(assistantEl, "content"),
+					reasoning: getTagContent(assistantEl, "reasoning_content"),
+					meta: JSON.parse(getTagContent(assistantEl, "meta") || "{}"),
+				},
+			},
+			context: {
+				persona: getTagContent(contextEl, "persona"),
+				skills: Array.from(contextEl?.getElementsByTagName("skill") || []).map(s => s.textContent),
+				files,
+			},
+		};
+	}
+
+	/**
 	 * Serializes the entire turn into a pretty-printed XML document.
 	 */
 	toXml() {

@@ -33,13 +33,16 @@ describe("ClientConnection", () => {
 		const message = JSON.stringify({ jsonrpc: "2.0", method, params, id });
 		await conn.handleMessageForTest(message);
 		const lastCall = ws.send.mock.calls[ws.send.mock.calls.length - 1];
-		return JSON.parse(lastCall.arguments[0]);
+		return {
+			result: JSON.parse(lastCall.arguments[0]),
+			allSent: ws.send.mock.calls.map(c => JSON.parse(c.arguments[0]))
+		};
 	};
 
 	it("should handle 'init' method", async () => {
 		const { ws, db } = createMocks();
 		const conn = new ClientConnection(ws, db, hooks);
-		const response = await runMethod(conn, ws, "init", {
+		const { result: response } = await runMethod(conn, ws, "init", {
 			projectPath: process.cwd(),
 			projectName: "Test Project",
 			clientId: "test-client",
@@ -55,7 +58,7 @@ describe("ClientConnection", () => {
 			new Response(
 				JSON.stringify({
 					model: "test-model",
-					choices: [{ message: { role: "assistant", content: "Paris" } }],
+					choices: [{ message: { role: "assistant", content: "<response>Paris</response><short>Paris</short>" } }],
 					usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
 				}),
 				{ status: 200, headers: { "Content-Type": "application/json" } },
@@ -68,11 +71,18 @@ describe("ClientConnection", () => {
 				projectName: "T",
 				clientId: "c",
 			});
-			const response = await runMethod(conn, ws, "ask", {
+			const { result: response, allSent } = await runMethod(conn, ws, "ask", {
 				model: "test-model",
 				prompt: "p",
 			});
-			assert.strictEqual(response.result.content, "Paris");
+			
+			assert.ok(response.result.runId);
+			assert.strictEqual(response.result.status, "completed");
+			assert.strictEqual(response.result.turn, 0);
+
+			const turnNotif = allSent.find(m => m.method === "run/step/completed");
+			assert.ok(turnNotif);
+			assert.ok(turnNotif.params.turn.role.assistant.content.includes("Paris"));
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

@@ -1,10 +1,12 @@
+import { EventEmitter } from "node:events";
 import { WebSocket } from "ws";
 
-export default class RpcClient {
+export default class RpcClient extends EventEmitter {
 	#ws;
 	#url;
 
 	constructor(url) {
+		super();
 		this.#url = url;
 	}
 
@@ -14,6 +16,7 @@ export default class RpcClient {
 			const msg = JSON.parse(data.toString());
 			if (msg.method && !msg.id) {
 				// This is a notification
+				this.emit(msg.method, msg.params);
 				this.#handleNotification(msg);
 			}
 		});

@@ -56,9 +56,10 @@ export default class ClientConnection {
 
 		this.#hooks.run.step.completed.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
+				const turn = payload.turn.toJson();
 				this.#sendNotification("run/step/completed", {
 					runId: payload.runId,
-					turnXml: payload.turn.toXml(),
+					turn,
 				});
 			}
 		});
@@ -156,8 +157,7 @@ export default class ClientConnection {
 							"skill/add": { description: "Enable a skill for this session", params: { name: "Skill ID" } },
 						},
 						notifications: {
-							"llm/request/started": "Triggered when a turn is built and sent to the LLM. Contains the full 'turnXml'.",
-							"run/step/completed": "Triggered when a turn finishes. Contains the full 'turnXml' including response.",
+							"run/step/completed": "Triggered when a turn finishes. Contains the structured 'turn' object including response, context, and sequence.",
 							"run/progress": "Periodic updates on agent thoughts and task status.",
 							"ui/render": "Fragments for streaming output UI.",
 							"editor/diff": "Proposed file modifications.",
@@ -210,6 +210,15 @@ export default class ClientConnection {
 
 				case "getRunHistory":
 					result = await this.#projectAgent.getRunHistory(params.runId);
+					break;
+
+				case "run/resolve":
+					if (!this.#context.sessionId)
+						throw new Error("Session not initialized.");
+					result = await this.#projectAgent.resolve(
+						params.runId,
+						params.resolution, // { category, id, action: 'accepted'|'rejected', answer: '...' }
+					);
 					break;
 
 				case "run/affirm":

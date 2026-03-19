@@ -84,14 +84,19 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 	});
 
 	it("should support 'act' method and all bundled findings", async () => {
-		// Mock LLM response to trigger all detections via RummyNvimPlugin
-		tserver.hooks.addFilter("llm.response", (response) => {
+		// Mock LLM response to directly return XML tags for detection
+		tserver.hooks.llm.response.addFilter((response) => {
 			return {
 				...response,
 				content:
-					"Acting... RUMMY_TEST_NOTIFY RUMMY_TEST_RENDER RUMMY_TEST_DIFF",
+					"<tasks>- [x] Done</tasks><notify>System notification</notify><render># Rendered Content</render><edit file=\"test.txt\"><<<<<<< SEARCH\nold\n=======\nnew\n>>>>>>> REPLACE</edit>",
 				reasoning_content: "I need to notify and diff.",
 			};
+		});
+
+		let turnData = null;
+		client.on("run/step/completed", (params) => {
+			turnData = params.turn;
 		});
 
 		const result = await client.call("act", {
@@ -99,28 +104,20 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 			prompt: "Trigger notifications",
 		});
 
-		// Verify Atomic Turn bundling
+		// Verify minimal RPC result
 		assert.ok(result.runId);
-		assert.strictEqual(result.model.requested, "mock-model");
-		assert.strictEqual(result.model.display, "mock-model");
-		assert.ok(result.model.actual);
-		assert.ok(Array.isArray(result.activeFiles));
+		assert.strictEqual(result.turn, 0);
 
-		// Verify bundled diffs
-		assert.ok(result.diffs.length > 0);
-		assert.strictEqual(result.diffs[0].file, "test.txt");
-		assert.ok(result.diffs[0].patch.includes("--- test.txt"));
 
-		// Verify bundled notifications
-		assert.ok(result.notifications.length >= 2);
-		const notify = result.notifications.find((n) => n.type === "notify");
-		const render = result.notifications.find((n) => n.type === "render");
-		assert.strictEqual(notify.text, "System notification detected in response");
-		assert.strictEqual(render.text, "# Rendered Content");
+		// Verify structured turn data from notification
+		assert.ok(turnData);
+		assert.strictEqual(turnData.role.assistant.reasoning, "I need to notify and diff.");
+		assert.ok(turnData.context.files.length > 0);
 
-		assert.ok(result.content.includes("Acting..."));
-		assert.strictEqual(result.reasoning, "I need to notify and diff.");
-		assert.ok(result.usage);
+		// Verify findings in DB (since they are no longer in RPC result)
+		const findings = await tdb.db.get_findings_by_run_id.all({ run_id: result.runId });
+		assert.ok(findings.length >= 2);
+		assert.ok(findings.some(f => f.category === "diff" && f.file === "test.txt"));
 	});
 
 	it("should support iterating on a Run (multi-turn context)", async () => {
@@ -136,6 +133,8 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 		});
 		const runId = res1.runId;
 		assert.ok(runId);
+		assert.strictEqual(res1.turn, 0);
+
 		// 2. Second act with same runId
 		// We mock fetch to verify the messages sent to the LLM
 		const originalFetch = globalThis.fetch;
@@ -161,6 +160,7 @@ describe("SOCKET_PROTOCOL v0.2.0 Verification (Full Compliance)", () => {
 			});
 
 			assert.strictEqual(res2.runId, runId);
+			assert.strictEqual(res2.turn, 1);
 			// Verify history: should have [System, User(1), Assistant(1), User(2), Prefill]
 			assert.strictEqual(lastSentMessages.length, 5);
 			assert.strictEqual(

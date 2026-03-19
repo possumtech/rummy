@@ -59,11 +59,16 @@ describe("ProjectAgent Unit", () => {
 			new Response(
 				JSON.stringify({
 					model: "test-model",
-					choices: [{ message: { role: "assistant", content: "Paris" } }],
+					choices: [{ message: { role: "assistant", content: "<response>Paris</response><short>Paris</short>" } }],
 					usage: { total_tokens: 10 },
 				}),
 				{ status: 200, headers: { "Content-Type": "application/json" } },
 			);
+
+		let turnData = null;
+		hooks.run.step.completed.on((payload) => {
+			turnData = payload.turn.toJson();
+		});
 
 		try {
 			const result = await agent.ask(
@@ -71,7 +76,10 @@ describe("ProjectAgent Unit", () => {
 				process.env.RUMMY_MODEL_DEFAULT,
 				"Capital?",
 			);
-			assert.strictEqual(result.content, "Paris");
+			assert.ok(result.runId);
+			assert.strictEqual(result.status, "completed");
+			assert.strictEqual(result.turn, 0);
+			assert.ok(turnData.role.assistant.content.includes("Paris"));
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
