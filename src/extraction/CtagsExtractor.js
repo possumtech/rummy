@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync as defaultSpawnSync } from "node:child_process";
 
 /**
  * CtagsExtractor handles fallback symbol extraction using Universal Ctags.
@@ -6,13 +6,15 @@ import { spawnSync } from "node:child_process";
  */
 export default class CtagsExtractor {
 	#root;
+	#spawnSync;
 
-	constructor(root) {
+	constructor(root, spawnSync = defaultSpawnSync) {
 		this.#root = root;
+		this.#spawnSync = spawnSync;
 	}
 
 	extract(paths) {
-		const result = spawnSync(
+		const result = this.#spawnSync(
 			"ctags",
 			["--output-format=json", "--fields=+nS", "-f", "-", ...paths],
 			{ cwd: this.#root, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },

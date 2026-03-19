@@ -1,0 +1,129 @@
+import { strictEqual, ok } from "node:assert";
+import { describe, it } from "node:test";
+import HeuristicMatcher from "./HeuristicMatcher.js";
+
+describe("HeuristicMatcher", () => {
+	const filePath = "test.js";
+	const fileContent = `
+function hello() {
+  console.log("hello world");
+}
+`.trim();
+
+	it("should perform an exact match and return a patch", () => {
+		const searchBlock = '  console.log("hello world");'; // Match exact indentation in fileContent
+		const replaceBlock = '  console.log("hello rummy");';
+
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			fileContent,
+			searchBlock,
+			replaceBlock,
+		);
+
+		ok(result.patch);
+		strictEqual(result.warning, null);
+		strictEqual(result.error, null);
+		ok(result.patch.includes('-  console.log("hello world");'));
+		ok(result.patch.includes('+  console.log("hello rummy");'));
+	});
+
+	it("should fail if multiple exact matches are found", () => {
+		const content = `
+log("hi");
+log("hi");
+`.trim();
+		const searchBlock = 'log("hi");';
+		const replaceBlock = 'log("bye");';
+
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			content,
+			searchBlock,
+			replaceBlock,
+		);
+
+		strictEqual(result.patch, null);
+		ok(result.error.includes("multiple locations"));
+	});
+
+	it("should perform a fuzzy match by ignoring whitespace", () => {
+		const searchBlock = 'console.log("hello world");'; // No leading spaces
+		const replaceBlock = 'console.log("hello fuzzy");';
+
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			fileContent,
+			searchBlock,
+			replaceBlock,
+		);
+
+		ok(result.patch);
+		strictEqual(result.error, null);
+		// Indentation should be healed to match the file's 2 spaces
+		ok(result.patch.includes('-  console.log("hello world");'));
+		ok(result.patch.includes('+  console.log("hello fuzzy");'));
+	});
+
+	it("should heal indentation if it differs", () => {
+		const searchBlock = '  console.log("hello world");'; // 2 spaces
+		const replaceBlock = '  console.log("line 1");\n  console.log("line 2");';
+
+		const contentWithTabs = '\tconsole.log("hello world");';
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			contentWithTabs,
+			searchBlock,
+			replaceBlock,
+		);
+
+		ok(result.patch);
+		ok(result.warning.includes("Indentation healing applied"));
+		// Check if it used tabs in the replacement
+		ok(result.patch.includes('+\tconsole.log("line 1");'));
+		ok(result.patch.includes('+\tconsole.log("line 2");'));
+	});
+
+	it("should fail if search block is empty", () => {
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			fileContent,
+			"   ",
+			"something",
+		);
+
+		strictEqual(result.patch, null);
+		ok(result.error.includes("SEARCH block is empty"));
+	});
+
+	it("should fail if no match is found", () => {
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			fileContent,
+			"non-existent",
+			"something",
+		);
+
+		strictEqual(result.patch, null);
+		ok(result.error.includes("Could not find the SEARCH block"));
+	});
+
+	it("should handle multiple fuzzy matches", () => {
+		const content = `
+    log("a");
+    log("a");
+    `.trim();
+		const searchBlock = 'log("a");';
+		const replaceBlock = 'log("b");';
+
+		const result = HeuristicMatcher.matchAndPatch(
+			filePath,
+			content,
+			searchBlock,
+			replaceBlock,
+		);
+
+		strictEqual(result.patch, null);
+		ok(result.error.includes("multiple locations"));
+	});
+});
