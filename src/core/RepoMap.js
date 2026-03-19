@@ -174,17 +174,19 @@ export default class RepoMap {
 			const overlapCount = file.symbols.filter((s) =>
 				globalReferences.has(s.name),
 			).length;
+			const isRootFile = !file.path.includes("/");
 			const isInActiveDir = activeDirs.has(dirname(file.path));
 
 			let rank = 0;
 			if (status === "active") {
 				rank = 100000; // Always top
 			} else {
-				// Significant boost for directory proximity (1000 pts)
-				// + symbol overlap (10 pts per symbol)
-				// + small boost for read_only (100 pts)
-				rank = (isInActiveDir ? 1000 : 0) + 
-				       (status === "read_only" ? 100 : 0) +
+				// ROOT-WARM RULE:
+				// 1. Root files get 5000 pts (Warm - show symbols)
+				// 2. Directory proximity gets 1000 pts
+				// 3. Symbol overlap gets 10 pts per symbol
+				rank = (isRootFile ? 5000 : 0) +
+				       (isInActiveDir ? 1000 : 0) + 
 				       overlapCount * 10;
 			}
 
@@ -219,14 +221,19 @@ export default class RepoMap {
 					status: file.status,
 					content,
 				};
-			} else {
-				// MAPPED files start with full detail (Signatures)
-				displayFile = {
-					path: file.path,
-					status: file.status,
-					symbols: file.symbols,
-				};
+				
+				// Mandatory context - we keep active files even if they blow the budget
+				finalFiles.push(displayFile);
+				currentTokens += this.#tokenizer.encode(JSON.stringify(displayFile)).length;
+				continue;
 			}
+
+			// Non-active files (MAPPED)
+			displayFile = {
+				path: file.path,
+				status: file.status,
+				symbols: file.symbols,
+			};
 
 			let estTokens = this.#tokenizer.encode(
 				JSON.stringify(displayFile),
@@ -234,9 +241,7 @@ export default class RepoMap {
 
 			// If we are over budget, attempt to "Squish" before dropping
 			if (currentTokens + estTokens > budget) {
-				if (file.status === "active" || file.status === "read_only") {
-					// Mandatory context - we keep active files even if they blow the budget
-				} else if (file.status === "mapped") {
+				if (file.status === "mapped") {
 					// Tier 1 Squish: Detailed Symbols -> Signatures Only (No params/lines)
 					const signaturesOnly = {
 						path: file.path,

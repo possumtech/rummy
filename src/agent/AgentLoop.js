@@ -390,7 +390,12 @@ export default class AgentLoop {
 					id: currentRunId,
 					status: "proposed",
 				});
-				for (const d of atomicResult.diffs)
+
+				const seenDiffs = new Set();
+				for (const d of atomicResult.diffs) {
+					const key = `${d.type}:${d.file}:${d.patch}`;
+					if (seenDiffs.has(key)) continue;
+					seenDiffs.add(key);
 					await this.#db.insert_finding_diff.run({
 						run_id: currentRunId,
 						turn_id: turnId,
@@ -398,15 +403,27 @@ export default class AgentLoop {
 						file_path: d.file,
 						patch: d.patch,
 					});
-				for (const c of atomicResult.commands)
+				}
+
+				const seenCmds = new Set();
+				for (const c of atomicResult.commands) {
+					const key = `${c.type}:${c.command}`;
+					if (seenCmds.has(key)) continue;
+					seenCmds.add(key);
 					await this.#db.insert_finding_command.run({
 						run_id: currentRunId,
 						turn_id: turnId,
 						type: c.type,
 						command: c.command,
 					});
+				}
+
+				const seenNotes = new Set();
 				for (const n of atomicResult.notifications) {
 					if (n.type === "prompt_user") {
+						const key = `${n.type}:${n.text}`;
+						if (seenNotes.has(key)) continue;
+						seenNotes.add(key);
 						await this.#db.insert_finding_notification.run({
 							run_id: currentRunId,
 							turn_id: turnId,

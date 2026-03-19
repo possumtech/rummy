@@ -77,9 +77,8 @@ export default class TurnBuilder {
 			type,
 			customPrompt || null,
 		);
-		const identity = PromptManager.formatIdentity(model);
 
-		system.appendChild(doc.createTextNode(`${identity}${basePrompt.trim()}\n`));
+		system.appendChild(doc.createTextNode(`${basePrompt.trim()}\n`));
 
 		// 4. Seed the User Prompt with state-aware guardrails
 		const actionTag = type === "act" ? "act" : "ask";

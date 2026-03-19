@@ -5,6 +5,11 @@ import * as parse5 from "parse5";
  */
 export default class ResponseParser {
 	getNodeText(node) {
+		if (!node) return "";
+		// Handle our mock regex nodes from Greedy Resilience
+		if (node.isMock) {
+			return node.childNodes?.[0]?.value || "";
+		}
 		const html = parse5.serialize(node);
 		return html
 			.replace(/&lt;/g, "<")
@@ -112,34 +117,71 @@ export default class ResponseParser {
 	}
 
 	parseActionTags(content) {
-		const frag = parse5.parseFragment(content);
+		const coreTagNames = [
+			"read", "env", "run", "create", "delete", "edit", 
+			"prompt_user", "summary", "tasks", "analysis", 
+			"info", "known", "unknown", "response", "short"
+		];
+
 		const tags = [];
-		const traverse = (node) => {
-			if (
-				node.tagName &&
-				[
-					"read",
-					"env",
-					"run",
-					"create",
-					"delete",
-					"edit",
-					"prompt_user",
-					"summary",
-					"tasks",
-					"analysis",
-					"info",
-				].includes(node.tagName)
-			) {
-				tags.push(node);
-			}
-			if (node.childNodes) {
-				for (const child of node.childNodes) {
-					traverse(child);
-				}
-			}
+		const seenKeys = new Set();
+
+		// Helper to add unique tags
+		const addTag = (name, text, attrs = [], index = 0) => {
+			const key = `${name}:${text.substring(0, 20)}:${index}`;
+			if (seenKeys.has(key)) return;
+			seenKeys.add(key);
+			
+			tags.push({
+				tagName: name,
+				isMock: true,
+				attrs: attrs || [],
+				childNodes: [{ nodeName: "#text", value: text.trim() }],
+				startIndex: index
+			});
 		};
-		traverse(frag);
-		return tags;
+
+		// 1. Aggressive Regex Extraction (The "Greedy" layer)
+		// This catches mangled tags like <read file="a.js" <read file="b.js">
+		for (const name of coreTagNames) {
+			const regex = new RegExp(`<${name}([^>]*)>([\\s\\S]*?)(?:</${name}>|(?=<[a-z])|$)`, "gi");
+			let match;
+			while ((match = regex.exec(content)) !== null) {
+				const attrString = match[1];
+				const tagContent = match[2];
+				addTag(name, tagContent, this.#parseAttrs(attrString), match.index);
+			}
+		}
+
+		// 2. DOM Parsing (The "Structural" layer)
+		try {
+			const frag = parse5.parseFragment(content);
+			const traverse = (node) => {
+				if (node.tagName && coreTagNames.includes(node.tagName)) {
+					const text = this.getNodeText(node);
+					const attrs = node.attrs?.map(a => ({ name: a.name, value: a.value })) || [];
+					addTag(node.tagName, text, attrs, content.indexOf(node.tagName));
+				}
+				if (node.childNodes) {
+					for (const child of node.childNodes) traverse(child);
+				}
+			};
+			traverse(frag);
+		} catch (_err) {
+			// DOM failed, regex layer already has data
+		}
+
+		return tags.sort((a, b) => a.startIndex - b.startIndex);
+	}
+
+	#parseAttrs(tagString) {
+		const attrs = [];
+		if (!tagString) return attrs;
+		const attrRegex = /([a-z-]+)="([^"]*)"/gi;
+		let match;
+		while ((match = attrRegex.exec(tagString)) !== null) {
+			attrs.push({ name: match[1], value: match[2] });
+		}
+		return attrs;
 	}
 }
