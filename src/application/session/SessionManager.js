@@ -24,7 +24,7 @@ export default class SessionManager {
 		return map;
 	}
 
-	async init(projectPath, projectName, clientId) {
+	async init(projectPath, projectName, clientId, projectBufferFiles = []) {
 		await this.#hooks.project.init.started.emit({
 			projectPath,
 			projectName,
@@ -51,6 +51,9 @@ export default class SessionManager {
 			client_id: clientId,
 		});
 
+		// Sync buffered files immediately
+		await this.syncBuffered(projectId, projectBufferFiles);
+
 		const { default: GitProvider } = await import("../../infrastructure/filesystem/GitProvider.js");
 		const gitRoot = await GitProvider.detectRoot(projectPath);
 		const headHash = gitRoot ? await GitProvider.getHeadHash(gitRoot) : null;
@@ -67,6 +70,13 @@ export default class SessionManager {
 			db: this.#db,
 		});
 		return result;
+	}
+
+	async syncBuffered(projectId, files) {
+		await this.#db.reset_buffered.run({ project_id: projectId });
+		for (const path of files) {
+			await this.#db.set_buffered.run({ project_id: projectId, path });
+		}
 	}
 
 	async getFiles(projectPath) {

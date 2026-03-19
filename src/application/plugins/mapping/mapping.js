@@ -24,16 +24,14 @@ export default class RepoMapPlugin {
 			);
 			const ctx = await ProjectContext.open(project.path, visibilityMap);
 			const repoMap = new RepoMap(ctx, db, project.id);
-			const perspective = await repoMap.renderPerspective(activeFiles);
+			const perspective = await repoMap.renderPerspective();
 
 			const filesContainer = rummy.tag("files");
 			rummy.contextEl.appendChild(filesContainer);
 
 			for (const f of perspective.files) {
-				const status = f.status || "mappable";
 				const fileEl = rummy.tag("file", {
 					path: f.path,
-					status,
 					size: String(f.size ?? 0),
 					tokens: String(f.tokens ?? 0),
 				});
@@ -45,7 +43,7 @@ export default class RepoMapPlugin {
 					fileEl.appendChild(rummy.tag("symbols", {}, [highDensitySymbols]));
 				}
 
-				if (f.status === "active" && f.content) {
+				if (f.content) {
 					fileEl.appendChild(rummy.tag("source", {}, [f.content]));
 				}
 

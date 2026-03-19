@@ -117,6 +117,7 @@ export default class ClientConnection {
 									projectPath: "Absolute path to project",
 									projectName: "Display name",
 									clientId: "Unique client identifier",
+									projectBufferFiles: "Optional array of open files in IDE",
 								},
 							},
 							getModels: {
@@ -135,7 +136,7 @@ export default class ClientConnection {
 								description: "Begin a new agent execution sequence",
 								params: {
 									model: "Optional override model",
-									activeFiles: "Array of files to include in context",
+									projectBufferFiles: "Array of files currently open in IDE",
 									yolo: "Boolean for auto-affirmation",
 								},
 							},
@@ -144,7 +145,7 @@ export default class ClientConnection {
 								params: {
 									prompt: "User message",
 									model: "Optional override",
-									activeFiles: "Files to include in context",
+									projectBufferFiles: "Files open in IDE",
 								},
 							},
 							act: {
@@ -153,7 +154,7 @@ export default class ClientConnection {
 								params: {
 									prompt: "User message",
 									model: "Optional override",
-									activeFiles: "Files to include in context",
+									projectBufferFiles: "Files open in IDE",
 								},
 							},
 							systemPrompt: {
@@ -185,6 +186,7 @@ export default class ClientConnection {
 						params.projectPath,
 						params.projectName,
 						params.clientId,
+						params.projectBufferFiles || [],
 					);
 					this.#context.projectId = result.projectId;
 					this.#context.sessionId = result.sessionId;
@@ -299,6 +301,11 @@ export default class ClientConnection {
 				case "ask":
 					if (!this.#context.sessionId)
 						throw new Error("Session not initialized.");
+					
+					if (params.projectBufferFiles && this.#context.projectId) {
+						await this.#projectAgent.syncBuffered(this.#context.projectId, params.projectBufferFiles);
+					}
+
 					result = await this.#projectAgent.ask(
 						this.#context.sessionId,
 						params.model,
@@ -311,6 +318,11 @@ export default class ClientConnection {
 				case "act":
 					if (!this.#context.sessionId)
 						throw new Error("Session not initialized.");
+
+					if (params.projectBufferFiles && this.#context.projectId) {
+						await this.#projectAgent.syncBuffered(this.#context.projectId, params.projectBufferFiles);
+					}
+
 					result = await this.#projectAgent.act(
 						this.#context.sessionId,
 						params.model,

@@ -17,7 +17,8 @@ After the core tags, you MUST choose ONLY ONE path:
 </system_instructions:paths>
 
 <system_instructions:ask_tags>
-<read file="[path]"/> - Ingest file content.
+<read file="[path]"/> - Ingest file content. Marks file as Retained.
+<drop file="[path]"/> - Unmark file as Retained.
 <env>[cmd]</env> - Gather system/project information (ls, git, etc).
 <prompt_user>Question - [ ] Answer A - [ ] Answer B</prompt_user> Ask the user a question.
 </system_instructions:ask_tags>

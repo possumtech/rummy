@@ -59,7 +59,6 @@ export default class RepoMap {
 
 			const existing = fileRecords.get(relPath);
 
-			// Skip if hash/visibility match AND we have symbols
 			if (
 				existing?.hash === hash &&
 				existing?.visibility === visibility &&
@@ -68,7 +67,6 @@ export default class RepoMap {
 				continue;
 			}
 
-			// Upsert file record immediately to get fileId for tags
 			const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 				project_id: this.#projectId,
 				path: relPath,
@@ -87,7 +85,6 @@ export default class RepoMap {
 				const symbolWeight = this.#tokenizer.encode(
 					JSON.stringify({
 						path: relPath,
-						status: visibility,
 						symbols: extraction.definitions,
 					}),
 				).length;
@@ -112,7 +109,6 @@ export default class RepoMap {
 					});
 				}
 			} else {
-				// Definitions not found via HD extractor, queue for ctags
 				ctagsQueue.push(relPath);
 			}
 		}
@@ -126,7 +122,7 @@ export default class RepoMap {
 				const size = readFileSync(fullPath).length;
 				const visibility = await this.#ctx.resolveState(path);
 				const symbolWeight = this.#tokenizer.encode(
-					JSON.stringify({ path, status: visibility, symbols }),
+					JSON.stringify({ path, symbols }),
 				).length;
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
@@ -152,7 +148,7 @@ export default class RepoMap {
 		}
 	}
 
-	async renderPerspective(activeFiles = [], options = {}) {
+	async renderPerspective(options = {}) {
 		let budget = Number.parseInt(
 			process.env.RUMMY_MAP_TOKEN_BUDGET || "16384",
 			10,
@@ -163,40 +159,20 @@ export default class RepoMap {
 			budget = Math.floor(options.contextSize * (percent / 100));
 		}
 
-		const normalizedActiveFiles = activeFiles.map((f) => {
-			const full = isAbsolute(f) ? f : join(this.#ctx.root, f);
-			return relative(this.#ctx.root, full);
-		});
-
-		const activeWords = new Set();
-		for (const relPath of normalizedActiveFiles) {
-			const fullPath = join(this.#ctx.root, relPath);
-			if (existsSync(fullPath)) {
-				const content = readFileSync(fullPath, "utf8");
-				const words = content.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
-				for (const w of words) activeWords.add(w);
-			}
-		}
-
-		const allFiles = await this.#db.get_project_repo_map.all({
+		// RANKING IS NOW ENTIRELY SQL-DRIVEN
+		const rankedFiles = await this.#db.get_ranked_repo_map.all({
 			project_id: this.#projectId,
 		});
 
-		const filesMap = new Map();
-		for (const row of allFiles) {
-			if (row.visibility === "invisible") continue;
-
-			if (!filesMap.has(row.path)) {
-				filesMap.set(row.path, {
-					path: row.path,
-					size: row.size || 0,
-					symbol_tokens: row.symbol_tokens || 0,
-					visibility: row.visibility || "mappable",
-					symbols: [],
-				});
-			}
+		// Hydrate with symbols from the existing mapping.js logic (colocated data)
+		const allTags = await this.#db.get_project_repo_map.all({
+			project_id: this.#projectId,
+		});
+		const tagMap = new Map();
+		for (const row of allTags) {
+			if (!tagMap.has(row.path)) tagMap.set(row.path, []);
 			if (row.name) {
-				filesMap.get(row.path).symbols.push({
+				tagMap.get(row.path).push({
 					name: row.name,
 					type: row.type,
 					params: row.params,
@@ -205,42 +181,15 @@ export default class RepoMap {
 			}
 		}
 
-		const processedFiles = Array.from(filesMap.values()).map((file) => {
-			const status = normalizedActiveFiles.includes(file.path)
-				? "active"
-				: file.visibility;
-
-			const overlapCount = file.symbols.filter((s) =>
-				activeWords.has(s.name),
-			).length;
-			const isRootFile = !file.path.includes("/");
-
-			// SIMPLIFIED RANKING:
-			// 1. Active files are priority.
-			// 2. Score = (Root ? 1 : 0) + overlapCount.
-			let rank = 0;
-			if (status === "active") {
-				rank = Infinity;
-			} else {
-				rank = (isRootFile ? 1 : 0) + overlapCount;
-			}
-
-			return { ...file, status, rank };
-		});
-
-		const sorted = processedFiles.sort(
-			(a, b) => b.rank - a.rank || a.path.localeCompare(b.path),
-		);
-
 		const finalFiles = [];
 		let currentTokens = 0;
 
-		for (const file of sorted) {
-			if (file.status === "ignored") continue;
+		for (const file of rankedFiles) {
+			if (file.visibility === "ignored") continue;
 
 			let displayFile;
 
-			if (file.status === "active") {
+			if (file.is_active) {
 				const fullPath = join(this.#ctx.root, file.path);
 				let content = "";
 				try {
@@ -253,26 +202,24 @@ export default class RepoMap {
 					path: file.path,
 					size: file.size,
 					tokens,
-					status: file.status,
 					content,
 				};
 
+				const weight = this.#tokenizer.encode(JSON.stringify(displayFile)).length;
 				finalFiles.push(displayFile);
-				currentTokens += this.#tokenizer.encode(
-					JSON.stringify(displayFile),
-				).length;
+				currentTokens += weight;
 				continue;
 			}
 
+			const symbols = tagMap.get(file.path) || [];
 			displayFile = {
 				path: file.path,
 				size: file.size,
-				status: file.status,
-				symbols: file.symbols,
+				symbols,
 			};
 
-			if (file.symbols.length === 0) {
-				displayFile = { path: file.path, size: file.size, status: file.status };
+			if (symbols.length === 0) {
+				displayFile = { path: file.path, size: file.size };
 			}
 
 			let finalTokens =
@@ -280,12 +227,11 @@ export default class RepoMap {
 				this.#tokenizer.encode(JSON.stringify(displayFile)).length;
 
 			if (currentTokens + finalTokens > budget) {
-				if (file.symbols.length > 0) {
+				if (symbols.length > 0) {
 					const signaturesOnly = {
 						path: file.path,
 						size: file.size,
-						status: file.status,
-						symbols: file.symbols.map((s) => ({ name: s.name })),
+						symbols: symbols.map((s) => ({ name: s.name })),
 					};
 					const sigTokens = this.#tokenizer.encode(
 						JSON.stringify(signaturesOnly),
@@ -298,7 +244,6 @@ export default class RepoMap {
 						const pathOnly = {
 							path: file.path,
 							size: file.size,
-							status: file.status,
 						};
 						const pathTokens = this.#tokenizer.encode(
 							JSON.stringify(pathOnly),
@@ -317,7 +262,7 @@ export default class RepoMap {
 			}
 
 			displayFile.tokens = finalTokens;
-			displayFile.rank = file.rank;
+			displayFile.heat = file.heat;
 			finalFiles.push(displayFile);
 			currentTokens += finalTokens;
 		}

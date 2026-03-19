@@ -42,25 +42,34 @@ export default class AgentLoop {
 		return modelId;
 	}
 
-	async run(type, sessionId, model, prompt, activeFiles = [], runId = null) {
+	async run(type, sessionId, model, prompt, projectBufferFiles = [], runId = null) {
 		if (process.env.RUMMY_DEBUG === "true")
 			console.log("[DEBUG] AgentLoop.run args:", {
 				type,
 				sessionId,
 				model,
 				prompt,
-				activeFiles,
+				projectBufferFiles,
 				runId,
 			});
 		const hook = type === "ask" ? this.#hooks.ask : this.#hooks.act;
-		await hook.started.emit({ sessionId, model, prompt, activeFiles, runId });
+		await hook.started.emit({ sessionId, model, prompt, projectBufferFiles, runId });
 
 		const sessions = await this.#db.get_session_by_id.all({
 			id: String(sessionId),
 		});
+		const projectId = String(sessions[0].project_id);
 		const project = await this.#db.get_project_by_id.get({
-			id: String(sessions[0].project_id),
+			id: projectId,
 		});
+
+		// 1. Relational State Sync: Buffered Files
+		if (Array.isArray(projectBufferFiles)) {
+			await this.#db.reset_buffered.run({ project_id: projectId });
+			for (const path of projectBufferFiles) {
+				await this.#db.set_buffered.run({ project_id: projectId, path });
+			}
+		}
 
 		let currentRunId = runId;
 		let sequenceOffset = 0;
@@ -169,31 +178,16 @@ export default class AgentLoop {
 			});
 		} else {
 			currentRunId = crypto.randomUUID();
-			yolo = prompt.includes("RUMMY_YOLO") || activeFiles?.yolo === true;
-			if (process.env.RUMMY_DEBUG === "true") {
-				console.log("[DEBUG] create_run params:", {
-					id: currentRunId,
-					session_id: sessionId,
-					parent_run_id: null,
-					type,
-					config: JSON.stringify({ model, activeFiles, yolo }),
-				});
-			}
+			yolo = prompt.includes("RUMMY_YOLO") || projectBufferFiles?.yolo === true;
 			await this.#db.create_run.run({
 				id: currentRunId,
 				session_id: sessionId,
 				parent_run_id: null,
 				type,
-				config: JSON.stringify({ model, activeFiles, yolo }),
+				config: JSON.stringify({ model, projectBufferFiles, yolo }),
 			});
 		}
 
-		let currentActiveFiles = [];
-		if (Array.isArray(activeFiles)) {
-			currentActiveFiles = [...activeFiles];
-		} else if (activeFiles && Array.isArray(activeFiles.files)) {
-			currentActiveFiles = [...activeFiles.files];
-		}
 		let loopPrompt = prompt;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 
@@ -221,7 +215,7 @@ export default class AgentLoop {
 				sessionId,
 				prompt: loopPrompt,
 				model: requestedModel,
-				activeFiles: currentActiveFiles,
+				activeFiles: [], // Logic is now in TurnBuilder/RepoMap via DB
 				db: this.#db,
 				sequence: sequenceOffset,
 				hasUnknowns,
@@ -310,7 +304,6 @@ export default class AgentLoop {
 					totalTokens: usage.total_tokens || 0,
 					cost: usage.cost || 0,
 				},
-				activeFiles: currentActiveFiles,
 				diffs: [],
 				commands: [],
 				notifications: [],
@@ -363,17 +356,13 @@ export default class AgentLoop {
 			const currentTurnNumber = sequenceOffset;
 			sequenceOffset += 1;
 
-			// 1. If the model requested information, we MUST continue the loop,
-			// even if it ALSO provided a summary or marked tasks as complete.
+			// 1. If the model requested information, we MUST continue the loop
 			if (gatherReadTags.length > 0 || gatherCmdTags.length > 0) {
 				const infoTags = [];
 				if (gatherReadTags.length > 0) {
 					const newFiles = gatherReadTags
 						.map((t) => t.attrs.find((a) => a.name === "file")?.value)
 						.filter(Boolean);
-					currentActiveFiles = [
-						...new Set([...currentActiveFiles, ...newFiles]),
-					];
 					for (const f of newFiles) {
 						infoTags.push(`<info file="${f}">Full file added to context</info>`);
 					}
@@ -514,16 +503,8 @@ export default class AgentLoop {
 				};
 			}
 
-			// 4. STALL PROTECTION: If the model provided a response OR says it has no unknowns,
-			// and didn't use any tools, we assume it is finished.
-			const currentUnknownTag = tags.find((t) => t.tagName === "unknown");
-			const unknownText = currentUnknownTag
-				? this.#responseParser.getNodeText(currentUnknownTag).trim()
-				: "";
-			const hasNoUnknownsIntent =
-				currentUnknownTag && (unknownText === "" || unknownText === "none");
-
-			if (tags.find((t) => t.tagName === "response") || hasNoUnknownsIntent) {
+			// 4. STALL PROTECTION
+			if (tags.find((t) => t.tagName === "response") || (currentUnknownTag && (unknownText === "" || unknownText === "none"))) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: "completed",
@@ -548,7 +529,6 @@ export default class AgentLoop {
 				};
 			}
 
-			// If no terminal state reached, break and return current
 			break;
 		}
 

@@ -7,109 +7,95 @@ import HeuristicMatcher from "../../extraction/HeuristicMatcher.js";
  */
 export default class FindingsManager {
 	#db;
-	#responseParser;
+	#parser;
 
-	constructor(db, responseParser) {
+	constructor(db, parser) {
 		this.#db = db;
-		this.#responseParser = responseParser;
+		this.#parser = parser;
 	}
 
+	/**
+	 * Extracts proposed changes and information from model tags.
+	 */
 	async populateFindings(projectPath, atomicResult, tags) {
+		const { runId, content: turnContent } = atomicResult;
+
+		// 1. Resolve Project ID for relational updates
+		const projects = await this.#db.get_project_by_path.all({
+			path: projectPath,
+		});
+		const projectId = projects[0]?.id;
+
 		for (const tag of tags) {
-			if (
-				tag.tagName === "edit" ||
-				tag.tagName === "create" ||
-				tag.tagName === "delete"
-			) {
-				const file = tag.attrs.find((a) => a.name === "file")?.value;
-				if (file) {
-					let patchContent = this.#responseParser.getNodeText(tag).trim();
+			const { tagName, attrs } = tag;
 
-					if (tag.tagName === "edit") {
-						try {
-							const fullPath = join(projectPath, file);
-							const fileContent = await fs.readFile(fullPath, "utf8");
-							const searchMatch = patchContent.match(
-								/<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n/,
-							);
-							const replaceMatch = patchContent.match(
-								/=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/,
-							);
-
-							if (searchMatch && replaceMatch) {
-								const searchBlock = searchMatch[1];
-								const replaceBlock = replaceMatch[1];
-								const matchResult = HeuristicMatcher.matchAndPatch(
-									file,
-									fileContent,
-									searchBlock,
-									replaceBlock,
-								);
-
-								if (matchResult.error) {
-									atomicResult.notifications.push({
-										type: "notify",
-										text: `Error applying edit to ${file}: ${matchResult.error}`,
-										level: "error",
-									});
-								} else {
-									if (matchResult.warning) {
-										atomicResult.notifications.push({
-											type: "notify",
-											text: `Warning for ${file}: ${matchResult.warning}`,
-											level: "warn",
-										});
-									}
-									patchContent = matchResult.patch;
-								}
-							}
-						} catch (err) {
-							atomicResult.notifications.push({
-								type: "notify",
-								text: `Failed to read or parse file ${file} for editing: ${err.message}`,
-								level: "error",
-							});
-						}
-					}
-
-					atomicResult.diffs.push({
-						runId: atomicResult.runId,
-						type: tag.tagName,
-						file,
-						patch: patchContent,
-					});
+			// PERSISTENCE TAGS (Model Focus)
+			if (tagName === "read" && projectId) {
+				const path = attrs.find((a) => a.name === "file")?.value;
+				if (path) {
+					await this.#db.set_retained.run({ project_id: projectId, path, is_retained: 1 });
 				}
-			} else if (tag.tagName === "env" || tag.tagName === "run") {
-				atomicResult.commands.push({
-					type: tag.tagName,
-					command: this.#responseParser.getNodeText(tag).trim(),
-				});
-			} else if (tag.tagName === "prompt_user") {
-				const { question, options } = this.#responseParser.parsePromptUser(tag);
+			}
+
+			if (tagName === "drop" && projectId) {
+				const path = attrs.find((a) => a.name === "file")?.value;
+				if (path) {
+					await this.#db.set_retained.run({ project_id: projectId, path, is_retained: 0 });
+				}
+			}
+
+			// DIFF TAGS
+			if (tagName === "edit" || tagName === "create" || tagName === "delete") {
+				const path = attrs.find((a) => a.name === "file")?.value;
+				const patch = this.#parser.getNodeText(tag);
+				if (path) {
+					atomicResult.diffs.push({ type: tagName, file: path, patch });
+				}
+			}
+
+			// COMMAND TAGS
+			if (tagName === "run" || tagName === "env") {
+				const command = this.#parser.getNodeText(tag);
+				atomicResult.commands.push({ type: tagName, command });
+			}
+
+			// NOTIFICATION TAGS
+			if (tagName === "short") {
 				atomicResult.notifications.push({
-					type: tag.tagName,
-					text: question,
-					status: "proposed",
-					config: { options },
+					type: "short",
+					text: this.#parser.getNodeText(tag),
+					level: "info",
 				});
-			} else if (tag.tagName === "summary") {
+			}
+
+			if (tagName === "prompt_user") {
 				atomicResult.notifications.push({
-					type: tag.tagName,
-					text: this.#responseParser.getNodeText(tag).trim(),
+					type: "prompt_user",
+					text: this.#parser.getNodeText(tag),
+					level: "warn",
+					config: this.#parser.parsePromptUser(tag),
 				});
-			} else if (tag.tagName === "analysis") {
-				atomicResult.analysis = this.#responseParser.getNodeText(tag).trim();
+			}
+
+			if (tagName === "summary") {
+				atomicResult.notifications.push({
+					type: "summary",
+					text: this.#parser.getNodeText(tag),
+					level: "info",
+				});
+			}
+
+			if (tagName === "analysis") {
+				atomicResult.analysis = this.#parser.getNodeText(tag);
 			}
 		}
 
-		// Legacy test markers
-		const turnContent = atomicResult.content;
+		// Legacy/Test markers
 		if (turnContent.includes("RUMMY_TEST_DIFF")) {
 			atomicResult.diffs.push({
-				runId: atomicResult.runId,
-				type: "edit",
-				file: "test.txt",
-				patch: "--- test.txt\n+++ test.txt\n@@ -1 +1 @@\n-old\n+new",
+				type: "create",
+				file: "rummy_test.txt",
+				patch: "test+new",
 			});
 		}
 		if (turnContent.includes("RUMMY_TEST_NOTIFY")) {
@@ -119,65 +105,46 @@ export default class FindingsManager {
 				level: "info",
 			});
 		}
-		if (turnContent.includes("RUMMY_TEST_RENDER")) {
-			atomicResult.notifications.push({
-				type: "render",
-				text: "# Rendered Content",
-				append: false,
-			});
-		}
 	}
 
-	async resolveOutstandingFindings(projectPath, runId, _prompt, infoTags) {
+	async resolveOutstandingFindings(projectPath, runId, prompt, infoTags) {
 		const findings = await this.#db.get_findings_by_run_id.all({
 			run_id: runId,
 		});
-		const proposed = findings.filter((f) => f.status === "proposed");
-		if (proposed.length === 0) return { resolvedCount: 0, remainingCount: 0 };
-
 		let resolvedCount = 0;
+
 		for (const tag of infoTags) {
 			const diffId = tag.attrs.find((a) => a.name === "diff")?.value;
 			const cmdId = tag.attrs.find((a) => a.name === "command")?.value;
-			const noteId = tag.attrs.find((a) => a.name === "notification")?.value;
-			const resolution = this.#responseParser.getNodeText(tag).trim();
+			const notifId = tag.attrs.find((a) => a.name === "notification")?.value;
+			const action = this.#parser.getNodeText(tag);
 
 			if (diffId) {
-				const finding = proposed.find(
-					(f) => f.category === "diff" && String(f.id) === diffId,
-				);
-				if (finding) {
-					const status =
-						resolution.toLowerCase() === "accepted" ? "accepted" : "rejected";
+				const f = findings.find((x) => x.id === Number.parseInt(diffId));
+				if (f && f.status === "proposed") {
+					const status = action === "accepted" ? "accepted" : "rejected";
 					if (status === "accepted") {
-						await this.applyDiff(projectPath, finding);
+						await this.applyDiff(projectPath, f);
 					}
-					await this.#db.update_finding_diff_status.run({
-						id: finding.id,
-						status,
-					});
+					await this.#db.update_finding_diff_status.run({ id: f.id, status });
 					resolvedCount++;
 				}
-			} else if (cmdId) {
-				const finding = proposed.find(
-					(f) => f.category === "command" && String(f.id) === cmdId,
-				);
-				if (finding) {
-					const status =
-						resolution.toLowerCase() === "accepted" ? "accepted" : "rejected";
-					await this.#db.update_finding_command_status.run({
-						id: finding.id,
-						status,
-					});
+			}
+
+			if (cmdId) {
+				const f = findings.find((x) => x.id === Number.parseInt(cmdId));
+				if (f && f.status === "proposed") {
+					const status = action === "accepted" ? "accepted" : "rejected";
+					await this.#db.update_finding_command_status.run({ id: f.id, status });
 					resolvedCount++;
 				}
-			} else if (noteId) {
-				const finding = proposed.find(
-					(f) => f.category === "notification" && String(f.id) === noteId,
-				);
-				if (finding) {
+			}
+
+			if (notifId) {
+				const f = findings.find((x) => x.id === Number.parseInt(notifId));
+				if (f && f.status === "proposed") {
 					await this.#db.update_finding_notification_status.run({
-						id: finding.id,
+						id: f.id,
 						status: "responded",
 					});
 					resolvedCount++;
@@ -185,33 +152,44 @@ export default class FindingsManager {
 			}
 		}
 
-		// Re-fetch to get updated statuses
-		const updatedFindings = await this.#db.get_findings_by_run_id.all({
+		const remaining = await this.#db.get_findings_by_run_id.all({
 			run_id: runId,
 		});
-		const remainingProposed = updatedFindings.filter(
-			(f) => f.status === "proposed",
-		);
-		const remainingCount = remainingProposed.length;
+		const proposed = remaining.filter((f) => f.status === "proposed");
 
 		return {
 			resolvedCount,
-			remainingCount,
-			proposed: updatedFindings, // Return all for filtering in the loop
+			remainingCount: proposed.length,
+			proposed,
 		};
 	}
 
 	async applyDiff(projectPath, diff) {
 		const fullPath = join(projectPath, diff.file);
+
+		if (diff.type === "create") {
+			await fs.writeFile(fullPath, diff.patch, "utf8");
+			return;
+		}
+
 		if (diff.type === "delete") {
 			await fs.unlink(fullPath).catch(() => {});
-		} else if (diff.type === "create" || diff.type === "edit") {
-			if (diff.type === "create") {
-				await fs.writeFile(fullPath, diff.patch, "utf8");
-			} else {
-				const { applyPatch } = await import("diff");
-				const oldContent = await fs.readFile(fullPath, "utf8");
-				const newContent = applyPatch(oldContent, diff.patch);
+			return;
+		}
+
+		if (diff.type === "edit") {
+			const oldContent = await fs.readFile(fullPath, "utf8");
+			const { patch } = HeuristicMatcher.matchAndPatch(
+				diff.file,
+				oldContent,
+				diff.search, // Note: we'll need to update schema/parser to store search/replace
+				diff.replace,
+			);
+
+			if (patch) {
+				// For now we trust the patch since we don't have search/replace separated in DB yet
+				// This part will be updated in next iteration of Findings refinement.
+				const newContent = diff.patch; // Temporary: trust the patch
 				if (newContent) {
 					await fs.writeFile(fullPath, newContent, "utf8");
 				} else {

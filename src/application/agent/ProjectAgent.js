@@ -11,31 +11,38 @@ import SessionManager from "../session/SessionManager.js";
  * Delegates specialized tasks to focused managers.
  */
 export default class ProjectAgent {
+	#db;
+	#hooks;
 	#sessionManager;
-	#responseParser;
-	#findingsManager;
 	#agentLoop;
+	#findingsManager;
 
-	constructor(db, hooks = createHooks()) {
-		const llmProvider = new LlmProvider(hooks);
-		const turnBuilder = new TurnBuilder(hooks);
-
+	constructor(db, hooks) {
+		this.#db = db;
+		this.#hooks = hooks;
 		this.#sessionManager = new SessionManager(db, hooks);
-		this.#responseParser = new ResponseParser();
-		this.#findingsManager = new FindingsManager(db, this.#responseParser);
+
+		const parser = new ResponseParser();
+		const llm = new LlmProvider(hooks);
+		const turnBuilder = new TurnBuilder(hooks);
+		this.#findingsManager = new FindingsManager(db, parser);
 
 		this.#agentLoop = new AgentLoop(
 			db,
-			llmProvider,
+			llm,
 			hooks,
 			turnBuilder,
-			this.#responseParser,
+			parser,
 			this.#findingsManager,
 		);
 	}
 
-	async init(projectPath, projectName, clientId) {
-		return this.#sessionManager.init(projectPath, projectName, clientId);
+	async init(projectPath, projectName, clientId, projectBufferFiles = []) {
+		return this.#sessionManager.init(projectPath, projectName, clientId, projectBufferFiles);
+	}
+
+	async syncBuffered(projectId, files) {
+		return this.#sessionManager.syncBuffered(projectId, files);
 	}
 
 	async getFiles(projectPath) {
@@ -46,20 +53,16 @@ export default class ProjectAgent {
 		return this.#sessionManager.updateFiles(projectId, files);
 	}
 
-	async startRun(sessionId, runConfig) {
-		return this.#sessionManager.startRun(sessionId, runConfig);
+	async startRun(sessionId, config) {
+		return this.#sessionManager.startRun(sessionId, config);
 	}
 
-	async getRunHistory(runId) {
-		return this.#agentLoop.getRunHistory(runId);
+	async setSystemPrompt(sessionId, text) {
+		return this.#sessionManager.setSystemPrompt(sessionId, text);
 	}
 
-	async setSystemPrompt(sessionId, systemPrompt) {
-		return this.#sessionManager.setSystemPrompt(sessionId, systemPrompt);
-	}
-
-	async setPersona(sessionId, persona) {
-		return this.#sessionManager.setPersona(sessionId, persona);
+	async setPersona(sessionId, text) {
+		return this.#sessionManager.setPersona(sessionId, text);
 	}
 
 	async addSkill(sessionId, name) {

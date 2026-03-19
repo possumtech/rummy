@@ -121,6 +121,7 @@ BEGIN
                 THEN RAISE(ABORT, 'Blocked: Run has outstanding proposed user prompts.')
         END;
 END;
+
 -- Repo Map Tables
 CREATE TABLE IF NOT EXISTS repo_map_files (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -132,6 +133,10 @@ CREATE TABLE IF NOT EXISTS repo_map_files (
 		visibility IN ('active', 'read_only', 'mappable', 'ignored')
 	)
 	, symbol_tokens INTEGER DEFAULT 0
+	, is_buffered BOOLEAN DEFAULT 0
+	, is_retained BOOLEAN DEFAULT 0
+	, is_active BOOLEAN GENERATED ALWAYS AS (is_buffered OR is_retained) VIRTUAL
+	, is_root BOOLEAN GENERATED ALWAYS AS (path NOT LIKE '%/%') VIRTUAL
 	, last_indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, UNIQUE (project_id, path)
 );
@@ -152,14 +157,26 @@ CREATE TABLE IF NOT EXISTS repo_map_references (
 	, symbol_name TEXT NOT NULL
 );
 
+-- THE RANKING ENGINE (Heat Calculation)
+-- Heat = (Count of symbols in file matching Active file symbols) + (is_root ? 1 : 0)
+CREATE VIEW IF NOT EXISTS repo_map_ranked AS
+SELECT 
+    f.*,
+    COALESCE((
+        SELECT COUNT(DISTINCT t1.name)
+        FROM repo_map_tags t1
+        JOIN repo_map_tags t2 ON t1.name = t2.name
+        JOIN repo_map_files f2 ON t2.file_id = f2.id
+        WHERE t1.file_id = f.id 
+          AND f2.is_active = 1
+          AND f2.id != f.id
+    ), 0) + f.is_root AS heat
+FROM repo_map_files f;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 CREATE INDEX IF NOT EXISTS idx_repo_map_files_project_id
 ON repo_map_files (project_id);
 CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_id ON repo_map_tags (file_id);
-
--- Initial Data
-INSERT OR IGNORE INTO projects (id, path, name)
-VALUES
-('rummy-project', '/home/frith/repo/rummy/main', 'RUMMY Main');
+CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name ON repo_map_tags (name);
