@@ -93,26 +93,29 @@ export default class Turn {
 				files.push({
 					path: f.getAttribute("path"),
 					status: f.getAttribute("status"),
-					content: f.lastChild?.nodeType === 3 ? f.lastChild.nodeValue : null, // only if text node present
+					content: f.textContent || null,
 				});
 			}
 		}
 
 		return {
-			sequence: Number.parseInt(this.#doc.documentElement.getAttribute("sequence") || "0"),
-			role: {
-				system: systemEl?.textContent || "",
-				user: userEl?.textContent || "",
-				assistant: {
-					content: getTagContent(assistantEl, "content"),
-					reasoning: getTagContent(assistantEl, "reasoning_content"),
-					meta: JSON.parse(getTagContent(assistantEl, "meta") || "{}"),
-				},
-			},
+			sequence: Number.parseInt(
+				this.#doc.documentElement.getAttribute("sequence") || "0",
+				10,
+			),
+			system: systemEl?.textContent || "",
+			persona: getTagContent(contextEl, "persona"),
 			context: {
-				persona: getTagContent(contextEl, "persona"),
-				skills: Array.from(contextEl?.getElementsByTagName("skill") || []).map(s => s.textContent),
 				files,
+				skills: Array.from(contextEl?.getElementsByTagName("skill") || []).map(
+					(s) => s.textContent,
+				),
+			},
+			user: userEl?.textContent || "",
+			assistant: {
+				content: getTagContent(assistantEl, "content"),
+				reasoning: getTagContent(assistantEl, "reasoning_content"),
+				meta: JSON.parse(getTagContent(assistantEl, "meta") || "{}"),
 			},
 		};
 	}

@@ -13,7 +13,7 @@ Every response MUST contain these 3 core tags in this exact order:
 After the core tags, you MUST choose ONLY ONE path:
 - if <unknown /> isn't empty and <tasks /> is incomplete: use <system_instructions:ask_tags/> to resolve unknowns.
 - if <unknown /> is empty and <tasks /> is incomplete: use <system_instructions:act_tags/> to complete tasks.
-- if <unknown /> is empty and <tasks /> is complete: terminate with <response>Complete breakdown</response><short>One liner</short>
+- if <unknown /> is empty and <tasks /> is complete: terminate with <response>Full response.</response><short>One liner</short>
 </system_instructions:paths>
 
 <system_instructions:ask_tags>

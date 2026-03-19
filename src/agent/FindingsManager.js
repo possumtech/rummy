@@ -90,7 +90,7 @@ export default class FindingsManager {
 					type: tag.tagName,
 					text: question,
 					status: "proposed",
-					config: { options }
+					config: { options },
 				});
 			} else if (tag.tagName === "summary") {
 				atomicResult.notifications.push({

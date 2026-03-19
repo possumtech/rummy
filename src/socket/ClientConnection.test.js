@@ -35,7 +35,7 @@ describe("ClientConnection", () => {
 		const lastCall = ws.send.mock.calls[ws.send.mock.calls.length - 1];
 		return {
 			result: JSON.parse(lastCall.arguments[0]),
-			allSent: ws.send.mock.calls.map(c => JSON.parse(c.arguments[0]))
+			allSent: ws.send.mock.calls.map((c) => JSON.parse(c.arguments[0])),
 		};
 	};
 
@@ -58,7 +58,14 @@ describe("ClientConnection", () => {
 			new Response(
 				JSON.stringify({
 					model: "test-model",
-					choices: [{ message: { role: "assistant", content: "<response>Paris</response><short>Paris</short>" } }],
+					choices: [
+						{
+							message: {
+								role: "assistant",
+								content: "<response>Paris</response><short>Paris</short>",
+							},
+						},
+					],
 					usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
 				}),
 				{ status: 200, headers: { "Content-Type": "application/json" } },
@@ -75,14 +82,14 @@ describe("ClientConnection", () => {
 				model: "test-model",
 				prompt: "p",
 			});
-			
+
 			assert.ok(response.result.runId);
 			assert.strictEqual(response.result.status, "completed");
 			assert.strictEqual(response.result.turn, 0);
 
-			const turnNotif = allSent.find(m => m.method === "run/step/completed");
+			const turnNotif = allSent.find((m) => m.method === "run/step/completed");
 			assert.ok(turnNotif);
-			assert.ok(turnNotif.params.turn.role.assistant.content.includes("Paris"));
+			assert.ok(turnNotif.params.turn.assistant.content.includes("Paris"));
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

@@ -26,11 +26,6 @@ export default class RepoMapPlugin {
 			const repoMap = new RepoMap(ctx, db, project.id);
 			const perspective = await repoMap.renderPerspective(activeFiles);
 
-			// Inject base system prompt
-			rummy.system.appendChild(
-				rummy.doc.createTextNode("You are an assistant."),
-			);
-
 			const filesContainer = rummy.tag("files");
 			rummy.contextEl.appendChild(filesContainer);
 

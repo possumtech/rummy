@@ -59,7 +59,14 @@ describe("ProjectAgent Unit", () => {
 			new Response(
 				JSON.stringify({
 					model: "test-model",
-					choices: [{ message: { role: "assistant", content: "<response>Paris</response><short>Paris</short>" } }],
+					choices: [
+						{
+							message: {
+								role: "assistant",
+								content: "<response>Paris</response><short>Paris</short>",
+							},
+						},
+					],
 					usage: { total_tokens: 10 },
 				}),
 				{ status: 200, headers: { "Content-Type": "application/json" } },
@@ -79,7 +86,7 @@ describe("ProjectAgent Unit", () => {
 			assert.ok(result.runId);
 			assert.strictEqual(result.status, "completed");
 			assert.strictEqual(result.turn, 0);
-			assert.ok(turnData.role.assistant.content.includes("Paris"));
+			assert.ok(turnData.assistant.content.includes("Paris"));
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

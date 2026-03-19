@@ -77,13 +77,20 @@ export default class ResponseParser {
 			return {
 				question: fullText.trim(),
 				options: [
-					{ label: "Other", description: "None of the above. Provide a freeform answer." }
-				]
+					{
+						label: "Other",
+						description: "None of the above. Provide a freeform answer.",
+					},
+				],
 			};
 		}
 
-		const question = fullText.substring(0, firstIndex).trim() || "The agent has a question:";
-		const rawOptions = fullText.substring(firstIndex).split(marker).filter(Boolean);
+		const question =
+			fullText.substring(0, firstIndex).trim() || "The agent has a question:";
+		const rawOptions = fullText
+			.substring(firstIndex)
+			.split(marker)
+			.filter(Boolean);
 
 		const options = rawOptions.map((opt) => {
 			const text = opt.trim();

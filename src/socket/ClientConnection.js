@@ -119,8 +119,14 @@ export default class ClientConnection {
 									clientId: "Unique client identifier",
 								},
 							},
-							getModels: { description: "Get available local and aliased models", params: {} },
-							getFiles: { description: "List all files in the current project", params: {} },
+							getModels: {
+								description: "Get available local and aliased models",
+								params: {},
+							},
+							getFiles: {
+								description: "List all files in the current project",
+								params: {},
+							},
 							updateFiles: {
 								description: "Update the visibility/indexing status of files",
 								params: { files: "Array of { path, visibility }" },
@@ -133,10 +139,6 @@ export default class ClientConnection {
 									yolo: "Boolean for auto-affirmation",
 								},
 							},
-							getRunHistory: {
-								description: "Retrieve all turns for a specific run",
-								params: { runId: "UUID of the run" },
-							},
 							ask: {
 								description: "Send a non-mutating query to the agent",
 								params: {
@@ -146,20 +148,32 @@ export default class ClientConnection {
 								},
 							},
 							act: {
-								description: "Send a mutating directive to the agent (can propose edits)",
+								description:
+									"Send a mutating directive to the agent (can propose edits)",
 								params: {
 									prompt: "User message",
 									model: "Optional override",
 									activeFiles: "Files to include in context",
 								},
 							},
-							systemPrompt: { description: "Set the base system prompt override", params: { text: "XML/Text content" } },
-							persona: { description: "Set the agent persona", params: { text: "Text content" } },
-							"skill/add": { description: "Enable a skill for this session", params: { name: "Skill ID" } },
+							systemPrompt: {
+								description: "Set the base system prompt override",
+								params: { text: "XML/Text content" },
+							},
+							persona: {
+								description: "Set the agent persona",
+								params: { text: "Text content" },
+							},
+							"skill/add": {
+								description: "Enable a skill for this session",
+								params: { name: "Skill ID" },
+							},
 						},
 						notifications: {
-							"run/step/completed": "Triggered when a turn finishes. Contains the structured 'turn' object including response, context, and sequence.",
-							"run/progress": "Periodic updates on agent thoughts and task status.",
+							"run/step/completed":
+								"Triggered when a turn finishes. Contains the structured 'turn' object including response, context, and sequence.",
+							"run/progress":
+								"Periodic updates on agent thoughts and task status.",
 							"ui/render": "Fragments for streaming output UI.",
 							"editor/diff": "Proposed file modifications.",
 						},
@@ -207,10 +221,6 @@ export default class ClientConnection {
 						this.#context.sessionId,
 						params,
 					);
-					break;
-
-				case "getRunHistory":
-					result = await this.#projectAgent.getRunHistory(params.runId);
 					break;
 
 				case "run/resolve":
@@ -327,7 +337,10 @@ export default class ClientConnection {
 
 			await this.#hooks.rpc.completed.emit({ method, id, result: finalResult });
 		} catch (error) {
-			if (debug) console.error(`[SOCKET] ERR: ${error.message}`);
+			if (debug) {
+				console.error(`[SOCKET] ERR: ${error.message}`);
+				console.error(`[DEBUG] Stack: ${error.stack}`);
+			}
 			this.#send({
 				jsonrpc: "2.0",
 				error: { code: -32603, message: error.message },

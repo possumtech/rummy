@@ -83,23 +83,27 @@ export default class TurnBuilder {
 
 		// 4. Seed the User Prompt with state-aware guardrails
 		const actionTag = type === "act" ? "act" : "ask";
-		
+
 		// Determine allowed tags based on previous turn's state
 		const hasUnknowns = contextData.hasUnknowns ?? true; // Default to true for Turn 0
-		const tasksComplete = contextData.tasksComplete ?? false;
-		
+		const _tasksComplete = contextData.tasksComplete ?? false;
+
 		const required = "tasks known unknown";
 		let allowed = `${required} read env`;
-		
+
 		if (!hasUnknowns) {
 			allowed += " edit create delete run analysis summary";
 		}
 
-		const userEl = rummy.tag(actionTag, {
-			required_tags: required,
-			allowed_tags: allowed,
-		}, [prompt]);
-		
+		const userEl = rummy.tag(
+			actionTag,
+			{
+				required_tags: required,
+				allowed_tags: allowed,
+			},
+			[prompt],
+		);
+
 		user.appendChild(userEl);
 
 		// 5. Run the Pipeline
