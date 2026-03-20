@@ -76,7 +76,7 @@ describe("RepoMap (Perspective Engine)", () => {
 		const repoMap = new RepoMap(ctx, db, pid);
 		await repoMap.updateIndex();
 
-		const perspective = await repoMap.renderPerspective({ contextSize: 1000 });
+		const perspective = await repoMap.renderPerspective({ contextSize: 1000, sequence: 1 });
 
 		const readme = perspective.files.find((f) => f.path === "README.md");
 		assert.ok(readme, "README.md must be included");
@@ -95,7 +95,7 @@ describe("RepoMap (Perspective Engine)", () => {
 
 		// Set tiny budget
 		process.env.RUMMY_MAP_TOKEN_BUDGET = "100";
-		const perspective = await repoMap.renderPerspective(); 
+		const perspective = await repoMap.renderPerspective({ sequence: 1 }); 
 
 		const dep = perspective.files.find((f) => f.path === "src/dep.js");
 		if (dep) {
@@ -109,7 +109,7 @@ describe("RepoMap (Perspective Engine)", () => {
 		const repoMap = new RepoMap(ctx, db, pid);
 		await repoMap.updateIndex();
 
-		const perspective = await repoMap.renderPerspective();
+		const perspective = await repoMap.renderPerspective({ sequence: 1 });
 		for (const f of perspective.files) {
 			assert.ok(f.size !== undefined, `File ${f.path} must have a size`);
 			assert.ok(f.tokens !== undefined, `File ${f.path} must have tokens`);
@@ -150,7 +150,7 @@ describe("RepoMap (Perspective Engine)", () => {
 		// RELATIONAL: Mark as retained (Model focus)
 		await db.set_retained.run({ project_id: pid, path: "active.js", is_retained: 1 });
 
-		const perspective = await repoMap.renderPerspective();
+		const perspective = await repoMap.renderPerspective({ sequence: 1 });
 
 		const activeFile = perspective.files.find((f) => f.path === "active.js");
 		assert.ok(activeFile, "active.js must be in perspective");
@@ -176,12 +176,33 @@ describe("RepoMap (Perspective Engine)", () => {
 		// RELATIONAL: Mark caller as retained
 		await db.set_retained.run({ project_id: pid, path: "active.js", is_retained: 1 });
 
-		const perspective = await repoMap.renderPerspective();
+		const perspective = await repoMap.renderPerspective({ sequence: 1 });
 
 		const lib = perspective.files.find((f) => f.path === "deep/nested/dir/lib.js");
 		assert.ok(lib, "Deep dependency should be warmed up via relational heat join");
 		assert.strictEqual(lib.heat, 1, "Warmed file heat should be 1 (one symbol overlap)");
 		assert.ok(lib.symbols && lib.symbols.length > 0, "Warmed dependency should include its symbols");
 		assert.strictEqual(lib.symbols[0].name, "targetSymbol");
+	});
+
+	it("9. Fidelity Decay: should omit content if last attention was > 12 turns ago", async () => {
+		const { db, pid, ctx } = await setup("decay");
+		const repoMap = new RepoMap(ctx, db, pid);
+		
+		await repoMap.updateIndex();
+
+		// RELATIONAL: Mark as retained
+		await db.set_retained.run({ project_id: pid, path: "active.js", is_retained: 1 });
+
+		// Set last_attention_turn to 1
+		await db.update_file_attention.run({ project_id: pid, turn_seq: 1, mention: "active.js" });
+
+		// Render with sequence 14 (14 - 1 = 13, which is > 12)
+		const perspective = await repoMap.renderPerspective({ sequence: 14 });
+
+		const activeFile = perspective.files.find((f) => f.path === "active.js");
+		assert.ok(activeFile, "active.js must be in perspective");
+		assert.ok(!activeFile.content, "Content should be decayed (omitted) after 12 turns");
+		assert.ok(activeFile.symbols, "Should fall back to symbols");
 	});
 });

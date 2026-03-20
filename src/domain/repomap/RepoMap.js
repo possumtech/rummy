@@ -212,13 +212,20 @@ export default class RepoMap {
 
 		const finalFiles = [];
 		let currentTokens = 0;
+		const currentTurn = options.sequence ?? 0;
 
 		for (const file of rankedFiles) {
 			if (file.visibility === "ignored") continue;
 
 			let displayFile;
 
-			if (file.is_active) {
+			// FIDELITY DECAY: Full content ONLY for:
+			// 1. User-buffered files (pinned)
+			// 2. Retained files with attention within the last 12 turns
+			const hasRecentAttention = (currentTurn - file.last_attention_turn) <= 12;
+			const shouldIncludeSource = file.is_buffered || (file.is_active && hasRecentAttention);
+
+			if (shouldIncludeSource) {
 				const fullPath = join(this.#ctx.root, file.path);
 				let content = "";
 				try {

@@ -24,7 +24,9 @@ export default class RepoMapPlugin {
 			);
 			const ctx = await ProjectContext.open(project.path, visibilityMap);
 			const repoMap = new RepoMap(ctx, db, project.id);
-			const perspective = await repoMap.renderPerspective();
+			const perspective = await repoMap.renderPerspective({
+				sequence: rummy.context.sequence
+			});
 
 			const filesContainer = rummy.tag("files");
 			rummy.contextEl.appendChild(filesContainer);

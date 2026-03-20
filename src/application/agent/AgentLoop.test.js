@@ -18,6 +18,7 @@ test("AgentLoop", async (t) => {
 		create_turn: { get: async () => ({ id: 1 }) },
 		reset_buffered: { run: async () => {} },
 		set_buffered: { run: async () => {} },
+		update_file_attention: { run: async () => {} },
 		get_protocol_constraints: { get: async () => ({ required_tags: "tasks known unknown", allowed_tags: "tasks known unknown read env" }) }
 	});
 

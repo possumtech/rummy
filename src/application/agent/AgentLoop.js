@@ -310,6 +310,26 @@ export default class AgentLoop {
 				tags,
 			);
 
+			// RELATIONAL ATTENTION: Scan for mentions to sustain context fidelity
+			const mentions = new Set();
+			const wordRegex = /[a-zA-Z0-9_./-]+/g;
+			
+			// Scan reasoning and known tags specifically for attention
+			const reasoningText = tags.find(t => t.tagName === "reasoning_content")?.childNodes?.[0]?.value || "";
+			const knownText = tags.find(t => t.tagName === "known")?.childNodes?.[0]?.value || "";
+			
+			for (const match of (finalResponse.content + " " + reasoningText + " " + knownText).matchAll(wordRegex)) {
+				mentions.add(match[0]);
+			}
+
+			for (const mention of mentions) {
+				await this.#db.update_file_attention.run({
+					project_id: projectId,
+					turn_seq: sequenceOffset,
+					mention: mention
+				});
+			}
+
 			const tasksTag = tags.find((t) => t.tagName === "tasks");
 			const tasksText = tasksTag
 				? this.#responseParser.getNodeText(tasksTag).trim()

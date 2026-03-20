@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS repo_map_files (
 	, symbol_tokens INTEGER DEFAULT 0
 	, is_buffered BOOLEAN DEFAULT 0
 	, is_retained BOOLEAN DEFAULT 0
+	, last_attention_turn INTEGER DEFAULT 0
 	, is_active BOOLEAN GENERATED ALWAYS AS (is_buffered OR is_retained) VIRTUAL
 	, is_root BOOLEAN GENERATED ALWAYS AS (path NOT LIKE '%/%') VIRTUAL
 	, last_indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP
