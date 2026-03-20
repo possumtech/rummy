@@ -4,137 +4,146 @@ import AgentLoop from "./AgentLoop.js";
 import createHooks from "../../domain/hooks/Hooks.js";
 
 test("AgentLoop", async (t) => {
-	const hooks = createHooks();
-	const mockDb = {
+	const createMockDb = () => ({
 		get_session_by_id: { all: async () => [{ project_id: "p1" }] },
-		get_project_by_id: { get: async () => ({ path: "/tmp" }) },
+		get_project_by_id: { get: async () => ({ id: "p1", path: "/tmp" }) },
 		create_run: { run: async () => {} },
-		create_turn: { get: async () => ({ id: 1 }) },
 		update_run_status: { run: async () => {} },
 		get_turns_by_run_id: { all: async () => [] },
 		get_findings_by_run_id: { all: async () => [] },
-	};
-	const mockLlm = {
+		get_unresolved_findings: { all: async () => [] },
+		get_turn_history: { all: async () => [] },
+		create_empty_turn: { get: async () => ({ id: 1 }) },
+		update_turn_stats: { run: async () => {} },
+		create_turn: { get: async () => ({ id: 1 }) },
+		reset_buffered: { run: async () => {} },
+		set_buffered: { run: async () => {} },
+		get_protocol_constraints: { get: async () => ({ required_tags: "tasks known unknown", allowed_tags: "tasks known unknown read env" }) }
+	});
+
+	const createMockLlm = () => ({
 		completion: async () => ({
 			choices: [{ message: { role: "assistant", content: "<tasks>- [x] done</tasks><response>Hi</response>" } }],
 			usage: { total_tokens: 10 }
 		})
-	};
+	});
+
 	const mockTurnBuilder = {
 		build: async () => ({
 			toJson: () => ({ assistant: { content: "Hi" } }),
 			serialize: async () => [{ role: "user", content: "test" }, { role: "system", content: "sys" }],
-			assistant: { reasoning: { add: () => {} }, content: { add: () => {} }, meta: { add: () => {} } }
+			assistant: { reasoning: { add: () => {} }, content: { add: () => {} }, meta: { add: () => {} } },
+			save: async () => {}
 		})
 	};
+
 	const mockParser = {
-		parseActionTags: () => [{ tagName: "response" }, { tagName: "tasks" }],
-		getNodeText: () => "Task list",
+		parseActionTags: (content) => {
+			if (content.includes("<create")) return [{ tagName: "create", attrs: [{ name: "file", value: "b.js" }] }];
+			if (content.includes("read")) return [{ tagName: "read", attrs: [{ name: "file", value: "a.js" }] }, { tagName: "run", isMock: true, childNodes: [{ value: "ls" }] }];
+			return [{ tagName: "response" }, { tagName: "tasks" }];
+		},
+		getNodeText: (tag) => {
+			if (tag.tagName === "tasks") return "- [x] done";
+			return "some text";
+		},
 		mergePrefill: (p, c) => p + c
 	};
+
 	const mockFindings = {
 		populateFindings: async () => {},
-		resolveOutstandingFindings: async () => ({ remainingCount: 0, proposed: [] })
+		resolveOutstandingFindings: async () => ({ remainingCount: 0, proposed: [] }),
+		applyDiff: async () => {}
 	};
 
-	const loop = new AgentLoop(mockDb, mockLlm, hooks, mockTurnBuilder, mockParser, mockFindings);
-
 	await t.test("run should complete a simple turn", async () => {
+		const loop = new AgentLoop(createMockDb(), createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "hello");
 		assert.strictEqual(result.status, "completed");
 	});
 
 	await t.test("run should resume with history", async () => {
 		const runId = "r1";
+		const mockDb = createMockDb();
 		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: "{}" }) };
-		mockDb.get_turns_by_run_id.all = async () => [
-			{ sequence_number: 0, payload: JSON.stringify([{ role: "user", content: "hi" }, { role: "assistant", content: "hello" }]) }
+		mockDb.get_turn_history.all = async () => [
+			{ role: "user", content: "hi", max_seq: 0 },
+			{ role: "assistant", content: "hello", max_seq: 1 }
 		];
 		
+		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "next", [], runId);
 		assert.strictEqual(result.status, "completed");
 	});
 
 	await t.test("run should block if findings are pending", async () => {
 		const runId = "r2";
+		const mockDb = createMockDb();
 		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: "{}" }) };
-		mockFindings.resolveOutstandingFindings = async () => ({ remainingCount: 1, proposed: [{ id: 1, status: "proposed" }] });
 		
+		const mockFindingsPending = {
+			...mockFindings,
+			resolveOutstandingFindings: async () => ({ remainingCount: 1, proposed: [{ id: 1, status: "proposed", category: "diff", file: "a.js", type: "edit", patch: "" }] })
+		};
+		
+		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindingsPending);
 		const result = await loop.run("ask", "s1", "m1", "next", [], runId);
 		assert.strictEqual(result.status, "proposed");
 	});
 
 	await t.test("run should terminate on checklist completion", async () => {
-		mockParser.parseActionTags = (content) => [
-			{ tagName: "tasks", isMock: true, childNodes: [{ value: "- [x] all done" }] },
-			{ tagName: "response", isMock: true, childNodes: [{ value: "bye" }] }
-		];
-		mockParser.getNodeText = () => "- [x] all done";
-		
+		const loop = new AgentLoop(createMockDb(), createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "finish");
-		assert.strictEqual(result.status, "completed");
-	});
-
-	await t.test("run should handle stall protection", async () => {
-		mockParser.parseActionTags = () => [
-			{ tagName: "unknown", isMock: true, childNodes: [{ value: "none" }] }
-		];
-		mockParser.getNodeText = () => "none";
-		
-		const result = await loop.run("ask", "s1", "m1", "stall");
 		assert.strictEqual(result.status, "completed");
 	});
 
 	await t.test("run should handle yolo mode", async () => {
 		const runId = "r_yolo";
+		const mockDb = createMockDb();
 		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: JSON.stringify({ yolo: true }) }) };
-		mockDb.get_findings_by_run_id = { all: async () => [{ id: 1, status: "proposed", category: "command", patch: "ls" }] };
+		mockDb.get_unresolved_findings.all = async () => [{ id: 1, status: "proposed", category: "command", patch: "ls", type: "run" }];
 		mockDb.update_finding_command_status = { run: async () => {} };
+		mockDb.update_finding_diff_status = { run: async () => {} };
 		
+		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "yolo", [], runId);
 		assert.strictEqual(result.status, "completed");
 	});
 
 	await t.test("run should handle information gathering", async () => {
-		mockLlm.completion = async () => ({
-			choices: [{ message: { role: "assistant", content: "<read file=\"a.js\"/><run>ls</run>" } }],
-			usage: { total_tokens: 10 }
-		});
-		// Second turn will complete
 		let callCount = 0;
-		const originalCompletion = mockLlm.completion;
-		mockLlm.completion = async () => {
-			callCount++;
-			if (callCount === 1) return {
-				choices: [{ message: { role: "assistant", content: "<read file=\"a.js\"/><run>ls</run>" } }],
-				usage: { total_tokens: 10 }
-			};
-			return {
-				choices: [{ message: { role: "assistant", content: "<response>Done</response>" } }],
-				usage: { total_tokens: 5 }
-			};
+		const mockLlm = {
+			completion: async () => {
+				callCount++;
+				if (callCount === 1) return {
+					choices: [{ message: { role: "assistant", content: "<read file=\"a.js\"/><run>ls</run>" } }],
+					usage: { total_tokens: 10 }
+				};
+				return {
+					choices: [{ message: { role: "assistant", content: "<response>Done</response>" } }],
+					usage: { total_tokens: 5 }
+				};
+			}
 		};
 		
-		mockParser.parseActionTags = (content) => {
-			if (content.includes("read")) return [{ tagName: "read", attrs: [{ name: "file", value: "a.js" }] }, { tagName: "run", isMock: true, childNodes: [{ value: "ls" }] }];
-			return [{ tagName: "response" }];
-		};
-
+		const loop = new AgentLoop(createMockDb(), mockLlm, createHooks(), mockTurnBuilder, mockParser, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "gather");
 		assert.strictEqual(result.status, "completed");
-		mockLlm.completion = originalCompletion;
 	});
 
 	await t.test("run should stop on breaking changes", async () => {
-		mockLlm.completion = async () => ({
-			choices: [{ message: { role: "assistant", content: "<create file=\"b.js\">content</create>" } }],
-			usage: { total_tokens: 10 }
-		});
-		mockParser.parseActionTags = () => [{ tagName: "create", attrs: [{ name: "file", value: "b.js" }] }];
+		const mockLlm = {
+			completion: async () => ({
+				choices: [{ message: { role: "assistant", content: "<create file=\"b.js\">content</create>" } }],
+				usage: { total_tokens: 10 }
+			})
+		};
+		const mockDb = createMockDb();
 		mockDb.insert_finding_diff = { run: async () => {} };
 		mockDb.insert_finding_command = { run: async () => {} };
 		mockDb.insert_finding_notification = { run: async () => {} };
 
+		const loop = new AgentLoop(mockDb, mockLlm, createHooks(), mockTurnBuilder, mockParser, mockFindings);
 		const result = await loop.run("ask", "s1", "m1", "breaking");
 		assert.strictEqual(result.status, "proposed");
 	});

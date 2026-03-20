@@ -21,7 +21,16 @@ test("ProjectAgent", async (t) => {
 		update_session_persona: { run: async () => {} },
 		insert_session_skill: { run: async () => {} },
 		delete_session_skill: { run: async () => {} },
-		upsert_repo_map_file: { run: async () => {} }
+		upsert_repo_map_file: { run: async () => {} },
+		reset_buffered: { run: async () => {} },
+		set_buffered: { run: async () => {} },
+		get_turn_history: { all: async () => [] },
+		get_unresolved_findings: { all: async () => [] },
+		create_empty_turn: { get: async () => ({ id: 1 }) },
+		update_turn_stats: { run: async () => {} },
+		insert_turn_element: { get: async () => ({ id: 1 }) },
+		get_protocol_constraints: { get: async () => ({ required_tags: "tasks", allowed_tags: "tasks response" }) },
+		set_retained: { run: async () => {} },
 	};
 	const hooks = createHooks();
 	const agent = new ProjectAgent(mockDb, hooks);

@@ -15,7 +15,7 @@ export default class TurnBuilder {
 	 * Build a structured Turn by running the DOM pipeline.
 	 */
 	async build(initialData = {}) {
-		const { prompt, sessionId, db, project, type, model, ...contextData } =
+		const { prompt, sessionId, db, project, type, model, turnId, ...contextData } =
 			initialData;
 
 		// 1. Create fresh Document
@@ -43,6 +43,7 @@ export default class TurnBuilder {
 			project,
 			type,
 			model,
+			turnId,
 			...contextData,
 		});
 
@@ -85,13 +86,23 @@ export default class TurnBuilder {
 
 		// Determine allowed tags based on previous turn's state
 		const hasUnknowns = contextData.hasUnknowns ?? true; // Default to true for Turn 0
-		const _tasksComplete = contextData.tasksComplete ?? false;
+		
+		let required = "tasks known unknown";
+		let allowed = "tasks known unknown read env";
 
-		const required = "tasks known unknown";
-		let allowed = `${required} read env`;
-
-		if (!hasUnknowns) {
-			allowed += " edit create delete run analysis summary";
+		if (db) {
+			const constraints = await db.get_protocol_constraints.get({
+				type,
+				has_unknowns: hasUnknowns ? 1 : 0
+			});
+			if (constraints) {
+				required = constraints.required_tags;
+				allowed = constraints.allowed_tags;
+			}
+		} else {
+			if (!hasUnknowns) {
+				allowed += " edit create delete run analysis summary";
+			}
 		}
 
 		const userEl = rummy.tag(
@@ -108,6 +119,6 @@ export default class TurnBuilder {
 		// 5. Run the Pipeline
 		await this.#hooks.processTurn(rummy);
 
-		return new Turn(doc);
+		return new Turn(doc, db, turnId);
 	}
 }

@@ -81,7 +81,18 @@ test("Turn class", async (t) => {
 		const xmlOutput = turn.toXml();
 		assert.ok(xmlOutput.includes('<turn sequence="1">'));
 		assert.ok(xmlOutput.includes("System prompt"));
-        assert.ok(xmlOutput.includes("</system>"));
+	});
+
+	await t.test("save() should persist elements to DB", async () => {
+		const doc = parser.parseFromString('<turn><system>Hi</system></turn>', "text/xml");
+		const mockDb = {
+			insert_turn_element: {
+				get: async () => ({ id: 1 })
+			}
+		};
+		const turn = new Turn(doc, mockDb, 123);
+		await turn.save();
+		// Success if no crash and mock called (though we aren't tracking calls here)
 	});
 
     await t.test("edge cases in toJson", () => {

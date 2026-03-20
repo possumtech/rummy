@@ -18,6 +18,8 @@ test("RepoMapPlugin", async (t) => {
 			activeFiles: [],
 			db: {
 				get_project_repo_map: { all: async () => [{ path: "a.js", visibility: "mappable", name: "f", type: "func", line: 1 }] },
+				get_file_type_handlers: { all: async () => [{ extension: "js", extractor: "hd" }] },
+				get_ranked_repo_map: { all: async () => [{ path: "a.js", visibility: "mappable", heat: 1, is_active: 0 }] },
 				upsert_repo_map_file: { get: async () => ({ id: 1 }), run: async () => ({ id: 1 }) },
 				clear_repo_map_file_data: { run: async () => {} },
 				insert_repo_map_tag: { run: async () => {} },
@@ -40,6 +42,7 @@ test("RepoMapPlugin", async (t) => {
 			projectPath: "/tmp",
 			db: {
 				get_project_repo_map: { all: async () => [] },
+				get_file_type_handlers: { all: async () => [{ extension: "js", extractor: "hd" }] },
 				upsert_repo_map_file: { get: async () => ({ id: 1 }), run: async () => ({ id: 1 }) },
 				clear_repo_map_file_data: { run: async () => {} },
 				insert_repo_map_tag: { run: async () => {} }

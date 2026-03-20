@@ -6,6 +6,9 @@ SELECT
 	, f.hash
 	, f.visibility
 	, f.symbol_tokens
+	, f.is_buffered
+	, f.is_retained
+	, f.is_active
 	, t.name
 	, t.type
 	, t.params

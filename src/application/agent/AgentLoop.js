@@ -87,20 +87,15 @@ export default class AgentLoop {
 			const config = JSON.parse(existingRun.config || "{}");
 			yolo = config.yolo === true;
 
-			const previousTurns = await this.#db.get_turns_by_run_id.all({
-				run_id: currentRunId,
-			});
-
 			// 1. Resolve findings (YOLO or via info tags)
 			const infoTags = this.#responseParser
 				.parseActionTags(prompt)
 				.filter((t) => t.tagName === "info");
 
 			if (yolo) {
-				const findings = await this.#db.get_findings_by_run_id.all({
+				const proposed = await this.#db.get_unresolved_findings.all({
 					run_id: currentRunId,
 				});
-				const proposed = findings.filter((f) => f.status === "proposed");
 				for (const f of proposed) {
 					if (f.category === "diff")
 						await this.#findingsManager.applyDiff(project.path, f);
@@ -125,18 +120,10 @@ export default class AgentLoop {
 				);
 
 			// 2. Load History from DB
-			for (const turn of previousTurns) {
-				const payload = JSON.parse(turn.payload);
-				const msgs = Array.isArray(payload) ? payload : [payload];
-				for (const m of msgs) {
-					if (m.role === "user" || m.role === "assistant") {
-						const last = historyMessages.at(-1);
-						if (!last || last.role !== m.role || last.content !== m.content) {
-							historyMessages.push(m);
-						}
-					}
-				}
-				sequenceOffset = Math.max(sequenceOffset, turn.sequence_number + 1);
+			const historyRows = await this.#db.get_turn_history.all({ run_id: currentRunId });
+			for (const row of historyRows) {
+				historyMessages.push({ role: row.role, content: row.content });
+				sequenceOffset = Math.max(sequenceOffset, row.max_seq + 1);
 			}
 
 			// 3. Block if findings are still pending
@@ -209,6 +196,13 @@ export default class AgentLoop {
 			const tasksComplete =
 				tasksTextPrev.length > 0 && !tasksTextPrev.includes("- [ ]");
 
+			// RELATIONAL DOMINANCE: Create turn record early
+			const turnRecord = await this.#db.create_empty_turn.get({
+				run_id: currentRunId,
+				sequence_number: sequenceOffset
+			});
+			const turnId = turnRecord.id;
+
 			const turnObj = await this.#turnBuilder.build({
 				type,
 				project,
@@ -220,6 +214,7 @@ export default class AgentLoop {
 				sequence: sequenceOffset,
 				hasUnknowns,
 				tasksComplete,
+				turnId,
 			});
 
 			const currentTurnMessages = await turnObj.serialize();
@@ -275,17 +270,15 @@ export default class AgentLoop {
 				displayModel: this.#resolveAlias(requestedModel),
 			});
 
-			const turnRecordParams = {
-				run_id: currentRunId,
-				sequence_number: sequenceOffset,
-				payload: JSON.stringify(turnObj.toJson()),
+			// Update stats and save the relational elements
+			await this.#db.update_turn_stats.run({
+				id: turnId,
 				prompt_tokens: usage.prompt_tokens || 0,
 				completion_tokens: usage.completion_tokens || 0,
 				total_tokens: usage.total_tokens || 0,
 				cost: usage.cost || 0,
-			};
-			const turnRecord = await this.#db.create_turn.get(turnRecordParams);
-			const turnId = turnRecord.id;
+			});
+			await turnObj.save();
 
 			const atomicResult = {
 				runId: currentRunId,

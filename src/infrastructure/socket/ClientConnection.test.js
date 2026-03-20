@@ -16,7 +16,21 @@ test("ClientConnection", async (t) => {
 		get_project_repo_map: { all: async () => [] },
 		create_run: { run: async () => {} },
 		update_run_status: { run: async () => {} },
-		create_turn: { get: async () => ({ id: 1 }) }
+		create_turn: { get: async () => ({ id: 1 }) },
+		reset_buffered: { run: async () => {} },
+		set_buffered: { run: async () => {} },
+		get_turn_history: { all: async () => [] },
+		get_unresolved_findings: { all: async () => [] },
+		create_empty_turn: { get: async () => ({ id: 1 }) },
+		update_turn_stats: { run: async () => {} },
+		insert_turn_element: { get: async () => ({ id: 1 }) },
+		get_protocol_constraints: { get: async () => ({ required_tags: "tasks", allowed_tags: "tasks response" }) },
+		set_retained: { run: async () => {} },
+		upsert_repo_map_file: { run: async () => {} },
+		update_session_system_prompt: { run: async () => {} },
+		update_session_persona: { run: async () => {} },
+		insert_session_skill: { run: async () => {} },
+		delete_session_skill: { run: async () => {} },
 	};
 
 	await t.test("handleMessage should process ping", async () => {

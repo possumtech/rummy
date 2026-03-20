@@ -48,6 +48,13 @@ export default class RepoMap {
 			}
 		}
 
+		// Fetch handlers from DB
+		const handlersRows = await this.#db.get_file_type_handlers.all();
+		const handlers = new Map();
+		for (const row of handlersRows) {
+			handlers.set(row.extension, row.extractor);
+		}
+
 		for (const relPath of mappableFiles) {
 			const fullPath = join(this.#ctx.root, relPath);
 			if (!existsSync(fullPath)) continue;
@@ -79,36 +86,54 @@ export default class RepoMap {
 			await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
 
 			const ext = extname(relPath).slice(1);
-			const extraction = this.#hdExtractor.extract(content, ext);
+			const extractorType = handlers.get(ext);
 
-			if (extraction) {
-				const symbolWeight = this.#tokenizer.encode(
-					JSON.stringify({
+			if (!extractorType) {
+				// No handler means no extraction needed (e.g. .txt files)
+				continue;
+			}
+
+			if (extractorType === "hd") {
+				const extraction = this.#hdExtractor.extract(content, ext);
+
+				if (extraction) {
+					const symbolWeight = this.#tokenizer.encode(
+						JSON.stringify({
+							path: relPath,
+							symbols: extraction.definitions,
+						}),
+					).length;
+
+					await this.#db.upsert_repo_map_file.run({
+						project_id: this.#projectId,
 						path: relPath,
-						symbols: extraction.definitions,
-					}),
-				).length;
-
-				await this.#db.upsert_repo_map_file.run({
-					project_id: this.#projectId,
-					path: relPath,
-					hash,
-					size,
-					visibility,
-					symbol_tokens: symbolWeight,
-				});
-
-				for (const sym of extraction.definitions) {
-					await this.#db.insert_repo_map_tag.run({
-						file_id: fileId,
-						name: sym.name,
-						type: sym.type,
-						params: sym.params || null,
-						line: sym.line,
-						source: "hd",
+						hash,
+						size,
+						visibility,
+						symbol_tokens: symbolWeight,
 					});
+
+					for (const sym of extraction.definitions) {
+						await this.#db.insert_repo_map_tag.run({
+							file_id: fileId,
+							name: sym.name,
+							type: sym.type,
+							params: sym.params || null,
+							line: sym.line,
+							source: "hd",
+						});
+					}
+
+					for (const ref of extraction.references) {
+						await this.#db.insert_repo_map_ref.run({
+							file_id: fileId,
+							symbol_name: ref,
+						});
+					}
+				} else {
+					ctagsQueue.push(relPath);
 				}
-			} else {
+			} else if (extractorType === "ctags") {
 				ctagsQueue.push(relPath);
 			}
 		}
@@ -163,6 +188,10 @@ export default class RepoMap {
 		const rankedFiles = await this.#db.get_ranked_repo_map.all({
 			project_id: this.#projectId,
 		});
+
+		if (process.env.RUMMY_DEBUG === "true") {
+			console.log("[DEBUG] Ranked Files:", rankedFiles.map(f => ({ path: f.path, active: f.is_active, heat: f.heat })));
+		}
 
 		// Hydrate with symbols from the existing mapping.js logic (colocated data)
 		const allTags = await this.#db.get_project_repo_map.all({

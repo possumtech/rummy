@@ -6,13 +6,70 @@ import { XMLSerializer } from "@xmldom/xmldom";
 export default class Turn {
 	#doc;
 	#serializer = new XMLSerializer();
+	#db;
+	#turnId;
 
-	constructor(doc) {
+	constructor(doc, db = null, turnId = null) {
 		this.#doc = doc;
+		this.#db = db;
+		this.#turnId = turnId;
 	}
 
 	get doc() {
 		return this.#doc;
+	}
+
+	get id() {
+		return this.#turnId;
+	}
+
+	/**
+	 * Persists the current DOM structure to the turn_elements table.
+	 */
+	async save() {
+		if (!this.#db || !this.#turnId) return;
+
+		// 1. Clear existing elements for this turn
+		// (Optional: only if we expect updates. TurnBuilder usually creates once)
+		// await this.#db.run("DELETE FROM turn_elements WHERE turn_id = ?", [this.#turnId]);
+
+		// 2. Recursively save elements
+		await this.#saveNode(this.#doc.documentElement, null, 0);
+	}
+
+	async #saveNode(node, parentId, sequence) {
+		if (node.nodeType !== 1) return; // Only save Elements
+
+		const attrs = {};
+		if (node.attributes) {
+			for (let i = 0; i < node.attributes.length; i++) {
+				attrs[node.attributes[i].name] = node.attributes[i].value;
+			}
+		}
+
+		// Find text content if it's a simple leaf node
+		let content = null;
+		if (node.childNodes.length === 1 && node.childNodes[0].nodeType === 3) {
+			content = node.childNodes[0].nodeValue;
+		}
+
+		const result = await this.#db.insert_turn_element.get({
+			turn_id: this.#turnId,
+			parent_id: parentId,
+			tag_name: node.tagName,
+			content,
+			attributes: JSON.stringify(attrs),
+			sequence
+		});
+
+		const elementId = result.id;
+
+		// Save children if not a simple leaf node
+		if (!content) {
+			for (let i = 0; i < node.childNodes.length; i++) {
+				await this.#saveNode(node.childNodes[i], elementId, i);
+			}
+		}
 	}
 
 	/**
@@ -118,7 +175,6 @@ export default class Turn {
 
 				files.push({
 					path: f.getAttribute("path"),
-					status: f.getAttribute("status"),
 					size: Number.parseInt(f.getAttribute("size") || "0", 10),
 					tokens: Number.parseInt(f.getAttribute("tokens") || "0", 10),
 					content: sourceEl ? sourceEl.textContent : null,
