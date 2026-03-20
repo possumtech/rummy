@@ -13,13 +13,14 @@ test("AgentLoop", async (t) => {
 		get_findings_by_run_id: { all: async () => [] },
 		get_unresolved_findings: { all: async () => [] },
 		get_turn_history: { all: async () => [] },
+		get_last_turn_sequence: { get: async () => ({ last_seq: null }) },
 		create_empty_turn: { get: async () => ({ id: 1 }) },
 		update_turn_stats: { run: async () => {} },
 		create_turn: { get: async () => ({ id: 1 }) },
 		reset_buffered: { run: async () => {} },
 		set_buffered: { run: async () => {} },
 		update_file_attention: { run: async () => {} },
-		get_protocol_constraints: { get: async () => ({ required_tags: "tasks known unknown", allowed_tags: "tasks known unknown read env" }) }
+		get_protocol_constraints: { get: async () => ({ required_tags: "tasks known unknown", allowed_tags: "tasks known unknown read env response short" }) }
 	});
 
 	const createMockLlm = () => ({
@@ -67,13 +68,14 @@ test("AgentLoop", async (t) => {
 		const runId = "r1";
 		const mockDb = createMockDb();
 		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: "{}" }) };
+		mockDb.get_last_turn_sequence = { get: async () => ({ last_seq: 1 }) };
 		mockDb.get_turn_history.all = async () => [
 			{ role: "user", content: "hi", max_seq: 0 },
 			{ role: "assistant", content: "hello", max_seq: 1 }
 		];
 		
 		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
-		const result = await loop.run("ask", "s1", "m1", "next", [], runId);
+		const result = await loop.run("ask", "s1", "m1", "next", null, runId);
 		assert.strictEqual(result.status, "completed");
 	});
 
@@ -82,13 +84,11 @@ test("AgentLoop", async (t) => {
 		const mockDb = createMockDb();
 		mockDb.get_run_by_id = { get: async () => ({ id: runId, session_id: "s1", config: "{}" }) };
 		
-		const mockFindingsPending = {
-			...mockFindings,
-			resolveOutstandingFindings: async () => ({ remainingCount: 1, proposed: [{ id: 1, status: "proposed", category: "diff", file: "a.js", type: "edit", patch: "" }] })
-		};
+		// This is the key: get_unresolved_findings must return items
+		mockDb.get_unresolved_findings.all = async () => [{ id: 1, status: "proposed" }];
 		
-		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindingsPending);
-		const result = await loop.run("ask", "s1", "m1", "next", [], runId);
+		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
+		const result = await loop.run("ask", "s1", "m1", "next", null, runId);
 		assert.strictEqual(result.status, "proposed");
 	});
 
@@ -107,7 +107,7 @@ test("AgentLoop", async (t) => {
 		mockDb.update_finding_diff_status = { run: async () => {} };
 		
 		const loop = new AgentLoop(mockDb, createMockLlm(), createHooks(), mockTurnBuilder, mockParser, mockFindings);
-		const result = await loop.run("ask", "s1", "m1", "yolo", [], runId);
+		const result = await loop.run("ask", "s1", "m1", "yolo", null, runId);
 		assert.strictEqual(result.status, "completed");
 	});
 

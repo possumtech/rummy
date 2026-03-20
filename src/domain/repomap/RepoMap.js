@@ -189,10 +189,6 @@ export default class RepoMap {
 			project_id: this.#projectId,
 		});
 
-		if (process.env.RUMMY_DEBUG === "true") {
-			console.log("[DEBUG] Ranked Files:", rankedFiles.map(f => ({ path: f.path, active: f.is_active, heat: f.heat })));
-		}
-
 		// Hydrate with symbols from the existing mapping.js logic (colocated data)
 		const allTags = await this.#db.get_project_repo_map.all({
 			project_id: this.#projectId,
@@ -213,6 +209,7 @@ export default class RepoMap {
 		const finalFiles = [];
 		let currentTokens = 0;
 		const currentTurn = options.sequence ?? 0;
+		const decayThreshold = Number.parseInt(process.env.RUMMY_DECAY_THRESHOLD || "12", 10);
 
 		for (const file of rankedFiles) {
 			if (file.visibility === "ignored") continue;
@@ -221,8 +218,8 @@ export default class RepoMap {
 
 			// FIDELITY DECAY: Full content ONLY for:
 			// 1. User-buffered files (pinned)
-			// 2. Retained files with attention within the last 12 turns
-			const hasRecentAttention = (currentTurn - file.last_attention_turn) <= 12;
+			// 2. Retained files with attention within the last X turns
+			const hasRecentAttention = (currentTurn - file.last_attention_turn) <= decayThreshold;
 			const shouldIncludeSource = file.is_buffered || (file.is_active && hasRecentAttention);
 
 			if (shouldIncludeSource) {

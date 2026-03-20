@@ -51,25 +51,40 @@ test("TurnBuilder class", async (t) => {
 		getSystemPromptMock.mock.restore();
 	});
 
-    await t.test("build() act mode", async () => {
+	await t.test("build() should fetch protocol_constraints from DB", async () => {
 		const getSystemPromptMock = mock.method(PromptManager, "getSystemPrompt", async () => "Base system prompt");
-		const builder = new TurnBuilder(mockHooks);
 		const mockDb = createMockDb();
-		mockDb.get_protocol_constraints.get = mock.fn(async () => ({ 
-			required_tags: "tasks known unknown", 
-			allowed_tags: "tasks known unknown read env edit create delete run analysis summary" 
-		}));
+		mockDb.get_protocol_constraints.get = mock.fn(async ({ type, has_unknowns }) => {
+			if (has_unknowns) {
+				return { required_tags: "req1", allowed_tags: "allow1" };
+			}
+			return { required_tags: "req2", allowed_tags: "allow2" };
+		});
 
-        const turn = await builder.build({
-            prompt: "Hi",
-            type: "act",
-            hasUnknowns: false, // This allows edit/create/etc.
+		const builder = new TurnBuilder(mockHooks);
+		
+		// Case 1: hasUnknowns = true
+		const turn1 = await builder.build({
+			prompt: "Hi",
+			type: "ask",
+			hasUnknowns: true,
 			db: mockDb,
-        });
-        assert.ok(turn);
-        const actEl = turn.doc.getElementsByTagName("act")[0];
-        assert.ok(actEl);
-        assert.ok(actEl.getAttribute("allowed_tags").includes("edit"));
+		});
+		const askEl1 = turn1.doc.getElementsByTagName("ask")[0];
+		assert.strictEqual(askEl1.getAttribute("required_tags"), "req1");
+		assert.strictEqual(askEl1.getAttribute("allowed_tags"), "allow1");
+
+		// Case 2: hasUnknowns = false
+		const turn2 = await builder.build({
+			prompt: "Hi",
+			type: "ask",
+			hasUnknowns: false,
+			db: mockDb,
+		});
+		const askEl2 = turn2.doc.getElementsByTagName("ask")[0];
+		assert.strictEqual(askEl2.getAttribute("required_tags"), "req2");
+		assert.strictEqual(askEl2.getAttribute("allowed_tags"), "allow2");
+
 		getSystemPromptMock.mock.restore();
-    });
+	});
 });

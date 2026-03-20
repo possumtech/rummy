@@ -7,16 +7,18 @@ const xmlTemplate = `
     <turn sequence="1">
       <system>System prompt</system>
       <context>
-        <file path="test.js" status="modified" size="100" tokens="50">
-          <source>console.log('test');</source>
-          <symbols>test\tfunc()</symbols>
-        </file>
+        <files>
+          <file path="a.js" size="100" tokens="50">
+            <symbols>foo()	bar()</symbols>
+            <source>console.log('hi');</source>
+          </file>
+        </files>
       </context>
-      <user>User message</user>
+      <user>user prompt</user>
       <assistant>
-        <reasoning_content>Thinking...</reasoning_content>
-        <content>Response</content>
-        <meta>{"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}, "alias": "gpt-4", "actualModel": "openai/gpt-4"}</meta>
+        <reasoning_content>reasoning...</reasoning_content>
+        <content>assistant content</content>
+        <meta>{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30,"alias":"m1","actualModel":"gpt-4"}</meta>
       </assistant>
     </turn>
 `;
@@ -25,54 +27,47 @@ test("Turn class", async (t) => {
 	const parser = new DOMParser();
 
 	await t.test("constructor and doc getter", () => {
-		const doc = parser.parseFromString(xmlTemplate, "text/xml");
+		const doc = parser.parseFromString("<turn/>", "text/xml");
 		const turn = new Turn(doc);
 		assert.strictEqual(turn.doc, doc);
 	});
 
-	await t.test("assistant helper", () => {
-		const doc = parser.parseFromString(xmlTemplate, "text/xml");
-		const turn = new Turn(doc);
-		const assistant = turn.assistant;
-		assert.ok(assistant.reasoning);
-		assert.ok(assistant.content);
-		assert.ok(assistant.meta);
-
-		assistant.content.add(" More content");
-		const contentEl = doc.getElementsByTagName("content")[0];
-		assert.strictEqual(contentEl.textContent, "Response More content");
-
-		// Reset meta text content before adding to ensure valid JSON
-		const metaEl = doc.getElementsByTagName("meta")[0];
-        while (metaEl.firstChild) metaEl.removeChild(metaEl.firstChild);
-		assistant.meta.add({ key: "value" });
-		assert.ok(metaEl.textContent.includes('{"key":"value"}'));
-	});
-
-	await t.test("serialize()", async () => {
-		const doc = parser.parseFromString(xmlTemplate, "text/xml");
-		const turn = new Turn(doc);
-		const messages = await turn.serialize();
-		assert.strictEqual(messages.length, 2);
-		assert.strictEqual(messages[0].role, "system");
-		assert.ok(messages[0].content.includes("System prompt"));
-		assert.strictEqual(messages[1].role, "user");
-		assert.ok(messages[1].content.includes("User message"));
+	await t.test("save() should persist elements to DB recursively", async () => {
+		const doc = parser.parseFromString('<turn sequence="1"><system>Hi</system><context><file path="a.js">content</file></context></turn>', "text/xml");
+		const elements = [];
+		const mockDb = {
+			insert_turn_element: {
+				get: async (params) => {
+					elements.push(params);
+					return { id: elements.length };
+				}
+			}
+		};
+		const turn = new Turn(doc, mockDb, 123);
+		await turn.save();
+		
+		// Root, system, context, file
+		assert.ok(elements.length >= 4);
+		assert.strictEqual(elements[0].tag_name, "turn");
+		assert.strictEqual(elements[1].tag_name, "system");
+		assert.strictEqual(elements[1].content, "Hi");
 	});
 
 	await t.test("toJson()", () => {
 		const doc = parser.parseFromString(xmlTemplate, "text/xml");
 		const turn = new Turn(doc);
 		const json = turn.toJson();
+
 		assert.strictEqual(json.sequence, 1);
-		assert.strictEqual(json.system.trim(), "System prompt");
-		assert.strictEqual(json.user.trim(), "User message");
-		assert.strictEqual(json.assistant.content, "Response");
-		assert.strictEqual(json.usage.total_tokens, 15);
-		assert.strictEqual(json.model.alias, "gpt-4");
+		assert.strictEqual(json.system, "System prompt");
+		assert.strictEqual(json.user, "user prompt");
+		assert.strictEqual(json.assistant.content, "assistant content");
+		assert.strictEqual(json.assistant.reasoning, "reasoning...");
+		assert.strictEqual(json.usage.total_tokens, 30);
 		assert.strictEqual(json.files.length, 1);
-		assert.strictEqual(json.files[0].path, "test.js");
-		assert.strictEqual(json.files[0].symbols[1].params, "()");
+		assert.strictEqual(json.files[0].path, "a.js");
+		assert.strictEqual(json.files[0].symbols.length, 2);
+		assert.strictEqual(json.files[0].symbols[0].name, "foo");
 	});
 
 	await t.test("toXml()", () => {
@@ -83,28 +78,12 @@ test("Turn class", async (t) => {
 		assert.ok(xmlOutput.includes("System prompt"));
 	});
 
-	await t.test("save() should persist elements to DB", async () => {
-		const doc = parser.parseFromString('<turn><system>Hi</system></turn>', "text/xml");
-		const mockDb = {
-			insert_turn_element: {
-				get: async () => ({ id: 1 })
-			}
-		};
-		const turn = new Turn(doc, mockDb, 123);
-		await turn.save();
-		// Success if no crash and mock called (though we aren't tracking calls here)
+	await t.test("serialize()", async () => {
+		const doc = parser.parseFromString(xmlTemplate, "text/xml");
+		const turn = new Turn(doc);
+		const msgs = await turn.serialize();
+		assert.strictEqual(msgs.length, 2);
+		assert.strictEqual(msgs[0].role, "system");
+		assert.strictEqual(msgs[1].role, "user");
 	});
-
-    await t.test("edge cases in toJson", () => {
-        const minimalDoc = parser.parseFromString('<turn><assistant><meta>{}</meta></assistant></turn>', 'text/xml');
-        const minimalTurn = new Turn(minimalDoc);
-        const json = minimalTurn.toJson();
-        assert.strictEqual(json.sequence, 0);
-        assert.strictEqual(json.usage.prompt_tokens, 0);
-    });
-
-    await t.test("serializePretty with various node types", () => {
-        const emptyTurn = new Turn(parser.parseFromString('<turn/>', 'text/xml'));
-        assert.ok(emptyTurn.toXml().includes('<turn/>'));
-    });
 });

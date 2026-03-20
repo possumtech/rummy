@@ -6,26 +6,23 @@ import RepoMap from "../../../domain/repomap/RepoMap.js";
  */
 export default class RepoMapPlugin {
 	static register(hooks) {
-		// Lifecycle: Re-index on initialization
-		hooks.project.init.completed.on(async ({ projectId, projectPath, db }) => {
-			if (!db) return;
-			await RepoMapPlugin.#updateIndex(db, projectId, projectPath);
-		});
-
-		// Pipeline: Inject file data into the DOM
 		hooks.onTurn(async (rummy) => {
-			const { project, activeFiles, db } = rummy;
-			if (!project || !db) return;
+			const { project, db } = rummy;
+			if (!project?.path) return;
 
-			await RepoMapPlugin.#updateIndex(db, project.id, project.path);
-			const visibilityMap = await RepoMapPlugin.#getVisibilityMap(
-				db,
-				project.id,
-			);
+			// Fetch handlers and ranked files via RepoMap
+			const files = await db.get_project_repo_map.all({
+				project_id: project.id,
+			});
+			const visibilityMap = new Map();
+			for (const f of files) {
+				visibilityMap.set(f.path, f.visibility);
+			}
+
 			const ctx = await ProjectContext.open(project.path, visibilityMap);
 			const repoMap = new RepoMap(ctx, db, project.id);
 			const perspective = await repoMap.renderPerspective({
-				sequence: rummy.context.sequence
+				sequence: rummy.sequence
 			});
 
 			const filesContainer = rummy.tag("files");
@@ -52,19 +49,21 @@ export default class RepoMapPlugin {
 				filesContainer.appendChild(fileEl);
 			}
 		});
-	}
 
-	static async #updateIndex(db, projectId, projectPath) {
-		const visibilityMap = await RepoMapPlugin.#getVisibilityMap(db, projectId);
-		const ctx = await ProjectContext.open(projectPath, visibilityMap);
-		const repoMap = new RepoMap(ctx, db, projectId);
-		await repoMap.updateIndex();
-	}
+		// Trigger re-indexing on project init completion
+		hooks.project.init.completed.on(async (payload) => {
+			const { projectId, projectPath, db } = payload;
+			const ctx = await ProjectContext.open(projectPath);
+			const repoMap = new RepoMap(ctx, db, projectId);
+			await repoMap.updateIndex();
+		});
 
-	static async #getVisibilityMap(db, projectId) {
-		const files = await db.get_project_repo_map.all({ project_id: projectId });
-		const map = new Map();
-		for (const f of files) map.set(f.path, f.visibility);
-		return map;
+		// Trigger re-indexing on explicit file updates
+		hooks.project.files.update.completed.on(async (payload) => {
+			const { projectId, projectPath, db } = payload;
+			const ctx = await ProjectContext.open(projectPath);
+			const repoMap = new RepoMap(ctx, db, projectId);
+			await repoMap.updateIndex();
+		});
 	}
 }

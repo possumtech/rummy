@@ -9,7 +9,7 @@ test("ProjectAgent", async (t) => {
 		get_project_by_path: { all: async () => [{ id: "p1" }] },
 		create_session: { run: async () => {} },
 		get_session_by_id: { all: async () => [{ project_id: "p1" }] },
-		get_project_by_id: { get: async () => ({ path: "/tmp" }) },
+		get_project_by_id: { get: async () => ({ id: "p1", path: "/tmp" }) },
 		get_session_skills: { all: async () => [] },
 		create_run: { run: async () => {} },
 		create_turn: { get: async () => ({ id: 1 }) },
@@ -28,6 +28,8 @@ test("ProjectAgent", async (t) => {
 		get_unresolved_findings: { all: async () => [] },
 		create_empty_turn: { get: async () => ({ id: 1 }) },
 		update_turn_stats: { run: async () => {} },
+		get_last_turn_sequence: { get: async () => ({ last_seq: null }) },
+		update_file_attention: { run: async () => {} },
 		insert_turn_element: { get: async () => ({ id: 1 }) },
 		get_protocol_constraints: { get: async () => ({ required_tags: "tasks", allowed_tags: "tasks response" }) },
 		set_retained: { run: async () => {} },
@@ -42,7 +44,6 @@ test("ProjectAgent", async (t) => {
 	});
 
 	await t.test("ask should delegate to AgentLoop", async () => {
-		// Mock fetch for internal LlmProvider
 		globalThis.fetch = async () => new Response(JSON.stringify({
 			choices: [{ message: { role: "assistant", content: "<tasks>- [x] ok</tasks><response>Hello</response>" } }],
 			usage: { total_tokens: 5 }

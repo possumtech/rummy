@@ -47,6 +47,10 @@ export default class RummyContext {
 		return this.#context.sessionId;
 	}
 
+	get sequence() {
+		return this.#context.sequence || 0;
+	}
+
 	/**
 	 * Semantic access to standard XML sections.
 	 */

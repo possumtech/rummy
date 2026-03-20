@@ -108,7 +108,7 @@ export default class FindingsManager {
 	}
 
 	async resolveOutstandingFindings(projectPath, runId, prompt, infoTags) {
-		const proposedFindings = await this.#db.get_unresolved_findings.all({
+		const findings = await this.#db.get_findings_by_run_id.all({
 			run_id: runId,
 		});
 		let resolvedCount = 0;
@@ -120,8 +120,8 @@ export default class FindingsManager {
 			const action = this.#parser.getNodeText(tag);
 
 			if (diffId) {
-				const f = proposedFindings.find((x) => x.id === Number.parseInt(diffId) && x.category === "diff");
-				if (f) {
+				const f = findings.find((x) => x.id === Number.parseInt(diffId));
+				if (f && f.status === "proposed") {
 					const status = action === "accepted" ? "accepted" : "rejected";
 					if (status === "accepted") {
 						await this.applyDiff(projectPath, f);
@@ -132,8 +132,8 @@ export default class FindingsManager {
 			}
 
 			if (cmdId) {
-				const f = proposedFindings.find((x) => x.id === Number.parseInt(cmdId) && x.category === "command");
-				if (f) {
+				const f = findings.find((x) => x.id === Number.parseInt(cmdId));
+				if (f && f.status === "proposed") {
 					const status = action === "accepted" ? "accepted" : "rejected";
 					await this.#db.update_finding_command_status.run({ id: f.id, status });
 					resolvedCount++;
@@ -141,8 +141,8 @@ export default class FindingsManager {
 			}
 
 			if (notifId) {
-				const f = proposedFindings.find((x) => x.id === Number.parseInt(notifId) && x.category === "notification");
-				if (f) {
+				const f = findings.find((x) => x.id === Number.parseInt(notifId));
+				if (f && f.status === "proposed") {
 					await this.#db.update_finding_notification_status.run({
 						id: f.id,
 						status: "responded",
@@ -152,14 +152,15 @@ export default class FindingsManager {
 			}
 		}
 
-		const remaining = await this.#db.get_unresolved_findings.all({
+		const remaining = await this.#db.get_findings_by_run_id.all({
 			run_id: runId,
 		});
+		const proposed = remaining.filter((f) => f.status === "proposed");
 
 		return {
 			resolvedCount,
-			remainingCount: remaining.length,
-			proposed: remaining,
+			remainingCount: proposed.length,
+			proposed,
 		};
 	}
 
