@@ -100,8 +100,13 @@ export default class TurnBuilder {
 				allowed = constraints.allowed_tags;
 			}
 		} else {
+			// SYSTEMATIC FALLBACK ALIGNMENT
+			allowed = "tasks known unknown read drop env remark";
 			if (!hasUnknowns) {
-				allowed += " edit create delete run analysis summary";
+				allowed += " summary response short";
+				if (type === "act") {
+					allowed += " edit create delete run analysis";
+				}
 			}
 		}
 

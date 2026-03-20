@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS protocol_constraints (
 INSERT OR IGNORE INTO protocol_constraints (type, has_unknowns, required_tags, allowed_tags)
 VALUES 
 ('ask', 1, 'tasks known unknown', 'tasks known unknown read drop env remark'),
-('ask', 0, 'tasks known unknown', 'tasks known unknown read drop env edit create delete run analysis summary remark response short'),
+('ask', 0, 'tasks known unknown', 'tasks known unknown read drop env summary remark response short'),
 ('act', 1, 'tasks known unknown', 'tasks known unknown read drop env remark'),
 ('act', 0, 'tasks known unknown', 'tasks known unknown read drop env edit create delete run analysis summary remark response short');
 
