@@ -67,9 +67,6 @@ CREATE TABLE IF NOT EXISTS turn_elements (
     , sequence INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_turn_elements_turn_id ON turn_elements (turn_id);
-CREATE INDEX IF NOT EXISTS idx_turn_elements_parent_id ON turn_elements (parent_id);
-
 CREATE TABLE IF NOT EXISTS findings_diffs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
@@ -201,7 +198,7 @@ VALUES
 ('css', 'hd', 1),
 ('lua', 'ctags', 1),
 ('md', 'ctags', 1),
-('txt', 'ctags', 0); -- Text files don't need symbol extraction
+('txt', 'ctags', 0);
 
 -- THE RANKING ENGINE (Heat Calculation)
 -- Heat = (Count of symbols in THIS file matching references in ACTIVE files) + (is_root ? 1 : 0)
@@ -261,10 +258,23 @@ CREATE TABLE IF NOT EXISTS system_hooks (
     , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes
+-- INDEXES: INFRASTRUCTURE
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
-CREATE INDEX IF NOT EXISTS idx_repo_map_files_project_id
-ON repo_map_files (project_id);
-CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_id ON repo_map_tags (file_id);
+CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence_number);
+
+-- INDEXES: REPOMAP (Heat Engine)
+CREATE INDEX IF NOT EXISTS idx_repo_map_files_project_active ON repo_map_files (project_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_name ON repo_map_tags (file_id, name);
 CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name ON repo_map_tags (name);
+CREATE INDEX IF NOT EXISTS idx_repo_map_references_file_name ON repo_map_references (file_id, symbol_name);
+CREATE INDEX IF NOT EXISTS idx_repo_map_references_symbol ON repo_map_references (symbol_name);
+
+-- INDEXES: TURN ELEMENTS (Summary Engine)
+CREATE INDEX IF NOT EXISTS idx_turn_elements_turn_parent ON turn_elements (turn_id, parent_id);
+CREATE INDEX IF NOT EXISTS idx_turn_elements_tag_lookup ON turn_elements (turn_id, tag_name);
+
+-- INDEXES: FINDINGS
+CREATE INDEX IF NOT EXISTS idx_findings_diffs_run_status ON findings_diffs (run_id, status);
+CREATE INDEX IF NOT EXISTS idx_findings_cmds_run_status ON findings_commands (run_id, status);
+CREATE INDEX IF NOT EXISTS idx_findings_notifs_run_status ON findings_notifications (run_id, status);
