@@ -189,11 +189,10 @@ export default class RepoMap {
 			project_id: this.#projectId,
 		});
 
-		// Hydrate with symbols from the existing mapping.js logic (colocated data)
+		const tagMap = new Map();
 		const allTags = await this.#db.get_project_repo_map.all({
 			project_id: this.#projectId,
 		});
-		const tagMap = new Map();
 		for (const row of allTags) {
 			if (!tagMap.has(row.path)) tagMap.set(row.path, []);
 			if (row.name) {
@@ -215,17 +214,23 @@ export default class RepoMap {
 		);
 
 		for (const file of rankedFiles) {
+			// 1. Completely exclude ignored files
 			if (file.visibility === "ignored") continue;
 
-			let displayFile;
-
-			// FIDELITY DECAY: Full content ONLY for:
-			// 1. User-buffered files (pinned)
-			// 2. Retained files with attention within the last X turns
+			// 2. Determine if we should include full source body
+			// SUPERSTRATE + FIDELITY DECAY:
+			// - 'read_only' ALWAYS includes source (authoritative reference).
+			// - 'is_buffered' ALWAYS includes source (explicitly pinned by UI).
+			// - 'active' ONLY includes source if it has recent attention (soft-pinned).
 			const hasRecentAttention =
 				currentTurn - file.last_attention_turn <= decayThreshold;
+
 			const shouldIncludeSource =
-				file.is_buffered || (file.is_active && hasRecentAttention);
+				file.visibility === "read_only" ||
+				file.is_buffered ||
+				(file.visibility === "active" && hasRecentAttention);
+
+			let displayFile;
 
 			if (shouldIncludeSource) {
 				const fullPath = join(this.#ctx.root, file.path);
@@ -241,6 +246,7 @@ export default class RepoMap {
 					size: file.size,
 					tokens,
 					content,
+					visibility: file.visibility,
 				};
 
 				const weight = this.#tokenizer.encode(
@@ -251,27 +257,35 @@ export default class RepoMap {
 				continue;
 			}
 
+			// 3. Mappable files (Symbols only)
 			const symbols = tagMap.get(file.path) || [];
 			displayFile = {
 				path: file.path,
 				size: file.size,
 				symbols,
+				visibility: file.visibility,
 			};
 
 			if (symbols.length === 0) {
-				displayFile = { path: file.path, size: file.size };
+				displayFile = {
+					path: file.path,
+					size: file.size,
+					visibility: file.visibility,
+				};
 			}
 
 			let finalTokens =
 				file.symbol_tokens ||
 				this.#tokenizer.encode(JSON.stringify(displayFile)).length;
 
+			// 4. Budget constraints for symbols/mappable files
 			if (currentTokens + finalTokens > budget) {
 				if (symbols.length > 0) {
 					const signaturesOnly = {
 						path: file.path,
 						size: file.size,
 						symbols: symbols.map((s) => ({ name: s.name })),
+						visibility: file.visibility,
 					};
 					const sigTokens = this.#tokenizer.encode(
 						JSON.stringify(signaturesOnly),
@@ -284,6 +298,7 @@ export default class RepoMap {
 						const pathOnly = {
 							path: file.path,
 							size: file.size,
+							visibility: file.visibility,
 						};
 						const pathTokens = this.#tokenizer.encode(
 							JSON.stringify(pathOnly),

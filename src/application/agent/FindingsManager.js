@@ -33,6 +33,13 @@ export default class FindingsManager {
 			if (tagName === "read" && projectId) {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				if (path) {
+					await this.#db.upsert_repo_map_file.run({
+						project_id: projectId,
+						path,
+						visibility: "active",
+						hash: null,
+						size: 0,
+					});
 					await this.#db.set_retained.run({
 						project_id: projectId,
 						path,
@@ -44,6 +51,13 @@ export default class FindingsManager {
 			if (tagName === "drop" && projectId) {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				if (path) {
+					await this.#db.upsert_repo_map_file.run({
+						project_id: projectId,
+						path,
+						visibility: "mappable",
+						hash: null,
+						size: 0,
+					});
 					await this.#db.set_retained.run({
 						project_id: projectId,
 						path,

@@ -53,6 +53,10 @@ export default class ProjectAgent {
 		return this.#sessionManager.getFiles(projectPath);
 	}
 
+	async fileStatus(projectId, path) {
+		return this.#sessionManager.fileStatus(projectId, path);
+	}
+
 	async updateFiles(projectId, files) {
 		return this.#sessionManager.updateFiles(projectId, files);
 	}

@@ -86,14 +86,57 @@ export default class SessionManager {
 			path: projectPath,
 		});
 		if (projects.length === 0) return [];
-		const visibilityMap = await this.#getVisibilityMap(projects[0].id);
+		const projectId = projects[0].id;
+
+		const visibilityMap = await this.#getVisibilityMap(projectId);
 		const ctx = await ProjectContext.open(projectPath, visibilityMap);
 		const mappable = await ctx.getMappableFiles();
 		const results = [];
+
 		for (const relPath of mappable) {
-			results.push({ path: relPath, state: await ctx.resolveState(relPath) });
+			const dbFile = await this.#db.get_repo_map_file.get({
+				project_id: projectId,
+				path: relPath,
+			});
+			const resolvedVisibility = await ctx.resolveState(relPath);
+
+			results.push({
+				path: relPath,
+				visibility: resolvedVisibility,
+				is_buffered: dbFile?.is_buffered === 1,
+				is_git_ignored:
+					resolvedVisibility === "ignored" &&
+					(await ProjectContext.open(projectPath)).resolveState(relPath) ===
+						"ignored",
+				size: dbFile?.size || 0,
+			});
 		}
 		return results;
+	}
+
+	async fileStatus(projectId, path) {
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
+		if (!project) throw new Error("Project not found");
+
+		const visibilityMap = await this.#getVisibilityMap(projectId);
+		const ctx = await ProjectContext.open(project.path, visibilityMap);
+
+		const dbFile = await this.#db.get_repo_map_file.get({
+			project_id: projectId,
+			path,
+		});
+		const resolvedVisibility = await ctx.resolveState(path);
+
+		return {
+			path,
+			visibility: resolvedVisibility,
+			is_buffered: dbFile?.is_buffered === 1,
+			is_git_ignored:
+				(await ProjectContext.open(project.path)).resolveState(path) ===
+				"ignored",
+			size: dbFile?.size || 0,
+			last_indexed_at: dbFile?.last_indexed_at || null,
+		};
 	}
 
 	async updateFiles(projectId, files) {

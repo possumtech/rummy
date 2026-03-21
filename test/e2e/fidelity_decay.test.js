@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import assert from "node:assert";
 import fs from "node:fs/promises";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import TestServer from "../helpers/TestServer.js";
 
 describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 	let tdb, tserver, client;
-	const projectPath = join(process.cwd(), "test_decay_project_final_0based_v2");
+	const projectPath = join(tmpdir(), `rummy_decay_test_${Date.now()}`);
 
 	before(async () => {
 		process.env.RUMMY_DECAY_THRESHOLD = "2";

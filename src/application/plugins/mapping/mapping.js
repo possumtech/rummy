@@ -29,11 +29,17 @@ export default class RepoMapPlugin {
 			rummy.contextEl.appendChild(filesContainer);
 
 			for (const f of perspective.files) {
-				const fileEl = rummy.tag("file", {
+				const fileAttrs = {
 					path: f.path,
 					size: String(f.size ?? 0),
 					tokens: String(f.tokens ?? 0),
-				});
+				};
+
+				if (f.visibility === "read_only") {
+					fileAttrs["read-only"] = "true";
+				}
+
+				const fileEl = rummy.tag("file", fileAttrs);
 
 				if (f.symbols && f.symbols.length > 0) {
 					const highDensitySymbols = f.symbols

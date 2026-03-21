@@ -128,6 +128,10 @@ export default class ClientConnection {
 								description: "List all files in the current project",
 								params: {},
 							},
+							fileStatus: {
+								description: "Get detailed status for a single file",
+								params: { path: "Relative file path" },
+							},
 							updateFiles: {
 								description: "Update the visibility/indexing status of files",
 								params: { files: "Array of { path, visibility }" },
@@ -213,6 +217,15 @@ export default class ClientConnection {
 					if (!this.#context.projectPath)
 						throw new Error("Project not initialized.");
 					result = await this.#projectAgent.getFiles(this.#context.projectPath);
+					break;
+
+				case "fileStatus":
+					if (!this.#context.projectId)
+						throw new Error("Project not initialized.");
+					result = await this.#projectAgent.fileStatus(
+						this.#context.projectId,
+						params.path,
+					);
 					break;
 
 				case "updateFiles":
