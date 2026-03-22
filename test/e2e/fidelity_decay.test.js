@@ -56,20 +56,22 @@ describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 
 		const responses = [
 			// Turn 0: Model says <read>.
-			'<tasks>- [x] read</tasks><read file="logic.js"/>',
+			'<tasks>- [x] read</tasks><known>G</known><unknown/><read file="logic.js"/>',
 			// Turn 1: Model mentions file. last_attention = 1.
-			"<tasks>- [ ] work</tasks><reasoning_content>Using logic.js</reasoning_content>",
+			"<tasks>- [ ] work</tasks><known>G</known><unknown/><reasoning_content>Using logic.js</reasoning_content>",
 			// Turn 2: Idle
-			"<tasks>- [ ] idle</tasks>",
+			"<tasks>- [ ] idle</tasks><known>G</known><unknown/>",
 			// Turn 3: Idle
-			"<tasks>- [ ] idle</tasks>",
+			"<tasks>- [ ] idle</tasks><known>G</known><unknown/>",
 			// Turn 4: SHOULD DECAY
-			"<tasks>- [ ] idle</tasks><summary>Done</summary>",
+			"<tasks>- [ ] idle</tasks><known>G</known><unknown/><summary>Done</summary>",
 		];
 
 		let responseIdx = 0;
 		globalThis.fetch = async () => {
-			const content = responses[responseIdx++] || "<summary>Done</summary>";
+			const content =
+				responses[responseIdx++] ||
+				"<tasks>T</tasks><known>K</known><unknown/><summary>Done</summary>";
 			return new Response(
 				JSON.stringify({
 					choices: [{ message: { role: "assistant", content } }],

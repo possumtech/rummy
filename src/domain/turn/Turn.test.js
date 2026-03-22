@@ -13,12 +13,15 @@ const xmlTemplate = `
             <source>console.log('hi');</source>
           </file>
         </files>
+        <error protocol="violation">Test Error</error>
+        <warn>Test Warn</warn>
+        <info file="a.js">Test Info</info>
       </context>
       <user>user prompt</user>
       <assistant>
         <reasoning_content>reasoning...</reasoning_content>
         <content>assistant content</content>
-        <tasks>task list</tasks>
+        <tasks>- [x] Done\n- [ ] Pending</tasks>
         <known>known info</known>
         <unknown>unknown gaps</unknown>
         <summary>turn summary</summary>
@@ -49,7 +52,7 @@ test("Turn class", async (t) => {
 					return { id: elements.length };
 				},
 			},
-			update_turn_payload: { run: async () => {} }
+			update_turn_payload: { run: async () => {} },
 		};
 		const turn = new Turn(doc, mockDb, 123);
 		await turn.save();
@@ -71,13 +74,32 @@ test("Turn class", async (t) => {
 		assert.strictEqual(json.user, "user prompt");
 		assert.strictEqual(json.assistant.content, "assistant content");
 		assert.strictEqual(json.assistant.reasoning, "reasoning...");
-		assert.strictEqual(json.assistant.tasks, "task list");
+
+		assert.ok(Array.isArray(json.assistant.tasks), "Tasks should be an array");
+		assert.strictEqual(json.assistant.tasks.length, 2);
+		assert.strictEqual(json.assistant.tasks[0].completed, true);
+		assert.strictEqual(json.assistant.tasks[1].text, "Pending");
+		assert.strictEqual(json.assistant.tasks[1].completed, false);
+		assert.strictEqual(json.assistant.next_task.text, "Pending");
+
 		assert.strictEqual(json.assistant.known, "known info");
 		assert.strictEqual(json.assistant.unknown, "unknown gaps");
 		assert.strictEqual(json.assistant.summary, "turn summary");
 		assert.strictEqual(json.usage.total_tokens, 30);
 		assert.strictEqual(json.files.length, 1);
 		assert.strictEqual(json.files[0].path, "a.js");
+
+		assert.strictEqual(json.errors.length, 1);
+		assert.strictEqual(json.errors[0].content, "Test Error");
+		assert.strictEqual(json.errors[0].protocol, "violation");
+
+		assert.strictEqual(json.warnings.length, 1);
+		assert.strictEqual(json.warnings[0].content, "Test Warn");
+
+		assert.strictEqual(json.infos.length, 1);
+		assert.strictEqual(json.infos[0].content, "Test Info");
+		assert.strictEqual(json.infos[0].file, "a.js");
+
 		assert.strictEqual(json.files[0].symbols.length, 2);
 		assert.strictEqual(json.files[0].symbols[0].name, "foo");
 	});

@@ -151,10 +151,6 @@ export default class ClientConnection {
 									"Demote files matching a glob pattern to 'mappable'",
 								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
 							},
-							getRunHistory: {
-								description: "Get the turn history for a specific run",
-								params: { runId: "UUID of the run" },
-							},
 							startRun: {
 								description: "Begin a new agent execution sequence",
 								params: {
@@ -281,10 +277,6 @@ export default class ClientConnection {
 						this.#context.projectId,
 						params.pattern,
 					);
-					break;
-
-				case "getRunHistory":
-					result = await this.#projectAgent.getRunHistory(params.runId);
 					break;
 
 				case "startRun":

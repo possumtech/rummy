@@ -24,7 +24,9 @@ export default class LlmProvider {
 	 */
 	async completion(messages, model) {
 		const resolvedModel = process.env[`RUMMY_MODEL_${model}`] || model;
-		console.log(`[LlmProvider DEBUG] Resolving model '${model}' -> '${resolvedModel}'`);
+		console.log(
+			`[LlmProvider DEBUG] Resolving model '${model}' -> '${resolvedModel}'`,
+		);
 
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");

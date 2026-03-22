@@ -1,5 +1,7 @@
 import * as parse5 from "parse5";
 
+import TaskParser from "./TaskParser.js";
+
 /**
  * ResponseParser: Focused logic for parsing LLM output and managing DOM nodes.
  */
@@ -48,6 +50,24 @@ export default class ResponseParser {
 		this.convertToXmlDom(doc, targetEl, frag);
 	}
 
+	setAssistantContent(turnObj, tagName, content) {
+		const doc = turnObj.doc;
+		const assistantEl = doc.getElementsByTagName("assistant")[0];
+		let targetEl = assistantEl.getElementsByTagName(tagName)[0];
+		if (!targetEl) {
+			targetEl = doc.createElement(tagName);
+			assistantEl.appendChild(targetEl);
+		} else {
+			// Clear existing children
+			while (targetEl.firstChild) {
+				targetEl.removeChild(targetEl.firstChild);
+			}
+		}
+
+		const frag = parse5.parseFragment(content);
+		this.convertToXmlDom(doc, targetEl, frag);
+	}
+
 	convertToXmlDom(doc, target, p5Node) {
 		if (p5Node.nodeName === "#text") {
 			target.appendChild(doc.createTextNode(p5Node.value));
@@ -69,6 +89,10 @@ export default class ResponseParser {
 				this.convertToXmlDom(doc, target, child);
 			}
 		}
+	}
+
+	parseTaskList(text) {
+		return TaskParser.parse(text);
 	}
 
 	parsePromptUser(node) {
@@ -168,7 +192,10 @@ export default class ResponseParser {
 
 			// Pattern B: Mangled opening <name/ or <name (no closing bracket)
 			// Only if it's at the end of the content
-			const unclosedRegex = new RegExp(`<${name}([^>]*?)(?:/|(?=\\s|$))$`, "gi");
+			const unclosedRegex = new RegExp(
+				`<${name}([^>]*?)(?:/|(?=\\s|$))$`,
+				"gi",
+			);
 			for (const match of content.matchAll(unclosedRegex)) {
 				const attrString = match[1];
 				addTag(name, "", this.#parseAttrs(attrString), match.index);

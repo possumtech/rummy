@@ -282,37 +282,38 @@ export default class AgentLoop {
 				: "";
 
 			// PROTOCOL VALIDATION
-			const errorTags = [];
+			const validationErrors = [];
 			if (this.#db && protocolRetries < MAX_PROTOCOL_RETRIES) {
 				const constraints = await this.#db.get_protocol_constraints.get({
 					type,
 					has_unknowns: hasUnknowns ? 1 : 0,
 				});
 				if (constraints) {
-					const required = constraints.required_tags.split(/\s+/).filter(Boolean);
+					const required = constraints.required_tags
+						.split(/\s+/)
+						.filter(Boolean);
 					const allowed = constraints.allowed_tags.split(/\s+/).filter(Boolean);
 					const presentTags = new Set(tags.map((t) => t.tagName));
 
 					for (const req of required) {
 						if (!presentTags.has(req)) {
-							errorTags.push(
-								`<error protocol="violation">Missing required tag: <${req}></error>`,
-							);
+							validationErrors.push({
+								content: `Missing required tag: <${req}>`,
+								attrs: { protocol: "violation" },
+							});
 						}
 					}
 
 					for (const tag of tags) {
-						// Summary is special: dynamically allowed if run is finishing
 						if (tag.tagName === "summary") continue;
-
 						if (!allowed.includes(tag.tagName)) {
-							errorTags.push(
-								`<error protocol="violation">Disallowed tag used: <${tag.tagName}></error>`,
-							);
+							validationErrors.push({
+								content: `Disallowed tag used: <${tag.tagName}>`,
+								attrs: { protocol: "violation" },
+							});
 						}
 					}
 
-					// DYNAMIC SUMMARY REQUIREMENT
 					const unknownTagNow = tags.find((t) => t.tagName === "unknown");
 					const unknownText = unknownTagNow
 						? this.#responseParser.getNodeText(unknownTagNow).trim()
@@ -323,22 +324,40 @@ export default class AgentLoop {
 						unknownText !== "<unknown></unknown>";
 
 					if (!hasUnknownsNow && !presentTags.has("summary")) {
-						errorTags.push(
-							"<error protocol=\"violation\">You identified no unknowns but provided no <summary>. You MUST provide a <summary> tag to terminate the run.</error>",
-						);
+						validationErrors.push({
+							content:
+								"You identified no unknowns but provided no <summary>. You MUST provide a <summary> tag to terminate the run.",
+							attrs: { protocol: "violation" },
+						});
 					}
 				}
 			}
 
-			if (errorTags.length > 0) {
+			if (validationErrors.length > 0) {
 				protocolRetries++;
+
+				// PERSIST AND EMIT EVEN ON FAILURE (Transparency)
+				for (const err of validationErrors) {
+					turnObj.context.error.add(err.content, err.attrs);
+				}
+
+				await turnObj.save();
+				const projectFiles = await this.#sessionManager.getFiles(project.path);
+				await this.#hooks.run.step.completed.emit({
+					runId: currentRunId,
+					sessionId,
+					turn: turnObj,
+					projectFiles,
+				});
+
 				await this.#hooks.run.progress.emit({
 					runId: currentRunId,
 					sessionId,
 					tasks: tasksText,
-					status: `Protocol Error: ${errorTags.length} violations detected. Retrying (Attempt ${protocolRetries})...`,
+					status: `Protocol Error: ${validationErrors.length} violations detected. Retrying (Attempt ${protocolRetries})...`,
 				});
-				loopPrompt = errorTags.join("\n");
+				// Original prompt remains, errors are now in context
+				loopPrompt = prompt;
 				continue;
 			}
 			// Reset retries on success
@@ -349,7 +368,7 @@ export default class AgentLoop {
 			for (const tagName of semanticTags) {
 				const tag = tags.find((t) => t.tagName === tagName);
 				if (tag) {
-					this.#responseParser.appendAssistantContent(
+					this.#responseParser.setAssistantContent(
 						turnObj,
 						tagName,
 						this.#responseParser.getNodeText(tag),
@@ -418,15 +437,12 @@ export default class AgentLoop {
 				tasksText.length > 0 && !tasksText.includes("- [ ]");
 
 			if (gatherReadTags.length > 0 || gatherCmdTags.length > 0) {
-				const infoTags = [];
 				if (gatherReadTags.length > 0) {
 					const paths = gatherReadTags
 						.map((t) => t.attrs.find((a) => a.name === "file")?.value)
 						.filter(Boolean);
 					for (const p of paths)
-						infoTags.push(
-							`<info file="${p}">Full file added to context</info>`,
-						);
+						turnObj.context.info.add("Full file added to context", { file: p });
 				}
 				for (const tag of gatherCmdTags) {
 					const cmd = this.#responseParser.getNodeText(tag).trim();
@@ -434,16 +450,19 @@ export default class AgentLoop {
 						const { stdout, stderr } = await execAsync(cmd, {
 							cwd: project.path,
 						});
-						infoTags.push(
-							`<info command="${cmd}">Executed ${tag.tagName}.\nOutput:\n${(stdout + stderr).trim() || "(no output)"}</info>`,
+						turnObj.context.info.add(
+							`Executed ${tag.tagName}.\nOutput:\n${(stdout + stderr).trim() || "(no output)"}`,
+							{ command: cmd },
 						);
 					} catch (err) {
-						infoTags.push(
-							`<info command="${cmd}">Failed to execute ${tag.tagName}.\nError: ${err.message}</info>`,
+						turnObj.context.info.add(
+							`Failed to execute ${tag.tagName}.\nError: ${err.message}`,
+							{ command: cmd },
 						);
 					}
 				}
-				loopPrompt = infoTags.join("\n");
+				// Original prompt remains, gathered data is now in context
+				loopPrompt = prompt;
 				continue;
 			}
 

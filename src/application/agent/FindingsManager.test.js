@@ -121,14 +121,19 @@ test("FindingsManager Expanded Coverage", async (t) => {
 			async () => await fs.rm(projectPath, { recursive: true, force: true }),
 		);
 
-		// Mock HeuristicMatcher to return a patch
+		// Mock HeuristicMatcher to return newContent
 		const originalMatch = HeuristicMatcher.matchAndPatch;
-		HeuristicMatcher.matchAndPatch = () => ({ patch: "new content" });
+		HeuristicMatcher.matchAndPatch = () => ({
+			patch: "unified diff...",
+			newContent: "new content",
+		});
 
 		await manager.applyDiff(projectPath, {
 			type: "edit",
 			file: "edit.js",
-			patch: "new content",
+			patch: "irrelevant-original-patch",
+			search: "old content",
+			replace: "new content",
 		});
 
 		const content = await fs.readFile(filePath, "utf8");

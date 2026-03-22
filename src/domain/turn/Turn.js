@@ -1,4 +1,5 @@
 import { XMLSerializer } from "@xmldom/xmldom";
+import TaskParser from "../../application/agent/TaskParser.js";
 
 /**
  * The Turn class represents the structured Document of a single LLM round.
@@ -80,6 +81,31 @@ export default class Turn {
 	}
 
 	/**
+	 * Returns helpers for the context section.
+	 */
+	get context() {
+		const contextEl = this.#doc.getElementsByTagName("context")[0];
+		const h = (tagName) => {
+			return {
+				add: (content, attrs = {}) => {
+					const el = this.#doc.createElement(tagName);
+					for (const [k, v] of Object.entries(attrs)) {
+						el.setAttribute(k, v);
+					}
+					el.appendChild(this.#doc.createTextNode(content));
+					contextEl.appendChild(el);
+				},
+			};
+		};
+
+		return {
+			error: h("error"),
+			warn: h("warn"),
+			info: h("info"),
+		};
+	}
+
+	/**
 	 * Returns helpers for the assistant section.
 	 */
 	get assistant() {
@@ -154,8 +180,10 @@ export default class Turn {
 		const assistantEl = this.#doc.getElementsByTagName("assistant")[0];
 
 		const getTagContent = (parent, tagName) => {
-			const el = parent?.getElementsByTagName(tagName)[0];
-			return el ? el.textContent : null;
+			if (!parent) return null;
+			const el = parent.getElementsByTagName(tagName)[0];
+			if (!el) return null;
+			return el.textContent;
 		};
 
 		const assistantMeta = JSON.parse(
@@ -168,7 +196,29 @@ export default class Turn {
 		};
 
 		const files = [];
+		const errors = [];
+		const warnings = [];
+		const infos = [];
+
 		if (contextEl) {
+			const getFeedback = (tagName) => {
+				const els = contextEl.getElementsByTagName(tagName);
+				const results = [];
+				for (let i = 0; i < els.length; i++) {
+					const el = els[i];
+					const attrs = {};
+					for (let j = 0; j < el.attributes.length; j++) {
+						attrs[el.attributes[j].name] = el.attributes[j].value;
+					}
+					results.push({ content: el.textContent, ...attrs });
+				}
+				return results;
+			};
+
+			errors.push(...getFeedback("error"));
+			warnings.push(...getFeedback("warn"));
+			infos.push(...getFeedback("info"));
+
 			const fileEls = contextEl.getElementsByTagName("file");
 			for (let i = 0; i < fileEls.length; i++) {
 				const f = fileEls[i];
@@ -200,6 +250,9 @@ export default class Turn {
 			}
 		}
 
+		const tasksRaw = getTagContent(assistantEl, "tasks");
+		const { list: tasksList, next: nextTask } = TaskParser.parse(tasksRaw);
+
 		return {
 			sequence: Number.parseInt(
 				this.#doc.documentElement.getAttribute("sequence") || "0",
@@ -208,11 +261,15 @@ export default class Turn {
 			system: systemEl?.textContent || "",
 			context: this.#serializePretty(contextEl),
 			files, // Include parsed files for client convenience
+			errors,
+			warnings,
+			infos,
 			user: userEl?.textContent || "",
 			assistant: {
 				content: getTagContent(assistantEl, "content"),
 				reasoning: getTagContent(assistantEl, "reasoning_content"),
-				tasks: getTagContent(assistantEl, "tasks"),
+				tasks: tasksList,
+				next_task: nextTask,
 				known: getTagContent(assistantEl, "known"),
 				unknown: getTagContent(assistantEl, "unknown"),
 				summary: getTagContent(assistantEl, "summary"),

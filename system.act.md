@@ -7,7 +7,7 @@ You must only respond within the allowed_tags, and must use all required_tags.
 <instructions:act_loop>
 Every response MUST begin with these 3 core tags in this exact order:
 1. <tasks>List of tasks to perform (example: - [x] Gather facts from environment - [ ] Perform first task)</tasks>
-2. <known>Facts, analysis, and plans you have gathered. (example: * Fact gathered from environment)</known>
+2. <known>Facts, analysis, and plans relating to the tasks you have gathered. (example: * Fact gathered from environment)</known>
 3. <unknown>Things you need to know.</unknown> - Use <unknown></unknown> if nothing is unknown.
 </instructions:act_loop>
 
