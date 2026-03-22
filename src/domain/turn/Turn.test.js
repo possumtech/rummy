@@ -18,6 +18,10 @@ const xmlTemplate = `
       <assistant>
         <reasoning_content>reasoning...</reasoning_content>
         <content>assistant content</content>
+        <tasks>task list</tasks>
+        <known>known info</known>
+        <unknown>unknown gaps</unknown>
+        <summary>turn summary</summary>
         <meta>{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30,"alias":"m1","actualModel":"gpt-4"}</meta>
       </assistant>
     </turn>
@@ -45,6 +49,7 @@ test("Turn class", async (t) => {
 					return { id: elements.length };
 				},
 			},
+			update_turn_payload: { run: async () => {} }
 		};
 		const turn = new Turn(doc, mockDb, 123);
 		await turn.save();
@@ -66,6 +71,10 @@ test("Turn class", async (t) => {
 		assert.strictEqual(json.user, "user prompt");
 		assert.strictEqual(json.assistant.content, "assistant content");
 		assert.strictEqual(json.assistant.reasoning, "reasoning...");
+		assert.strictEqual(json.assistant.tasks, "task list");
+		assert.strictEqual(json.assistant.known, "known info");
+		assert.strictEqual(json.assistant.unknown, "unknown gaps");
+		assert.strictEqual(json.assistant.summary, "turn summary");
 		assert.strictEqual(json.usage.total_tokens, 30);
 		assert.strictEqual(json.files.length, 1);
 		assert.strictEqual(json.files[0].path, "a.js");

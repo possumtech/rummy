@@ -1,5 +1,6 @@
 -- PREP: get_turn_history
--- Retrieves the history of user and assistant messages for a run in chronological order.
+-- Retrieves the history of user and assistant messages for a run 
+-- in chronological order.
 SELECT
 	role,
 	content

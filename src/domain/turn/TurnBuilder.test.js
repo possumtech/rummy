@@ -69,7 +69,7 @@ test("TurnBuilder class", async (t) => {
 			);
 			const mockDb = createMockDb();
 			mockDb.get_protocol_constraints.get = mock.fn(
-				async ({ type, has_unknowns }) => {
+				async ({ _type, has_unknowns }) => {
 					if (has_unknowns) {
 						return { required_tags: "req1", allowed_tags: "allow1" };
 					}

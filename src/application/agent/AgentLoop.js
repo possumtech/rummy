@@ -240,13 +240,26 @@ export default class AgentLoop {
 			if (finalResponse?.content)
 				turnObj.assistant.content.add(finalResponse.content);
 			turnObj.assistant.meta.add({
-				...usage,
+				prompt_tokens: usage.prompt_tokens,
+				completion_tokens: usage.completion_tokens,
+				total_tokens: usage.total_tokens,
+				cost: usage.cost,
 				alias: requestedModel,
 				actualModel: result.model,
 				displayModel: this.#resolveAlias(requestedModel),
 			});
 
-			await this.#db.update_turn_stats.run({ id: turnId, ...usage });
+			const dbUsage = {
+				prompt_tokens: usage.prompt_tokens || 0,
+				completion_tokens: usage.completion_tokens || 0,
+				total_tokens: usage.total_tokens || 0,
+				cost: usage.cost || 0,
+			};
+
+			await this.#db.update_turn_stats.run({
+				id: turnId,
+				...dbUsage,
+			});
 			await turnObj.save();
 
 			const turnContent = finalResponse?.content || "";
@@ -260,6 +273,19 @@ export default class AgentLoop {
 				notifications: [],
 			};
 			const tags = this.#responseParser.parseActionTags(finalResponse.content);
+
+			// PERSIST SEMANTIC TAGS TO TURN DOM
+			const semanticTags = ["tasks", "known", "unknown", "summary"];
+			for (const tagName of semanticTags) {
+				const tag = tags.find((t) => t.tagName === tagName);
+				if (tag) {
+					this.#responseParser.appendAssistantContent(
+						turnObj,
+						tagName,
+						this.#responseParser.getNodeText(tag),
+					);
+				}
+			}
 
 			await this.#findingsManager.populateFindings(
 				project.path,

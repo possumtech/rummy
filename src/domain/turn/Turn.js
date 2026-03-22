@@ -212,6 +212,10 @@ export default class Turn {
 			assistant: {
 				content: getTagContent(assistantEl, "content"),
 				reasoning: getTagContent(assistantEl, "reasoning_content"),
+				tasks: getTagContent(assistantEl, "tasks"),
+				known: getTagContent(assistantEl, "known"),
+				unknown: getTagContent(assistantEl, "unknown"),
+				summary: getTagContent(assistantEl, "summary"),
 			},
 			usage,
 			model: {

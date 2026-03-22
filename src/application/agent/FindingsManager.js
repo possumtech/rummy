@@ -18,7 +18,7 @@ export default class FindingsManager {
 	 * Extracts proposed changes and information from model tags.
 	 */
 	async populateFindings(projectPath, atomicResult, tags) {
-		const { runId, content: turnContent } = atomicResult;
+		const { content: turnContent } = atomicResult;
 
 		// 1. Resolve Project ID for relational updates
 		const projects = await this.#db.get_project_by_path.all({

@@ -77,6 +77,17 @@ test("AgentLoop", async (t) => {
 			return "some text";
 		},
 		mergePrefill: (p, c) => p + c,
+		appendAssistantContent: () => {},
+	};
+
+	const mockParserWithSummary = {
+		parseActionTags: () => [{ tagName: "tasks" }, { tagName: "summary" }],
+		getNodeText: (tag) => {
+			if (tag.tagName === "tasks") return "- [x] done";
+			return "done";
+		},
+		mergePrefill: (p, c) => p + c,
+		appendAssistantContent: () => {},
 	};
 
 	const mockFindings = {

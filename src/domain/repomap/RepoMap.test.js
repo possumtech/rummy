@@ -203,7 +203,7 @@ describe("RepoMap (Perspective Engine)", () => {
 	});
 
 	it("8. Directed Warming: should warm up dependencies based on symbol matches", async () => {
-		const { db, pid, ctx, testDir } = await setup("warming");
+		const { db, pid, testDir } = await setup("warming");
 
 		await fs.mkdir(join(testDir, "deep/nested/dir"), { recursive: true });
 		await fs.writeFile(

@@ -152,16 +152,39 @@ export default class ResponseParser {
 		};
 
 		// 1. Aggressive Regex Extraction (The "Greedy" layer)
-		// This catches mangled tags like <read file="a.js" <read file="b.js">
 		for (const name of coreTagNames) {
-			const regex = new RegExp(
-				`<${name}([^>]*)>([\\s\\S]*?)(?:</${name}>|(?=<[a-z])|$)`,
+			// Pattern A: Standard tags <name>...</name> or <name/>
+			// We make the closing bracket mandatory to distinguish from Pattern B
+			const standardRegex = new RegExp(
+				`<${name}([^/>]*)>(?:([\\s\\S]*?)</${name}>|([\\s\\S]*?)(?=<[a-z])|$)`,
 				"gi",
 			);
-			for (const match of content.matchAll(regex)) {
+			const standardMatches = Array.from(content.matchAll(standardRegex));
+			for (const match of standardMatches) {
 				const attrString = match[1];
-				const tagContent = match[2];
+				const tagContent = match[2] || match[3] || "";
 				addTag(name, tagContent, this.#parseAttrs(attrString), match.index);
+			}
+
+			// Pattern B: Mangled opening <name/ or <name (no closing bracket)
+			// Only if it's at the end of the content
+			const unclosedRegex = new RegExp(`<${name}([^>]*?)(?:/|(?=\\s|$))$`, "gi");
+			for (const match of content.matchAll(unclosedRegex)) {
+				const attrString = match[1];
+				addTag(name, "", this.#parseAttrs(attrString), match.index);
+			}
+
+			// Pattern C: Standalone closing tag or just name followed by /> (e.g. unknown/>)
+			// Only if Pattern A didn't find anything for this tag name
+			if (standardMatches.length === 0) {
+				const trailingRegex = new RegExp(
+					`(?:</${name}>|\\b${name}/?>)([\\s\\S]*?)$`,
+					"gi",
+				);
+				for (const match of content.matchAll(trailingRegex)) {
+					const tagContent = match[1] || "";
+					addTag(name, tagContent, [], match.index);
+				}
 			}
 		}
 
