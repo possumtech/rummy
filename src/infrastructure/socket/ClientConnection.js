@@ -54,12 +54,13 @@ export default class ClientConnection {
 			}
 		});
 
-		this.#hooks.run.step.completed.on((payload) => {
+		this.#hooks.run.step.completed.on(async (payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
-				const turn = payload.turn.toJson();
+				const turn = await payload.turn.toJson();
 				this.#sendNotification("run/step/completed", {
 					runId: payload.runId,
 					turn,
+					files: payload.projectFiles,
 				});
 			}
 		});
@@ -147,6 +148,10 @@ export default class ClientConnection {
 							drop: {
 								description: "Demote files matching a glob pattern to 'mappable'",
 								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
+							},
+							getRunHistory: {
+								description: "Get the turn history for a specific run",
+								params: { runId: "UUID of the run" },
 							},
 							startRun: {
 								description: "Begin a new agent execution sequence",
@@ -274,6 +279,10 @@ export default class ClientConnection {
 						this.#context.projectId,
 						params.pattern,
 					);
+					break;
+
+				case "getRunHistory":
+					result = await this.#projectAgent.getRunHistory(params.runId);
 					break;
 
 				case "startRun":

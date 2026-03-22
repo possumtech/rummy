@@ -6,6 +6,7 @@ SELECT
 	, visibility
 	, symbol_tokens
 	, is_buffered
+	, is_retained
 	, last_indexed_at
 FROM repo_map_files
 WHERE

@@ -69,12 +69,21 @@ describe("Happy Path E2E: France", () => {
 
 		assert.strictEqual(result.status, "completed");
 
-		// Verify the turn was recorded and sent back correctly
-		assert.strictEqual(turns.length, 1);
-		const turn0 = turns[0];
-		assert.ok(turn0.assistant.content.includes("Paris"));
+		// Wait a beat for async DB persistence
+		await new Promise((r) => setTimeout(r, 1000));
+
+		const turnsHistory = await client.call("getRunHistory", { runId: result.runId });
+		assert.strictEqual(turnsHistory.length, 2);
+		
+		const userMsg = turnsHistory.find((m) => m.role === "user");
+		const assistantMsg = turnsHistory.find((m) => m.role === "assistant");
+		
+		assert.ok(userMsg.content.includes("France"));
+		assert.ok(assistantMsg.content.includes("Paris"));
+		
+		const turn0_emitted = turns.find((t) => t.sequence === 0);
 		assert.ok(
-			turn0.context.includes("<context"),
+			turn0_emitted.context.includes("<context"),
 			"Context should be a prettified XML string",
 		);
 	});

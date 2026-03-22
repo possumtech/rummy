@@ -33,6 +33,7 @@ export default class ProjectAgent {
 			turnBuilder,
 			parser,
 			this.#findingsManager,
+			this.#sessionManager,
 		);
 	}
 
@@ -131,5 +132,9 @@ export default class ProjectAgent {
 
 	async resolve(runId, resolution) {
 		return this.#agentLoop.resolve(runId, resolution);
+	}
+
+	async getRunHistory(runId) {
+		return this.#agentLoop.getRunHistory(runId);
 	}
 }

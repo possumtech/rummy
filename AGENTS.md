@@ -61,6 +61,28 @@ Retrieves the current authoritative state of a file.
 ```json
 { "method": "fileStatus", "params": { "path": "src/logic.js" } }
 ```
+**Response:**
+```json
+{
+  "result": {
+    "path": "src/logic.js",
+    "state": "active",         // active | read_only | buffered | retained | mappable | ignored
+    "visibility": "active",
+    "is_buffered": true,
+    "is_retained": false,
+    "is_git_ignored": false,
+    "size": 5120
+  }
+}
+```
+
+#### State Label Hierarchy (Priority Order)
+1.  **`ignored`**: File is hidden from the model.
+2.  **`active`**: Persistent focus (Full source, editable).
+3.  **`read_only`**: Persistent focus (Full source, non-editable).
+4.  **`buffered`**: Transient focus (Full source while open in IDE).
+5.  **`retained`**: Agent focus (Full source, subject to turns-based **Decay**).
+6.  **`mappable`**: Baseline (Symbols only).
 
 #### `getFiles`
 Returns the visibility status for the entire project tree.

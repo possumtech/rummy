@@ -7,6 +7,8 @@ SELECT
 	, visibility
 	, symbol_tokens
 	, is_active
+	, is_retained
+	, is_buffered
 	, heat
 	, last_attention_turn
 FROM repo_map_ranked

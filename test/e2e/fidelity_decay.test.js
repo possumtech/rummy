@@ -42,7 +42,9 @@ describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 	it("should empirically prove fidelity decay over turns", async () => {
 		const turnResults = [];
 		client.on("run/step/completed", (params) => {
-			turnResults.push(params.turn);
+			const turn = params.turn;
+			turn.files = params.files;
+			turnResults.push(turn);
 		});
 
 		// 0. Init
@@ -94,17 +96,22 @@ describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 			findTurn(1).context.includes("<source>"),
 			"Turn 1: Source present (after read)",
 		);
+		assert.strictEqual(
+			findTurn(1).files.find((f) => f.path === "logic.js").state,
+			"retained",
+			"Turn 1: State should be 'retained'",
+		);
 		assert.ok(
 			findTurn(2).context.includes("<source>"),
 			"Turn 2: Source present (within window)",
 		);
 		assert.ok(
 			findTurn(3).context.includes("<source>"),
-			"Turn 3: Source present (at edge)",
+			"Turn 3: Source present (Retained & Recent)",
 		);
 		assert.ok(
 			!findTurn(4).context.includes("<source>"),
-			"Turn 4: Source DECAYED",
+			"Turn 4: Source DECAYED (Retained & Old)",
 		);
 	});
 });

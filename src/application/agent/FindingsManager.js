@@ -36,7 +36,7 @@ export default class FindingsManager {
 					await this.#db.upsert_repo_map_file.run({
 						project_id: projectId,
 						path,
-						visibility: "active",
+						visibility: "mappable",
 						hash: null,
 						size: 0,
 					});

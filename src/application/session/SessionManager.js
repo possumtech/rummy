@@ -94,22 +94,7 @@ export default class SessionManager {
 		const results = [];
 
 		for (const relPath of mappable) {
-			const dbFile = await this.#db.get_repo_map_file.get({
-				project_id: projectId,
-				path: relPath,
-			});
-			const resolvedVisibility = await ctx.resolveState(relPath);
-
-			results.push({
-				path: relPath,
-				visibility: resolvedVisibility,
-				is_buffered: dbFile?.is_buffered === 1,
-				is_git_ignored:
-					resolvedVisibility === "ignored" &&
-					(await ProjectContext.open(projectPath)).resolveState(relPath) ===
-						"ignored",
-				size: dbFile?.size || 0,
-			});
+			results.push(await this.fileStatus(projectId, relPath));
 		}
 		return results;
 	}
@@ -127,10 +112,20 @@ export default class SessionManager {
 		});
 		const resolvedVisibility = await ctx.resolveState(path);
 
+		// Resolve authoritative label for UI/Statusbar
+		let state = "mappable";
+		if (resolvedVisibility === "ignored") state = "ignored";
+		else if (resolvedVisibility === "active") state = "active";
+		else if (resolvedVisibility === "read_only") state = "read_only";
+		else if (dbFile?.is_buffered) state = "buffered";
+		else if (dbFile?.is_retained) state = "retained";
+
 		return {
 			path,
+			state,
 			visibility: resolvedVisibility,
 			is_buffered: dbFile?.is_buffered === 1,
+			is_retained: dbFile?.is_retained === 1,
 			is_git_ignored:
 				(await ProjectContext.open(project.path)).resolveState(path) ===
 				"ignored",

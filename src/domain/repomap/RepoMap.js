@@ -219,16 +219,17 @@ export default class RepoMap {
 
 			// 2. Determine if we should include full source body
 			// SUPERSTRATE + FIDELITY DECAY:
-			// - 'read_only' ALWAYS includes source (authoritative reference).
-			// - 'is_buffered' ALWAYS includes source (explicitly pinned by UI).
-			// - 'active' ONLY includes source if it has recent attention (soft-pinned).
+			// - 'read_only' and 'active' ALWAYS include source (persistent user focus).
+			// - 'is_buffered' ALWAYS includes source (transient user focus).
+			// - 'is_retained' ONLY includes source if it has recent attention (agent focus).
 			const hasRecentAttention =
 				currentTurn - file.last_attention_turn <= decayThreshold;
 
 			const shouldIncludeSource =
 				file.visibility === "read_only" ||
+				file.visibility === "active" ||
 				file.is_buffered ||
-				(file.visibility === "active" && hasRecentAttention);
+				(file.is_retained && hasRecentAttention);
 
 			let displayFile;
 

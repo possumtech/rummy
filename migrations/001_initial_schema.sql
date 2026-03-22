@@ -286,6 +286,7 @@ CREATE VIEW IF NOT EXISTS v_turn_history AS
 SELECT
 	run_id,
 	sequence_number,
+	key as msg_index,
 	json_extract(value, '$.role') as role,
 	json_extract(value, '$.content') as content
 FROM turns, json_each(turns.payload)

@@ -15,6 +15,7 @@ export default class AgentLoop {
 	#turnBuilder;
 	#responseParser;
 	#findingsManager;
+	#sessionManager;
 
 	constructor(
 		db,
@@ -23,6 +24,7 @@ export default class AgentLoop {
 		turnBuilder,
 		responseParser,
 		findingsManager,
+		sessionManager,
 	) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
@@ -30,6 +32,7 @@ export default class AgentLoop {
 		this.#turnBuilder = turnBuilder;
 		this.#responseParser = responseParser;
 		this.#findingsManager = findingsManager;
+		this.#sessionManager = sessionManager;
 	}
 
 	#resolveAlias(modelId) {
@@ -246,9 +249,10 @@ export default class AgentLoop {
 			await this.#db.update_turn_stats.run({ id: turnId, ...usage });
 			await turnObj.save();
 
+			const turnContent = finalResponse?.content || "";
 			const atomicResult = {
 				runId: currentRunId,
-				content: finalResponse?.content || "",
+				content: turnContent,
 				reasoning: finalResponse?.reasoning_content || null,
 				usage,
 				diffs: [],
@@ -284,14 +288,18 @@ export default class AgentLoop {
 				});
 			}
 
+			const projectFiles = await this.#sessionManager.getFiles(project.path);
+
 			await this.#hooks.run.turn.audit.emit({
 				runId: currentRunId,
 				turn: turnObj,
 			});
+
 			await this.#hooks.run.step.completed.emit({
 				runId: currentRunId,
 				sessionId,
 				turn: turnObj,
+				projectFiles,
 			});
 
 			const tasksTag = tags.find((t) => t.tagName === "tasks");
@@ -378,11 +386,24 @@ export default class AgentLoop {
 							text: n.text,
 							level: "info",
 							status: "proposed",
-							config: JSON.stringify(n.config),
-							append: n.append ? 1 : 0,
+							config: n.config ? JSON.stringify(n.config) : null,
+							append: 0,
 						});
 					}
 				}
+
+				await this.#hooks.run.turn.audit.emit({
+					runId: currentRunId,
+					turn: turnObj,
+				});
+
+				await this.#hooks.run.step.completed.emit({
+					runId: currentRunId,
+					sessionId,
+					turn: turnObj,
+					projectFiles: await this.#sessionManager.getFiles(project.path),
+				});
+
 				return {
 					runId: currentRunId,
 					status: "proposed",
@@ -409,12 +430,37 @@ export default class AgentLoop {
 						});
 					}
 				}
+
+				await this.#hooks.run.turn.audit.emit({
+					runId: currentRunId,
+					turn: turnObj,
+				});
+
+				await this.#hooks.run.step.completed.emit({
+					runId: currentRunId,
+					sessionId,
+					turn: turnObj,
+					projectFiles: await this.#sessionManager.getFiles(project.path),
+				});
+
 				return {
 					runId: currentRunId,
 					status: "completed",
 					turn: currentTurnSequence,
 				};
 			}
+
+			await this.#hooks.run.turn.audit.emit({
+				runId: currentRunId,
+				turn: turnObj,
+			});
+
+			await this.#hooks.run.step.completed.emit({
+				runId: currentRunId,
+				sessionId,
+				turn: turnObj,
+				projectFiles: await this.#sessionManager.getFiles(project.path),
+			});
 
 			break;
 		}

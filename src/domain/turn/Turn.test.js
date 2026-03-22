@@ -85,8 +85,9 @@ test("Turn class", async (t) => {
 		const doc = parser.parseFromString(xmlTemplate, "text/xml");
 		const turn = new Turn(doc);
 		const msgs = await turn.serialize();
-		assert.strictEqual(msgs.length, 2);
+		assert.strictEqual(msgs.length, 3);
 		assert.strictEqual(msgs[0].role, "system");
 		assert.strictEqual(msgs[1].role, "user");
+		assert.strictEqual(msgs[2].role, "assistant");
 	});
 });

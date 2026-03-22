@@ -25,15 +25,22 @@ export default class Turn {
 
 	/**
 	 * Persists the current DOM structure to the turn_elements table.
+	 * Also saves the serialized message history to the payload column.
 	 */
 	async save() {
 		if (!this.#db || !this.#turnId) return;
 
-		// 1. Clear existing elements for this turn
-		// (Optional: only if we expect updates. TurnBuilder usually creates once)
-		// await this.#db.run("DELETE FROM turn_elements WHERE turn_id = ?", [this.#turnId]);
+		// 1. Save standardized message payload for history views
+		const messages = await this.serialize();
 
-		// 2. Recursively save elements
+		if (this.#db.update_turn_payload) {
+			await this.#db.update_turn_payload.run({
+				id: this.#turnId,
+				payload: JSON.stringify(messages),
+			});
+		}
+
+		// 2. Recursively save elements for semantic logic
 		await this.#saveNode(this.#doc.documentElement, null, 0);
 	}
 
@@ -121,10 +128,20 @@ export default class Turn {
 		// user role = <user>
 		const userContent = this.#serializeNode(userEl);
 
-		return [
+		const messages = [
 			{ role: "system", content: systemContent },
 			{ role: "user", content: userContent },
 		];
+
+		const assistantEl = this.#doc.getElementsByTagName("assistant")[0];
+		if (assistantEl) {
+			const assistantContent = this.#serializeNode(assistantEl);
+			if (assistantContent) {
+				messages.push({ role: "assistant", content: assistantContent });
+			}
+		}
+
+		return messages;
 	}
 
 	/**

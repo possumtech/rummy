@@ -89,6 +89,10 @@ test("AgentLoop", async (t) => {
 		applyDiff: async () => {},
 	};
 
+	const mockSessionManager = {
+		getFiles: async () => [],
+	};
+
 	await t.test("run should complete a simple turn", async () => {
 		const loop = new AgentLoop(
 			createMockDb(),
@@ -97,6 +101,7 @@ test("AgentLoop", async (t) => {
 			mockTurnBuilder,
 			mockParser,
 			mockFindings,
+			mockSessionManager,
 		);
 		const result = await loop.run("ask", "s1", "m1", "hello");
 		assert.strictEqual(result.status, "completed");
@@ -121,6 +126,7 @@ test("AgentLoop", async (t) => {
 			mockTurnBuilder,
 			mockParser,
 			mockFindings,
+			mockSessionManager,
 		);
 		const result = await loop.run("ask", "s1", "m1", "next", null, runId);
 		assert.strictEqual(result.status, "completed");
@@ -143,6 +149,7 @@ test("AgentLoop", async (t) => {
 			mockTurnBuilder,
 			mockParser,
 			mockFindings,
+			mockSessionManager,
 		);
 		const result = await loop.run("ask", "s1", "m1", "next", null, runId);
 		assert.strictEqual(result.status, "proposed");
@@ -169,6 +176,7 @@ test("AgentLoop", async (t) => {
 			mockTurnBuilder,
 			mockParserWithSummary,
 			mockFindings,
+			mockSessionManager,
 		);
 		const result = await loop.run("ask", "s1", "m1", "finish");
 		assert.strictEqual(result.status, "completed");
@@ -203,6 +211,7 @@ test("AgentLoop", async (t) => {
 			mockTurnBuilder,
 			mockParser,
 			mockFindings,
+			mockSessionManager,
 		);
 		const result = await loop.run("ask", "s1", "m1", "yolo", null, runId);
 		assert.strictEqual(result.status, "completed");
@@ -246,6 +255,7 @@ test("AgentLoop", async (t) => {
 			mockTurnBuilder,
 			mockParser,
 			mockFindings,
+			mockSessionManager,
 		);
 		const result = await loop.run("ask", "s1", "m1", "gather");
 		assert.strictEqual(result.status, "completed");
@@ -277,6 +287,7 @@ test("AgentLoop", async (t) => {
 			mockTurnBuilder,
 			mockParser,
 			mockFindings,
+			mockSessionManager,
 		);
 		const result = await loop.run("ask", "s1", "m1", "breaking");
 		assert.strictEqual(result.status, "proposed");
