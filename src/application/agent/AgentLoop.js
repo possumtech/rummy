@@ -149,6 +149,8 @@ export default class AgentLoop {
 		let loopPrompt = prompt;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 		let currentTurnSequence = 0;
+		let protocolRetries = 0;
+		const MAX_PROTOCOL_RETRIES = 3;
 
 		// --- THE ATOMIC TURN LOOP ---
 		while (true) {
@@ -274,6 +276,74 @@ export default class AgentLoop {
 			};
 			const tags = this.#responseParser.parseActionTags(finalResponse.content);
 
+			const tasksTag = tags.find((t) => t.tagName === "tasks");
+			const tasksText = tasksTag
+				? this.#responseParser.getNodeText(tasksTag).trim()
+				: "";
+
+			// PROTOCOL VALIDATION
+			const errorTags = [];
+			if (this.#db && protocolRetries < MAX_PROTOCOL_RETRIES) {
+				const constraints = await this.#db.get_protocol_constraints.get({
+					type,
+					has_unknowns: hasUnknowns ? 1 : 0,
+				});
+				if (constraints) {
+					const required = constraints.required_tags.split(/\s+/).filter(Boolean);
+					const allowed = constraints.allowed_tags.split(/\s+/).filter(Boolean);
+					const presentTags = new Set(tags.map((t) => t.tagName));
+
+					for (const req of required) {
+						if (!presentTags.has(req)) {
+							errorTags.push(
+								`<error protocol="violation">Missing required tag: <${req}></error>`,
+							);
+						}
+					}
+
+					for (const tag of tags) {
+						// Summary is special: dynamically allowed if run is finishing
+						if (tag.tagName === "summary") continue;
+
+						if (!allowed.includes(tag.tagName)) {
+							errorTags.push(
+								`<error protocol="violation">Disallowed tag used: <${tag.tagName}></error>`,
+							);
+						}
+					}
+
+					// DYNAMIC SUMMARY REQUIREMENT
+					const unknownTagNow = tags.find((t) => t.tagName === "unknown");
+					const unknownText = unknownTagNow
+						? this.#responseParser.getNodeText(unknownTagNow).trim()
+						: "";
+					const hasUnknownsNow =
+						unknownText.length > 0 &&
+						unknownText !== "<unknown/>" &&
+						unknownText !== "<unknown></unknown>";
+
+					if (!hasUnknownsNow && !presentTags.has("summary")) {
+						errorTags.push(
+							"<error protocol=\"violation\">You identified no unknowns but provided no <summary>. You MUST provide a <summary> tag to terminate the run.</error>",
+						);
+					}
+				}
+			}
+
+			if (errorTags.length > 0) {
+				protocolRetries++;
+				await this.#hooks.run.progress.emit({
+					runId: currentRunId,
+					sessionId,
+					tasks: tasksText,
+					status: `Protocol Error: ${errorTags.length} violations detected. Retrying (Attempt ${protocolRetries})...`,
+				});
+				loopPrompt = errorTags.join("\n");
+				continue;
+			}
+			// Reset retries on success
+			protocolRetries = 0;
+
 			// PERSIST SEMANTIC TAGS TO TURN DOM
 			const semanticTags = ["tasks", "known", "unknown", "summary"];
 			for (const tagName of semanticTags) {
@@ -328,10 +398,6 @@ export default class AgentLoop {
 				projectFiles,
 			});
 
-			const tasksTag = tags.find((t) => t.tagName === "tasks");
-			const tasksText = tasksTag
-				? this.#responseParser.getNodeText(tasksTag).trim()
-				: "";
 			if (tasksText)
 				await this.#hooks.run.progress.emit({
 					runId: currentRunId,
