@@ -24,7 +24,7 @@ test("AgentLoop", async (t) => {
 			get: async () => ({
 				required_tags: "tasks known unknown",
 				allowed_tags:
-					"tasks known unknown read drop env remark summary response short",
+					"tasks known unknown read drop env summary",
 			}),
 		},
 	});
@@ -71,7 +71,7 @@ test("AgentLoop", async (t) => {
 					{ tagName: "run", isMock: true, childNodes: [{ value: "ls" }] },
 				];
 			if (content.includes("summary")) return [{ tagName: "summary" }];
-			return [{ tagName: "remark" }, { tagName: "tasks" }];
+			return [{ tagName: "tasks" }];
 		},
 		getNodeText: (tag) => {
 			if (tag.tagName === "tasks") return "- [x] done";

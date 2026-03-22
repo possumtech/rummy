@@ -44,7 +44,7 @@ describe("Happy Path E2E: France", () => {
 							message: {
 								role: "assistant",
 								content:
-									"<tasks>- [x] Answer question</tasks><known>The user is asking about France.</known><response>The capital of France is Paris.</response><short>Paris</short>",
+									"<tasks>- [x] Answer question</tasks><known>The user is asking about France.</known><summary>The capital of France is Paris.</summary>",
 							},
 						},
 					],

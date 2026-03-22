@@ -21,7 +21,7 @@ describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 
 		const { execSync } = await import("node:child_process");
 		execSync(
-			'git init && git config user.email "test@test.com" && git config user.name "Test" && git add . && git commit -m "init"',
+			'git init && git config user.email "test@test.com" && git config user.name "Test" && git add . && git commit -m "feat: init"',
 			{ cwd: projectPath },
 		);
 
@@ -54,13 +54,13 @@ describe("E2E: Context Fidelity Decay (Corrected Protocol)", () => {
 
 		const responses = [
 			// Turn 0: Model says <read>.
-			'<tasks>- [x] read</tasks><read file="logic.js"/><remark>Reading.</remark>',
+			'<tasks>- [x] read</tasks><read file="logic.js"/>',
 			// Turn 1: Model mentions file. last_attention = 1.
-			"<tasks>- [ ] work</tasks><reasoning_content>Using logic.js</reasoning_content><remark>Mentioned.</remark>",
+			"<tasks>- [ ] work</tasks><reasoning_content>Using logic.js</reasoning_content>",
 			// Turn 2: Idle
-			"<tasks>- [ ] idle</tasks><remark>Idle 1</remark>",
+			"<tasks>- [ ] idle</tasks>",
 			// Turn 3: Idle
-			"<tasks>- [ ] idle</tasks><remark>Idle 2</remark>",
+			"<tasks>- [ ] idle</tasks>",
 			// Turn 4: SHOULD DECAY
 			"<tasks>- [ ] idle</tasks><summary>Done</summary>",
 		];

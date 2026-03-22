@@ -181,21 +181,19 @@ INSERT OR IGNORE INTO protocol_constraints (
 	type, has_unknowns, required_tags, allowed_tags
 )
 VALUES
-('ask', 1, 'tasks known unknown', 'tasks known unknown read drop env remark'),
+('ask', 1, 'tasks known unknown', 'tasks known unknown read drop env prompt_user'),
 (
 	'ask'
 	, 0
 	, 'tasks known unknown'
-	, 'tasks known unknown read drop env summary remark response short'
-)
-,
-('act', 1, 'tasks known unknown', 'tasks known unknown read drop env remark'),
+	, 'tasks known unknown read drop env prompt_user summary'
+),
+('act', 1, 'tasks known unknown', 'tasks known unknown read drop env prompt_user'),
 (
 	'act'
 	, 0
 	, 'tasks known unknown'
-	, 'tasks known unknown read drop env edit create delete run analysis '
-	|| 'summary remark response short'
+	, 'tasks known unknown read drop env prompt_user edit create delete run summary'
 );
 
 -- FILE TYPE HANDLERS (Symbol Extraction Strategy)

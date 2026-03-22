@@ -82,14 +82,6 @@ export default class FindingsManager {
 			}
 
 			// NOTIFICATION TAGS
-			if (tagName === "remark") {
-				atomicResult.notifications.push({
-					type: "short",
-					text: this.#parser.getNodeText(tag),
-					level: "info",
-				});
-			}
-
 			if (tagName === "summary") {
 				atomicResult.notifications.push({
 					type: "summary",
@@ -105,10 +97,6 @@ export default class FindingsManager {
 					level: "warn",
 					config: this.#parser.parsePromptUser(tag),
 				});
-			}
-
-			if (tagName === "analysis") {
-				atomicResult.analysis = this.#parser.getNodeText(tag);
 			}
 		}
 

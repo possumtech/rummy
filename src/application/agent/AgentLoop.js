@@ -390,17 +390,13 @@ export default class AgentLoop {
 				};
 			}
 
-			if (
-				isChecklistComplete ||
-				summaryTag ||
-				tags.find((t) => t.tagName === "response")
-			) {
+			if (isChecklistComplete || summaryTag) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: "completed",
 				});
 				for (const n of atomicResult.notifications) {
-					if (n.type === "summary" || n.type === "short") {
+					if (n.type === "summary") {
 						await this.#db.insert_finding_notification.run({
 							run_id: currentRunId,
 							turn_id: turnId,

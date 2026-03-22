@@ -255,8 +255,6 @@ export default class Turn {
 			"symbols",
 			"persona",
 			"skill",
-			"short",
-			"remark",
 			"summary",
 			"content",
 			"reasoning_content",

@@ -109,11 +109,11 @@ export default class TurnBuilder {
 			}
 		} else {
 			// SYSTEMATIC FALLBACK ALIGNMENT
-			allowed = "tasks known unknown read drop env remark";
+			allowed = "tasks known unknown read drop env prompt_user";
 			if (!hasUnknowns) {
-				allowed += " summary response short";
+				allowed += " summary";
 				if (type === "act") {
-					allowed += " edit create delete run analysis";
+					allowed += " edit create delete run";
 				}
 			}
 		}
