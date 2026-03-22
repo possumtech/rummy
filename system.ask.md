@@ -17,8 +17,8 @@ Otherwise, use <instructions:ask_tags/> to resolve more unknowns and complete mo
 </instructions:paths>
 
 <instructions:ask_tags>
-<read file="[path]"/> - Read file content. Marks file as Retained.
-<drop file="[path]"/> - Unmark file as Retained.
+<read file="path/to/file"/> - Read file content. Marks file as Retained.
+<drop file="path/to/file"/> - Unmark file as Retained.
 <env>[cmd]</env> - Gather system/project information (ls, git, etc).
 <prompt_user>Question - [ ] Answer A - [ ] Answer B</prompt_user> Ask the user a question.
 </instructions:ask_tags>

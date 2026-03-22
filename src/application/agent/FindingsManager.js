@@ -69,9 +69,24 @@ export default class FindingsManager {
 			// DIFF TAGS
 			if (tagName === "edit" || tagName === "create" || tagName === "delete") {
 				const path = attrs.find((a) => a.name === "file")?.value;
-				const patch = this.#parser.getNodeText(tag);
+				const content = this.#parser.getNodeText(tag);
 				if (path) {
-					atomicResult.diffs.push({ type: tagName, file: path, patch });
+					if (tagName === "edit") {
+						const { search, replace } = this.#parseEditTag(content);
+						atomicResult.diffs.push({
+							type: tagName,
+							file: path,
+							patch: content,
+							search,
+							replace,
+						});
+					} else {
+						atomicResult.diffs.push({
+							type: tagName,
+							file: path,
+							patch: content,
+						});
+					}
 				}
 			}
 
@@ -192,23 +207,43 @@ export default class FindingsManager {
 
 		if (diff.type === "edit") {
 			const oldContent = await fs.readFile(fullPath, "utf8");
-			const { patch } = HeuristicMatcher.matchAndPatch(
+			const { patch, newContent, error } = HeuristicMatcher.matchAndPatch(
 				diff.file,
 				oldContent,
-				diff.search, // Note: we'll need to update schema/parser to store search/replace
+				diff.search,
 				diff.replace,
 			);
 
-			if (patch) {
-				// For now we trust the patch since we don't have search/replace separated in DB yet
-				// This part will be updated in next iteration of Findings refinement.
-				const newContent = diff.patch; // Temporary: trust the patch
-				if (newContent) {
-					await fs.writeFile(fullPath, newContent, "utf8");
-				} else {
-					throw new Error(`Failed to apply patch to ${diff.file}`);
-				}
+			if (error) {
+				throw new Error(error);
+			}
+
+			if (newContent) {
+				await fs.writeFile(fullPath, newContent, "utf8");
 			}
 		}
+	}
+
+	#parseEditTag(content) {
+		const searchMarker = "<<<<<<< SEARCH";
+		const dividerMarker = "=======";
+		const replaceMarker = ">>>>>>> REPLACE";
+
+		const searchStart = content.indexOf(searchMarker);
+		const dividerStart = content.indexOf(dividerMarker);
+		const replaceEnd = content.indexOf(replaceMarker);
+
+		if (searchStart === -1 || dividerStart === -1 || replaceEnd === -1) {
+			return { search: null, replace: null };
+		}
+
+		const search = content
+			.substring(searchStart + searchMarker.length, dividerStart)
+			.trim();
+		const replace = content
+			.substring(dividerStart + dividerMarker.length, replaceEnd)
+			.trim();
+
+		return { search, replace };
 	}
 }

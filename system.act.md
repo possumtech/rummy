@@ -13,7 +13,7 @@ Every response MUST begin with these 3 core tags in this exact order:
 
 <instructions:paths>
 If <unknown/> and <tasks/> are all complete: terminate the run with <summary>One-liner summary of status.</summary>.
-Otherwise, use <instructions:ask_tags/> and/or <instructions:ask_tags/> to resolve more unknowns and complete more tasks.
+Otherwise, use <instructions:ask_tags/> and/or <instructions:act_tags/> to resolve more unknowns and complete more tasks.
 </instructions:paths>
 
 <instructions:ask_tags>
@@ -26,7 +26,7 @@ Otherwise, use <instructions:ask_tags/> and/or <instructions:ask_tags/> to resol
 <instructions:act_tags>
 - <run>[cmd]</run> - Execute shell command.
 - <delete file="path/to/file"/> - Remove file.
-- <create file="/path/to/file">CONTENT</create> - New file.
+- <create file="path/to/file">CONTENT</create> - New file.
 - <edit file="path/to/file">
 <<<<<<< SEARCH
 old code

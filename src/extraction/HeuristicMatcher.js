@@ -128,6 +128,6 @@ export default class HeuristicMatcher {
 		// Generate the Unified Diff
 		const patch = createPatch(filePath, fileContent, newContent, "old", "new");
 
-		return { patch, warning, error: null };
+		return { patch, newContent, warning, error: null };
 	}
 }
