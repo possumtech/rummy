@@ -132,9 +132,17 @@ export default class ClientConnection {
 								description: "Get detailed status for a single file",
 								params: { path: "Relative file path" },
 							},
-							updateFiles: {
-								description: "Update the visibility/indexing status of files",
-								params: { files: "Array of { path, visibility }" },
+							activate: {
+								description: "Make files matching a glob pattern fully active",
+								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
+							},
+							readOnly: {
+								description: "Make files matching a glob pattern read-only",
+								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
+							},
+							ignore: {
+								description: "Hide files matching a glob pattern from the model",
+								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
 							},
 							drop: {
 								description: "Demote files matching a glob pattern to 'mappable'",
@@ -232,12 +240,30 @@ export default class ClientConnection {
 					);
 					break;
 
-				case "updateFiles":
+				case "activate":
 					if (!this.#context.projectId)
 						throw new Error("Project not initialized.");
-					result = await this.#projectAgent.updateFiles(
+					result = await this.#projectAgent.activate(
 						this.#context.projectId,
-						params.files,
+						params.pattern,
+					);
+					break;
+
+				case "readOnly":
+					if (!this.#context.projectId)
+						throw new Error("Project not initialized.");
+					result = await this.#projectAgent.readOnly(
+						this.#context.projectId,
+						params.pattern,
+					);
+					break;
+
+				case "ignore":
+					if (!this.#context.projectId)
+						throw new Error("Project not initialized.");
+					result = await this.#projectAgent.ignore(
+						this.#context.projectId,
+						params.pattern,
 					);
 					break;
 

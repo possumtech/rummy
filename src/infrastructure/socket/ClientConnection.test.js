@@ -47,6 +47,7 @@ test("ClientConnection Expanded Coverage", async (t) => {
 		insert_finding_notification: { run: async () => {} },
 		get_findings_by_run_id: { all: async () => [] },
 		get_unresolved_findings: { all: async () => [] },
+		update_files_visibility_by_pattern: { run: async () => {} },
 	};
 
 	const createMockConn = () => {
@@ -95,7 +96,7 @@ test("ClientConnection Expanded Coverage", async (t) => {
 		assert.strictEqual(state.sent.result.path, "a.js");
 
 		await conn.handleMessageForTest(Buffer.from(JSON.stringify({ 
-			jsonrpc: "2.0", method: "updateFiles", id: 5, params: { files: [{ path: "a.js", visibility: "active" }] } 
+			jsonrpc: "2.0", method: "activate", id: 5, params: { pattern: "a.js" } 
 		})));
 		assert.strictEqual(state.sent.result.status, "ok");
 	});

@@ -38,6 +38,7 @@ test("ProjectAgent", async (t) => {
 			}),
 		},
 		set_retained: { run: async () => {} },
+		update_files_visibility_by_pattern: { run: async () => {} },
 	};
 	const hooks = createHooks();
 	const agent = new ProjectAgent(mockDb, hooks);
@@ -70,7 +71,10 @@ test("ProjectAgent", async (t) => {
 
 	await t.test("delegating methods should work", async () => {
 		assert.ok(Array.isArray(await agent.getFiles("/tmp")));
-		assert.ok(await agent.updateFiles("p1", []));
+		assert.ok(await agent.activate("p1", "*"));
+		assert.ok(await agent.readOnly("p1", "*"));
+		assert.ok(await agent.ignore("p1", "*"));
+		assert.ok(await agent.drop("p1", "*"));
 		assert.ok(await agent.startRun("s1", { type: "ask" }));
 		await agent.setSystemPrompt("s1", "sys");
 		await agent.setPersona("s1", "per");

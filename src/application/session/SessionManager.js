@@ -139,17 +139,32 @@ export default class SessionManager {
 		};
 	}
 
-	async updateFiles(projectId, files) {
-		await this.#hooks.project.files.update.started.emit({ projectId, files });
+	async updateFiles(projectId, { files, pattern, visibility }) {
+		await this.#hooks.project.files.update.started.emit({
+			projectId,
+			files,
+			pattern,
+			visibility,
+		});
 
-		for (const f of files) {
-			await this.#db.upsert_repo_map_file.run({
+		if (pattern && visibility) {
+			await this.#db.update_files_visibility_by_pattern.run({
 				project_id: projectId,
-				path: f.path,
-				visibility: f.visibility,
-				hash: null,
-				size: 0,
+				pattern,
+				visibility,
 			});
+		}
+
+		if (Array.isArray(files)) {
+			for (const f of files) {
+				await this.#db.upsert_repo_map_file.run({
+					project_id: projectId,
+					path: f.path,
+					visibility: f.visibility,
+					hash: null,
+					size: 0,
+				});
+			}
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
@@ -157,6 +172,8 @@ export default class SessionManager {
 			projectId,
 			projectPath: project.path,
 			files,
+			pattern,
+			visibility,
 			db: this.#db,
 		});
 
@@ -164,12 +181,19 @@ export default class SessionManager {
 	}
 
 	async drop(projectId, pattern) {
-		await this.#db.update_files_visibility_by_pattern.run({
-			project_id: projectId,
-			pattern,
-			visibility: "mappable",
-		});
-		return { status: "ok" };
+		return this.updateFiles(projectId, { pattern, visibility: "mappable" });
+	}
+
+	async activate(projectId, pattern) {
+		return this.updateFiles(projectId, { pattern, visibility: "active" });
+	}
+
+	async readOnly(projectId, pattern) {
+		return this.updateFiles(projectId, { pattern, visibility: "read_only" });
+	}
+
+	async ignore(projectId, pattern) {
+		return this.updateFiles(projectId, { pattern, visibility: "ignored" });
 	}
 
 	async startRun(sessionId, runConfig) {

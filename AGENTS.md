@@ -24,72 +24,49 @@ The system follows a strict hierarchy to determine what the model sees.
     *   If a buffer's visibility is `mappable` or `ignored`, its content is **rejected** and never reaches the model.
 3.  **Base Layer (Git/FS)**: Git provides the initial state (e.g., untracked vs. ignored), but this is strictly a **one-time or background suggestion** that is overridden by the database.
 
-## 3. Client Interaction Model
+## 3. Client Interaction Model: Focus Control
 
-The client is considered "dumb" and may send buffers for any file. Rummy is responsible for filtering.
+The following semantic RPC commands are the primary way for a client to manage what the model sees. All support **glob patterns**.
 
-### Explicit State Changes
-Only an explicit call to `updateFiles` or `drop` can transition a file between visibility states. Opening or closing a file in the IDE **MUST NOT** change its visibility in the database.
-
-### RPC: `fileStatus`
-Retrieves the current authoritative state of a file from the superstrate.
-
-**Request:**
+### RPC: `activate`
+Make files matching a pattern fully visible and editable.
 ```json
-{ "method": "fileStatus", "params": { "path": "src/logic.js" } }
-```
-**Response:**
-```json
-{
-  "result": {
-    "path": "src/logic.js",
-    "visibility": "active",
-    "is_buffered": true,
-    "is_git_ignored": false,
-    "size": 5120
-  }
-}
+{ "method": "activate", "params": { "pattern": "src/*.js" } }
 ```
 
-### RPC: `updateFiles`
-Explicitly overrides the visibility of one or more files.
-
-**Request:**
+### RPC: `readOnly`
+Make files matching a pattern visible but forbidden from being edited.
 ```json
-{
-  "method": "updateFiles",
-  "params": {
-    "files": [
-      { "path": "src/config.js", "visibility": "read_only" }
-    ]
-  }
-}
+{ "method": "readOnly", "params": { "pattern": "lib/**/*.js" } }
 ```
 
-### RPC: `getFiles`
-Returns the visibility status for the entire project tree.
-
-**Request:**
+### RPC: `ignore`
+Hide files matching a pattern entirely from the model's sight.
 ```json
-{ "method": "getFiles", "params": {} }
+{ "method": "ignore", "params": { "pattern": "**/*.log" } }
 ```
 
 ### RPC: `drop`
-Authoritatively demotes files matching a glob pattern to the `mappable` state and clears their retention flag. This is useful for clearing model focus without losing the file's presence in the map.
-
-**Request:**
+Demote files matching a pattern to "mappable" (symbols only). Ideal for clearing focus.
 ```json
-{
-  "method": "drop",
-  "params": {
-    "pattern": "*" 
-  }
-}
+{ "method": "drop", "params": { "pattern": "*" } }
 ```
-**Examples:**
-*   `"*"`: Demote everything in the project.
-*   `"src/*.js"`: Demote all JS files in src.
-*   `"test/**"`: Demote all files in the test directory and its subdirectories.
+
+---
+
+### Meta RPC Methods
+
+#### `fileStatus`
+Retrieves the current authoritative state of a file.
+```json
+{ "method": "fileStatus", "params": { "path": "src/logic.js" } }
+```
+
+#### `getFiles`
+Returns the visibility status for the entire project tree.
+```json
+{ "method": "getFiles", "params": {} }
+```
 
 ## 4. Implementation Guidelines
 

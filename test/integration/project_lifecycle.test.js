@@ -53,9 +53,17 @@ describe("Project Lifecycle Integration", () => {
 
 	it("should update visibility and persist to DB", async () => {
 		const { projectId } = await agent.init(projectPath, "LifecycleTest", "c1");
-		await agent.updateFiles(projectId, [
-			{ path: "main.js", visibility: "ignored" },
-		]);
+		
+		// Manually insert to ensure row exists for pattern update
+		await db.upsert_repo_map_file.run({
+			project_id: projectId,
+			path: "main.js",
+			visibility: "mappable",
+			hash: "h1",
+			size: 10
+		});
+
+		await agent.ignore(projectId, "main.js");
 
 		const files = await db.get_project_repo_map.all({ project_id: projectId });
 		const main = files.find((f) => f.path === "main.js");
