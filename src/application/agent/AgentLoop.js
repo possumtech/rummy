@@ -162,9 +162,12 @@ export default class AgentLoop {
 		let protocolRetries = 0;
 		const MAX_PROTOCOL_RETRIES = 5;
 		let currentTurnSequence = 0;
+		let loopIteration = 0;
+		const MAX_LOOP_ITERATIONS = 15;
 
 		// --- THE ATOMIC TURN LOOP ---
-		while (true) {
+		while (loopIteration < MAX_LOOP_ITERATIONS) {
+			loopIteration++;
 			const lastSeqRow = await this.#db.get_last_turn_sequence.get({
 				run_id: currentRunId,
 			});
@@ -337,7 +340,7 @@ export default class AgentLoop {
 				}
 			}
 
-			// Hydrate to ensure memory state matches disk
+			// HYDRATE AND VALIDATE
 			await turnObj.hydrate();
 
 			// PROTOCOL VALIDATION
@@ -450,50 +453,7 @@ export default class AgentLoop {
 				} catch (_err) {}
 			}
 
-			// RE-HYDRATE TO CAPTURE FINDINGS NODES
-			await turnObj.hydrate();
-
-			// Finalize Turn
-			await this.#hooks.run.step.completed.emit({
-				runId: currentRunId,
-				sessionId,
-				turn: turnObj,
-				projectFiles: await this.#sessionManager.getFiles(project.path),
-			});
-
-			const isChecklistComplete =
-				turnJson.assistant.tasks.length > 0 &&
-				turnJson.assistant.tasks.every((t) => t.completed);
-			const summaryTag = tags.find((t) => t.tagName === "summary");
-			const breakingTags = tags.filter((t) =>
-				["create", "delete", "edit", "prompt_user"].includes(t.tagName),
-			);
-
-			if (breakingTags.length > 0) {
-				await this.#db.update_run_status.run({
-					id: currentRunId,
-					status: "proposed",
-				});
-				return {
-					runId: currentRunId,
-					status: "proposed",
-					turn: currentTurnSequence,
-				};
-			}
-
-			if (isChecklistComplete || summaryTag) {
-				await this.#db.update_run_status.run({
-					id: currentRunId,
-					status: "completed",
-				});
-				return {
-					runId: currentRunId,
-					status: "completed",
-					turn: currentTurnSequence,
-				};
-			}
-
-			// Gather info
+			// GATHER INFO
 			const gatherTags = tags.filter((t) =>
 				["read", "env", "run"].includes(t.tagName),
 			);
@@ -539,7 +499,52 @@ export default class AgentLoop {
 						}
 					}
 				}
-				await turnObj.hydrate();
+			}
+
+			// FINAL HYDRATE BEFORE EMISSION
+			await turnObj.hydrate();
+
+			// Finalize Turn EMISSION
+			await this.#hooks.run.step.completed.emit({
+				runId: currentRunId,
+				sessionId,
+				turn: turnObj,
+				projectFiles: await this.#sessionManager.getFiles(project.path),
+			});
+
+			const isChecklistComplete =
+				turnJson.assistant.tasks.length > 0 &&
+				turnJson.assistant.tasks.every((t) => t.completed);
+			const summaryTag = tags.find((t) => t.tagName === "summary");
+			const breakingTags = tags.filter((t) =>
+				["create", "delete", "edit", "prompt_user"].includes(t.tagName),
+			);
+
+			if (breakingTags.length > 0) {
+				await this.#db.update_run_status.run({
+					id: currentRunId,
+					status: "proposed",
+				});
+				return {
+					runId: currentRunId,
+					status: "proposed",
+					turn: currentTurnSequence,
+				};
+			}
+
+			if (isChecklistComplete || summaryTag) {
+				await this.#db.update_run_status.run({
+					id: currentRunId,
+					status: "completed",
+				});
+				return {
+					runId: currentRunId,
+					status: "completed",
+					turn: currentTurnSequence,
+				};
+			}
+
+			if (gatherTags.length > 0) {
 				continue;
 			}
 

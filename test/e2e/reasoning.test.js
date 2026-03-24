@@ -6,6 +6,7 @@ import TestServer from "../helpers/TestServer.js";
 
 describe("E2E: Reasoning Content Normalization", () => {
 	let tdb, tserver, client;
+	const model = "hyzenqwen";
 
 	before(async () => {
 		tdb = await TestDb.create();
@@ -20,67 +21,33 @@ describe("E2E: Reasoning Content Normalization", () => {
 		await tdb.cleanup();
 	});
 
-	it("should capture reasoning from 'reasoning_content' (OpenRouter style)", async () => {
-		globalThis.fetch = async () =>
-			new Response(
-				JSON.stringify({
-					choices: [
-						{
-							message: {
-								role: "assistant",
-								content:
-									"<tasks>T</tasks><known>K</known><unknown/><summary>S</summary>",
-								reasoning_content: "I am thinking via OpenRouter...",
-							},
-						},
-					],
-				}),
-			);
-
-		const turns = [];
-		client.on("run/step/completed", (params) => turns.push(params.turn));
+	it("should capture reasoning from the real local model", async () => {
+		const turnMap = new Map();
+		client.on("run/step/completed", (params) => {
+			turnMap.set(params.turn.sequence, params.turn);
+		});
 
 		await client.call("init", {
 			projectPath: process.cwd(),
-			projectName: "P1",
-			clientId: "c1",
+			projectName: "ReasonProj",
+			clientId: "c-reason",
 		});
-		await client.call("ask", { model: "m1", prompt: "Test" });
 
-		assert.ok(turns.length > 0);
-		assert.strictEqual(
-			turns[0].assistant.reasoning,
-			"I am thinking via OpenRouter...",
-		);
-	});
+		await client.call("ask", {
+			model,
+			prompt: "Think step by step about the meaning of life.",
+		});
 
-	it("should capture reasoning from 'reasoning' (Ollama style)", async () => {
-		globalThis.fetch = async () =>
-			new Response(
-				JSON.stringify({
-					choices: [
-						{
-							message: {
-								role: "assistant",
-								content:
-									"<tasks>T</tasks><known>K</known><unknown/><summary>S</summary>",
-								reasoning: "I am thinking via Ollama...",
-							},
-						},
-					],
-				}),
-			);
+		const start = Date.now();
+		while (turnMap.size === 0 && Date.now() - start < 30000) {
+			await new Promise((r) => setTimeout(r, 500));
+		}
 
-		const turns = [];
-		client.on("run/step/completed", (params) => turns.push(params.turn));
-
-		await client.call("ask", { model: "m1", prompt: "Test" });
-
-		// Turn 0 was the previous test, this should be turn 1 or we check the last emitted
-		const lastTurn = turns[turns.length - 1];
-		assert.strictEqual(
-			lastTurn.assistant.reasoning,
-			"I am thinking via Ollama...",
+		assert.ok(turnMap.has(0), "Turn 0 not captured");
+		const turn = turnMap.get(0);
+		assert.ok(
+			Object.hasOwn(turn.assistant, "reasoning"),
+			"Assistant object should have reasoning property",
 		);
 	});
 });

@@ -31,14 +31,18 @@ npm run dev # Watch mode with dev database (port 3045)
 ### Protocol
 Rummy communicates via JSON-RPC 2.0 over WebSockets. It uses a structured XML pipeline internally to build prompts and parse agent actions.
 
-## Cognitive Architecture
+## The Rumsfeld Loop
 
-Rummy enforces a strict order of operations in every turn:
-1. `<learned>`: What was just discovered.
-2. `<unknown>`: What is still missing.
-3. `<tasks>`: Checklist of objectives.
-4. `ACTION`: One discrete tool call (`read`, `edit`, `run`, etc.).
+Every turn, the model must declare what it knows, what it doesn't, and what it
+plans to do — before it can act. This is enforced by protocol validation:
 
-This ensures the model remains grounded in the current filesystem state and never "guesses" code it hasn't read.
+1. `<tasks>`: Checklist of objectives (`- [x]` done, `- [ ]` pending).
+2. `<known>`: Facts, analysis, and plans gathered so far.
+3. `<unknown>`: What still needs to be discovered. Empty when nothing remains.
 
-See `AGENTS.md` for the full architectural specification and `SOCKET_PROTOCOL.md` for API details.
+The model cannot skip steps or fabricate confidence. Discovery before modification
+is structurally enforced, not requested.
+
+See `ARCHITECTURE.md` for the full specification and `system.ask.md`/`system.act.md`
+for the model-facing prompts. The `discover` RPC method returns the live protocol
+reference at runtime.

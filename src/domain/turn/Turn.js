@@ -63,22 +63,14 @@ export default class Turn {
 	 */
 	toJson() {
 		if (!this.#data) throw new Error("Turn not hydrated.");
-		const { tagMap } = this.#data;
+		const { tagMap, root } = this.#data;
 
-		const findTag = (tagName, pool = this.#data.root) => {
-			for (const el of pool) {
-				if (el.tag_name === tagName) return el;
-				const found = findTag(tagName, el.children);
-				if (found) return found;
-			}
-			return null;
-		};
+		const getTag = (name) => tagMap.get(name)?.[0];
+		const getTags = (name) => tagMap.get(name) || [];
 
-		const turnNode = findTag("turn");
-		const systemNode = findTag("system");
-		const contextNode = findTag("context");
-		const userNode = findTag("user");
-		const assistantNode = findTag("assistant");
+		const turnNode = root[0]; // The root is always the <turn> element
+		const assistantNode = getTag("assistant");
+		const contextNode = getTag("context");
 
 		const getDeepContent = (node) => {
 			if (!node) return null;
@@ -104,33 +96,32 @@ export default class Turn {
 
 		return {
 			sequence: Number.isNaN(sequence) ? 0 : sequence,
-			system: getDeepContent(systemNode) || "",
-			user: getDeepContent(userNode) || "",
+			system: getDeepContent(getTag("system")) || "",
+			user: getDeepContent(getTag("user")) || "",
 			context: contextNode ? this.toXml(contextNode) : "",
-			errors:
-				tagMap
-					.get("error")
-					?.map((t) => ({ content: t.content, ...t.attributes })) || [],
-			warnings:
-				tagMap
-					.get("warn")
-					?.map((t) => ({ content: t.content, ...t.attributes })) || [],
-			infos:
-				tagMap
-					.get("info")
-					?.map((t) => ({ content: t.content, ...t.attributes })) || [],
-			files:
-				tagMap.get("file")?.map((f) => {
-					const source = f.children.find((c) => c.tag_name === "source");
-					const symbols = f.children.find((c) => c.tag_name === "symbols");
-					return {
-						path: f.attributes.path,
-						size: f.attributes.size,
-						tokens: f.attributes.tokens,
-						content: source ? source.content : null,
-						symbols: symbols ? symbols.content?.split("\t") : null,
-					};
-				}) || [],
+			errors: getTags("error").map((t) => ({
+				content: t.content,
+				...t.attributes,
+			})),
+			warnings: getTags("warn").map((t) => ({
+				content: t.content,
+				...t.attributes,
+			})),
+			infos: getTags("info").map((t) => ({
+				content: t.content,
+				...t.attributes,
+			})),
+			files: getTags("file").map((f) => {
+				const source = f.children.find((c) => c.tag_name === "source");
+				const symbols = f.children.find((c) => c.tag_name === "symbols");
+				return {
+					path: f.attributes.path,
+					size: f.attributes.size,
+					tokens: f.attributes.tokens,
+					content: source ? source.content : null,
+					symbols: symbols ? symbols.content?.split("\t") : null,
+				};
+			}),
 			assistant: {
 				content: getChildContent(assistantNode, "content"),
 				reasoning: getChildContent(assistantNode, "reasoning_content"),

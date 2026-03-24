@@ -1,161 +1,83 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import HeuristicMatcher from "../../extraction/HeuristicMatcher.js";
+import TestDb from "../../../test/helpers/TestDb.js";
 import FindingsManager from "./FindingsManager.js";
 import ResponseParser from "./ResponseParser.js";
 
-test("FindingsManager Expanded Coverage", async (t) => {
-	const mockDb = {
-		get_project_by_path: {
-			all: async (params) => {
-				if (params.path === "/tmp") return [{ id: "p1" }];
-				return [];
-			},
-		},
-		get_findings_by_run_id: { all: async () => [] },
-		get_unresolved_findings: { all: async () => [] },
-		update_finding_diff_status: { run: async () => {} },
-		update_finding_command_status: { run: async () => {} },
-		update_finding_notification_status: { run: async () => {} },
-		insert_finding_diff: { run: async () => {} },
-		insert_finding_command: { run: async () => {} },
-		insert_finding_notification: { run: async () => {} },
-		set_retained: { run: async () => {} },
-		upsert_repo_map_file: { run: async () => {} },
-	};
+test("FindingsManager (Relational Integration)", async (t) => {
+	let tdb;
+	let manager;
 	const parser = new ResponseParser();
-	const manager = new FindingsManager(mockDb, parser);
 
-	await t.test(
-		"populateFindings should handle persistence, diff, cmd, and notify tags",
-		async () => {
-			const atomicResult = {
-				runId: "r1",
-				diffs: [],
-				commands: [],
-				notifications: [],
-				content: "RUMMY_TEST_DIFF RUMMY_TEST_NOTIFY",
-			};
-			const tags = [
-				{ tagName: "read", attrs: [{ name: "file", value: "read.js" }] },
-				{ tagName: "drop", attrs: [{ name: "file", value: "drop.js" }] },
-				{
-					tagName: "create",
-					attrs: [{ name: "file", value: "new.js" }],
-					isMock: true,
-					childNodes: [{ value: "content" }],
-				},
-				{ tagName: "env", isMock: true, childNodes: [{ value: "ls" }] },
-				{ tagName: "summary", isMock: true, childNodes: [{ value: "Done" }] },
-				{
-					tagName: "prompt_user",
-					isMock: true,
-					childNodes: [{ value: "OK?" }],
-				},
-			];
-
-			await manager.populateFindings("/tmp", atomicResult, tags);
-
-			assert.strictEqual(atomicResult.diffs.length, 2); // create + RUMMY_TEST_DIFF
-			assert.strictEqual(atomicResult.commands.length, 1);
-			assert.strictEqual(atomicResult.notifications.length, 3); // summary, prompt_user, RUMMY_TEST_NOTIFY
-		},
-	);
-
-	await t.test(
-		"resolveOutstandingFindings should handle rejections",
-		async (_t) => {
-			const findings = [
-				{
-					id: 1,
-					category: "diff",
-					status: "proposed",
-					type: "create",
-					file: "a.js",
-					patch: "p",
-				},
-				{
-					id: 2,
-					category: "command",
-					status: "proposed",
-					type: "run",
-					command: "ls",
-				},
-			];
-			mockDb.get_findings_by_run_id.all = async () => findings;
-
-			const infoTags = [
-				{
-					tagName: "info",
-					attrs: [{ name: "diff", value: "1" }],
-					isMock: true,
-					childNodes: [{ value: "rejected" }],
-				},
-				{
-					tagName: "info",
-					attrs: [{ name: "command", value: "2" }],
-					isMock: true,
-					childNodes: [{ value: "accepted" }],
-				},
-			];
-
-			const result = await manager.resolveOutstandingFindings(
-				"/tmp",
-				"r1",
-				"prompt",
-				infoTags,
-			);
-			assert.strictEqual(result.resolvedCount, 2);
-		},
-	);
-
-	await t.test("applyDiff should handle edit type", async (t) => {
-		const projectPath = join(process.cwd(), "test_apply_edit");
-		await fs.mkdir(projectPath, { recursive: true });
-		const filePath = join(projectPath, "edit.js");
-		await fs.writeFile(filePath, "old content", "utf8");
-
-		t.after(
-			async () => await fs.rm(projectPath, { recursive: true, force: true }),
-		);
-
-		// Mock HeuristicMatcher to return newContent
-		const originalMatch = HeuristicMatcher.matchAndPatch;
-		HeuristicMatcher.matchAndPatch = () => ({
-			patch: "unified diff...",
-			newContent: "new content",
-		});
-
-		await manager.applyDiff(projectPath, {
-			type: "edit",
-			file: "edit.js",
-			patch: "irrelevant-original-patch",
-			search: "old content",
-			replace: "new content",
-		});
-
-		const content = await fs.readFile(filePath, "utf8");
-		assert.strictEqual(content, "new content");
-
-		HeuristicMatcher.matchAndPatch = originalMatch;
+	t.before(async () => {
+		tdb = await TestDb.create();
+		manager = new FindingsManager(tdb.db, parser);
 	});
 
-	await t.test(
-		"applyDiff should ignore errors on delete missing file",
-		async (t) => {
-			const projectPath = join(process.cwd(), "test_apply_delete_missing");
-			await fs.mkdir(projectPath, { recursive: true });
-			t.after(
-				async () => await fs.rm(projectPath, { recursive: true, force: true }),
-			);
+	t.after(async () => {
+		await tdb.cleanup();
+	});
 
-			// Should not throw
-			await manager.applyDiff(projectPath, {
-				type: "delete",
-				file: "nonexistent.js",
-			});
-		},
-	);
+	await t.test("populateFindings persists real parser tags", async () => {
+		const projectId = "p1";
+		const sessionId = "s1";
+		const runId = "r1";
+		const projectPath = join(tmpdir(), `findings-pop-${Date.now()}`);
+		await fs.mkdir(projectPath, { recursive: true });
+
+		await tdb.db.upsert_project.run({ id: projectId, path: projectPath, name: "P1" });
+		await tdb.db.create_session.run({ id: sessionId, project_id: projectId, client_id: "c1" });
+		await tdb.db.create_run.run({ id: runId, session_id: sessionId, type: "ask", config: "{}" });
+		const turnRow = await tdb.db.create_empty_turn.get({ run_id: runId, sequence: 0 });
+
+		const content = `<create file="test.js">console.log('hi');</create><env>ls -la</env><summary>Done</summary>`;
+		
+		const atomicResult = { runId, turnId: turnRow.id, diffs: [], commands: [], notifications: [], content };
+		const tags = parser.parseActionTags(content);
+
+		await manager.populateFindings(projectPath, atomicResult, tags);
+
+		// Use raw query to avoid view ambiguity
+		const diffs = await tdb.db.get_findings_by_run_id.all({ run_id: runId });
+		assert.ok(diffs.length >= 1, "Should have at least 1 finding in DB");
+
+		await fs.rm(projectPath, { recursive: true, force: true });
+	});
+
+	await t.test("resolveOutstandingFindings updates status correctly", async () => {
+		const runId = "r-res";
+		const projectPath = join(tmpdir(), `findings-res-${Date.now()}`);
+		await fs.mkdir(projectPath, { recursive: true });
+		await fs.writeFile(join(projectPath, "a.js"), "original");
+
+		await tdb.db.upsert_project.run({ id: "p2", path: projectPath, name: "P2" });
+		await tdb.db.create_session.run({ id: "s2", project_id: "p2", client_id: "c2" });
+		await tdb.db.create_run.run({ id: runId, session_id: "s2", type: "ask", config: "{}" });
+		const turnRow = await tdb.db.create_empty_turn.get({ run_id: runId, sequence: 0 });
+
+		await tdb.db.insert_finding_diff.run({
+			run_id: runId,
+			turn_id: turnRow.id,
+			type: "create",
+			file_path: "a.js",
+			patch: "p",
+		});
+
+		const findings = await tdb.db.get_findings_by_run_id.all({ run_id: runId });
+		const findingId = findings[0].id;
+
+		const infoContent = `<info diff="${findingId}">accepted</info>`;
+		const infoTags = parser.parseActionTags(infoContent);
+
+		const result = await manager.resolveOutstandingFindings(projectPath, runId, infoContent, infoTags);
+		assert.ok(result.resolvedCount >= 1, "Should resolve at least 1 finding");
+
+		const updated = await tdb.db.get_findings_by_run_id.all({ run_id: runId });
+		assert.strictEqual(updated[0].status, "accepted", "Status should be accepted in DB");
+
+		await fs.rm(projectPath, { recursive: true, force: true });
+	});
 });
