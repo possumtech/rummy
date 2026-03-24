@@ -169,6 +169,22 @@ ON file_promotions (file_id, source) WHERE run_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_file_promotions_run_unique
 ON file_promotions (file_id, source, run_id) WHERE run_id IS NOT NULL;
 
+-- Pending Context: queued results from <env>/<run> awaiting next turn
+CREATE TABLE IF NOT EXISTS pending_context (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, source_turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
+	, type TEXT NOT NULL CHECK (type IN ('command', 'env'))
+	, request TEXT NOT NULL
+	, result TEXT NOT NULL
+	, is_error BOOLEAN DEFAULT 0
+	, consumed_by_turn_id INTEGER REFERENCES turns (id) ON DELETE SET NULL
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_context_run
+ON pending_context (run_id, consumed_by_turn_id);
+
 CREATE TABLE IF NOT EXISTS repo_map_tags (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, file_id INTEGER NOT NULL REFERENCES repo_map_files (id) ON DELETE CASCADE

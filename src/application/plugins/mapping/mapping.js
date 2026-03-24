@@ -26,11 +26,17 @@ export default class RepoMapPlugin {
 			const filesContainer = rummy.tag("files");
 			rummy.contextEl.appendChild(filesContainer);
 
+			const fidelityLabel = (f) => {
+				if (f.content) return "complete";
+				if (f.symbols?.length > 0) return "symbols";
+				return "unread";
+			};
+
 			for (const f of perspective.files) {
 				const fileAttrs = {
 					path: f.path,
 					size: String(f.size ?? 0),
-					tokens: String(f.tokens ?? 0),
+					visibility: fidelityLabel(f),
 				};
 
 				if (f.fidelity === "full:readonly") {

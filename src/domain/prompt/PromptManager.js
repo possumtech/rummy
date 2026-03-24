@@ -21,7 +21,7 @@ export default class PromptManager {
 		}
 	}
 
-	static formatIdentity(model) {
-		return `AGENT_MODEL: ${model}\n`;
+	static formatIdentity(_model) {
+		return "";
 	}
 }

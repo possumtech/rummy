@@ -66,6 +66,7 @@ export default class TurnBuilder {
 			type,
 			sequence,
 			runId,
+			turnId,
 		});
 		await this.#hooks.processTurn(rummy);
 

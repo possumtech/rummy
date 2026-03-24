@@ -317,24 +317,26 @@ agent can continue.
 The client resolves them (accept/reject) and writes accepted changes to its own
 filesystem. The server never touches the working tree.
 
-### 4.4 Client Intent Prefixes
+### 4.4 Client Intent Prefixes (Planned)
 
-The client controls run continuity through prefix conventions:
+The client will control run continuity through prefix conventions. Currently only
+**Continue** and **New** are implemented server-side. Lite and Fork require
+additional server handling (`noContext` flag and `parent_run_id` fork-point logic).
 
-| Prefix | Intent    | Server params                                           |
-|--------|-----------|---------------------------------------------------------|
-| `:`    | Continue  | `runId = <current>` — same run, same history            |
-| `::`   | New       | `runId = nil` — new run, fresh agent promotions         |
-| `:::`  | Lite      | `runId = nil, noContext = true` — new run, no file map  |
-| `::::` | Fork      | `runId = <current>, fork = true` — new run, copies history + agent promotions from source |
+| Prefix | Intent    | Server params                                           | Status |
+|--------|-----------|---------------------------------------------------------|--------|
+| `:`    | Continue  | `runId = <current>` — same run, same history            | Implemented |
+| `::`   | New       | `runId = nil` — new run, fresh agent promotions         | Implemented |
+| `:::`  | Lite      | `runId = nil, noContext = true` — new run, no file map  | Planned |
+| `::::` | Fork      | `runId = <current>, fork = true` — new run, copies history + agent promotions from source | Planned |
 
 - **Continue**: Default. Conversation continues with full history and decay tracking.
 - **New**: Fresh conversation. Old run stays idle. Client promotions (project-scoped)
   carry over. Agent promotions do not.
 - **Lite**: Fresh run with no file context. System prompt and protocol still apply.
   Useful for quick questions that don't need codebase awareness.
-- **Fork**: Branch the conversation. New run seeded with turn history and agent
-  promotions copied from the source run.
+- **Fork**: Branch the conversation. New run reads turn history from `parent_run_id`
+  up to the fork point — no data copying, just a pointer and sequence number.
 
 ---
 

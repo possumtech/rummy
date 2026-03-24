@@ -43,9 +43,8 @@ describe("PromptManager", () => {
 		readFileMock.mock.restore();
 	});
 
-	it("should format identity correctly", () => {
-		const model = "gpt-4";
-		const identity = PromptManager.formatIdentity(model);
-		strictEqual(identity, `AGENT_MODEL: gpt-4\n`);
+	it("should return empty identity", () => {
+		const identity = PromptManager.formatIdentity("gpt-4");
+		strictEqual(identity, "");
 	});
 });

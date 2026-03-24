@@ -170,6 +170,7 @@ export default class ClientConnection {
 									model: "Optional override",
 									runId: "Optional existing run to continue",
 									projectBufferFiles: "Files open in IDE",
+									temperature: "Optional LLM temperature (overrides RUMMY_TEMPERATURE)",
 								},
 							},
 							act: {
@@ -180,6 +181,7 @@ export default class ClientConnection {
 									model: "Optional override",
 									runId: "Optional existing run to continue",
 									projectBufferFiles: "Files open in IDE",
+									temperature: "Optional LLM temperature (overrides RUMMY_TEMPERATURE)",
 								},
 							},
 							"run/resolve": {
@@ -377,6 +379,7 @@ export default class ClientConnection {
 						params.model,
 						params.prompt,
 						params.runId,
+						{ temperature: params.temperature },
 					);
 					break;
 
@@ -396,6 +399,7 @@ export default class ClientConnection {
 						params.model,
 						params.prompt,
 						params.runId,
+						{ temperature: params.temperature },
 					);
 					break;
 

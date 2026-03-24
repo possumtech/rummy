@@ -1,9 +1,6 @@
 import OllamaClient from "../../infrastructure/llm/OllamaClient.js";
 import OpenRouterClient from "../../infrastructure/llm/OpenRouterClient.js";
 
-/**
- * LlmProvider: Factory and router for multiple LLM backends.
- */
 export default class LlmProvider {
 	#openRouter;
 	#ollama;
@@ -18,21 +15,24 @@ export default class LlmProvider {
 		this.#ollama = new OllamaClient(ollamaUrl, hooks);
 	}
 
-	/**
-	 * Routes the request to the appropriate client based on model ID prefix.
-	 * Default is OpenRouter.
-	 */
-	async completion(messages, model) {
+	async completion(messages, model, options = {}) {
 		const resolvedModel = process.env[`RUMMY_MODEL_${model}`] || model;
 		console.log(
 			`[LlmProvider DEBUG] Resolving model '${model}' -> '${resolvedModel}'`,
 		);
 
+		// Resolve temperature: per-request > env default
+		const temperature = options.temperature
+			?? (process.env.RUMMY_TEMPERATURE !== undefined
+				? Number.parseFloat(process.env.RUMMY_TEMPERATURE)
+				: undefined);
+		const resolvedOptions = { ...options, temperature };
+
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");
-			return this.#ollama.completion(messages, localModel);
+			return this.#ollama.completion(messages, localModel, resolvedOptions);
 		}
 
-		return this.#openRouter.completion(messages, resolvedModel);
+		return this.#openRouter.completion(messages, resolvedModel, resolvedOptions);
 	}
 }

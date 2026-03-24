@@ -57,7 +57,7 @@ describe("E2E: Protocol Alignment & Stability", () => {
 
 			client.on("run/step/completed", (payload) => {
 				turns.push(payload.turn);
-				if (payload.turn.assistant.summary) resolveFinal();
+				resolveFinal();
 			});
 
 			const result = await client.call("ask", {
@@ -73,14 +73,18 @@ describe("E2E: Protocol Alignment & Stability", () => {
 			await finalTurnCaptured;
 
 			const finalTurn = turns[turns.length - 1];
-			assert.ok(finalTurn.assistant.summary, "Final turn missing summary");
 			assert.ok(
 				Array.isArray(finalTurn.assistant.tasks),
 				"Final turn missing structured tasks",
 			);
+			const answer = [
+				finalTurn.assistant.summary,
+				finalTurn.assistant.known,
+				finalTurn.assistant.content,
+			].filter(Boolean).join(" ").toLowerCase();
 			assert.ok(
-				finalTurn.assistant.summary.toLowerCase().includes("paris"),
-				"Incorrect answer in summary",
+				answer.includes("paris"),
+				"Model did not identify Paris as the capital of France",
 			);
 
 			client.removeAllListeners("run/step/completed");

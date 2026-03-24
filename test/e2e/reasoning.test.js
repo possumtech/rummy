@@ -46,8 +46,8 @@ describe("E2E: Reasoning Content Normalization", () => {
 		assert.ok(turnMap.has(0), "Turn 0 not captured");
 		const turn = turnMap.get(0);
 		assert.ok(
-			Object.hasOwn(turn.assistant, "reasoning"),
-			"Assistant object should have reasoning property",
+			Object.hasOwn(turn.assistant, "reasoning_content"),
+			"Assistant object should have reasoning_content property",
 		);
 	});
 });

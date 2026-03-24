@@ -1,6 +1,3 @@
-/**
- * OllamaClient: Speaks to a local Ollama instance using the OpenAI-compatible API.
- */
 export default class OllamaClient {
 	#baseUrl;
 	#hooks;
@@ -10,16 +7,14 @@ export default class OllamaClient {
 		this.#hooks = hooks;
 	}
 
-	async completion(messages, model) {
+	async completion(messages, model, options = {}) {
+		const body = { model, messages };
+		if (options.temperature !== undefined) body.temperature = options.temperature;
+
 		const response = await fetch(`${this.#baseUrl}/v1/chat/completions`, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({
-				model,
-				messages,
-			}),
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
 		});
 
 		if (!response.ok) {

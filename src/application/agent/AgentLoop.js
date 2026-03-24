@@ -1,7 +1,5 @@
 import { exec } from "node:child_process";
 import crypto from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { promisify } from "node:util";
 import Turn from "../../domain/turn/Turn.js";
 
@@ -55,6 +53,7 @@ export default class AgentLoop {
 		prompt,
 		projectBufferFiles = null,
 		runId = null,
+		options = {},
 	) {
 		const hook = type === "ask" ? this.#hooks.ask : this.#hooks.act;
 		await hook.started.emit({
@@ -246,10 +245,10 @@ export default class AgentLoop {
 			const result = await this.#llmProvider.completion(
 				[...filteredMessages, { role: "assistant", content: prefill }],
 				requestedModel,
+				{ temperature: options?.temperature },
 			);
 			const responseMessage = result.choices?.[0]?.message;
-			const rawReasoning =
-				responseMessage?.reasoning_content || responseMessage?.reasoning;
+			const rawReasoning = responseMessage?.reasoning_content;
 			const mergedContent = this.#responseParser.mergePrefill(
 				prefill,
 				responseMessage?.content || "",
@@ -387,11 +386,19 @@ export default class AgentLoop {
 						);
 
 					if (!hasUnknownsNow && !presentTags.has("summary")) {
-						validationErrors.push({
-							content:
-								"You identified no unknowns but provided no <summary>. You MUST provide a <summary> tag to terminate the run.",
-							attrs: { protocol: "violation" },
-						});
+						// Missing summary is a warning, not a blocking error.
+						// The completion check at the end of the loop will handle exit.
+						const contextNode2 = elements.find((el) => el.tag_name === "context");
+						if (contextNode2) {
+							await this.#db.insert_turn_element.run({
+								turn_id: turnId,
+								parent_id: contextNode2.id,
+								tag_name: "warn",
+								content: "No unknowns but no <summary> provided.",
+								attributes: JSON.stringify({ protocol: "warning" }),
+								sequence: 150,
+							});
+						}
 					}
 				}
 			}
@@ -442,7 +449,7 @@ export default class AgentLoop {
 			const mentions = new Set();
 			const wordRegex = /[a-zA-Z0-9_./-]+/g;
 			const turnJson = turnObj.toJson();
-			for (const match of `${turnJson.assistant.content} ${turnJson.assistant.reasoning} ${turnJson.assistant.known}`.matchAll(
+			for (const match of `${turnJson.assistant.content} ${turnJson.assistant.reasoning_content} ${turnJson.assistant.known}`.matchAll(
 				wordRegex,
 			)) {
 				mentions.add(match[0]);
@@ -459,59 +466,35 @@ export default class AgentLoop {
 			}
 
 			// GATHER INFO
+			// <read>: handled by FindingsManager (agent promotion).
+			//         File appears in context on the next turn via renderPerspective.
+			// <env>/<run>: command executes now, result queued in pending_context.
+			//              Next turn's builder renders it into context.
 			const gatherTags = tags.filter((t) =>
 				["read", "env", "run"].includes(t.tagName),
 			);
-			if (gatherTags.length > 0) {
-				const contextNode = elements.find((el) => el.tag_name === "context");
-				if (contextNode) {
-					for (let k = 0; k < gatherTags.length; k++) {
-						const tag = gatherTags[k];
-						if (tag.tagName === "read") {
-							const path = tag.attrs.find((a) => a.name === "file")?.value;
-							if (path) {
-								const fullPath = join(project.path, path);
-								let fileContent;
-								try {
-									fileContent = await readFile(fullPath, "utf8");
-								} catch (err) {
-									fileContent = `Error reading file: ${err.message}`;
-								}
-								await this.#db.insert_turn_element.run({
-									turn_id: turnId,
-									parent_id: contextNode.id,
-									tag_name: "file",
-									content: fileContent,
-									attributes: JSON.stringify({ path }),
-									sequence: 200 + k,
-								});
-							}
-						} else {
-							const cmd = this.#responseParser.getNodeText(tag).trim();
-							try {
-								const { stdout, stderr } = await execAsync(cmd, {
-									cwd: project.path,
-								});
-								await this.#db.insert_turn_element.run({
-									turn_id: turnId,
-									parent_id: contextNode.id,
-									tag_name: "info",
-									content: String((stdout + stderr).trim() || "(no output)"),
-									attributes: JSON.stringify({ command: cmd }),
-									sequence: 200 + k,
-								});
-							} catch (err) {
-								await this.#db.insert_turn_element.run({
-									turn_id: turnId,
-									parent_id: contextNode.id,
-									tag_name: "info",
-									content: String(err.message),
-									attributes: JSON.stringify({ command: cmd, error: true }),
-									sequence: 200 + k,
-								});
-							}
-						}
+			for (const tag of gatherTags) {
+				if (tag.tagName === "env" || tag.tagName === "run") {
+					const cmd = this.#responseParser.getNodeText(tag).trim();
+					let result;
+					let isError = 0;
+					try {
+						const { stdout, stderr } = await execAsync(cmd, {
+							cwd: project.path,
+						});
+						result = (stdout + stderr).trim() || "(no output)";
+					} catch (err) {
+						result = err.message;
+						isError = 1;
 					}
+					await this.#db.insert_pending_context.run({
+						run_id: currentRunId,
+						source_turn_id: turnId,
+						type: tag.tagName,
+						request: cmd,
+						result,
+						is_error: isError,
+					});
 				}
 			}
 
@@ -552,7 +535,11 @@ export default class AgentLoop {
 				continue;
 			}
 
-			if (isChecklistComplete || summaryTag) {
+			const hasNoUnknowns =
+				!turnJson.assistant.unknown ||
+				turnJson.assistant.unknown.trim().length === 0;
+
+			if (isChecklistComplete || summaryTag || hasNoUnknowns) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: "completed",

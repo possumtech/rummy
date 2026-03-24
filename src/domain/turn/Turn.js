@@ -124,7 +124,7 @@ export default class Turn {
 			}),
 			assistant: {
 				content: getChildContent(assistantNode, "content"),
-				reasoning: getChildContent(assistantNode, "reasoning_content"),
+				reasoning_content: getChildContent(assistantNode, "reasoning_content"),
 				tasks,
 				next_task,
 				known: getChildContent(assistantNode, "known"),
@@ -154,7 +154,11 @@ export default class Turn {
 		const messages = [];
 		if (json.system) messages.push({ role: "system", content: json.system });
 
-		const userContent = (json.context || "") + (json.user || "");
+		const userNode = this.#data.root[0]?.children.find(
+			(c) => c.tag_name === "user",
+		);
+		const userXml = userNode ? this.toXml(userNode) : json.user || "";
+		const userContent = (json.context || "") + userXml;
 		if (userContent) messages.push({ role: "user", content: userContent });
 
 		if (json.assistant.content) {

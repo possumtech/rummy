@@ -94,12 +94,12 @@ export default class ProjectAgent {
 		return this.#sessionManager.removeSkill(sessionId, name);
 	}
 
-	async ask(sessionId, model, prompt, runId = null) {
-		return this.#agentLoop.run("ask", sessionId, model, prompt, null, runId);
+	async ask(sessionId, model, prompt, runId = null, options = {}) {
+		return this.#agentLoop.run("ask", sessionId, model, prompt, null, runId, options);
 	}
 
-	async act(sessionId, model, prompt, runId = null) {
-		return this.#agentLoop.run("act", sessionId, model, prompt, null, runId);
+	async act(sessionId, model, prompt, runId = null, options = {}) {
+		return this.#agentLoop.run("act", sessionId, model, prompt, null, runId, options);
 	}
 
 	async resolve(runId, resolution) {

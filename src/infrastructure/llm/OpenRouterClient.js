@@ -9,12 +9,16 @@ export default class OpenRouterClient {
 		this.#baseUrl = process.env.OPENROUTER_BASE_URL;
 	}
 
-	async completion(messages, model) {
+	async completion(messages, model, options = {}) {
 		if (!this.#apiKey) {
 			throw new Error(
 				"OpenRouter API key is missing. Please set OPENROUTER_API_KEY in your environment.",
 			);
 		}
+
+		const body = { model, messages };
+		if (options.temperature !== undefined) body.temperature = options.temperature;
+
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
 			method: "POST",
 			headers: {
@@ -23,10 +27,7 @@ export default class OpenRouterClient {
 				"HTTP-Referer": process.env.RUMMY_HTTP_REFERER,
 				"X-Title": process.env.RUMMY_X_TITLE,
 			},
-			body: JSON.stringify({
-				model,
-				messages,
-			}),
+			body: JSON.stringify(body),
 		});
 
 		if (!response.ok) {
