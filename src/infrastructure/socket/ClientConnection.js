@@ -157,11 +157,10 @@ export default class ClientConnection {
 								params: { pattern: "Glob pattern (e.g. 'src/*.js' or '*')" },
 							},
 							startRun: {
-								description: "Begin a new agent execution sequence",
+								description: "Pre-create a run with config. Returns runId.",
 								params: {
 									model: "Optional override model",
 									projectBufferFiles: "Array of files currently open in IDE",
-									yolo: "Boolean for auto-affirmation",
 								},
 							},
 							ask: {
@@ -169,6 +168,7 @@ export default class ClientConnection {
 								params: {
 									prompt: "User message",
 									model: "Optional override",
+									runId: "Optional existing run to continue",
 									projectBufferFiles: "Files open in IDE",
 								},
 							},
@@ -178,16 +178,20 @@ export default class ClientConnection {
 								params: {
 									prompt: "User message",
 									model: "Optional override",
+									runId: "Optional existing run to continue",
 									projectBufferFiles: "Files open in IDE",
 								},
 							},
-							run: {
-								description: "Alias for 'act'. Execute a mutating directive.",
+							"run/resolve": {
+								description: "Resolve a single finding (accept/reject)",
 								params: {
-									prompt: "User message",
-									model: "Optional override",
-									projectBufferFiles: "Files open in IDE",
+									runId: "Run ID",
+									resolution: "{ category, id, action: 'accepted'|'rejected' }",
 								},
+							},
+							"run/abort": {
+								description: "Abandon run. Discard unresolved findings.",
+								params: { runId: "Run ID" },
 							},
 							systemPrompt: {
 								description: "Set the base system prompt override",
@@ -201,14 +205,19 @@ export default class ClientConnection {
 								description: "Enable a skill for this session",
 								params: { name: "Skill ID" },
 							},
+							"skill/remove": {
+								description: "Disable a session skill",
+								params: { name: "Skill ID" },
+							},
 						},
 						notifications: {
 							"run/step/completed":
-								"Triggered when a turn finishes. Contains the structured 'turn' object including response, context, and sequence.",
+								"A turn finished. Contains structured turn object.",
 							"run/progress":
-								"Periodic updates on agent thoughts and task status.",
-							"ui/render": "Fragments for streaming output UI.",
-							"editor/diff": "Proposed file modifications.",
+								"Agent task status and intermediate updates.",
+							"ui/render": "Streaming output fragments for display.",
+							"ui/notify": "Toast/status notifications (text + level).",
+							"editor/diff": "Proposed file modifications (file + patch).",
 						},
 					};
 					break;
@@ -302,19 +311,6 @@ export default class ClientConnection {
 					);
 					break;
 
-				case "run/affirm":
-					if (!this.#context.sessionId)
-						throw new Error("Project not initialized.");
-
-					// Typically here we would commit files or finalize the state in the DB
-					// For now, just mark the run as completed
-					await this.#db.update_run_status.run({
-						id: params.runId,
-						status: "completed",
-					});
-					result = { status: "ok" };
-					break;
-
 				case "run/abort":
 					if (!this.#context.sessionId)
 						throw new Error("Session not initialized.");
@@ -381,13 +377,11 @@ export default class ClientConnection {
 						this.#context.sessionId,
 						params.model,
 						params.prompt,
-						params.activeFiles || [],
 						params.runId,
 					);
 					break;
 
 				case "act":
-				case "run":
 					if (!this.#context.sessionId)
 						throw new Error("Session not initialized.");
 
@@ -402,7 +396,6 @@ export default class ClientConnection {
 						this.#context.sessionId,
 						params.model,
 						params.prompt,
-						params.activeFiles || [],
 						params.runId,
 					);
 					break;

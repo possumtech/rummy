@@ -29,21 +29,20 @@ export default class FindingsManager {
 		for (const tag of tags) {
 			const { tagName, attrs } = tag;
 
-			// PERSISTENCE TAGS (Model Focus)
+			// PROMOTION TAGS (Agent Focus)
 			if (tagName === "read" && projectId) {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				if (path) {
-					await this.#db.upsert_repo_map_file.run({
+					const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 						project_id: projectId,
 						path,
-						visibility: "mappable",
 						hash: null,
 						size: 0,
+						symbol_tokens: 0,
 					});
-					await this.#db.set_retained.run({
-						project_id: projectId,
-						path,
-						is_retained: 1,
+					await this.#db.upsert_agent_promotion.run({
+						file_id: fileId,
+						turn_seq: atomicResult.sequence ?? 0,
 					});
 				}
 			}
@@ -51,18 +50,15 @@ export default class FindingsManager {
 			if (tagName === "drop" && projectId) {
 				const path = attrs.find((a) => a.name === "file")?.value;
 				if (path) {
-					await this.#db.upsert_repo_map_file.run({
+					const file = await this.#db.get_repo_map_file.get({
 						project_id: projectId,
 						path,
-						visibility: "mappable",
-						hash: null,
-						size: 0,
 					});
-					await this.#db.set_retained.run({
-						project_id: projectId,
-						path,
-						is_retained: 0,
-					});
+					if (file) {
+						await this.#db.delete_agent_promotion.run({
+							file_id: file.id,
+						});
+					}
 				}
 			}
 

@@ -1,25 +1,21 @@
 import ProjectContext from "../../../domain/project/ProjectContext.js";
 import RepoMap from "../../../domain/repomap/RepoMap.js";
 
-/**
- * RepoMapPlugin: Logic for mapping files and formatting them as DOM nodes.
- */
 export default class RepoMapPlugin {
 	static register(hooks) {
 		hooks.onTurn(async (rummy) => {
 			const { project, db } = rummy;
 			if (!project?.path) return;
 
-			// Fetch handlers and ranked files via RepoMap
 			const files = await db.get_project_repo_map.all({
 				project_id: project.id,
 			});
-			const visibilityMap = new Map();
+			const dbFiles = new Set();
 			for (const f of files) {
-				visibilityMap.set(f.path, f.visibility);
+				dbFiles.add(f.path);
 			}
 
-			const ctx = await ProjectContext.open(project.path, visibilityMap);
+			const ctx = await ProjectContext.open(project.path, dbFiles);
 			const repoMap = new RepoMap(ctx, db, project.id);
 			const perspective = await repoMap.renderPerspective({
 				sequence: rummy.sequence,
@@ -35,7 +31,7 @@ export default class RepoMapPlugin {
 					tokens: String(f.tokens ?? 0),
 				};
 
-				if (f.visibility === "read_only") {
+				if (f.fidelity === "full:readonly") {
 					fileAttrs["read-only"] = "true";
 				}
 
@@ -56,7 +52,6 @@ export default class RepoMapPlugin {
 			}
 		});
 
-		// Trigger re-indexing on project init completion
 		hooks.project.init.completed.on(async (payload) => {
 			const { projectId, projectPath, db } = payload;
 			const ctx = await ProjectContext.open(projectPath);
@@ -64,7 +59,6 @@ export default class RepoMapPlugin {
 			await repoMap.updateIndex();
 		});
 
-		// Trigger re-indexing on explicit file updates
 		hooks.project.files.update.completed.on(async (payload) => {
 			const { projectId, projectPath, db } = payload;
 			const ctx = await ProjectContext.open(projectPath);

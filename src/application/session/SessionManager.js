@@ -1,9 +1,6 @@
 import crypto from "node:crypto";
 import ProjectContext from "../../domain/project/ProjectContext.js";
 
-/**
- * SessionManager: Handles database state for Projects, Sessions, Runs, and Skills.
- */
 export default class SessionManager {
 	#db;
 	#hooks;
@@ -13,13 +10,19 @@ export default class SessionManager {
 		this.#hooks = hooks;
 	}
 
-	async #getVisibilityMap(projectId) {
+	async #getPromotionMap(projectId) {
 		const files = await this.#db.get_project_repo_map.all({
 			project_id: projectId,
 		});
 		const map = new Map();
 		for (const f of files) {
-			map.set(f.path, f.visibility);
+			if (!map.has(f.path)) {
+				map.set(f.path, {
+					client_constraint: f.client_constraint,
+					has_agent_promotion: f.has_agent_promotion,
+					has_editor_promotion: f.has_editor_promotion,
+				});
+			}
 		}
 		return map;
 	}
@@ -51,7 +54,6 @@ export default class SessionManager {
 			client_id: clientId,
 		});
 
-		// Sync buffered files immediately
 		await this.syncBuffered(projectId, projectBufferFiles);
 
 		const { default: GitProvider } = await import(
@@ -75,9 +77,12 @@ export default class SessionManager {
 	}
 
 	async syncBuffered(projectId, files) {
-		await this.#db.reset_buffered.run({ project_id: projectId });
+		await this.#db.reset_editor_promotions.run({ project_id: projectId });
 		for (const path of files) {
-			await this.#db.set_buffered.run({ project_id: projectId, path });
+			await this.#db.upsert_editor_promotion.run({
+				project_id: projectId,
+				path,
+			});
 		}
 	}
 
@@ -88,8 +93,7 @@ export default class SessionManager {
 		if (projects.length === 0) return [];
 		const projectId = projects[0].id;
 
-		const visibilityMap = await this.#getVisibilityMap(projectId);
-		const ctx = await ProjectContext.open(projectPath, visibilityMap);
+		const ctx = await ProjectContext.open(projectPath);
 		const mappable = await ctx.getMappableFiles();
 		const results = [];
 
@@ -103,72 +107,99 @@ export default class SessionManager {
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		if (!project) throw new Error("Project not found");
 
-		const visibilityMap = await this.#getVisibilityMap(projectId);
-		const ctx = await ProjectContext.open(project.path, visibilityMap);
-
 		const dbFile = await this.#db.get_repo_map_file.get({
 			project_id: projectId,
 			path,
 		});
-		const resolvedVisibility = await ctx.resolveState(path);
 
-		// Resolve authoritative label for UI/Statusbar
-		let state = "mappable";
-		if (resolvedVisibility === "ignored") state = "ignored";
-		else if (resolvedVisibility === "active") state = "active";
-		else if (resolvedVisibility === "read_only") state = "read_only";
-		else if (dbFile?.is_buffered) state = "buffered";
-		else if (dbFile?.is_retained) state = "retained";
+		// Derive fidelity label for client display
+		let fidelity = "signatures";
+		if (dbFile?.client_constraint === "excluded") fidelity = "excluded";
+		else if (dbFile?.client_constraint === "full:readonly") fidelity = "full:readonly";
+		else if (dbFile?.client_constraint === "full") fidelity = "full";
+		else if (dbFile?.has_agent_promotion) fidelity = "full";
+		else if (dbFile?.has_editor_promotion) fidelity = "full:readonly";
 
 		return {
 			path,
-			state,
-			visibility: resolvedVisibility,
-			is_buffered: dbFile?.is_buffered === 1,
-			is_retained: dbFile?.is_retained === 1,
-			is_git_ignored:
-				(await ProjectContext.open(project.path)).resolveState(path) ===
-				"ignored",
+			fidelity,
+			client_constraint: dbFile?.client_constraint || null,
+			has_agent_promotion: !!dbFile?.has_agent_promotion,
+			has_editor_promotion: !!dbFile?.has_editor_promotion,
 			size: dbFile?.size || 0,
 			last_indexed_at: dbFile?.last_indexed_at || null,
 		};
 	}
 
-	async updateFiles(projectId, { files, pattern, visibility }) {
+	async activate(projectId, pattern) {
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			files,
 			pattern,
-			visibility,
+			constraint: "full",
 		});
 
-		if (pattern && visibility) {
-			await this.#db.update_files_visibility_by_pattern.run({
-				project_id: projectId,
-				pattern,
-				visibility,
-			});
-		}
-
-		if (Array.isArray(files)) {
-			for (const f of files) {
-				await this.#db.upsert_repo_map_file.run({
-					project_id: projectId,
-					path: f.path,
-					visibility: f.visibility,
-					hash: null,
-					size: 0,
-				});
-			}
-		}
+		await this.#db.upsert_client_promotion_by_pattern.run({
+			project_id: projectId,
+			pattern,
+			constraint_type: "full",
+		});
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
-			files,
 			pattern,
-			visibility,
+			constraint: "full",
+			db: this.#db,
+		});
+
+		return { status: "ok" };
+	}
+
+	async readOnly(projectId, pattern) {
+		await this.#hooks.project.files.update.started.emit({
+			projectId,
+			pattern,
+			constraint: "full:readonly",
+		});
+
+		await this.#db.upsert_client_promotion_by_pattern.run({
+			project_id: projectId,
+			pattern,
+			constraint_type: "full:readonly",
+		});
+
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
+		await this.#hooks.project.files.update.completed.emit({
+			projectId,
+			projectPath: project.path,
+			pattern,
+			constraint: "full:readonly",
+			db: this.#db,
+		});
+
+		return { status: "ok" };
+	}
+
+	async ignore(projectId, pattern) {
+		await this.#hooks.project.files.update.started.emit({
+			projectId,
+			pattern,
+			constraint: "excluded",
+		});
+
+		await this.#db.upsert_client_promotion_by_pattern.run({
+			project_id: projectId,
+			pattern,
+			constraint_type: "excluded",
+		});
+
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
+		await this.#hooks.project.files.update.completed.emit({
+			projectId,
+			projectPath: project.path,
+			pattern,
+			constraint: "excluded",
 			db: this.#db,
 		});
 
@@ -176,19 +207,27 @@ export default class SessionManager {
 	}
 
 	async drop(projectId, pattern) {
-		return this.updateFiles(projectId, { pattern, visibility: "mappable" });
-	}
+		await this.#hooks.project.files.update.started.emit({
+			projectId,
+			pattern,
+			constraint: null,
+		});
 
-	async activate(projectId, pattern) {
-		return this.updateFiles(projectId, { pattern, visibility: "active" });
-	}
+		await this.#db.delete_client_promotion_by_pattern.run({
+			project_id: projectId,
+			pattern,
+		});
 
-	async readOnly(projectId, pattern) {
-		return this.updateFiles(projectId, { pattern, visibility: "read_only" });
-	}
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
+		await this.#hooks.project.files.update.completed.emit({
+			projectId,
+			projectPath: project.path,
+			pattern,
+			constraint: null,
+			db: this.#db,
+		});
 
-	async ignore(projectId, pattern) {
-		return this.updateFiles(projectId, { pattern, visibility: "ignored" });
+		return { status: "ok" };
 	}
 
 	async startRun(sessionId, runConfig) {

@@ -35,9 +35,7 @@ CREATE TABLE IF NOT EXISTS runs (
 	id TEXT PRIMARY KEY
 	, session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
 	, parent_run_id TEXT REFERENCES runs (id) ON DELETE SET NULL
-	, type TEXT NOT NULL CHECK (
-		type IN ('orchestrator', 'task', 'ask', 'act')
-	)
+	, type TEXT NOT NULL CHECK (type IN ('ask', 'act'))
 	, status TEXT NOT NULL DEFAULT 'queued' CHECK (
 		status IN ('queued', 'running', 'proposed', 'completed', 'failed', 'aborted')
 	)
@@ -49,7 +47,6 @@ CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, sequence INTEGER NOT NULL
-	, payload JSON -- Keep for legacy/compatibility during transition
 	, prompt_tokens INTEGER DEFAULT 0
 	, completion_tokens INTEGER DEFAULT 0
 	, total_tokens INTEGER DEFAULT 0
@@ -108,7 +105,6 @@ CREATE TABLE IF NOT EXISTS findings_notifications (
 );
 
 -- THE STATE LOCK TRIGGER
--- Physically prevents starting a new turn if actions are unresolved.
 CREATE TRIGGER IF NOT EXISTS lock_turn_on_pending_actions
 BEFORE INSERT ON turns
 FOR EACH ROW
@@ -132,24 +128,31 @@ BEGIN
 	END;
 END;
 
--- Repo Map Tables
+-- Repo Map: File Metadata (no visibility state — that lives in file_promotions)
 CREATE TABLE IF NOT EXISTS repo_map_files (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE
 	, path TEXT NOT NULL
 	, hash TEXT
 	, size INTEGER DEFAULT 0
-	, visibility TEXT NOT NULL DEFAULT 'mappable' CHECK (
-		visibility IN ('active', 'read_only', 'mappable', 'ignored')
-	)
 	, symbol_tokens INTEGER DEFAULT 0
-	, is_buffered BOOLEAN DEFAULT 0
-	, is_retained BOOLEAN DEFAULT 0
-	, last_attention_turn INTEGER DEFAULT 0
-	, is_active BOOLEAN GENERATED ALWAYS AS (is_buffered OR is_retained) VIRTUAL
 	, is_root BOOLEAN GENERATED ALWAYS AS (path NOT LIKE '%/%') VIRTUAL
 	, last_indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, UNIQUE (project_id, path)
+);
+
+-- Repo Map: File Promotions (who put this file in context?)
+CREATE TABLE IF NOT EXISTS file_promotions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, file_id INTEGER NOT NULL REFERENCES repo_map_files (id) ON DELETE CASCADE
+	, source TEXT NOT NULL CHECK (source IN ('client', 'agent', 'editor'))
+	, constraint_type TEXT CHECK (
+		(source = 'client' AND constraint_type IN ('full', 'full:readonly', 'excluded'))
+		OR (source != 'client' AND constraint_type IS NULL)
+	)
+	, last_attention_turn INTEGER DEFAULT 0
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	, UNIQUE (file_id, source)
 );
 
 CREATE TABLE IF NOT EXISTS repo_map_tags (
@@ -207,49 +210,26 @@ VALUES
 	|| 'summary'
 );
 
--- FILE TYPE HANDLERS (Symbol Extraction Strategy)
-CREATE TABLE IF NOT EXISTS file_type_handlers (
-	extension TEXT PRIMARY KEY
-	, extractor TEXT NOT NULL CHECK (extractor IN ('hd', 'ctags'))
-	, is_enabled BOOLEAN DEFAULT 1
-);
-
-INSERT OR IGNORE INTO file_type_handlers (extension, extractor, is_enabled)
-VALUES
-('js', 'hd', 1),
-('ts', 'hd', 1),
-('html', 'hd', 1),
-('css', 'hd', 1),
-('lua', 'ctags', 1),
-('md', 'ctags', 1),
-('txt', 'ctags', 0);
-
--- THE RANKING ENGINE (Heat Calculation)
--- Heat = (Count of symbols in THIS file matching references in ACTIVE files)
--- + (is_root ? 1 : 0)
+-- RANKING VIEW (Heat Calculation)
 CREATE VIEW IF NOT EXISTS repo_map_ranked AS
 SELECT
-	f.id,
-	f.project_id,
-	f.path,
-	f.hash,
-	f.size,
-	f.visibility,
-	f.symbol_tokens,
-	f.is_buffered,
-	f.is_retained,
-	f.last_attention_turn,
-	f.is_active,
-	f.is_root,
-	f.last_indexed_at,
-	COALESCE((
+	f.id
+	, f.project_id
+	, f.path
+	, f.hash
+	, f.size
+	, f.symbol_tokens
+	, f.is_root
+	, f.last_indexed_at
+	, EXISTS(SELECT 1 FROM file_promotions WHERE file_id = f.id) AS is_promoted
+	, COALESCE((
 		SELECT COUNT(DISTINCT t.name)
 		FROM repo_map_tags AS t
 		JOIN repo_map_references AS r ON t.name = r.symbol_name
 		JOIN repo_map_files AS f2 ON r.file_id = f2.id
+		JOIN file_promotions AS fp ON f2.id = fp.file_id
 		WHERE
 			t.file_id = f.id
-			AND f2.is_active = 1
 			AND f2.id != f.id
 	), 0) + f.is_root AS heat
 FROM repo_map_files AS f;
@@ -358,41 +338,19 @@ SELECT
 	) as is_complete
 FROM turns AS t;
 
-CREATE TABLE IF NOT EXISTS system_hooks (
-	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, hook_type TEXT NOT NULL CHECK (hook_type IN ('turn', 'filter', 'event'))
-	, tag TEXT NOT NULL
-	, priority INTEGER DEFAULT 10
-	, description TEXT
-	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- INDEXES: INFRASTRUCTURE
+-- INDEXES
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
-
--- INDEXES: REPOMAP (Heat Engine)
-CREATE INDEX IF NOT EXISTS idx_repo_map_files_project_active
-ON repo_map_files (project_id, is_active);
-CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_name
-ON repo_map_tags (file_id, name);
+CREATE INDEX IF NOT EXISTS idx_repo_map_files_project ON repo_map_files (project_id);
+CREATE INDEX IF NOT EXISTS idx_file_promotions_file ON file_promotions (file_id);
+CREATE INDEX IF NOT EXISTS idx_file_promotions_source ON file_promotions (source);
+CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_name ON repo_map_tags (file_id, name);
 CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name ON repo_map_tags (name);
-CREATE INDEX IF NOT EXISTS idx_repo_map_references_file_name
-ON repo_map_references (file_id, symbol_name);
-CREATE INDEX IF NOT EXISTS idx_repo_map_references_symbol
-ON repo_map_references (symbol_name);
-
--- INDEXES: TURN ELEMENTS (Summary Engine)
-CREATE INDEX IF NOT EXISTS idx_turn_elements_turn_parent
-ON turn_elements (turn_id, parent_id);
-CREATE INDEX IF NOT EXISTS idx_turn_elements_tag_lookup
-ON turn_elements (turn_id, tag_name);
-
--- INDEXES: FINDINGS
-CREATE INDEX IF NOT EXISTS idx_findings_diffs_run_status
-ON findings_diffs (run_id, status);
-CREATE INDEX IF NOT EXISTS idx_findings_cmds_run_status
-ON findings_commands (run_id, status);
-CREATE INDEX IF NOT EXISTS idx_findings_notifs_run_status
-ON findings_notifications (run_id, status);
+CREATE INDEX IF NOT EXISTS idx_repo_map_references_file_name ON repo_map_references (file_id, symbol_name);
+CREATE INDEX IF NOT EXISTS idx_repo_map_references_symbol ON repo_map_references (symbol_name);
+CREATE INDEX IF NOT EXISTS idx_turn_elements_turn_parent ON turn_elements (turn_id, parent_id);
+CREATE INDEX IF NOT EXISTS idx_turn_elements_tag_lookup ON turn_elements (turn_id, tag_name);
+CREATE INDEX IF NOT EXISTS idx_findings_diffs_run_status ON findings_diffs (run_id, status);
+CREATE INDEX IF NOT EXISTS idx_findings_cmds_run_status ON findings_commands (run_id, status);
+CREATE INDEX IF NOT EXISTS idx_findings_notifs_run_status ON findings_notifications (run_id, status);

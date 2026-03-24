@@ -54,14 +54,6 @@ export default class ProjectAgent {
 		return this.#sessionManager.getFiles(projectPath);
 	}
 
-	async updateFiles(projectId, { files, pattern, visibility }) {
-		return this.#sessionManager.updateFiles(projectId, {
-			files,
-			pattern,
-			visibility,
-		});
-	}
-
 	async fileStatus(projectId, path) {
 		return this.#sessionManager.fileStatus(projectId, path);
 	}
@@ -102,40 +94,12 @@ export default class ProjectAgent {
 		return this.#sessionManager.removeSkill(sessionId, name);
 	}
 
-	async ask(
-		sessionId,
-		model,
-		prompt,
-		_activeFiles = [],
-		runId = null,
-		projectBufferFiles = null,
-	) {
-		return this.#agentLoop.run(
-			"ask",
-			sessionId,
-			model,
-			prompt,
-			projectBufferFiles,
-			runId,
-		);
+	async ask(sessionId, model, prompt, runId = null) {
+		return this.#agentLoop.run("ask", sessionId, model, prompt, null, runId);
 	}
 
-	async act(
-		sessionId,
-		model,
-		prompt,
-		_activeFiles = [],
-		runId = null,
-		projectBufferFiles = null,
-	) {
-		return this.#agentLoop.run(
-			"act",
-			sessionId,
-			model,
-			prompt,
-			projectBufferFiles,
-			runId,
-		);
+	async act(sessionId, model, prompt, runId = null) {
+		return this.#agentLoop.run("act", sessionId, model, prompt, null, runId);
 	}
 
 	async resolve(runId, resolution) {

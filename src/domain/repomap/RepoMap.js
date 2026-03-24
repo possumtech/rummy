@@ -5,10 +5,8 @@ import { getEncoding } from "js-tiktoken";
 import CtagsExtractor from "../../extraction/CtagsExtractor.js";
 import SymbolExtractor from "../../extraction/SymbolExtractor.js";
 
-/**
- * RepoMap coordinates the persistent indexing of project symbols
- * and the generation of context-aware repository perspectives.
- */
+const HD_EXTENSIONS = new Set(["js", "ts", "tsx", "html", "css"]);
+
 export default class RepoMap {
 	#ctx;
 	#db;
@@ -39,20 +37,12 @@ export default class RepoMap {
 			if (!fileRecords.has(row.path)) {
 				fileRecords.set(row.path, {
 					hash: row.hash,
-					visibility: row.visibility,
 					id: row.id,
 				});
 			}
 			if (row.name) {
 				fileTagCounts.set(row.path, (fileTagCounts.get(row.path) || 0) + 1);
 			}
-		}
-
-		// Fetch handlers from DB
-		const handlersRows = await this.#db.get_file_type_handlers.all();
-		const handlers = new Map();
-		for (const row of handlersRows) {
-			handlers.set(row.extension, row.extractor);
 		}
 
 		for (const relPath of mappableFiles) {
@@ -62,15 +52,10 @@ export default class RepoMap {
 			const content = readFileSync(fullPath, "utf8");
 			const size = content.length;
 			const hash = crypto.createHash("sha256").update(content).digest("hex");
-			const visibility = await this.#ctx.resolveState(relPath);
 
 			const existing = fileRecords.get(relPath);
 
-			if (
-				existing?.hash === hash &&
-				existing?.visibility === visibility &&
-				fileTagCounts.get(relPath) > 0
-			) {
+			if (existing?.hash === hash && fileTagCounts.get(relPath) > 0) {
 				continue;
 			}
 
@@ -79,21 +64,14 @@ export default class RepoMap {
 				path: relPath,
 				hash,
 				size,
-				visibility,
 				symbol_tokens: 0,
 			});
 
 			await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
 
 			const ext = extname(relPath).slice(1);
-			const extractorType = handlers.get(ext);
 
-			if (!extractorType) {
-				// No handler means no extraction needed (e.g. .txt files)
-				continue;
-			}
-
-			if (extractorType === "hd") {
+			if (HD_EXTENSIONS.has(ext)) {
 				const extraction = this.#hdExtractor.extract(content, ext);
 
 				if (extraction) {
@@ -109,7 +87,6 @@ export default class RepoMap {
 						path: relPath,
 						hash,
 						size,
-						visibility,
 						symbol_tokens: symbolWeight,
 					});
 
@@ -133,7 +110,7 @@ export default class RepoMap {
 				} else {
 					ctagsQueue.push(relPath);
 				}
-			} else if (extractorType === "ctags") {
+			} else {
 				ctagsQueue.push(relPath);
 			}
 		}
@@ -145,17 +122,15 @@ export default class RepoMap {
 				if (!existsSync(fullPath)) continue;
 
 				const size = readFileSync(fullPath).length;
-				const visibility = await this.#ctx.resolveState(path);
 				const symbolWeight = this.#tokenizer.encode(
 					JSON.stringify({ path, symbols }),
 				).length;
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 					project_id: this.#projectId,
-					path: path,
+					path,
 					hash: null,
 					size,
-					visibility,
 					symbol_tokens: symbolWeight,
 				});
 				await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
@@ -173,18 +148,39 @@ export default class RepoMap {
 		}
 	}
 
-	async renderPerspective(options = {}) {
-		let budget = Number.parseInt(
-			process.env.RUMMY_MAP_TOKEN_BUDGET || "16384",
-			10,
-		);
+	#deriveFidelity(file, currentTurn, decayThreshold) {
+		// ARCHITECTURE.md §1.3 — evaluated top-to-bottom, first match wins
+		if (file.client_constraint === "excluded") return "excluded";
+		if (file.client_constraint === "full:readonly") return "full:readonly";
+		if (file.client_constraint === "full") return "full";
 
-		if (options.contextSize && process.env.RUMMY_MAP_MAX_PERCENT) {
-			const percent = Number.parseInt(process.env.RUMMY_MAP_MAX_PERCENT, 10);
-			budget = Math.floor(options.contextSize * (percent / 100));
+		if (file.has_agent_promotion) {
+			const age = currentTurn - (file.last_attention_turn || 0);
+			if (age <= decayThreshold) return "full";
+			return "decayed";
 		}
 
-		// RANKING IS NOW ENTIRELY SQL-DRIVEN
+		if (file.has_editor_promotion) return "full:readonly";
+
+		return "signatures";
+	}
+
+	async renderPerspective(options = {}) {
+		const percent = Number.parseInt(
+			process.env.RUMMY_MAP_MAX_PERCENT || "10",
+			10,
+		);
+		let budget = options.contextSize
+			? Math.floor(options.contextSize * (percent / 100))
+			: null;
+
+		if (process.env.RUMMY_MAP_TOKEN_BUDGET) {
+			const cap = Number.parseInt(process.env.RUMMY_MAP_TOKEN_BUDGET, 10);
+			budget = budget ? Math.min(budget, cap) : cap;
+		}
+
+		if (!budget) throw new Error("Context budget unavailable: set RUMMY_MAP_TOKEN_BUDGET or provide contextSize.");
+
 		const rankedFiles = await this.#db.get_ranked_repo_map.all({
 			project_id: this.#projectId,
 		});
@@ -213,27 +209,20 @@ export default class RepoMap {
 			10,
 		);
 
+		// Expire decayed agent promotions
+		await this.#db.decay_agent_promotions.run({
+			project_id: this.#projectId,
+			current_turn: currentTurn,
+			decay_threshold: decayThreshold,
+		});
+
 		for (const file of rankedFiles) {
-			// 1. Completely exclude ignored files
-			if (file.visibility === "ignored") continue;
+			const fidelity = this.#deriveFidelity(file, currentTurn, decayThreshold);
 
-			// 2. Determine if we should include full source body
-			// SUPERSTRATE + FIDELITY DECAY:
-			// - 'read_only' and 'active' ALWAYS include source (persistent user focus).
-			// - 'is_buffered' ALWAYS includes source (transient user focus).
-			// - 'is_retained' ONLY includes source if it has recent attention (agent focus).
-			const hasRecentAttention =
-				currentTurn - file.last_attention_turn <= decayThreshold;
+			if (fidelity === "excluded") continue;
+			if (fidelity === "decayed") continue;
 
-			const shouldIncludeSource =
-				file.visibility === "read_only" ||
-				file.visibility === "active" ||
-				file.is_buffered ||
-				(file.is_retained && hasRecentAttention);
-
-			let displayFile;
-
-			if (shouldIncludeSource) {
+			if (fidelity === "full" || fidelity === "full:readonly") {
 				const fullPath = join(this.#ctx.root, file.path);
 				let content = "";
 				try {
@@ -242,51 +231,38 @@ export default class RepoMap {
 					content = `Error reading file: ${err.message}`;
 				}
 				const tokens = this.#tokenizer.encode(content).length;
-				displayFile = {
+				const displayFile = {
 					path: file.path,
 					size: file.size,
 					tokens,
 					content,
-					visibility: file.visibility,
+					fidelity,
 				};
 
-				const weight = this.#tokenizer.encode(
+				finalFiles.push(displayFile);
+				currentTokens += this.#tokenizer.encode(
 					JSON.stringify(displayFile),
 				).length;
-				finalFiles.push(displayFile);
-				currentTokens += weight;
 				continue;
 			}
 
-			// 3. Mappable files (Symbols only)
+			// fidelity === "signatures" — symbols only, subject to budget
 			const symbols = tagMap.get(file.path) || [];
-			displayFile = {
-				path: file.path,
-				size: file.size,
-				symbols,
-				visibility: file.visibility,
-			};
-
-			if (symbols.length === 0) {
-				displayFile = {
-					path: file.path,
-					size: file.size,
-					visibility: file.visibility,
-				};
-			}
+			let displayFile = symbols.length > 0
+				? { path: file.path, size: file.size, symbols, fidelity }
+				: { path: file.path, size: file.size, fidelity };
 
 			let finalTokens =
 				file.symbol_tokens ||
 				this.#tokenizer.encode(JSON.stringify(displayFile)).length;
 
-			// 4. Budget constraints for symbols/mappable files
 			if (currentTokens + finalTokens > budget) {
 				if (symbols.length > 0) {
 					const signaturesOnly = {
 						path: file.path,
 						size: file.size,
 						symbols: symbols.map((s) => ({ name: s.name })),
-						visibility: file.visibility,
+						fidelity: "signatures",
 					};
 					const sigTokens = this.#tokenizer.encode(
 						JSON.stringify(signaturesOnly),
@@ -296,11 +272,7 @@ export default class RepoMap {
 						displayFile = signaturesOnly;
 						finalTokens = sigTokens;
 					} else {
-						const pathOnly = {
-							path: file.path,
-							size: file.size,
-							visibility: file.visibility,
-						};
+						const pathOnly = { path: file.path, size: file.size, fidelity: "path" };
 						const pathTokens = this.#tokenizer.encode(
 							JSON.stringify(pathOnly),
 						).length;
@@ -325,7 +297,7 @@ export default class RepoMap {
 
 		return {
 			files: finalFiles,
-			usage: { tokens: currentTokens, budget },
+			usage: { context_used: currentTokens, context_budget: budget },
 		};
 	}
 }

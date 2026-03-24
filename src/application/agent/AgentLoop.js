@@ -78,11 +78,11 @@ export default class AgentLoop {
 			throw new Error(`Project '${projectId}' not found.`);
 		}
 
-		// Sync Buffered Files
+		// Sync editor promotions
 		if (Array.isArray(projectBufferFiles)) {
-			await this.#db.reset_buffered.run({ project_id: projectId });
+			await this.#db.reset_editor_promotions.run({ project_id: projectId });
 			for (const path of projectBufferFiles) {
-				await this.#db.set_buffered.run({
+				await this.#db.upsert_editor_promotion.run({
 					project_id: projectId,
 					path: String(path),
 				});
