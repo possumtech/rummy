@@ -147,18 +147,27 @@ export default class Turn {
 	/**
 	 * Serializes the turn for the LLM history.
 	 */
-	async serialize() {
+	/**
+	 * Serializes the turn for the LLM history.
+	 * @param {object} opts
+	 * @param {boolean} opts.forHistory - If true, omits system message and
+	 *   strips context XML from user message. Prior turns' context is stale —
+	 *   only the current turn should include live file contents and git state.
+	 */
+	async serialize({ forHistory = false } = {}) {
 		if (!this.#data) await this.hydrate();
 		const json = this.toJson();
 
 		const messages = [];
-		if (json.system) messages.push({ role: "system", content: json.system });
+		if (!forHistory && json.system) {
+			messages.push({ role: "system", content: json.system });
+		}
 
 		const userNode = this.#data.root[0]?.children.find(
 			(c) => c.tag_name === "user",
 		);
 		const userXml = userNode ? this.toXml(userNode) : json.user || "";
-		const userContent = (json.context || "") + userXml;
+		const userContent = forHistory ? userXml : (json.context || "") + userXml;
 		if (userContent) messages.push({ role: "user", content: userContent });
 
 		if (json.assistant.content) {

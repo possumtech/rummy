@@ -127,6 +127,7 @@ export default class AgentLoop {
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 		let protocolRetries = 0;
 		const MAX_PROTOCOL_RETRIES = 5;
+		let verbMismatchRetried = false;
 		let currentTurnSequence = 0;
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = 15;
@@ -151,7 +152,7 @@ export default class AgentLoop {
 				if (!row.turn_id) continue;
 				const turn = new Turn(this.#db, row.turn_id);
 				await turn.hydrate();
-				const msgs = await turn.serialize();
+				const msgs = await turn.serialize({ forHistory: true });
 				historyMessages.push(...msgs);
 			}
 
@@ -529,8 +530,9 @@ export default class AgentLoop {
 			}
 
 			// Verb mismatch: model checked action todos without emitting the tags.
-			// Loop to give the model a chance to self-correct with the warnings.
-			if (verbWarnings.length > 0) {
+			// Loop once to give the model a chance to self-correct with the warnings.
+			if (verbWarnings.length > 0 && !verbMismatchRetried) {
+				verbMismatchRetried = true;
 				await turnObj.hydrate();
 				continue;
 			}
