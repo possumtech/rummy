@@ -1,16 +1,15 @@
 import { DOMImplementation } from "@xmldom/xmldom";
 import PromptManager from "../prompt/PromptManager.js";
+import RummyContext from "./RummyContext.js";
 import Turn from "./Turn.js";
 
-/**
- * TurnBuilder: Orchestrates the construction of a Turn.
- * It writes the initial structured tags (system, context, user) to SQL.
- */
 export default class TurnBuilder {
 	#dom;
+	#hooks;
 
-	constructor() {
+	constructor(hooks) {
 		this.#dom = new DOMImplementation();
+		this.#hooks = hooks;
 	}
 
 	async build(initialData = {}) {
@@ -28,31 +27,11 @@ export default class TurnBuilder {
 		systemEl.appendChild(doc.createTextNode(identity));
 		root.appendChild(systemEl);
 
-		// 2. Project Files (Context)
+		// 2. Empty context — plugins populate this via processTurn
 		const contextEl = doc.createElement("context");
-		const filesEl = doc.createElement("files");
-		const files = await db.get_ranked_repo_map.all({
-			project_id: project.id,
-		});
-		for (const file of files) {
-			const fileEl = doc.createElement("file");
-			fileEl.setAttribute("path", file.path);
-			fileEl.setAttribute("size", String(file.size || 0));
-			fileEl.setAttribute("tokens", String(file.symbol_tokens || 0));
-			// Note: We only add content/symbols if they are retrieved.
-			// The repo map typically handles the 'warming' of these.
-			if (file.content) {
-				const sourceEl = doc.createElement("source");
-				sourceEl.appendChild(doc.createTextNode(file.content));
-				fileEl.appendChild(sourceEl);
-			}
-			filesEl.appendChild(fileEl);
-		}
-		contextEl.appendChild(filesEl);
-
 		root.appendChild(contextEl);
 
-		// 4. User Prompt wrapped in mode tag
+		// 3. User Prompt wrapped in mode tag
 		const userEl = doc.createElement("user");
 		const modeEl = doc.createElement(type);
 		const constraints = await db.get_protocol_constraints.get({
@@ -67,9 +46,18 @@ export default class TurnBuilder {
 		userEl.appendChild(modeEl);
 		root.appendChild(userEl);
 
-		// 5. Assistant placeholder
+		// 4. Assistant placeholder
 		const assistantEl = doc.createElement("assistant");
 		root.appendChild(assistantEl);
+
+		// 5. Run plugin pipeline (populates context with files, git changes, etc.)
+		const rummy = new RummyContext(doc, {
+			db,
+			project,
+			type,
+			sequence,
+		});
+		await this.#hooks.processTurn(rummy);
 
 		// 6. COMMIT TO SQL (The Authoritative Step)
 		if (db && turnId) {
@@ -84,7 +72,7 @@ export default class TurnBuilder {
 
 	async saveTurnToDb(db, turnId, rootNode) {
 		const traverse = async (node, parentId = null) => {
-			if (node.nodeType !== 1) return; // Only Elements
+			if (node.nodeType !== 1) return;
 
 			const attrs = {};
 			if (node.attributes) {

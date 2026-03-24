@@ -1,5 +1,7 @@
 import { exec } from "node:child_process";
 import crypto from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import Turn from "../../domain/turn/Turn.js";
 
@@ -464,14 +466,23 @@ export default class AgentLoop {
 						const tag = gatherTags[k];
 						if (tag.tagName === "read") {
 							const path = tag.attrs.find((a) => a.name === "file")?.value;
-							await this.#db.insert_turn_element.run({
-								turn_id: turnId,
-								parent_id: contextNode.id,
-								tag_name: "info",
-								content: "Full file added to context",
-								attributes: JSON.stringify({ file: path }),
-								sequence: 200 + k,
-							});
+							if (path) {
+								const fullPath = join(project.path, path);
+								let fileContent;
+								try {
+									fileContent = await readFile(fullPath, "utf8");
+								} catch (err) {
+									fileContent = `Error reading file: ${err.message}`;
+								}
+								await this.#db.insert_turn_element.run({
+									turn_id: turnId,
+									parent_id: contextNode.id,
+									tag_name: "file",
+									content: fileContent,
+									attributes: JSON.stringify({ path }),
+									sequence: 200 + k,
+								});
+							}
 						} else {
 							const cmd = this.#responseParser.getNodeText(tag).trim();
 							try {
@@ -532,6 +543,12 @@ export default class AgentLoop {
 				};
 			}
 
+			// Gather tags force continuation — the model requested data it hasn't
+			// seen yet. Even if it also emitted a summary, it was answering blind.
+			if (gatherTags.length > 0) {
+				continue;
+			}
+
 			if (isChecklistComplete || summaryTag) {
 				await this.#db.update_run_status.run({
 					id: currentRunId,
@@ -542,10 +559,6 @@ export default class AgentLoop {
 					status: "completed",
 					turn: currentTurnSequence,
 				};
-			}
-
-			if (gatherTags.length > 0) {
-				continue;
 			}
 
 			break;
