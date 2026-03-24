@@ -142,18 +142,32 @@ CREATE TABLE IF NOT EXISTS repo_map_files (
 );
 
 -- Repo Map: File Promotions (who put this file in context?)
+-- client: project-scoped (run_id IS NULL)
+-- agent: run-scoped (run_id set)
+-- editor: turn-scoped, transient (run_id IS NULL, cleared each turn)
 CREATE TABLE IF NOT EXISTS file_promotions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, file_id INTEGER NOT NULL REFERENCES repo_map_files (id) ON DELETE CASCADE
 	, source TEXT NOT NULL CHECK (source IN ('client', 'agent', 'editor'))
+	, run_id TEXT REFERENCES runs (id) ON DELETE CASCADE
 	, constraint_type TEXT CHECK (
-		(source = 'client' AND constraint_type IN ('full', 'full:readonly', 'excluded'))
+		(
+			source = 'client'
+			AND constraint_type IN ('full', 'full:readonly', 'excluded')
+		)
 		OR (source != 'client' AND constraint_type IS NULL)
 	)
 	, last_attention_turn INTEGER DEFAULT 0
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	, UNIQUE (file_id, source)
 );
+
+-- Unique constraints: SQLite treats NULLs as distinct, so we need two indexes.
+-- Project-scoped (client/editor): run_id IS NULL
+CREATE UNIQUE INDEX IF NOT EXISTS idx_file_promotions_project_unique
+ON file_promotions (file_id, source) WHERE run_id IS NULL;
+-- Run-scoped (agent): run_id is set
+CREATE UNIQUE INDEX IF NOT EXISTS idx_file_promotions_run_unique
+ON file_promotions (file_id, source, run_id) WHERE run_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS repo_map_tags (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -342,15 +356,35 @@ FROM turns AS t;
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
-CREATE INDEX IF NOT EXISTS idx_repo_map_files_project ON repo_map_files (project_id);
-CREATE INDEX IF NOT EXISTS idx_file_promotions_file ON file_promotions (file_id);
-CREATE INDEX IF NOT EXISTS idx_file_promotions_source ON file_promotions (source);
-CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_name ON repo_map_tags (file_id, name);
+CREATE INDEX IF NOT EXISTS idx_repo_map_files_project ON repo_map_files (
+	project_id
+);
+CREATE INDEX IF NOT EXISTS idx_file_promotions_file ON file_promotions (
+	file_id
+);
+CREATE INDEX IF NOT EXISTS idx_file_promotions_source ON file_promotions (
+	source
+);
+CREATE INDEX IF NOT EXISTS idx_file_promotions_run ON file_promotions (run_id);
+CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_name ON repo_map_tags (
+	file_id, name
+);
 CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name ON repo_map_tags (name);
-CREATE INDEX IF NOT EXISTS idx_repo_map_references_file_name ON repo_map_references (file_id, symbol_name);
-CREATE INDEX IF NOT EXISTS idx_repo_map_references_symbol ON repo_map_references (symbol_name);
-CREATE INDEX IF NOT EXISTS idx_turn_elements_turn_parent ON turn_elements (turn_id, parent_id);
-CREATE INDEX IF NOT EXISTS idx_turn_elements_tag_lookup ON turn_elements (turn_id, tag_name);
-CREATE INDEX IF NOT EXISTS idx_findings_diffs_run_status ON findings_diffs (run_id, status);
-CREATE INDEX IF NOT EXISTS idx_findings_cmds_run_status ON findings_commands (run_id, status);
-CREATE INDEX IF NOT EXISTS idx_findings_notifs_run_status ON findings_notifications (run_id, status);
+CREATE INDEX IF NOT EXISTS idx_rmr_file_name
+ON repo_map_references (file_id, symbol_name);
+CREATE INDEX IF NOT EXISTS idx_rmr_symbol
+ON repo_map_references (symbol_name);
+CREATE INDEX IF NOT EXISTS idx_turn_elements_turn_parent ON turn_elements (
+	turn_id, parent_id
+);
+CREATE INDEX IF NOT EXISTS idx_turn_elements_tag_lookup ON turn_elements (
+	turn_id, tag_name
+);
+CREATE INDEX IF NOT EXISTS idx_findings_diffs_run_status ON findings_diffs (
+	run_id, status
+);
+CREATE INDEX IF NOT EXISTS idx_findings_cmds_run_status ON findings_commands (
+	run_id, status
+);
+CREATE INDEX IF NOT EXISTS idx_findings_notifs_run
+ON findings_notifications (run_id, status);

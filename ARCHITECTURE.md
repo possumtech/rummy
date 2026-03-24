@@ -6,23 +6,66 @@ defines everything else: data model, protocol, context management, and testing.
 
 ---
 
-## 1. Visibility & Fidelity Model
+## 1. State Scopes
+
+All persistent state belongs to exactly one of three scopes.
+
+| Scope       | Lifetime                        | Contains                                          |
+|-------------|----------------------------------|---------------------------------------------------|
+| **Project** | Until deleted or re-indexed      | File index, symbols, references, git state, client promotions |
+| **Run**     | Open-ended (one conversation)    | Agent promotions, turns, findings, attention decay |
+| **Turn**    | Single LLM request/response      | Editor promotions (buffer sync)                   |
+
+### 1.1 Project Scope
+
+The project represents the codebase. Data here is expensive to compute (treesitter
+parsing, ctags extraction, git status) and shared across all runs.
+
+- `repo_map_files` — file metadata (path, hash, size, symbol_tokens)
+- `repo_map_tags` — symbol definitions extracted by treesitter or ctags
+- `repo_map_references` — symbol cross-references for heat calculation
+- `file_promotions` where `source = 'client'` — client focus decisions
+
+Client promotions are project-scoped because they represent the user's intent about
+the codebase, not about a specific conversation. When a user `activate`s a file in
+their editor, that file should be active in every run.
+
+### 1.2 Run Scope
+
+A run is a single conversation. Each run has its own independent agent promotion
+state. A file `<read>` in one run is not visible in another.
+
+- `file_promotions` where `source = 'agent'` — model focus, scoped to `run_id`
+- `turns` — the conversation history
+- `findings_diffs`, `findings_commands`, `findings_notifications` — proposed actions
+- Attention tracking (`last_attention_turn` on agent promotion records)
+
+### 1.3 Turn Scope
+
+Editor promotions are transient. They represent which files are open in the IDE
+right now and are cleared and re-synced every turn via `projectBufferFiles`.
+
+- `file_promotions` where `source = 'editor'` — reset each turn
+
+---
+
+## 2. Visibility & Fidelity Model
 
 Rummy controls what the model sees through two orthogonal axes: **promotion**
 (who put this file in context?) and **fidelity** (what level of detail does the
 model receive?). Promotion is stored. Fidelity is derived at render time.
 
-### 1.1 Promotion
+### 2.1 Promotion
 
 A promotion is a record that a file was placed into context by a specific source.
-Promotions are stored in a normalized `file_promotions` junction table. A file can
-have zero or more simultaneous promotions from different sources.
+Promotions are stored in the `file_promotions` table. A file can have zero or more
+simultaneous promotions from different sources and scopes.
 
-| Source   | Set by                   | Lifecycle                              |
-|----------|--------------------------|----------------------------------------|
-| `client` | Client RPC (`activate`, `readOnly`, `ignore`) | Persistent until client changes it |
-| `agent`  | Model `<read>` tag       | Persistent, removed by decay or `<drop>` |
-| `editor` | Buffer sync (`projectBufferFiles`) | Transient — cleared and re-synced each turn |
+| Source   | Set by                   | Scope   | Lifecycle                              |
+|----------|--------------------------|---------|----------------------------------------|
+| `client` | Client RPC (`activate`, `readOnly`, `ignore`) | Project | Persistent until client changes it |
+| `agent`  | Model `<read>` tag       | Run     | Persistent within run, removed by decay or `<drop>` |
+| `editor` | Buffer sync (`projectBufferFiles`) | Turn | Transient — cleared and re-synced each turn |
 
 **Client promotions** carry a constraint that determines fidelity:
 
@@ -33,15 +76,16 @@ have zero or more simultaneous promotions from different sources.
 | `excluded` | Invisible to model (`ignore`) |
 
 **Agent promotions** carry no constraint. Fidelity is derived from context
-(see §1.3). Agent promotions track `last_attention_turn` for decay.
+(see §2.3). Agent promotions track `last_attention_turn` for decay.
+Agent promotions are scoped to a `run_id` — they do not leak across runs.
 
 **Editor promotions** carry no constraint. They always resolve to `full:readonly`.
 
-**`drop` RPC** removes the client promotion. The file reverts to its baseline
-(agent/editor promotions may still apply). This replaces the old `mappable`
-visibility — there is no "mappable" state, only "no client promotion."
+**`drop` RPC** removes the client promotion from the project. The file reverts to
+its baseline (agent/editor promotions may still apply). This replaces the old
+`mappable` visibility — there is no "mappable" state, only "no client promotion."
 
-### 1.2 Fidelity Levels
+### 2.2 Fidelity Levels
 
 Fidelity is never stored. It is computed by `renderPerspective()` each turn.
 
@@ -53,27 +97,25 @@ Fidelity is never stored. It is computed by `renderPerspective()` each turn.
 | `path`         | File path exists        | No              |
 | `excluded`     | Invisible               | No              |
 
-### 1.3 Fidelity Derivation Rules
+### 2.3 Fidelity Derivation Rules
 
-Evaluated top-to-bottom. First match wins.
+At render time, all three scopes are merged. Evaluated top-to-bottom, first match wins.
 
 1. **Client `excluded`** → `excluded`. Nothing overrides this.
 2. **Client `full:readonly`** → `full:readonly`. Agent `<read>` cannot escalate
    past a client read-only constraint.
 3. **Client `full`** → `full`. Immune to decay.
-4. **Agent promotion, within decay window** → `full`. The model `<read>` a file
-   to work with it and is still actively referencing it. Editable unless rule 2
-   applies. A file with no client promotion cannot be `<read>` unless it is
-   already in the project map.
-5. **Agent promotion, outside decay window** → promotion is **removed**. The file
-   reverts to its unpromoted state as if never `<read>`. This is not a downgrade
-   to signatures — it is a full revert.
+4. **Agent promotion (this run), within decay window** → `full`. The model `<read>`
+   a file to work with it and is still actively referencing it. Editable unless
+   rule 2 applies.
+5. **Agent promotion (this run), outside decay window** → promotion is **removed**.
+   The file reverts to its unpromoted state as if never `<read>`.
 6. **Editor promotion** → `full:readonly`. IDE has the file open. Always full
    source, never editable.
 7. **No promotion, symbols extracted** → `signatures`.
 8. **No promotion, no symbols or budget exhausted** → `path`.
 
-### 1.4 Attention Decay
+### 2.4 Attention Decay
 
 Decay is the mechanism by which agent-promoted files lose their promotion when
 the model stops referencing them.
@@ -85,8 +127,9 @@ the model stops referencing them.
   promotion is deleted. The file reverts to its unpromoted baseline.
 - `RUMMY_DECAY_THRESHOLD` is defined in `.env` (default: 12 turns).
 - Decay only affects agent promotions. Client and editor promotions are immune.
+- Decay is scoped to the run — it only touches agent promotions for the current run.
 
-### 1.5 Model-Facing Language
+### 2.5 Model-Facing Language
 
 The system prompts (`system.ask.md`, `system.act.md`) use the term **"Retained"**
 to describe agent-promoted files. This is intentional — the model does not need to
@@ -98,7 +141,7 @@ know about the internal promotion/fidelity machinery. From the model's perspecti
 Internal code and documentation use "agent promotion." Model-facing text uses
 "Retained." These refer to the same mechanism.
 
-### 1.6 Ranking
+### 2.6 Ranking
 
 Files are ranked for inclusion in the context window by:
 
@@ -107,39 +150,38 @@ Files are ranked for inclusion in the context window by:
 3. Root-level files get a minor boost.
 4. Alphabetical tiebreaker.
 
-The old `is_active` computed column is removed. Ranking queries join against
-the `file_promotions` table directly.
-
-### 1.7 Schema
+### 2.7 Schema
 
 ```sql
--- Replaces: is_buffered, is_retained, last_attention_turn, is_active on repo_map_files
 CREATE TABLE file_promotions (
     id INTEGER PRIMARY KEY AUTOINCREMENT
     , file_id INTEGER NOT NULL REFERENCES repo_map_files(id) ON DELETE CASCADE
     , source TEXT NOT NULL CHECK (source IN ('client', 'agent', 'editor'))
-    , constraint TEXT CHECK (
-        (source = 'client' AND constraint IN ('full', 'full:readonly', 'excluded'))
-        OR (source != 'client' AND constraint IS NULL)
+    , run_id TEXT REFERENCES runs(id) ON DELETE CASCADE
+    , constraint_type TEXT CHECK (
+        (source = 'client' AND constraint_type IN ('full', 'full:readonly', 'excluded'))
+        OR (source != 'client' AND constraint_type IS NULL)
     )
     , last_attention_turn INTEGER DEFAULT 0
     , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    , UNIQUE (file_id, source)
+    , UNIQUE (file_id, source, run_id)
 );
 ```
 
-The `visibility` column on `repo_map_files` is removed. The `is_buffered`,
-`is_retained`, `is_active`, and `last_attention_turn` columns are removed.
-All state lives in `file_promotions`.
+- Client promotions: `run_id IS NULL` (project-scoped).
+- Agent promotions: `run_id` is set (run-scoped).
+- Editor promotions: `run_id IS NULL` (transient, cleared each turn).
+- Uniqueness: `(file_id, source, run_id)` — a file can have one client promotion
+  (project), one agent promotion per run, and one editor promotion.
 
 ---
 
-## 2. Context Budget
+## 3. Context Budget
 
 The context budget controls how many tokens `renderPerspective()` allocates to
 the file map within each turn.
 
-### 2.1 Computation
+### 3.1 Computation
 
 ```
 budget = floor(contextSize * (RUMMY_MAP_MAX_PERCENT / 100))
@@ -158,7 +200,7 @@ if RUMMY_MAP_TOKEN_BUDGET is set:
 - If `contextSize` is unavailable and `RUMMY_MAP_TOKEN_BUDGET` is unset,
   run creation fails with an explicit error. No fallbacks.
 
-### 2.2 Per-Turn Evaluation
+### 3.2 Per-Turn Evaluation
 
 Budget is computed every `renderPerspective()` call (once per turn). The budget
 and actual token usage are reported in the turn's `usage` object:
@@ -174,7 +216,7 @@ and actual token usage are reported in the turn's `usage` object:
 }
 ```
 
-### 2.3 Configuration
+### 3.3 Configuration
 
 Defined in `.env`. No magic numbers in code.
 
@@ -186,12 +228,12 @@ RUMMY_DECAY_THRESHOLD=12        # Turns before agent promotion decays
 
 ---
 
-## 3. RPC Protocol
+## 4. RPC Protocol
 
 Rummy communicates via JSON-RPC 2.0 over WebSockets. The `discover` RPC method
 returns the canonical, machine-readable protocol reference at runtime.
 
-### 3.1 Methods
+### 4.1 Methods
 
 #### Session Setup
 
@@ -208,7 +250,7 @@ returns the canonical, machine-readable protocol reference at runtime.
 | `getModels` | — | List DB models + env aliases. |
 | `getOpenRouterModels` | — | List public OpenRouter catalog. |
 
-#### File Visibility
+#### File Visibility (Project-Scoped)
 
 | Method | Params | Description |
 |---|---|---|
@@ -238,7 +280,7 @@ returns the canonical, machine-readable protocol reference at runtime.
 | `skill/add` | `name` | Enable a session skill. |
 | `skill/remove` | `name` | Disable a session skill. |
 
-### 3.2 Notifications (Server → Client)
+### 4.2 Notifications (Server → Client)
 
 | Notification | Payload | Description |
 |---|---|---|
@@ -248,7 +290,7 @@ returns the canonical, machine-readable protocol reference at runtime.
 | `ui/notify` | `text`, `level` | Toast/status notification. |
 | `editor/diff` | `runId`, `file`, `patch` | Proposed file modification. |
 
-### 3.3 Run Lifecycle
+### 4.3 Run Lifecycle
 
 A run is an open-ended container for turns sharing conversation history.
 Runs do not close. The client can add turns indefinitely.
@@ -275,28 +317,49 @@ agent can continue.
 The client resolves them (accept/reject) and writes accepted changes to its own
 filesystem. The server never touches the working tree.
 
+### 4.4 Client Intent Prefixes
+
+The client controls run continuity through prefix conventions:
+
+| Prefix | Intent    | Server params                                           |
+|--------|-----------|---------------------------------------------------------|
+| `:`    | Continue  | `runId = <current>` — same run, same history            |
+| `::`   | New       | `runId = nil` — new run, fresh agent promotions         |
+| `:::`  | Lite      | `runId = nil, noContext = true` — new run, no file map  |
+| `::::` | Fork      | `runId = <current>, fork = true` — new run, copies history + agent promotions from source |
+
+- **Continue**: Default. Conversation continues with full history and decay tracking.
+- **New**: Fresh conversation. Old run stays idle. Client promotions (project-scoped)
+  carry over. Agent promotions do not.
+- **Lite**: Fresh run with no file context. System prompt and protocol still apply.
+  Useful for quick questions that don't need codebase awareness.
+- **Fork**: Branch the conversation. New run seeded with turn history and agent
+  promotions copied from the source run.
+
 ---
 
-## 4. Core Terminology
+## 5. Core Terminology
 
 | Term        | Definition |
 |-------------|------------|
-| **Run**     | An open-ended container for turns sharing conversation history. Typed `ask` or `act`. |
-| **Turn**    | A single LLM request/response cycle. Stored as an XML tree in the database. |
+| **Project** | A codebase. Owns file index, symbols, and client promotions. |
+| **Session** | A client connection to a project. Owns config (persona, system prompt, skills). |
+| **Run**     | An open-ended conversation within a session. Owns agent promotions, turns, findings. |
+| **Turn**    | A single LLM request/response cycle within a run. Owns editor promotions (transient). |
 | **Finding** | A proposed action extracted from a turn: **diff** (edit/create/delete), **command** (run/env), or **notification** (summary/prompt_user). |
-| **Promotion** | A record that a file was placed into context by a specific source (client, agent, editor). |
+| **Promotion** | A record that a file was placed into context by a specific source (client, agent, editor) at a specific scope (project, run, turn). |
 | **Fidelity** | The level of detail the model receives for a file (full, full:readonly, signatures, path, excluded). Derived at render time, never stored. |
-| **Decay** | The mechanism by which agent promotions are removed after the model stops referencing a file. |
+| **Decay** | The mechanism by which agent promotions are removed after the model stops referencing a file. Run-scoped. |
 | **Retained** | Model-facing term for an agent-promoted file (used in system prompts). |
 | **Rumsfeld Loop** | The turn cycle: the model must declare `<tasks>`, `<known>`, `<unknown>` before acting. Forces discovery before modification. |
 
 ---
 
-## 5. The Rumsfeld Loop
+## 6. The Rumsfeld Loop
 
 Every turn follows the same cognitive discipline, enforced by protocol validation.
 
-### 5.1 Required Structure
+### 6.1 Required Structure
 
 The model must begin every response with three tags in order:
 
@@ -309,29 +372,35 @@ This structure is identical in ASK and ACT modes. The system prompts
 (`system.ask.md`, `system.act.md`) are the authoritative reference for
 model-facing tag definitions.
 
-### 5.2 Exit Conditions
+### 6.2 Exit Conditions
 
 | Condition | Status returned | What happens next |
 |---|---|---|
-| ASK: `<unknown/>` is empty | `completed` | Model must provide `<summary>`. Run can still receive follow-up turns. |
-| ACT: All tasks complete, `<unknown/>` empty | `completed` | Model must provide `<summary>`. |
+| Gather tags present (`<read>`, `<env>`) | Agent continues | Loop forces next turn — model requested data it hasn't seen yet. |
 | Findings produced (diffs, commands) | `proposed` | Trigger blocks next turn until all findings resolved. |
-| Unknowns remain, gather tags present | Agent continues | Next turn in the loop. |
+| ASK: `<unknown/>` is empty | `completed` | Model must provide `<summary>`. Run stays open for follow-up. |
+| ACT: All tasks complete, `<unknown/>` empty | `completed` | Model must provide `<summary>`. |
 
-### 5.3 Protocol Validation
+Note: Gather tags take priority over completion. If the model emits both `<read>`
+and `<summary>` in the same turn, the loop continues — the model was answering
+blind without the data it requested.
+
+### 6.3 Protocol Validation
 
 The server validates each response against mode-specific constraints:
 
 - **Required tags** must be present (tasks, known, unknown).
 - **Allowed tags** are mode-dependent (ASK cannot use edit/create/delete/run).
+- Constraints are carried as attributes on the `<ask>`/`<act>` mode tag wrapping
+  the user prompt. They change per-turn based on `has_unknowns`.
 - Violations trigger a retry (up to 5 attempts) with the validation error
-  fed back to the model.
+  fed back to the model as `<error>` elements.
 
 ---
 
-## 6. Testing
+## 7. Testing
 
-### 6.1 Test Tiers
+### 7.1 Test Tiers
 
 | Tier | Location | Runner | LLM required? |
 |---|---|---|---|
@@ -339,32 +408,30 @@ The server validates each response against mode-specific constraints:
 | Integration | `test/integration/**/*.test.js` | `node --test` | No |
 | E2E | `test/e2e/**/*.test.js` | `node --test` | **Yes** |
 
-### 6.2 E2E Model Requirement
+### 7.2 Environment Cascade
+
+Environment variables are loaded via `--env-file-if-exists` in package.json scripts.
+Each layer overrides the previous:
+
+1. `.env.example` — load-bearing defaults (OPENROUTER_BASE_URL, PORT, etc.)
+2. `.env` — local overrides (API keys, model aliases, DB path)
+3. `.env.test` / `.env.dev` — mode-specific overrides
+
+Always use `npm run test:e2e`, `npm run test:unit`, etc. Never invoke node
+directly with a single env file.
+
+### 7.3 E2E Model Requirement
 
 E2E tests execute real turns against a live LLM. This is intentional — the
 Rumsfeld Loop's value is in how it constrains real model behavior, which cannot
 be verified with mocks.
 
 **Setup:**
-1. Install Ollama and pull a local model.
-2. Configure `.env.test` with `RUMMY_MODEL_DEFAULT` pointing to that model.
-3. Ensure Ollama is running before executing E2E tests.
+1. Configure `.env.test` with `RUMMY_MODEL_DEFAULT` pointing to a capable model.
+2. Ensure the model provider is available (Ollama running, or OpenRouter API key set).
 
 There is no mock LLM fallback. If the model is unavailable, E2E tests fail.
 
-### 6.3 Coverage Target
+### 7.4 Coverage Target
 
 80% lines, 80% branches, 80% functions — enforced by `npm test`.
-
----
-
-## 7. Dead Schema (Removal Targets)
-
-These tables exist in the migration but are not used by the implementation.
-They will be removed in the schema migration that introduces `file_promotions`.
-
-| Table | Reason for removal |
-|---|---|
-| `protocol_constraints` | Protocol validation is hardcoded in AgentLoop. |
-| `system_hooks` | Hooks are registered in-memory via HookRegistry. |
-| `file_type_handlers` | Extraction routing is hardcoded in SymbolExtractor/CtagsExtractor. |

@@ -13,8 +13,17 @@ export default class TurnBuilder {
 	}
 
 	async build(initialData = {}) {
-		const { type, project, model, db, prompt, sequence, hasUnknowns, turnId } =
-			initialData;
+		const {
+			type,
+			project,
+			model,
+			db,
+			prompt,
+			sequence,
+			hasUnknowns,
+			turnId,
+			runId,
+		} = initialData;
 
 		const doc = this.#dom.createDocument(null, "turn", null);
 		const root = doc.documentElement;
@@ -56,6 +65,7 @@ export default class TurnBuilder {
 			project,
 			type,
 			sequence,
+			runId,
 		});
 		await this.#hooks.processTurn(rummy);
 

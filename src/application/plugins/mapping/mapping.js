@@ -9,6 +9,7 @@ export default class RepoMapPlugin {
 
 			const files = await db.get_project_repo_map.all({
 				project_id: project.id,
+				run_id: rummy.runId,
 			});
 			const dbFiles = new Set();
 			for (const f of files) {
@@ -19,6 +20,7 @@ export default class RepoMapPlugin {
 			const repoMap = new RepoMap(ctx, db, project.id);
 			const perspective = await repoMap.renderPerspective({
 				sequence: rummy.sequence,
+				runId: rummy.runId,
 			});
 
 			const filesContainer = rummy.tag("files");

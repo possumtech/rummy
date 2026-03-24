@@ -213,8 +213,7 @@ export default class ClientConnection {
 						notifications: {
 							"run/step/completed":
 								"A turn finished. Contains structured turn object.",
-							"run/progress":
-								"Agent task status and intermediate updates.",
+							"run/progress": "Agent task status and intermediate updates.",
 							"ui/render": "Streaming output fragments for display.",
 							"ui/notify": "Toast/status notifications (text + level).",
 							"editor/diff": "Proposed file modifications (file + patch).",

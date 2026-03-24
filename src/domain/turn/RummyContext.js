@@ -51,6 +51,10 @@ export default class RummyContext {
 		return this.#context.sequence || 0;
 	}
 
+	get runId() {
+		return this.#context.runId || null;
+	}
+
 	/**
 	 * Semantic access to standard XML sections.
 	 */

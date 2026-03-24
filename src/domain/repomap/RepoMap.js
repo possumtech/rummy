@@ -179,15 +179,22 @@ export default class RepoMap {
 			budget = budget ? Math.min(budget, cap) : cap;
 		}
 
-		if (!budget) throw new Error("Context budget unavailable: set RUMMY_MAP_TOKEN_BUDGET or provide contextSize.");
+		if (!budget)
+			throw new Error(
+				"Context budget unavailable: set RUMMY_MAP_TOKEN_BUDGET or provide contextSize.",
+			);
+
+		const runId = options.runId || null;
 
 		const rankedFiles = await this.#db.get_ranked_repo_map.all({
 			project_id: this.#projectId,
+			run_id: runId,
 		});
 
 		const tagMap = new Map();
 		const allTags = await this.#db.get_project_repo_map.all({
 			project_id: this.#projectId,
+			run_id: runId,
 		});
 		for (const row of allTags) {
 			if (!tagMap.has(row.path)) tagMap.set(row.path, []);
@@ -209,12 +216,14 @@ export default class RepoMap {
 			10,
 		);
 
-		// Expire decayed agent promotions
-		await this.#db.decay_agent_promotions.run({
-			project_id: this.#projectId,
-			current_turn: currentTurn,
-			decay_threshold: decayThreshold,
-		});
+		// Expire decayed agent promotions for this run
+		if (runId) {
+			await this.#db.decay_agent_promotions.run({
+				run_id: runId,
+				current_turn: currentTurn,
+				decay_threshold: decayThreshold,
+			});
+		}
 
 		for (const file of rankedFiles) {
 			const fidelity = this.#deriveFidelity(file, currentTurn, decayThreshold);
@@ -248,9 +257,10 @@ export default class RepoMap {
 
 			// fidelity === "signatures" — symbols only, subject to budget
 			const symbols = tagMap.get(file.path) || [];
-			let displayFile = symbols.length > 0
-				? { path: file.path, size: file.size, symbols, fidelity }
-				: { path: file.path, size: file.size, fidelity };
+			let displayFile =
+				symbols.length > 0
+					? { path: file.path, size: file.size, symbols, fidelity }
+					: { path: file.path, size: file.size, fidelity };
 
 			let finalTokens =
 				file.symbol_tokens ||
@@ -272,7 +282,11 @@ export default class RepoMap {
 						displayFile = signaturesOnly;
 						finalTokens = sigTokens;
 					} else {
-						const pathOnly = { path: file.path, size: file.size, fidelity: "path" };
+						const pathOnly = {
+							path: file.path,
+							size: file.size,
+							fidelity: "path",
+						};
 						const pathTokens = this.#tokenizer.encode(
 							JSON.stringify(pathOnly),
 						).length;

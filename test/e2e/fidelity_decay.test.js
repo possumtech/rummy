@@ -41,7 +41,9 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 		const turnMap = new Map();
 		client.on("run/step/completed", (payload) => {
 			const seq = Number(payload.turn.sequence);
-			console.log(`  [TEST] Turn ${seq}. Context has <source>: ${payload.turn.context?.includes("<source>")}`);
+			console.log(
+				`  [TEST] Turn ${seq}. Context has <source>: ${payload.turn.context?.includes("<source>")}`,
+			);
 			turnMap.set(seq, payload.turn);
 		});
 
@@ -56,7 +58,8 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 		// Step 1: Ask the question — model should <read> the file and loop
 		const result1 = await client.call("ask", {
 			model,
-			prompt: "What color is the robe in the wizard file (src/secret/wizard.txt)?",
+			prompt:
+				"What color is the robe in the wizard file (src/secret/wizard.txt)?",
 		});
 		const runId = result1.runId;
 
@@ -70,14 +73,20 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 					t.assistant.content,
 					t.assistant.known,
 					t.assistant.summary,
-				].filter(Boolean).join(" ").toLowerCase();
+				]
+					.filter(Boolean)
+					.join(" ")
+					.toLowerCase();
 				return text.includes("purple");
 			});
 			if (identifiedTurn) break;
 			await new Promise((r) => setTimeout(r, 1000));
 		}
 
-		assert.ok(identifiedTurn, `Model failed to identify the color after ${turnMap.size} turns.`);
+		assert.ok(
+			identifiedTurn,
+			`Model failed to identify the color after ${turnMap.size} turns.`,
+		);
 
 		// Step 2: Continue the SAME run — file should be warm (agent promotion active)
 		await client.call("ask", {

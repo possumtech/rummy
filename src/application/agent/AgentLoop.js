@@ -228,6 +228,7 @@ export default class AgentLoop {
 				hasUnknowns,
 				tasksComplete,
 				turnId,
+				runId: currentRunId,
 			});
 
 			const currentTurnMessages = await turnObj.serialize();
@@ -424,6 +425,7 @@ export default class AgentLoop {
 			// Process Findings
 			const atomicResult = {
 				runId: currentRunId,
+				sequence: Number(currentTurnSequence),
 				content: finalResponse.content,
 				reasoning: finalResponse.reasoning_content,
 				usage,
@@ -449,6 +451,7 @@ export default class AgentLoop {
 				try {
 					await this.#db.update_file_attention.run({
 						project_id: String(projectId),
+						run_id: currentRunId,
 						turn_seq: Number(currentTurnSequence),
 						mention: String(mention),
 					});

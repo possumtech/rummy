@@ -6,7 +6,7 @@ import TestServer from "../helpers/TestServer.js";
 
 describe("E2E: Reasoning Content Normalization", () => {
 	let tdb, tserver, client;
-	const model = "hyzenqwen";
+	const model = process.env.RUMMY_MODEL_DEFAULT;
 
 	before(async () => {
 		tdb = await TestDb.create();

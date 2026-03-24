@@ -12,7 +12,7 @@ describe("E2E: Protocol Alignment & Stability", () => {
 	const iterations = process.env.STABILITY_ITERATIONS
 		? parseInt(process.env.STABILITY_ITERATIONS, 10)
 		: 1;
-	const model = "hyzenqwen";
+	const model = process.env.RUMMY_MODEL_DEFAULT;
 
 	before(async () => {
 		await fs.mkdir(projectPath, { recursive: true });

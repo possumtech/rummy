@@ -115,7 +115,8 @@ export default class SessionManager {
 		// Derive fidelity label for client display
 		let fidelity = "signatures";
 		if (dbFile?.client_constraint === "excluded") fidelity = "excluded";
-		else if (dbFile?.client_constraint === "full:readonly") fidelity = "full:readonly";
+		else if (dbFile?.client_constraint === "full:readonly")
+			fidelity = "full:readonly";
 		else if (dbFile?.client_constraint === "full") fidelity = "full";
 		else if (dbFile?.has_agent_promotion) fidelity = "full";
 		else if (dbFile?.has_editor_promotion) fidelity = "full:readonly";

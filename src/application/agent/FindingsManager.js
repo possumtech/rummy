@@ -42,6 +42,7 @@ export default class FindingsManager {
 					});
 					await this.#db.upsert_agent_promotion.run({
 						file_id: fileId,
+						run_id: atomicResult.runId,
 						turn_seq: atomicResult.sequence ?? 0,
 					});
 				}
@@ -57,6 +58,7 @@ export default class FindingsManager {
 					if (file) {
 						await this.#db.delete_agent_promotion.run({
 							file_id: file.id,
+							run_id: atomicResult.runId,
 						});
 					}
 				}
