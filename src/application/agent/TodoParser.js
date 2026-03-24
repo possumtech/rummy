@@ -1,5 +1,5 @@
 const VALID_VERBS = new Set([
-	"read", "env", "edit", "create", "delete", "run", "prompt_user", "summary",
+	"read", "drop", "env", "edit", "create", "delete", "run", "prompt_user", "summary",
 ]);
 
 /**
@@ -25,14 +25,20 @@ export default class TodoParser {
 				const completed = match[1].toLowerCase() === "x";
 				const rest = match[2].trim();
 
-				// Try to extract verb prefix: "verb: description"
-				const verbMatch = rest.match(/^(\w+):\s*(.*)$/);
+				// Extract verb: try "verb: description" first, then "verb description"
 				let verb = null;
 				let text = rest;
 
-				if (verbMatch && VALID_VERBS.has(verbMatch[1])) {
-					verb = verbMatch[1];
-					text = verbMatch[2];
+				const colonMatch = rest.match(/^(\w+):\s*(.*)$/);
+				if (colonMatch && VALID_VERBS.has(colonMatch[1])) {
+					verb = colonMatch[1];
+					text = colonMatch[2];
+				} else {
+					const spaceMatch = rest.match(/^(\w+)\s+(.*)$/);
+					if (spaceMatch && VALID_VERBS.has(spaceMatch[1])) {
+						verb = spaceMatch[1];
+						text = spaceMatch[2];
+					}
 				}
 
 				const item = { verb, text, completed };

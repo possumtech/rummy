@@ -53,6 +53,21 @@ test("TodoParser", async (t) => {
 		assert.strictEqual(next, null);
 	});
 
+	await t.test("should parse verb without colon separator", () => {
+		const text = `
+- [ ] edit math.js to fix add function
+- [x] read math.js
+- [ ] summary of changes
+`;
+		const { list } = TodoParser.parse(text);
+		assert.strictEqual(list[0].verb, "edit");
+		assert.strictEqual(list[0].text, "math.js to fix add function");
+		assert.strictEqual(list[1].verb, "read");
+		assert.strictEqual(list[1].text, "math.js");
+		assert.strictEqual(list[2].verb, "summary");
+		assert.strictEqual(list[2].text, "of changes");
+	});
+
 	await t.test("should ignore invalid verb prefixes", () => {
 		const text = "- [ ] frobnicate: do something weird";
 		const { list } = TodoParser.parse(text);
