@@ -332,7 +332,7 @@ test("Turn", async (t) => {
 	);
 
 	await t.test(
-		"serialize() returns system, user (with context), assistant messages",
+		"serialize() returns system, user (with feedback), assistant messages",
 		async () => {
 			const turn = new Turn(db, turnId);
 			await turn.hydrate();
@@ -341,13 +341,12 @@ test("Turn", async (t) => {
 			assert.strictEqual(messages.length, 3);
 
 			assert.strictEqual(messages[0].role, "system");
-			assert.strictEqual(messages[0].content, "You are a helpful assistant.");
+			assert.ok(
+				messages[0].content.includes("helpful assistant"),
+				"system message includes identity",
+			);
 
 			assert.strictEqual(messages[1].role, "user");
-			assert.ok(
-				messages[1].content.includes("<context>"),
-				"user message includes context XML",
-			);
 			assert.ok(
 				messages[1].content.includes("<user>"),
 				"user message includes user XML",

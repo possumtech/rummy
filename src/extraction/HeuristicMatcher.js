@@ -74,28 +74,32 @@ export default class HeuristicMatcher {
 		const fileLines = fileContent.split(/\r?\n/);
 
 		// 1. Exact Match Attempt (line-boundary substring search)
-		const exactIndex = fileContent.indexOf(searchBlock);
-		if (exactIndex !== -1) {
+		// Find all exact matches at line boundaries
+		let exactIdx = fileContent.indexOf(searchBlock);
+		let lastExactIdx = -1;
+		let exactCount = 0;
+		while (exactIdx !== -1) {
 			const atLineBoundary =
-				exactIndex === 0 || fileContent[exactIndex - 1] === "\n";
+				exactIdx === 0 || fileContent[exactIdx - 1] === "\n";
 			if (atLineBoundary) {
-				const secondIndex = fileContent.indexOf(searchBlock, exactIndex + 1);
-				if (secondIndex === -1) {
-					const newContent =
-						fileContent.slice(0, exactIndex) +
-						replaceBlock +
-						fileContent.slice(exactIndex + searchBlock.length);
-					const patch = generateUnifiedDiff(filePath, fileContent, newContent);
-					return { patch, newContent, warning: null, error: null };
-				}
-				return {
-					patch: null,
-					newContent: null,
-					warning: null,
-					error:
-						"The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
-				};
+				exactCount++;
+				lastExactIdx = exactIdx;
 			}
+			exactIdx = fileContent.indexOf(searchBlock, exactIdx + 1);
+		}
+
+		if (exactCount > 0) {
+			const useIdx = lastExactIdx;
+			const newContent =
+				fileContent.slice(0, useIdx) +
+				replaceBlock +
+				fileContent.slice(useIdx + searchBlock.length);
+			const patch = generateUnifiedDiff(filePath, fileContent, newContent);
+			const warning =
+				exactCount > 1
+					? `SEARCH block matched ${exactCount} locations. Edit was applied to the last occurrence. Use more surrounding context in future edits to avoid ambiguity.`
+					: null;
+			return { patch, newContent, warning, error: null };
 		}
 
 		// 2. Fuzzy Tokenized Match (Ignore leading/trailing whitespace per line)
@@ -153,14 +157,7 @@ export default class HeuristicMatcher {
 			};
 		}
 
-		if (matchCount > 1) {
-			return {
-				patch: null,
-				warning: null,
-				error:
-					"The SEARCH block matched multiple locations in the file. Please include more surrounding context lines in the SEARCH block to make it unique.",
-			};
-		}
+		const fuzzyAmbiguous = matchCount > 1;
 
 		// 3. Indentation Healing
 		const matchedFileLines = fileLines.slice(
@@ -205,6 +202,12 @@ export default class HeuristicMatcher {
 		const newContent = newFileLines.join("\n");
 
 		const patch = generateUnifiedDiff(filePath, fileContent, newContent);
+
+		if (fuzzyAmbiguous) {
+			warning =
+				(warning ? `${warning} ` : "") +
+				`SEARCH block matched ${matchCount} locations. Edit was applied to the last occurrence. Use more surrounding context in future edits to avoid ambiguity.`;
+		}
 
 		return { patch, newContent, warning, error: null };
 	}

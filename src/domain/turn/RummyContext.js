@@ -63,6 +63,10 @@ export default class RummyContext {
 		return this.#context.noContext === true;
 	}
 
+	get contextSize() {
+		return this.#context.contextSize || null;
+	}
+
 	/**
 	 * Semantic access to standard XML sections.
 	 */

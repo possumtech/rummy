@@ -22,43 +22,36 @@ export default class RepoMapPlugin {
 			const perspective = await repoMap.renderPerspective({
 				sequence: rummy.sequence,
 				runId: rummy.runId,
+				contextSize: rummy.contextSize,
 			});
 
-			const filesContainer = rummy.tag("files");
-			rummy.contextEl.appendChild(filesContainer);
-
-			const fidelityLabel = (f) => {
-				if (f.content) return "complete";
-				if (f.symbols?.length > 0) return "symbols";
-				return "unread";
-			};
+			const docsEl = rummy.tag("documents");
+			let index = 1;
 
 			for (const f of perspective.files) {
-				const fileAttrs = {
-					path: f.path,
-					size: String(f.size ?? 0),
-					visibility: fidelityLabel(f),
-				};
+				const docEl = rummy.tag("document", { index: String(index++) });
 
-				if (f.fidelity === "full:readonly") {
-					fileAttrs["read-only"] = "true";
-				}
+				const sourceLabel = f.content
+					? f.path
+					: f.symbols?.length > 0
+						? `${f.path} [signatures]`
+						: `${f.path} [path only]`;
 
-				const fileEl = rummy.tag("file", fileAttrs);
-
-				if (f.symbols && f.symbols.length > 0) {
-					const highDensitySymbols = f.symbols
-						.map((s) => (s.params ? `${s.name}${s.params}` : s.name))
-						.join("\t");
-					fileEl.appendChild(rummy.tag("symbols", {}, [highDensitySymbols]));
-				}
+				docEl.appendChild(rummy.tag("source", {}, [sourceLabel]));
 
 				if (f.content) {
-					fileEl.appendChild(rummy.tag("source", {}, [f.content]));
+					docEl.appendChild(rummy.tag("document_content", {}, [f.content]));
+				} else if (f.symbols && f.symbols.length > 0) {
+					const sigs = f.symbols
+						.map((s) => (s.params ? `${s.name}${s.params}` : s.name))
+						.join(", ");
+					docEl.appendChild(rummy.tag("document_content", {}, [sigs]));
 				}
 
-				filesContainer.appendChild(fileEl);
+				docsEl.appendChild(docEl);
 			}
+
+			rummy.system.appendChild(docsEl);
 		});
 
 		hooks.project.init.completed.on(async (payload) => {

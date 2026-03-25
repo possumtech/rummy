@@ -21,7 +21,6 @@ export default class LlmProvider {
 			`[LlmProvider DEBUG] Resolving model '${model}' -> '${resolvedModel}'`,
 		);
 
-		// Resolve temperature: per-request > env default
 		const temperature =
 			options.temperature ??
 			(process.env.RUMMY_TEMPERATURE !== undefined
@@ -39,5 +38,14 @@ export default class LlmProvider {
 			resolvedModel,
 			resolvedOptions,
 		);
+	}
+
+	async getContextSize(model) {
+		const resolvedModel = process.env[`RUMMY_MODEL_${model}`] || model;
+		if (resolvedModel.startsWith("ollama/")) {
+			const localModel = resolvedModel.replace("ollama/", "");
+			return this.#ollama.getContextSize(localModel);
+		}
+		return this.#openRouter.getContextSize(resolvedModel);
 	}
 }

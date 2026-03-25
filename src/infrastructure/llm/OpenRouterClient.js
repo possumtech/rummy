@@ -42,4 +42,16 @@ export default class OpenRouterClient {
 		}
 		return response.json();
 	}
+
+	async getContextSize(model) {
+		const response = await fetch(`${this.#baseUrl}/models`, {
+			headers: {
+				Authorization: `Bearer ${this.#apiKey}`,
+			},
+		});
+		if (!response.ok) return null;
+		const data = await response.json();
+		const found = data.data?.find((m) => m.id === model);
+		return found?.context_length || null;
+	}
 }

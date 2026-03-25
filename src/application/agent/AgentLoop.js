@@ -141,6 +141,15 @@ export default class AgentLoop {
 
 		const loopPrompt = prompt;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
+
+		// Fetch context size for budget computation (once per run)
+		let contextSize = null;
+		if (!noContext) {
+			try {
+				contextSize = await this.#llmProvider.getContextSize(requestedModel);
+			} catch (_err) {}
+		}
+
 		let protocolRetries = 0;
 		const MAX_PROTOCOL_RETRIES = 5;
 		let currentTurnSequence = 0;
@@ -224,6 +233,7 @@ export default class AgentLoop {
 				turnId,
 				runId: currentRunId,
 				noContext,
+				contextSize,
 			});
 
 			await this.#hooks.run.progress.emit({
@@ -463,7 +473,13 @@ export default class AgentLoop {
 			);
 
 			// PERSIST FINDINGS TO DB + EMIT NOTIFICATIONS
+			// Failed diffs (patch resolution error) are fed back to the model, not to the client.
+			const diffErrors = [];
 			for (const diff of atomicResult.diffs) {
+				if (diff.error) {
+					diffErrors.push({ file: diff.file, error: diff.error });
+					continue;
+				}
 				const row = await this.#db.insert_finding_diff.get({
 					run_id: currentRunId,
 					turn_id: turnId,
@@ -479,8 +495,23 @@ export default class AgentLoop {
 					file: diff.file,
 					patch: diff.patch,
 					warning: diff.warning || null,
-					error: diff.error || null,
+					error: null,
 				});
+			}
+			if (diffErrors.length > 0) {
+				const contextNode = elements.find((el) => el.tag_name === "context");
+				if (contextNode) {
+					for (let i = 0; i < diffErrors.length; i++) {
+						await this.#db.insert_turn_element.run({
+							turn_id: turnId,
+							parent_id: contextNode.id,
+							tag_name: "error",
+							content: `Edit failed for ${diffErrors[i].file}: ${diffErrors[i].error}`,
+							attributes: JSON.stringify({ file: diffErrors[i].file }),
+							sequence: 180 + i,
+						});
+					}
+				}
 			}
 			for (const cmd of atomicResult.commands) {
 				const row = await this.#db.insert_finding_command.get({
@@ -567,19 +598,23 @@ export default class AgentLoop {
 			);
 
 			if (breakingTags.length > 0) {
-				await this.#db.update_run_status.run({
-					id: currentRunId,
-					status: "proposed",
-				});
 				const proposed = await this.#db.get_unresolved_findings.all({
 					run_id: currentRunId,
 				});
-				return {
-					runId: currentRunId,
-					status: "proposed",
-					turn: currentTurnSequence,
-					proposed,
-				};
+				if (proposed.length > 0) {
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: "proposed",
+					});
+					return {
+						runId: currentRunId,
+						status: "proposed",
+						turn: currentTurnSequence,
+						proposed,
+					};
+				}
+				// Breaking tags were emitted but all failed resolution —
+				// errors are in context, loop continues so the model can retry.
 			}
 
 			if (readTags.length > 0) {

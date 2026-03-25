@@ -29,14 +29,16 @@ if (!defaultModel) {
 // Resolve the actual model ID (handles aliases like RUMMY_MODEL_ccp=...)
 const actualModelId = process.env[`RUMMY_MODEL_${defaultModel}`] || defaultModel;
 
-// Check for Universal Ctags (Optional but Recommended)
+// Check for optional system dependencies
 const ctagsCheck = spawnSync("ctags", ["--version"]);
 if (ctagsCheck.error || ctagsCheck.status !== 0) {
-	console.warn("\n[RUMMY] WARNING: 'universal-ctags' not found in PATH.");
-	console.warn(
-		"        Repository Mapping quality will be significantly reduced.",
-	);
-	console.warn("        Please install it: https://ctags.io/\n");
+	console.warn("[RUMMY] WARNING: 'universal-ctags' not found. Symbol extraction disabled.");
+	console.warn("        Install: https://ctags.io/");
+}
+
+const gitCheck = spawnSync("git", ["--version"]);
+if (gitCheck.error || gitCheck.status !== 0) {
+	console.warn("[RUMMY] WARNING: 'git' not found. File tracking will use manual activation only.");
 }
 
 // Check if we need an API key (OpenRouter models) or OLLAMA_BASE_URL

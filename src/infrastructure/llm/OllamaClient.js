@@ -34,4 +34,19 @@ export default class OllamaClient {
 
 		return data;
 	}
+
+	async getContextSize(model) {
+		const response = await fetch(`${this.#baseUrl}/api/show`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ model }),
+		});
+		if (!response.ok) return null;
+		const data = await response.json();
+		const info = data.model_info || {};
+		for (const [key, value] of Object.entries(info)) {
+			if (key.endsWith(".context_length")) return value;
+		}
+		return null;
+	}
 }

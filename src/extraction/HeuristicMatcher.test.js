@@ -28,7 +28,7 @@ function hello() {
 		ok(result.patch.includes('+  console.log("hello rummy");'));
 	});
 
-	it("should fail if multiple exact matches are found", () => {
+	it("should heal multiple exact matches by using the last one", () => {
 		const content = `
 log("hi");
 log("hi");
@@ -43,8 +43,10 @@ log("hi");
 			replaceBlock,
 		);
 
-		strictEqual(result.patch, null);
-		ok(result.error.includes("multiple locations"));
+		ok(result.patch, "Should produce a patch");
+		strictEqual(result.error, null);
+		ok(result.warning.includes("matched 2 locations"));
+		ok(result.patch.includes('+log("bye");'));
 	});
 
 	it("should perform a fuzzy match by ignoring whitespace", () => {
@@ -108,13 +110,10 @@ log("hi");
 		ok(result.error.includes("Could not find the SEARCH block"));
 	});
 
-	it("should handle multiple fuzzy matches", () => {
-		const content = `
-    log("a");
-    log("a");
-    `.trim();
-		const searchBlock = 'log("a");';
-		const replaceBlock = 'log("b");';
+	it("should heal multiple fuzzy matches by using the last one", () => {
+		const content = "function a() { return 1; }\nfunction a() { return 1; }";
+		const searchBlock = "function a() { return 1; }";
+		const replaceBlock = "function a() { return 2; }";
 
 		const result = HeuristicMatcher.matchAndPatch(
 			filePath,
@@ -123,8 +122,10 @@ log("hi");
 			replaceBlock,
 		);
 
-		strictEqual(result.patch, null);
-		ok(result.error.includes("multiple locations"));
+		ok(result.patch, "Should produce a patch");
+		strictEqual(result.error, null);
+		ok(result.warning.includes("matched 2 locations"));
+		ok(result.patch.includes("+function a() { return 2; }"));
 	});
 
 	it("should perform a fuzzy match skipping blank lines in target file", () => {

@@ -24,6 +24,7 @@ export default class TurnBuilder {
 			turnId,
 			runId,
 			noContext,
+			contextSize,
 		} = initialData;
 
 		const doc = this.#dom.createDocument(null, "turn", null);
@@ -69,6 +70,7 @@ export default class TurnBuilder {
 			runId,
 			turnId,
 			noContext,
+			contextSize,
 		});
 		await this.#hooks.processTurn(rummy);
 

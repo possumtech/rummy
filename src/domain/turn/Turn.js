@@ -159,16 +159,44 @@ export default class Turn {
 		const json = this.toJson();
 
 		const messages = [];
-		if (!forHistory && json.system) {
-			messages.push({ role: "system", content: json.system });
+
+		if (!forHistory) {
+			// System = identity text + document children (rendered as XML)
+			const systemNode = this.#data.root[0]?.children.find(
+				(c) => c.tag_name === "system",
+			);
+			if (systemNode) {
+				let systemContent = systemNode.content || "";
+				for (const child of systemNode.children) {
+					systemContent += this.toXml(child);
+				}
+				if (systemContent) {
+					messages.push({ role: "system", content: systemContent });
+				}
+			}
 		}
 
+		// User = feedback (context children) + prompt
+		const contextNode = this.#data.root[0]?.children.find(
+			(c) => c.tag_name === "context",
+		);
 		const userNode = this.#data.root[0]?.children.find(
 			(c) => c.tag_name === "user",
 		);
 		const userXml = userNode ? this.toXml(userNode) : json.user || "";
-		const userContent = forHistory ? userXml : (json.context || "") + userXml;
-		if (userContent) messages.push({ role: "user", content: userContent });
+
+		if (forHistory) {
+			if (userXml) messages.push({ role: "user", content: userXml });
+		} else {
+			let feedback = "";
+			if (contextNode) {
+				for (const child of contextNode.children) {
+					feedback += this.toXml(child);
+				}
+			}
+			const userContent = feedback + userXml;
+			if (userContent) messages.push({ role: "user", content: userContent });
+		}
 
 		if (json.assistant.content) {
 			messages.push({ role: "assistant", content: json.assistant.content });
