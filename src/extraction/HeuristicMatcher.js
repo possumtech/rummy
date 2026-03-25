@@ -1,71 +1,30 @@
-const CONTEXT_LINES = 3;
+import { execSync } from "node:child_process";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export function generateUnifiedDiff(filePath, oldContent, newContent) {
-	const oldLines = oldContent.split("\n");
-	const newLines = newContent.split("\n");
+	const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+	const oldPath = join(tmpdir(), `rummy_diff_old_${id}`);
+	const newPath = join(tmpdir(), `rummy_diff_new_${id}`);
 
-	// Find first differing line
-	let start = 0;
-	while (
-		start < oldLines.length &&
-		start < newLines.length &&
-		oldLines[start] === newLines[start]
-	) {
-		start++;
+	try {
+		writeFileSync(oldPath, oldContent);
+		writeFileSync(newPath, newContent);
+
+		const result = execSync(
+			`diff -u --label "${filePath}\told" --label "${filePath}\tnew" "${oldPath}" "${newPath}"`,
+			{ encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+		);
+		return result;
+	} catch (err) {
+		// diff exits 1 when files differ — that's the success case
+		if (err.stdout) return err.stdout;
+		return "";
+	} finally {
+		try { unlinkSync(oldPath); } catch {}
+		try { unlinkSync(newPath); } catch {}
 	}
-
-	// Find last differing line (from the end)
-	let oldEnd = oldLines.length - 1;
-	let newEnd = newLines.length - 1;
-	while (
-		oldEnd > start &&
-		newEnd > start &&
-		oldLines[oldEnd] === newLines[newEnd]
-	) {
-		oldEnd--;
-		newEnd--;
-	}
-
-	// Context bounds
-	const ctxStart = Math.max(0, start - CONTEXT_LINES);
-	const ctxOldEnd = Math.min(oldLines.length - 1, oldEnd + CONTEXT_LINES);
-	const ctxNewEnd = Math.min(newLines.length - 1, newEnd + CONTEXT_LINES);
-
-	const hunkLines = [];
-
-	// Leading context
-	for (let i = ctxStart; i < start; i++) {
-		hunkLines.push(` ${oldLines[i]}`);
-	}
-	// Removed lines
-	for (let i = start; i <= oldEnd; i++) {
-		hunkLines.push(`-${oldLines[i]}`);
-	}
-	// Added lines
-	for (let i = start; i <= newEnd; i++) {
-		hunkLines.push(`+${newLines[i]}`);
-	}
-	// Trailing context
-	for (let i = oldEnd + 1; i <= ctxOldEnd; i++) {
-		hunkLines.push(` ${oldLines[i]}`);
-	}
-
-	const oldCount =
-		oldEnd - start + 1 + (start - ctxStart) + (ctxOldEnd - oldEnd);
-	const newCount =
-		newEnd - start + 1 + (start - ctxStart) + (ctxNewEnd - newEnd);
-
-	const header = `@@ -${ctxStart + 1},${oldCount} +${ctxStart + 1},${newCount} @@`;
-
-	return [
-		`Index: ${filePath}`,
-		"===================================================================",
-		`--- ${filePath}\told`,
-		`+++ ${filePath}\tnew`,
-		header,
-		...hunkLines,
-		"",
-	].join("\n");
 }
 
 export default class HeuristicMatcher {
