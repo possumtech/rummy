@@ -11,7 +11,10 @@ const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
 
 async function createIsolatedSession() {
-	const projectPath = join(tmpdir(), `rummy-modes-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	const projectPath = join(
+		tmpdir(),
+		`rummy-modes-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	);
 	await fs.mkdir(projectPath, { recursive: true });
 	await fs.writeFile(
 		join(projectPath, "app.js"),
@@ -46,7 +49,9 @@ async function createIsolatedSession() {
 
 describe("E2E: Run Modes", () => {
 	describe("Lite Mode (noContext)", () => {
-		it("ask with noContext should complete without file listings in context", { timeout: TIMEOUT }, async () => {
+		it("ask with noContext should complete without file listings in context", {
+			timeout: TIMEOUT,
+		}, async () => {
 			const { client, cleanup } = await createIsolatedSession();
 			try {
 				const notifications = [];
@@ -64,16 +69,19 @@ describe("E2E: Run Modes", () => {
 				);
 				assert.ok(result.runId, "Should have a runId");
 
-				assert.ok(notifications.length > 0, "Should have received at least one notification");
+				assert.ok(
+					notifications.length > 0,
+					"Should have received at least one notification",
+				);
 
 				const turn = notifications[0].turn;
 				const context = turn.context || "";
-				assert.ok(!context.includes("<file"), "Lite mode context should not contain file listings");
+				assert.ok(
+					!context.includes("<file"),
+					"Lite mode context should not contain file listings",
+				);
 
-				const text = [
-					turn.assistant.content,
-					turn.assistant.summary,
-				]
+				const text = [turn.assistant.content, turn.assistant.summary]
 					.filter(Boolean)
 					.join(" ");
 				assert.ok(text.includes("4"), "Model should answer 2+2 = 4");
@@ -84,7 +92,9 @@ describe("E2E: Run Modes", () => {
 			}
 		});
 
-		it("act with noContext should still be able to propose findings", { timeout: TIMEOUT }, async () => {
+		it("act with noContext should still be able to propose findings", {
+			timeout: TIMEOUT,
+		}, async () => {
 			const { client, cleanup } = await createIsolatedSession();
 			try {
 				const notifications = [];
@@ -93,7 +103,8 @@ describe("E2E: Run Modes", () => {
 				const result = await client.call("act", {
 					model,
 					noContext: true,
-					prompt: "Edit app.js: add a comment at the top of the file saying '// entry point'. Use an <edit> tag with SEARCH/REPLACE.",
+					prompt:
+						"Edit app.js: add a comment at the top of the file saying '// entry point'. Use an <edit> tag with SEARCH/REPLACE.",
 				});
 
 				assert.ok(
@@ -102,11 +113,17 @@ describe("E2E: Run Modes", () => {
 				);
 				assert.ok(result.runId, "Should have a runId");
 
-				assert.ok(notifications.length > 0, "Should have received at least one notification");
+				assert.ok(
+					notifications.length > 0,
+					"Should have received at least one notification",
+				);
 
 				const turn = notifications[0].turn;
 				const context = turn.context || "";
-				assert.ok(!context.includes("<file"), "Lite mode context should not contain file listings");
+				assert.ok(
+					!context.includes("<file"),
+					"Lite mode context should not contain file listings",
+				);
 
 				client.removeAllListeners("run/step/completed");
 			} finally {
@@ -116,7 +133,9 @@ describe("E2E: Run Modes", () => {
 	});
 
 	describe("Fork Mode", () => {
-		it("fork should create new run with history from parent", { timeout: TIMEOUT }, async () => {
+		it("fork should create new run with history from parent", {
+			timeout: TIMEOUT,
+		}, async () => {
 			const { client, cleanup } = await createIsolatedSession();
 			try {
 				const firstResult = await client.call("ask", {
@@ -134,7 +153,13 @@ describe("E2E: Run Modes", () => {
 					for (const f of firstResult.proposed) {
 						await client.call("run/resolve", {
 							runId: firstResult.runId,
-							resolution: { category: f.category, id: f.id, action: "accepted", output: "(ok)", isError: false },
+							resolution: {
+								category: f.category,
+								id: f.id,
+								action: "accepted",
+								output: "(ok)",
+								isError: false,
+							},
 						});
 					}
 				}
@@ -160,7 +185,9 @@ describe("E2E: Run Modes", () => {
 					"Forked run should have a DIFFERENT runId than the parent",
 				);
 
-				const forkTurn = notifications.find((n) => n.runId === forkResult.runId);
+				const forkTurn = notifications.find(
+					(n) => n.runId === forkResult.runId,
+				);
 				if (forkTurn) {
 					const text = [
 						forkTurn.turn.assistant.content,
@@ -171,7 +198,11 @@ describe("E2E: Run Modes", () => {
 						.join(" ")
 						.toLowerCase();
 					assert.ok(
-						text.includes("2") || text.includes("math") || text.includes("addition") || text.includes("sum") || text.includes("plus"),
+						text.includes("2") ||
+							text.includes("math") ||
+							text.includes("addition") ||
+							text.includes("sum") ||
+							text.includes("plus"),
 						"Model should reference the original question (proving history was inherited)",
 					);
 				}
@@ -200,7 +231,13 @@ describe("E2E: Run Modes", () => {
 					for (const f of firstResult.proposed) {
 						await client.call("run/resolve", {
 							runId: parentRunId,
-							resolution: { category: f.category, id: f.id, action: "accepted", output: "(ok)", isError: false },
+							resolution: {
+								category: f.category,
+								id: f.id,
+								action: "accepted",
+								output: "(ok)",
+								isError: false,
+							},
 						});
 					}
 				}
@@ -213,7 +250,11 @@ describe("E2E: Run Modes", () => {
 				});
 
 				assert.ok(forkResult.runId, "Fork should have a runId");
-				assert.notStrictEqual(forkResult.runId, parentRunId, "Fork should create a new run");
+				assert.notStrictEqual(
+					forkResult.runId,
+					parentRunId,
+					"Fork should create a new run",
+				);
 
 				// Parent run should still be usable — continue it independently
 				const parentNotifications = [];
@@ -244,7 +285,10 @@ describe("E2E: Run Modes", () => {
 					]
 						.filter(Boolean)
 						.join(" ");
-					assert.ok(text.includes("6"), "Parent run should independently answer 3+3 = 6");
+					assert.ok(
+						text.includes("6"),
+						"Parent run should independently answer 3+3 = 6",
+					);
 				}
 
 				client.removeAllListeners("run/step/completed");

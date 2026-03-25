@@ -17,8 +17,16 @@ const setup = async () => {
 	const sessionId = crypto.randomUUID();
 	const runId = crypto.randomUUID();
 
-	await db.upsert_project.get({ id: projectId, path: "/tmp/ctx-test", name: "ctx-test" });
-	await db.create_session.run({ id: sessionId, project_id: projectId, client_id: "c1" });
+	await db.upsert_project.get({
+		id: projectId,
+		path: "/tmp/ctx-test",
+		name: "ctx-test",
+	});
+	await db.create_session.run({
+		id: sessionId,
+		project_id: projectId,
+		client_id: "c1",
+	});
 	await db.create_run.run({
 		id: runId,
 		session_id: sessionId,

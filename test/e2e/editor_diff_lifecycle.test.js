@@ -242,13 +242,8 @@ describe("E2E: editor/diff Lifecycle", () => {
 			"math.js":
 				"function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
 		});
-		const {
-			diffs,
-			steps,
-			cleanup: notifCleanup,
-			waitForDiffs,
-			waitForStepAfter,
-		} = notificationCollector(client);
+		const { cleanup: notifCleanup, waitForStepAfter } =
+			notificationCollector(client);
 
 		try {
 			const result = await client.call("act", {
@@ -343,12 +338,8 @@ describe("E2E: editor/diff Lifecycle", () => {
 				2,
 			),
 		});
-		const {
-			diffs,
-			steps,
-			cleanup: notifCleanup,
-			waitForStepAfter,
-		} = notificationCollector(client);
+		const { cleanup: notifCleanup, waitForStepAfter } =
+			notificationCollector(client);
 
 		try {
 			const result = await client.call("act", {

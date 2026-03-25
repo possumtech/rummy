@@ -136,7 +136,7 @@ describe("E2E: Diff Content Verification", () => {
 	it("accepted diff should produce <info file=...> in resumed turn context", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const { turns, waitForTurn, cleanup } = turnCollector(client);
+		const { turns, cleanup } = turnCollector(client);
 
 		const actResult = await client.call("act", {
 			model,
@@ -197,7 +197,7 @@ describe("E2E: Diff Content Verification", () => {
 	it("rejected diff should produce <warn file=...> in resumed turn context", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const { turns, waitForTurn, cleanup } = turnCollector(client);
+		const { turns, cleanup } = turnCollector(client);
 
 		const actResult = await client.call("act", {
 			model,
