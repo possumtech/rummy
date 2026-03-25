@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import Turn from "../../domain/turn/Turn.js";
-import TodoParser from "./TodoParser.js";
 
 /**
  * AgentLoop: Coordinates the autonomous Rumsfeld Loop.
@@ -127,8 +126,6 @@ export default class AgentLoop {
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 		let protocolRetries = 0;
 		const MAX_PROTOCOL_RETRIES = 5;
-		let verbMismatchRetries = 0;
-		const MAX_VERB_MISMATCH_RETRIES = 3;
 		let currentTurnSequence = 0;
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = 15;
@@ -497,31 +494,12 @@ export default class AgentLoop {
 				projectFiles: await this.#sessionManager.getFiles(project.path),
 			});
 
-			const todoList = turnJson.assistant.todo;
-			const isTodoComplete =
-				todoList.length > 0 && todoList.every((t) => t.completed);
-			const summaryTag = tags.find((t) => t.tagName === "summary");
-			const emittedTagNames = tags.map((t) => t.tagName);
+			// --- EXIT LOGIC ---
+			// Three outcomes per turn:
+			// 1. Breaking tags emitted → proposed (wait for client)
+			// 2. Read tags emitted → continue (file appears next turn)
+			// 3. Neither → completed
 
-			// Verb cross-reference: warn if checked action verbs lack matching tags
-			const verbWarnings = TodoParser.crossReference(todoList, emittedTagNames);
-			if (verbWarnings.length > 0) {
-				const contextNode3 = elements.find((el) => el.tag_name === "context");
-				if (contextNode3) {
-					for (let k = 0; k < verbWarnings.length; k++) {
-						await this.#db.insert_turn_element.run({
-							turn_id: turnId,
-							parent_id: contextNode3.id,
-							tag_name: "warn",
-							content: verbWarnings[k],
-							attributes: JSON.stringify({ todo: "mismatch" }),
-							sequence: 160 + k,
-						});
-					}
-				}
-			}
-
-			// Breaking tags: anything that requires client resolution before continuing
 			const breakingTags = tags.filter((t) =>
 				["create", "delete", "edit", "run", "env", "prompt_user"].includes(
 					t.tagName,
@@ -544,76 +522,29 @@ export default class AgentLoop {
 				};
 			}
 
-			// <read> tags force continuation — the model requested file content
-			// it hasn't seen yet. Next turn renders it via renderPerspective.
 			if (readTags.length > 0) {
 				continue;
 			}
 
-			// Verb mismatch: model checked action todos without emitting the tags.
-			// Loop to give the model a chance to self-correct with the warnings.
-			if (verbWarnings.length > 0 && verbMismatchRetries < MAX_VERB_MISMATCH_RETRIES) {
-				verbMismatchRetries++;
-				await turnObj.hydrate();
-				continue;
-			}
-
-			const unknownRaw = (turnJson.assistant.unknown || "").trim();
-			const hasNoUnknowns =
-				unknownRaw.length === 0 ||
-				/^(none\.?|n\/a|nothing\.?|-)$/i.test(unknownRaw);
-
-			// Summary fallback: if todo is complete and unknowns empty but no
-			// summary tag, warn once then synthesize from <known>
-			if (isTodoComplete && hasNoUnknowns && !summaryTag) {
-				const contextNode4 = elements.find((el) => el.tag_name === "context");
-				if (contextNode4) {
-					await this.#db.insert_turn_element.run({
-						turn_id: turnId,
-						parent_id: contextNode4.id,
-						tag_name: "warn",
-						content: "All todos complete but no <summary> provided. Synthesizing from <known>.",
-						attributes: JSON.stringify({ protocol: "warning" }),
-						sequence: 170,
-					});
-				}
-				// Synthesize summary from known
+			// No action tags — the model is done.
+			// Summary fallback: synthesize from <known> if no <summary> provided.
+			const summaryTag = tags.find((t) => t.tagName === "summary");
+			if (!summaryTag) {
 				const knownText = turnJson.assistant.known || "";
 				const synthesized = knownText.split("\n").filter(Boolean).pop() || "Work completed.";
 				await commitAssistantTag("summary", synthesized, {}, 50);
 				await turnObj.hydrate();
 			}
 
-			// isTodoComplete is only valid if no action verbs were hallucinated
-			const validTodoComplete = isTodoComplete && verbWarnings.length === 0;
-
-			// hasNoUnknowns alone can't trigger completion if there are
-			// unchecked action verbs — the model knows what to do but hasn't done it
-			const ACTION_VERBS = new Set(["edit", "create", "delete", "run", "env", "prompt_user"]);
-			const hasUncheckedActions = todoList.some(
-				(t) => !t.completed && t.verb && ACTION_VERBS.has(t.verb),
-			);
-			const validNoUnknowns = hasNoUnknowns && !hasUncheckedActions;
-
-			if (validTodoComplete || summaryTag || validNoUnknowns) {
-				await this.#db.update_run_status.run({
-					id: currentRunId,
-					status: "completed",
-				});
-				return {
-					runId: currentRunId,
-					status: "completed",
-					turn: currentTurnSequence,
-				};
-			}
-
-			// Incomplete todos with no action taken — the model planned but
-			// didn't execute. Continue to give it another turn to act.
-			if (todoList.length > 0 && todoList.some((t) => !t.completed)) {
-				continue;
-			}
-
-			break;
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "completed",
+			});
+			return {
+				runId: currentRunId,
+				status: "completed",
+				turn: currentTurnSequence,
+			};
 		}
 
 		return {

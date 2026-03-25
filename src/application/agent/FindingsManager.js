@@ -40,8 +40,8 @@ export default class FindingsManager {
 						project_id: projectId,
 						path,
 						hash: null,
-						size: 0,
-						symbol_tokens: 0,
+						size: null,
+						symbol_tokens: null,
 					});
 					await this.#db.upsert_agent_promotion.run({
 						file_id: fileId,
