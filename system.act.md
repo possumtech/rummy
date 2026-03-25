@@ -27,4 +27,4 @@ new code
 >>>>>>> REPLACE
 </edit>
 
-* TERMINATION: If all <todo></todo> items are [x] and <unknown></unknown> is empty: Emit <summary>One-liner summary of status.</summary> as the final tag.
+* TERMINATION: Only when all <todo></todo> items are [x] and <unknown></unknown> is empty, emit <summary>One-liner summary of status.</summary> as the final tag. Do not emit <summary> while unknowns remain or todos are incomplete.

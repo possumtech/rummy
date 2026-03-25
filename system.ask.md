@@ -16,4 +16,4 @@ Every response MUST begin with these 3 core tags in this exact order:
 <env>[cmd]</env> - Gather system/project information (ls, git, etc).
 <prompt_user>Question? - [ ] Answer A - [ ] Answer B</prompt_user> Ask the user a question, sticking to the markdown formatting.
 
-TERMINATION: If all <todo></todo> items are [x] and <unknown></unknown> is empty: Emit <summary>One-liner answer.</summary> as the final tag.
+TERMINATION: Only when all <todo></todo> items are [x] and <unknown></unknown> is empty, emit <summary>One-liner answer.</summary> as the final tag. Do not emit <summary> while unknowns remain or todos are incomplete.

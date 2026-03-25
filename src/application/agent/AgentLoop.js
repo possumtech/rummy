@@ -152,6 +152,7 @@ export default class AgentLoop {
 
 		let protocolRetries = 0;
 		const MAX_PROTOCOL_RETRIES = 5;
+		let inconsistencyWarned = false;
 		let currentTurnSequence = 0;
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = 15;
@@ -621,9 +622,57 @@ export default class AgentLoop {
 				continue;
 			}
 
-			// No action tags — the model is done.
-			// Summary fallback: synthesize from <known> if no <summary> provided.
+			// State consistency check: warn once if the model's output
+			// contradicts its own declared state, then loop to let it fix.
+			const unknownRaw = (turnJson.assistant.unknown || "").trim();
+			const hasUnknownsNow =
+				unknownRaw.length > 0 &&
+				!/^(none\.?|n\/a|nothing\.?|-)$/i.test(unknownRaw);
 			const summaryTag = tags.find((t) => t.tagName === "summary");
+			const todoList = turnJson.assistant.todo;
+			const hasIncompleteTodos =
+				todoList.length > 0 && todoList.some((t) => !t.completed);
+
+			const inconsistencies = [];
+			if (summaryTag && hasUnknownsNow) {
+				inconsistencies.push(
+					"<summary> emitted but <unknown> is not empty. Resolve unknowns before terminating.",
+				);
+			}
+			if (summaryTag && hasIncompleteTodos) {
+				inconsistencies.push(
+					"<summary> emitted but <todo> has unchecked items. Complete todos before terminating.",
+				);
+			}
+			if (hasUnknownsNow && tags.length === 0) {
+				inconsistencies.push(
+					"<unknown> has content but no verb tags were emitted. Use verb tags to resolve unknowns.",
+				);
+			}
+
+			if (inconsistencies.length > 0 && !inconsistencyWarned) {
+				inconsistencyWarned = true;
+				const contextNode = elements.find(
+					(el) => el.tag_name === "context",
+				);
+				if (contextNode) {
+					for (let i = 0; i < inconsistencies.length; i++) {
+						await this.#db.insert_turn_element.run({
+							turn_id: turnId,
+							parent_id: contextNode.id,
+							tag_name: "warn",
+							content: inconsistencies[i],
+							attributes: JSON.stringify({ consistency: "violation" }),
+							sequence: 190 + i,
+						});
+					}
+				}
+				await turnObj.hydrate();
+				continue;
+			}
+
+			// No action tags, no inconsistencies — the model is done.
+			// Summary fallback: synthesize from <known> if no <summary> provided.
 			if (!summaryTag) {
 				const knownText = turnJson.assistant.known || "";
 				const synthesized =
