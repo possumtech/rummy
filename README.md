@@ -36,7 +36,7 @@ Rummy communicates via JSON-RPC 2.0 over WebSockets. It uses a structured XML pi
 Every turn, the model must declare what it knows, what it doesn't, and what it
 plans to do — before it can act. This is enforced by protocol validation:
 
-1. `<tasks>`: Checklist of objectives (`- [x]` done, `- [ ]` pending).
+1. `<todo>`: Plan of action with verb-prefixed items (`- [ ] edit: fix the bug`).
 2. `<known>`: Facts, analysis, and plans gathered so far.
 3. `<unknown>`: What still needs to be discovered. Empty when nothing remains.
 

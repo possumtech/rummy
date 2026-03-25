@@ -184,21 +184,13 @@ the file map within each turn.
 ### 3.1 Computation
 
 ```
-budget = floor(contextSize * (RUMMY_MAP_MAX_PERCENT / 100))
-
-if RUMMY_MAP_TOKEN_BUDGET is set:
-    budget = min(budget, RUMMY_MAP_TOKEN_BUDGET)
+budget = RUMMY_MAP_TOKEN_BUDGET
 ```
 
-- `contextSize` is the model's context window in tokens. Fetched from provider
-  metadata on run creation and cached on the run record.
-  - OpenRouter: GET `/api/v1/models` → `context_length`
-  - Ollama: POST `/api/show` → `model_info.context_length`
-- `RUMMY_MAP_MAX_PERCENT` (default: 10): percentage of context window.
-- `RUMMY_MAP_TOKEN_BUDGET` (optional): hard cap in tokens. Clamps the
-  percent-derived value. If unset, percent alone governs.
-- If `contextSize` is unavailable and `RUMMY_MAP_TOKEN_BUDGET` is unset,
-  run creation fails with an explicit error. No fallbacks.
+- `RUMMY_MAP_TOKEN_BUDGET` is the token budget for the file map. Required.
+- `RUMMY_MAP_MAX_PERCENT` is defined for future use when `contextSize` is
+  fetched from provider metadata. Currently unused.
+- If `RUMMY_MAP_TOKEN_BUDGET` is unset, `renderPerspective()` throws.
 
 ### 3.2 Per-Turn Evaluation
 
@@ -247,8 +239,7 @@ returns the canonical, machine-readable protocol reference at runtime.
 
 | Method | Params | Description |
 |---|---|---|
-| `getModels` | — | List DB models + env aliases. |
-| `getOpenRouterModels` | — | List public OpenRouter catalog. |
+| `getModels` | — | List available model aliases. Returns `{ alias, actual, display, default }`. |
 
 #### File Visibility (Project-Scoped)
 
@@ -266,8 +257,8 @@ returns the canonical, machine-readable protocol reference at runtime.
 | Method | Params | Description |
 |---|---|---|
 | `startRun` | `model?`, `projectBufferFiles?` | Pre-create a run. Returns `runId`. Optional. |
-| `ask` | `prompt`, `model?`, `runId?`, `projectBufferFiles?` | Non-mutating query. Auto-creates run if no `runId`. |
-| `act` | `prompt`, `model?`, `runId?`, `projectBufferFiles?` | Mutating directive. Auto-creates run if no `runId`. |
+| `ask` | `prompt`, `model?`, `runId?`, `projectBufferFiles?`, `temperature?`, `noContext?`, `fork?` | Non-mutating query. Auto-creates run if no `runId`. |
+| `act` | `prompt`, `model?`, `runId?`, `projectBufferFiles?`, `temperature?`, `noContext?`, `fork?` | Mutating directive. Auto-creates run if no `runId`. |
 | `run/resolve` | `runId`, `resolution` | Resolve a single finding (accept/reject). |
 | `run/abort` | `runId` | Abandon run. Discard unresolved findings. |
 
@@ -285,10 +276,13 @@ returns the canonical, machine-readable protocol reference at runtime.
 | Notification | Payload | Description |
 |---|---|---|
 | `run/step/completed` | `runId`, `turn`, `files` | A turn finished. `turn` is the structured turn object. |
-| `run/progress` | `runId`, `tasks`, `status` | Agent task status and intermediate state. |
+| `run/progress` | `runId`, `turn`, `status` | Turn progress: `thinking`, `processing`, `retrying`. |
+| `editor/diff` | `runId`, `findingId`, `type`, `file`, `patch`, `warning?`, `error?` | Proposed file modification (unified diff). |
+| `run/env` | `runId`, `findingId`, `command` | Proposed environment query (read-only, no side effects). |
+| `run/run` | `runId`, `findingId`, `command` | Proposed shell command (may have side effects). |
+| `ui/prompt` | `runId`, `findingId`, `question`, `options` | Model is asking the user a question. |
 | `ui/render` | `text`, `append` | Streaming output fragment for display. |
 | `ui/notify` | `text`, `level` | Toast/status notification. |
-| `editor/diff` | `runId`, `file`, `patch` | Proposed file modification. |
 
 ### 4.3 Run Lifecycle
 
@@ -317,18 +311,17 @@ agent can continue.
 The client resolves them (accept/reject) and writes accepted changes to its own
 filesystem. The server never touches the working tree.
 
-### 4.4 Client Intent Prefixes (Planned)
+### 4.4 Client Intent Prefixes
 
-The client will control run continuity through prefix conventions. Currently only
-**Continue** and **New** are implemented server-side. Lite and Fork require
-additional server handling (`noContext` flag and `parent_run_id` fork-point logic).
+The client controls run continuity through prefix conventions. All four modes
+are implemented server-side.
 
-| Prefix | Intent    | Server params                                           | Status |
-|--------|-----------|---------------------------------------------------------|--------|
-| `:`    | Continue  | `runId = <current>` — same run, same history            | Implemented |
-| `::`   | New       | `runId = nil` — new run, fresh agent promotions         | Implemented |
-| `:::`  | Lite      | `runId = nil, noContext = true` — new run, no file map  | Planned |
-| `::::` | Fork      | `runId = <current>, fork = true` — new run, copies history + agent promotions from source | Planned |
+| Prefix | Intent    | Server params                                           |
+|--------|-----------|---------------------------------------------------------|
+| `:`    | Continue  | `runId = <current>` — same run, same history            |
+| `::`   | New       | `runId = nil` — new run, fresh agent promotions         |
+| `:::`  | Lite      | `runId = nil, noContext = true` — new run, no file map  |
+| `::::` | Fork      | `runId = <current>, fork = true` — new run, copies history from source |
 
 - **Continue**: Default. Conversation continues with full history and decay tracking.
 - **New**: Fresh conversation. Old run stays idle. Client promotions (project-scoped)
@@ -353,7 +346,7 @@ additional server handling (`noContext` flag and `parent_run_id` fork-point logi
 | **Fidelity** | The level of detail the model receives for a file (full, full:readonly, signatures, path, excluded). Derived at render time, never stored. |
 | **Decay** | The mechanism by which agent promotions are removed after the model stops referencing a file. Run-scoped. |
 | **Retained** | Model-facing term for an agent-promoted file (used in system prompts). |
-| **Rumsfeld Loop** | The turn cycle: the model must declare `<tasks>`, `<known>`, `<unknown>` before acting. Forces discovery before modification. |
+| **Rumsfeld Loop** | The turn cycle: the model must declare `<todo>`, `<known>`, `<unknown>` before acting. Forces discovery before modification. |
 
 ---
 
@@ -365,9 +358,12 @@ Every turn follows the same cognitive discipline, enforced by protocol validatio
 
 The model must begin every response with three tags in order:
 
-1. `<tasks>` — Checklist of objectives (`- [x]` done, `- [ ]` pending).
+1. `<todo>` — Plan of action. Each item starts with a verb prefix matching
+   the tag the model will emit to complete it. Verbs: `read`, `drop`, `env`,
+   `edit`, `create`, `delete`, `run`, `prompt_user`, `summary`.
+   Example: `- [ ] edit: fix the add function`
 2. `<known>` — Facts, analysis, and plans gathered so far.
-3. `<unknown>` — What the model still needs to find out. Empty (`<unknown/>`)
+3. `<unknown>` — What the model still needs to find out. Empty (`<unknown></unknown>`)
    when nothing remains unknown.
 
 This structure is identical in ASK and ACT modes. The system prompts
@@ -376,25 +372,25 @@ model-facing tag definitions.
 
 ### 6.2 Exit Conditions
 
+Three outcomes per turn, evaluated in order:
+
 | Condition | Status returned | What happens next |
 |---|---|---|
-| Gather tags present (`<read>`, `<env>`) | Agent continues | Loop forces next turn — model requested data it hasn't seen yet. |
-| Findings produced (diffs, commands) | `proposed` | Trigger blocks next turn until all findings resolved. |
-| ASK: `<unknown/>` is empty | `completed` | Model must provide `<summary>`. Run stays open for follow-up. |
-| ACT: All tasks complete, `<unknown/>` empty | `completed` | Model must provide `<summary>`. |
+| Breaking tags emitted (`<edit>`, `<create>`, `<delete>`, `<run>`, `<env>`, `<prompt_user>`) | `proposed` | Findings persisted, client notified. Trigger blocks next turn until all resolved. |
+| `<read>` tags emitted | Agent continues | Loop forces next turn — file appears in context via renderPerspective. |
+| Neither | `completed` | If no `<summary>` tag, one is synthesized from `<known>`. |
 
-Note: Gather tags take priority over completion. If the model emits both `<read>`
-and `<summary>` in the same turn, the loop continues — the model was answering
-blind without the data it requested.
+The model's self-reported todo checkmarks and unknowns do not gate the exit.
+The only authority is whether action tags were emitted.
 
 ### 6.3 Protocol Validation
 
 The server validates each response against mode-specific constraints:
 
-- **Required tags** must be present (tasks, known, unknown).
+- **Required tags** must be present (`todo`, `known`, `unknown`).
 - **Allowed tags** are mode-dependent (ASK cannot use edit/create/delete/run).
 - Constraints are carried as attributes on the `<ask>`/`<act>` mode tag wrapping
-  the user prompt. They change per-turn based on `has_unknowns`.
+  the user prompt.
 - Violations trigger a retry (up to 5 attempts) with the validation error
   fed back to the model as `<error>` elements.
 
