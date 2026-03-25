@@ -1,10 +1,4 @@
 -- INIT: initial_schema
-CREATE TABLE IF NOT EXISTS models (
-	id TEXT PRIMARY KEY
-	, name TEXT NOT NULL
-	, description TEXT
-);
-
 CREATE TABLE IF NOT EXISTS projects (
 	id TEXT PRIMARY KEY
 	, path TEXT UNIQUE NOT NULL

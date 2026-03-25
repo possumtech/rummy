@@ -15,7 +15,7 @@ test("ModelAgent", async (t) => {
 		assert.ok(testModel, "Should find the test alias");
 		assert.strictEqual(testModel.actual, "openai/gpt-4");
 		assert.strictEqual(testModel.display, "test");
-		assert.strictEqual(testModel.target, "openai/gpt-4");
+		assert.strictEqual(testModel.default, false);
 		delete process.env.RUMMY_MODEL_test;
 	});
 

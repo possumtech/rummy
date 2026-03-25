@@ -17,13 +17,11 @@ export default class ModelAgent {
 			.filter((key) => key.startsWith("RUMMY_MODEL_") && key !== "RUMMY_MODEL_DEFAULT")
 			.map((key) => {
 				const alias = key.replace("RUMMY_MODEL_", "");
-				const target = process.env[key];
 				return {
 					alias,
-					actual: target,
+					actual: process.env[key],
 					display: alias,
 					default: alias === defaultAlias,
-					target,
 				};
 			});
 
