@@ -29,23 +29,21 @@ export default class RepoMapPlugin {
 			let index = 1;
 
 			for (const f of perspective.files) {
-				const docEl = rummy.tag("document", { index: String(index++) });
+				const visibility = f.content ? "full" : f.symbols?.length > 0 ? "symbols" : "path";
+				const docEl = rummy.tag("document", {
+					index: String(index++),
+					visibility,
+				});
 
-				const sourceLabel = f.content
-					? f.path
-					: f.symbols?.length > 0
-						? `${f.path} [signatures]`
-						: `${f.path} [path only]`;
-
-				docEl.appendChild(rummy.tag("source", {}, [sourceLabel]));
+				docEl.appendChild(rummy.tag("source", {}, [f.path]));
 
 				if (f.content) {
 					docEl.appendChild(rummy.tag("document_content", {}, [f.content]));
 				} else if (f.symbols && f.symbols.length > 0) {
-					const sigs = f.symbols
+					const syms = f.symbols
 						.map((s) => (s.params ? `${s.name}${s.params}` : s.name))
 						.join(", ");
-					docEl.appendChild(rummy.tag("document_content", {}, [sigs]));
+					docEl.appendChild(rummy.tag("document_content", {}, [syms]));
 				}
 
 				docsEl.appendChild(docEl);

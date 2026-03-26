@@ -152,7 +152,8 @@ export default class AgentLoop {
 
 		let protocolRetries = 0;
 		const MAX_PROTOCOL_RETRIES = 5;
-		let inconsistencyWarned = false;
+		let inconsistencyRetries = 0;
+		const MAX_INCONSISTENCY_RETRIES = 3;
 		let currentTurnSequence = 0;
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = 15;
@@ -586,110 +587,82 @@ export default class AgentLoop {
 				projectFiles: await this.#sessionManager.getFiles(project.path),
 			});
 
-			// --- EXIT LOGIC ---
-			// Three outcomes per turn:
-			// 1. Breaking tags emitted → proposed (wait for client)
-			// 2. Read tags emitted → continue (file appears next turn)
-			// 3. Neither → completed
-
-			const breakingTags = tags.filter((t) =>
-				["create", "delete", "edit", "run", "env", "prompt_user"].includes(
-					t.tagName,
-				),
-			);
-
-			if (breakingTags.length > 0) {
-				const proposed = await this.#db.get_unresolved_findings.all({
-					run_id: currentRunId,
-				});
-				if (proposed.length > 0) {
-					await this.#db.update_run_status.run({
-						id: currentRunId,
-						status: "proposed",
-					});
-					return {
-						runId: currentRunId,
-						status: "proposed",
-						turn: currentTurnSequence,
-						proposed,
-					};
-				}
-				// Breaking tags were emitted but all failed resolution —
-				// errors are in context, loop continues so the model can retry.
-			}
-
-			if (readTags.length > 0) {
-				continue;
-			}
-
-			// State consistency check: warn once if the model's output
-			// contradicts its own declared state, then loop to let it fix.
-			const unknownRaw = (turnJson.assistant.unknown || "").trim();
-			const hasUnknownsNow =
-				unknownRaw.length > 0 &&
-				!/^(none\.?|n\/a|nothing\.?|-)$/i.test(unknownRaw);
-			const summaryTag = tags.find((t) => t.tagName === "summary");
+			// --- DECLARATIVE STATE TABLE ---
+			// Phase 1: Classify turn state
+			const BREAKING = new Set(["create", "delete", "edit", "run", "env", "prompt_user"]);
+			const unkRaw = (turnJson.assistant.unknown || "").trim();
+			const openUnknowns = unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
+			const hasSummary = tags.some((t) => t.tagName === "summary");
+			const hasBreaking = tags.some((t) => BREAKING.has(t.tagName));
+			const hasReads = readTags.length > 0;
 			const todoList = turnJson.assistant.todo;
-			const hasIncompleteTodos =
-				todoList.length > 0 && todoList.some((t) => !t.completed);
+			const todosIncomplete = todoList.length > 0 && todoList.some((t) => !t.completed);
+			const proposed = hasBreaking
+				? await this.#db.get_unresolved_findings.all({ run_id: currentRunId })
+				: [];
 
-			const inconsistencies = [];
-			if (summaryTag && hasUnknownsNow) {
-				inconsistencies.push(
-					"<summary> emitted but <unknown> is not empty. Resolve unknowns before terminating.",
-				);
-			}
-			if (summaryTag && hasIncompleteTodos) {
-				inconsistencies.push(
-					"<summary> emitted but <todo> has unchecked items. Complete todos before terminating.",
-				);
-			}
-			if (hasUnknownsNow && tags.length === 0) {
-				inconsistencies.push(
-					"<unknown> has content but no verb tags were emitted. Use verb tags to resolve unknowns.",
-				);
-			}
-
-			if (inconsistencies.length > 0 && !inconsistencyWarned) {
-				inconsistencyWarned = true;
-				const contextNode = elements.find(
-					(el) => el.tag_name === "context",
-				);
-				if (contextNode) {
-					for (let i = 0; i < inconsistencies.length; i++) {
+			// Phase 2: Collect warnings (always injected, regardless of action)
+			const WARN_RULES = [
+				{ when: hasSummary && openUnknowns,
+					msg: "You emitted <summary> but <unknown> is not empty. Resolve unknowns before terminating." },
+				{ when: hasSummary && todosIncomplete,
+					msg: "You emitted <summary> but <todo> has unchecked items. Complete todos before terminating." },
+				{ when: openUnknowns && !hasBreaking && !hasReads,
+					msg: "<unknown> has content but no verb tags were emitted. Emit verb tags to resolve unknowns." },
+				{ when: todosIncomplete && !hasBreaking && !hasReads && !hasSummary,
+					msg: "<todo> has unchecked items but no verb tags were emitted. Emit verb tags to complete your plan." },
+			];
+			const warnings = WARN_RULES.filter((w) => w.when);
+			if (warnings.length > 0) {
+				const ctxNode = elements.find((el) => el.tag_name === "context");
+				if (ctxNode) {
+					for (let i = 0; i < warnings.length; i++) {
 						await this.#db.insert_turn_element.run({
 							turn_id: turnId,
-							parent_id: contextNode.id,
+							parent_id: ctxNode.id,
 							tag_name: "warn",
-							content: inconsistencies[i],
+							content: warnings[i].msg,
 							attributes: JSON.stringify({ consistency: "violation" }),
 							sequence: 190 + i,
 						});
 					}
 				}
+			}
+
+			// Phase 3: Determine action (first matching rule wins)
+			const ACTION_TABLE = [
+				{ when: proposed.length > 0,                                    action: "proposed" },
+				{ when: hasBreaking,                                            action: "continue" },
+				{ when: hasReads,                                               action: "continue" },
+				{ when: warnings.length > 0 && inconsistencyRetries < MAX_INCONSISTENCY_RETRIES, action: "retry" },
+				{ when: hasSummary,                                             action: "completed" },
+				{ when: !openUnknowns && !todosIncomplete,                      action: "completed" },
+				{ when: true,                                                   action: "completed" },
+			];
+			const rule = ACTION_TABLE.find((r) => r.when);
+
+			if (rule.action === "proposed") {
+				await this.#db.update_run_status.run({ id: currentRunId, status: "proposed" });
+				return { runId: currentRunId, status: "proposed", turn: currentTurnSequence, proposed };
+			}
+			if (rule.action === "retry") {
+				inconsistencyRetries++;
 				await turnObj.hydrate();
 				continue;
 			}
+			if (rule.action === "continue") {
+				continue;
+			}
 
-			// No action tags, no inconsistencies — the model is done.
-			// Summary fallback: synthesize from <known> if no <summary> provided.
-			if (!summaryTag) {
+			// Completed: synthesize summary if model didn't provide one
+			if (!hasSummary) {
 				const knownText = turnJson.assistant.known || "";
-				const synthesized =
-					knownText.split("\n").filter(Boolean).pop() || "Work completed.";
+				const synthesized = knownText.split("\n").filter(Boolean).pop() || "Work completed.";
 				await commitAssistantTag("summary", synthesized, {}, 50);
 				await turnObj.hydrate();
 			}
-
-			await this.#db.update_run_status.run({
-				id: currentRunId,
-				status: "completed",
-			});
-			return {
-				runId: currentRunId,
-				status: "completed",
-				turn: currentTurnSequence,
-			};
+			await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
+			return { runId: currentRunId, status: "completed", turn: currentTurnSequence };
 		}
 
 		return {

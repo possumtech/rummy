@@ -83,31 +83,31 @@ export default class RepoMap {
 			}
 		}
 
-		// Antlrmap extraction
+		// Antlrmap extraction (per-file, so one failure doesn't tank the batch)
 		if (antlrQueue.length > 0 && this.#antlrmap) {
-			try {
-				const results = await this.#antlrmap.mapFiles(antlrQueue, {
-					cwd: this.#ctx.root,
-				});
-				for (const result of results) {
-					if (!result.symbols || result.symbols.length === 0) {
-						ctagsQueue.push(result.file);
+			for (const relPath of antlrQueue) {
+				try {
+					const symbols = await this.#antlrmap.mapFile(
+						join(this.#ctx.root, relPath),
+					);
+					if (!symbols || symbols.length === 0) {
+						ctagsQueue.push(relPath);
 						continue;
 					}
 
 					const symbolWeight = estimateTokens(
-						JSON.stringify({ path: result.file, symbols: result.symbols }),
+						JSON.stringify({ path: relPath, symbols }),
 					);
 
 					const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 						project_id: this.#projectId,
-						path: result.file,
+						path: relPath,
 						hash: null,
 						size: null,
 						symbol_tokens: symbolWeight,
 					});
 					await this.#db.clear_repo_map_file_data.run({ file_id: fileId });
-					for (const sym of result.symbols) {
+					for (const sym of symbols) {
 						await this.#db.insert_repo_map_tag.run({
 							file_id: fileId,
 							name: sym.name,
@@ -117,11 +117,9 @@ export default class RepoMap {
 							source: "antlrmap",
 						});
 					}
+				} catch {
+					ctagsQueue.push(relPath);
 				}
-			} catch (err) {
-				// Antlrmap failed — fall back to ctags for these files
-				console.warn(`[RUMMY] antlrmap failed: ${err.message}. Falling back to ctags.`);
-				ctagsQueue.push(...antlrQueue);
 			}
 		}
 
