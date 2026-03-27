@@ -1,6 +1,7 @@
 {
 	"prefill.open": "<todo>\n- [ ] ",
 	"prefill.checked": "- [x] {tool}: {argument}",
+	"prefill.checked_desc": "- [x] {tool}: {argument} # {description}",
 	"prefill.continuation": "<todo>\n{checked}\n- [ ] ",
 
 	"feedback.file_retained": "info: {path} # file retained",

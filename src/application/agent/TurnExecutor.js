@@ -32,7 +32,9 @@ export default class TurnExecutor {
 		if (processedItems.length === 0) return msg("prefill.open");
 		const checked = processedItems
 			.map((item) =>
-				msg("prefill.checked", { tool: item.tool, argument: item.argument }),
+				item.description
+					? msg("prefill.checked_desc", item)
+					: msg("prefill.checked", item),
 			)
 			.join("\n");
 		return msg("prefill.continuation", { checked });
@@ -256,7 +258,11 @@ export default class TurnExecutor {
 		const newProcessedItems = [...processedItems];
 		for (const item of parsedTodo) {
 			if (!item.completed && item.tool && item.tool !== "summary") {
-				newProcessedItems.push({ tool: item.tool, argument: item.argument });
+				newProcessedItems.push({
+					tool: item.tool,
+					argument: item.argument,
+					description: item.description,
+				});
 			}
 		}
 
