@@ -268,11 +268,12 @@ describe("E2E: Diff Content Verification", () => {
 		);
 		const proposingSeq = actResult.turn;
 
-		// Resolve with "modified"
+		// Resolve diffs with "modified", others with "accepted"
 		for (const f of actResult.proposed) {
+			const action = f.category === "diff" ? "modified" : "accepted";
 			await client.call("run/resolve", {
 				runId: actResult.runId,
-				resolution: { category: f.category, id: f.id, action: "modified" },
+				resolution: { category: f.category, id: f.id, action },
 			});
 		}
 

@@ -314,7 +314,7 @@ returns the canonical, machine-readable protocol reference at runtime.
 
 | Notification | Payload | Description |
 |---|---|---|
-| `run/step/completed` | `runId`, `turn`, `files` | A turn finished. `turn` is the structured turn object. |
+| `run/step/completed` | `runId`, `turn`, `files` | A turn finished. `turn` includes structured `feedback` array (see §6.5). |
 | `run/progress` | `runId`, `turn`, `status` | Turn progress: `thinking`, `processing`, `retrying`. |
 | `editor/diff` | `runId`, `findingId`, `type`, `file`, `patch`, `warning?`, `error?` | Proposed file modification (unified diff). |
 | `run/env` | `runId`, `findingId`, `command` | Proposed environment query (read-only, no side effects). |
@@ -442,9 +442,13 @@ unclosed so the model fills in remaining work.
 
 | Condition | Warning |
 |---|---|
-| Summary present but unknowns not empty | Summary provided but unknowns remain |
-| Unknowns present, no tools listed | No tools to resolve unknowns |
-| No tools and no summary | Empty turn |
+| Summary present but unknowns not empty | Resolve unknowns or clear `<unknown>` before summarizing |
+| Unknowns present, no tools listed | Concrete example: `- [ ] read: path/to/file # investigate` |
+| No tools and no summary | Concrete example: `- [ ] summary: Described the architecture` |
+| Output outside structured tags | All output must be inside `<todo>`, `<known>`, `<unknown>`, `<edit>` |
+
+Warnings include concrete templates of correct behavior, not just error descriptions.
+The model sees these as feedback in the next retry turn.
 
 **Phase 2 — Action** (first matching rule wins):
 
@@ -453,9 +457,9 @@ unclosed so the model fills in remaining work.
 | 1 | Unresolved findings in DB | `proposed` — client resolves |
 | 2 | Act-only tools processed | `continue` — findings may have errors |
 | 3 | Reads processed | `continue` — files appear next turn |
-| 4 | Warnings present, retries remaining | `retry` — model sees warnings |
+| 4 | Warnings present, retries < 3 | `retry` — model sees warnings |
 | 5 | Summary present | `completed` |
-| 6 | Fallback | `completed` |
+| 6 | Fallback | `completed` — allows graceful exit after nag retries exhausted |
 
 ### 6.5 Feedback Format
 
@@ -468,7 +472,19 @@ error: utils.js # SEARCH block matched multiple locations
 
 Format: `level: target # message`.
 
-### 6.5 Protocol Validation
+Feedback is delivered to clients as a structured `feedback` array on the `turn`
+object in `run/step/completed` notifications:
+
+```json
+{
+  "feedback": [
+    { "level": "info", "target": "AGENTS.md", "message": "file retained" },
+    { "level": "warn", "target": "config.js", "message": "edits rejected" }
+  ]
+}
+```
+
+### 6.6 Protocol Validation
 
 - **Required tags**: `todo`, `known`, `unknown` must be present.
 - **Allowed tools**: mode-dependent. ASK mode cannot use edit/delete/run.

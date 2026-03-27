@@ -90,6 +90,25 @@ describe("E2E: RPC Surface", () => {
 		assert.ok(result.methods);
 	});
 
+	it("discover should not list methods that do not exist", async () => {
+		const result = await client.call("discover");
+
+		// Every method in discover should be callable (not "not found").
+		// We test by calling each with no params and checking we get a
+		// domain error (missing params, not initialized) rather than "not found".
+		for (const method of Object.keys(result.methods)) {
+			if (method === "discover" || method === "ping") continue;
+			try {
+				await client.call(method, {});
+			} catch (err) {
+				assert.ok(
+					!err.message.includes("not found"),
+					`Discover lists '${method}' but server says "not found": ${err.message}`,
+				);
+			}
+		}
+	});
+
 	it("methods requiring init should error before init", async () => {
 		const guarded = [
 			"getFiles",

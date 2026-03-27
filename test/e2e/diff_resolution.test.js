@@ -10,16 +10,21 @@ import TestServer from "../helpers/TestServer.js";
 const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
 
-async function createIsolatedSession() {
+async function createIsolatedSession(files = {}) {
 	const projectPath = join(
 		tmpdir(),
 		`rummy-diff-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 	);
 	await fs.mkdir(projectPath, { recursive: true });
-	await fs.writeFile(
-		join(projectPath, "main.js"),
-		'const mesage = "hello";\nconsole.log(mesage);\n',
-	);
+
+	const fileEntries = Object.keys(files).length > 0
+		? files
+		: { "math.js": "function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n" };
+
+	for (const [name, content] of Object.entries(fileEntries)) {
+		await fs.writeFile(join(projectPath, name), content);
+	}
+
 	const { execSync } = await import("node:child_process");
 	execSync(
 		'git init && git config user.email "test@test.com" && git config user.name "Test" && git add . && git commit --no-verify -m "feat: init"',
@@ -35,7 +40,10 @@ async function createIsolatedSession() {
 		projectName: "DiffProject",
 		clientId: `c-${Date.now()}`,
 	});
-	await client.call("activate", { pattern: "main.js" });
+
+	for (const name of Object.keys(fileEntries)) {
+		await client.call("activate", { pattern: name });
+	}
 
 	const cleanup = async () => {
 		client.close();
@@ -52,7 +60,7 @@ async function actAndExpectProposed(client, prompt) {
 	assert.strictEqual(
 		result.status,
 		"proposed",
-		"Model completed instead of proposing. Non-deterministic — re-run the test.",
+		`Expected proposed but got ${result.status}. The model did not produce edit findings.`,
 	);
 	assert.ok(result.proposed.length > 0, "Should have proposed findings");
 	return result;
@@ -77,7 +85,7 @@ describe("E2E: Diff Resolution", () => {
 		try {
 			const result = await actAndExpectProposed(
 				client,
-				'Fix the typo in main.js. The variable "mesage" should be "message". Only edit the file, do not run any commands.',
+				'The add function in math.js has a bug — it subtracts instead of adding. Fix it by changing "return a - b" to "return a + b". Use the edit tool with a single <edit> block containing SEARCH/REPLACE markers.',
 			);
 
 			for (const finding of result.proposed) {
@@ -97,7 +105,7 @@ describe("E2E: Diff Resolution", () => {
 		try {
 			const actResult = await actAndExpectProposed(
 				client,
-				'Fix the typo in main.js. The variable "mesage" should be "message". Only fix the variable name, nothing else.',
+				'The add function in math.js returns a - b but should return a + b. Fix this single bug using the edit tool with SEARCH/REPLACE format.',
 			);
 
 			const resolveResult = await resolveAll(
@@ -124,7 +132,7 @@ describe("E2E: Diff Resolution", () => {
 		try {
 			const actResult = await actAndExpectProposed(
 				client,
-				'Fix the typo in main.js. The variable "mesage" should be "message".',
+				'The add function in math.js returns a - b but should return a + b. Fix this bug using the edit tool with SEARCH/REPLACE format.',
 			);
 
 			const resolveResult = await resolveAll(
@@ -147,15 +155,22 @@ describe("E2E: Diff Resolution", () => {
 	it("partial resolution should return remaining count when multiple findings exist", {
 		timeout: TIMEOUT,
 	}, async () => {
-		const { client, cleanup } = await createIsolatedSession();
+		const { client, cleanup } = await createIsolatedSession({
+			"math.js": "function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
+			"greet.js": "function greet(name) {\n\treturn 'goodby ' + name;\n}\nmodule.exports = { greet };\n",
+		});
 		try {
 			const actResult = await actAndExpectProposed(
 				client,
-				'Make exactly TWO separate edits to main.js: (1) Fix the typo — rename "mesage" to "message" on BOTH lines. (2) Add a comment "// greeting module" as the very first line of the file. Use two separate <edit> blocks.',
+				'Fix both bugs: (1) math.js: add function returns a - b, should be a + b. (2) greet.js: "goodby" should be "goodbye". Use the edit tool with SEARCH/REPLACE format for each file — one <edit> block per file.',
 			);
 
-			if (actResult.proposed.length >= 2) {
-				const first = actResult.proposed[0];
+			const diffFindings = actResult.proposed.filter(
+				(f) => f.category === "diff",
+			);
+
+			if (diffFindings.length >= 2) {
+				const first = diffFindings[0];
 				const partialResult = await client.call("run/resolve", {
 					runId: actResult.runId,
 					resolution: {
@@ -182,7 +197,7 @@ describe("E2E: Diff Resolution", () => {
 				await resolveAll(client, actResult.runId, partialResult.proposed);
 			} else {
 				console.log(
-					"  [NOTE] Model produced only one finding; partial resolution not testable this run.",
+					"  [NOTE] Model merged findings into fewer than 2 diffs; partial resolution not testable this run.",
 				);
 				await resolveAll(client, actResult.runId, actResult.proposed);
 			}

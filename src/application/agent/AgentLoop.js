@@ -655,19 +655,32 @@ export default class AgentLoop {
 				? await this.#db.get_unresolved_findings.all({ run_id: currentRunId })
 				: [];
 
-			// Phase 2: Collect warnings
+			// Detect stray output outside structured tags
+			const allowedTagPattern = /<(?:todo|known|unknown|edit)[^>]*>[\s\S]*?<\/(?:todo|known|unknown|edit)>/gi;
+			const strippedContent = (finalResponse.content || "")
+				.replace(allowedTagPattern, "")
+				.replace(/<(?:todo|known|unknown|edit)[^>]*\/>/gi, "")
+				.trim();
+			const hasStrayOutput = strippedContent.length > 0
+				&& !/^[\s\n]*$/.test(strippedContent);
+
+			// Phase 2: Collect warnings with concrete examples
 			const WARN_RULES = [
 				{
 					when: hasSummary && openUnknowns,
-					msg: "Summary provided but <unknown> is not empty.",
+					msg: "Summary provided but <unknown> is not empty. Either resolve unknowns with tools or clear <unknown></unknown> before summarizing.",
 				},
 				{
 					when: openUnknowns && !hasTools,
-					msg: "<unknown> has content but no tools were listed.",
+					msg: "<unknown> has content but no tools were listed. Example:\n<todo>\n- [ ] read: path/to/file # investigate the unknown\n</todo>",
 				},
 				{
 					when: !hasTools && !hasSummary,
-					msg: "No tools and no summary. Use tools or provide a summary.",
+					msg: "No tools and no summary. When work is complete, include a summary tool. Example:\n<todo>\n- [ ] summary: Described the module architecture\n</todo>",
+				},
+				{
+					when: hasStrayOutput,
+					msg: "Output detected outside structured tags. ALL output must be inside <todo>, <known>, <unknown>, or <edit> tags. Plain text between tags is discarded.",
 				},
 			];
 			const warnings = WARN_RULES.filter((w) => w.when);

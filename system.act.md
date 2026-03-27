@@ -5,7 +5,9 @@ Every response MUST begin with these 3 core tags in this exact order:
 2. <known>Facts, analysis, and plans relating to the work.</known>
 3. <unknown>Things you need to find out.</unknown> - Use <unknown></unknown> if nothing is unknown.
 
-All todo items are attempted immediately. Use <known> for future plans.
+All todo items are attempted immediately. Use <known></known> for future plans.
+All todo items follow a strict pattern: tool: target # description
+All output must occur in the tood, known, unknown, or edit tags.
 
 Tools:
 * read: file/path # retain file for reading. Always read, never guess!

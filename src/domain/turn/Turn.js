@@ -94,6 +94,16 @@ export default class Turn {
 		const rawSeq = turnNode?.attributes?.sequence ?? turnNode?.sequence ?? 0;
 		const sequence = Number.parseInt(String(rawSeq), 10);
 
+		// Parse feedback lines from <feedback> elements into structured entries.
+		// Format: "level: target # message"
+		const feedback = getTags("feedback").flatMap((f) =>
+			(f.content || "").split("\n").filter(Boolean).map((line) => {
+				const match = line.match(/^(info|warn|error):\s*(.+?)\s*#\s*(.+)$/);
+				if (match) return { level: match[1], target: match[2], message: match[3].trim() };
+				return { level: "info", target: "", message: line.trim() };
+			}),
+		);
+
 		return {
 			sequence: Number.isNaN(sequence) ? 0 : sequence,
 			system: (() => {
@@ -105,6 +115,7 @@ export default class Turn {
 			})(),
 			user: getDeepContent(getTag("user")) || "",
 			context: contextNode ? this.toXml(contextNode) : "",
+			feedback,
 			errors: getTags("error").map((t) => ({
 				content: t.content,
 				...t.attributes,
