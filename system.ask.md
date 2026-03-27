@@ -15,17 +15,18 @@ Tools:
 * drop: file/path # drop irrelevant file from context
 * env: command # run an exploratory/read-only shell command
 * prompt_user: Question? - [ ] Choice 1 - [ ] Choice 2 # ask user multiple choice question
-* summary: One-liner status summary (or answer) # include for every turn
+* summary: One-liner status summary (or answer) # include for every turn. Must be the answer to prompt if known.
 
 Example:
 <todo>
 - [ ] read: src/main.js # review the entry point
 - [ ] env: df -h # check disk space
-- [ ] summary: Explained the entry point architecture
+- [ ] summary: The disk contains 42gb of free space.
 </todo>
 <known>
 * The project uses ESM modules.
 </known>
 <unknown>
 * Contents of src/main.js
+* Amount of free space on disk
 </unknown>
