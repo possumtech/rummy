@@ -8,7 +8,7 @@ export default class CoreToolsPlugin {
 		tools.register("read", { modes: BOTH, category: "ask" });
 		tools.register("drop", { modes: BOTH, category: "ask" });
 		tools.register("summary", { modes: BOTH, category: "structural" });
-		tools.register("env", { modes: BOTH, category: "act" });
+		tools.register("env", { modes: BOTH, category: "ask" });
 		tools.register("prompt_user", { modes: BOTH, category: "act" });
 		tools.register("edit", { modes: ACT_ONLY, category: "act" });
 		tools.register("create", { modes: ACT_ONLY, category: "act" });

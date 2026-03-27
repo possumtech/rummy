@@ -287,19 +287,11 @@ describe("E2E: Diff Content Verification", () => {
 			});
 		}
 
-		// Modified should return resolved (no auto-resume)
-		assert.strictEqual(
-			lastResolve.status,
-			"resolved",
-			`Modified findings should return 'resolved', got ${lastResolve.status}`,
+		// Modified auto-resumes — model needs to see the result
+		assert.ok(
+			["completed", "proposed"].includes(lastResolve.status),
+			`Modified findings should auto-resume, got ${lastResolve.status}`,
 		);
-
-		// Client continues — partial acceptance info appears in next turn
-		const _continueResult = await client.call("act", {
-			model,
-			runId: actResult.runId,
-			prompt: "The edit was partially accepted. Summarize what happened.",
-		});
 
 		let resumedTurn = null;
 		for (const [seq, payload] of turns) {
