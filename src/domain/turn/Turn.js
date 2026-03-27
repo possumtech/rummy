@@ -160,6 +160,7 @@ export default class Turn {
 				prompt_tokens: meta.prompt_tokens || 0,
 				completion_tokens: meta.completion_tokens || 0,
 				total_tokens: meta.total_tokens || 0,
+				cost: meta.cost || 0,
 			},
 			model: {
 				alias: meta.alias,

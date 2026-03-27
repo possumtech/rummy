@@ -228,6 +228,7 @@ export default class TurnExecutor {
 				prompt_tokens: usage.prompt_tokens,
 				completion_tokens: usage.completion_tokens,
 				total_tokens: usage.total_tokens,
+				cost: usage.cost || 0,
 				alias: requestedModel,
 				actualModel: result.model,
 				displayModel: this.#resolveAlias(requestedModel),
