@@ -261,13 +261,6 @@ export default class AgentLoop {
 			}
 
 			// Completed
-			if (!state.hasSummary) {
-				const knownText = turn.turnJson.assistant.known || "";
-				const synthesized =
-					knownText.split("\n").filter(Boolean).pop() || "Work completed.";
-				await turn.commitTag("summary", synthesized, {}, 50);
-				await turn.turnObj.hydrate();
-			}
 			await this.#db.update_run_status.run({
 				id: currentRunId,
 				status: "completed",

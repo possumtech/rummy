@@ -53,6 +53,10 @@ export default class StateEvaluator {
 		// Collect warnings — hookable via agent.warn filter
 		let warnRules = [
 			{
+				when: !hasSummary,
+				msg: "Every turn requires a summary: tool. Example:\n<todo>\n- [ ] summary: Investigated the auth module structure\n</todo>",
+			},
+			{
 				when: hasSummary && openUnknowns,
 				msg: "Summary provided but <unknown> is not empty. Either resolve unknowns with tools or clear <unknown></unknown> before summarizing.",
 			},
@@ -61,20 +65,12 @@ export default class StateEvaluator {
 				msg: "<unknown> has content but no tools were listed. Example:\n<todo>\n- [ ] read: path/to/file # investigate the unknown\n</todo>",
 			},
 			{
-				when: !hasTools && !hasSummary,
-				msg: "No tools and no summary. When work is complete, include a summary tool. Example:\n<todo>\n- [ ] summary: Described the module architecture\n</todo>",
-			},
-			{
 				when: hasStrayOutput,
 				msg: "Output detected outside structured tags. ALL output must be inside <todo>, <known>, <unknown>, or <edit> tags. Plain text between tags is discarded.",
 			},
 			{
 				when: todoHasEdit && editTags.length === 0,
 				msg: 'Todo lists edit: or create: but no <edit> tag was provided. Include an <edit file="path"> block after the core tags.',
-			},
-			{
-				when: allTodoComplete && !hasSummary,
-				msg: "All todo items are checked but no summary: tool was included. Add a summary when work is complete. Example:\n<todo>\n- [ ] summary: Completed the requested changes\n</todo>",
 			},
 		];
 		warnRules = await this.#hooks.agent.warn.filter(warnRules, {

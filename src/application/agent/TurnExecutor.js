@@ -250,10 +250,11 @@ export default class TurnExecutor {
 			parsedTodo,
 		);
 
-		// Accumulate processed items for continuation prefill
+		// Accumulate processed items for continuation prefill.
+		// Summary is a completion signal, not an executed tool — exclude from prefill.
 		const newProcessedItems = [...processedItems];
 		for (const item of parsedTodo) {
-			if (!item.completed && item.tool) {
+			if (!item.completed && item.tool && item.tool !== "summary") {
 				newProcessedItems.push({ tool: item.tool, argument: item.argument });
 			}
 		}

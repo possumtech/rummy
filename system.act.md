@@ -17,7 +17,7 @@ Tools:
 * env: command # run an exploratory/read-only shell command
 * run: command # run a shell command that changes something
 * prompt_user: Question? - [ ] Choice 1 - [ ] Choice 2 # ask user multiple choice question
-* summary: One-liner summary of status # include when work is complete
+* summary: One-liner status summary (or answer) # include for every turn
 
 Example:
 <todo>

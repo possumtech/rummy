@@ -15,7 +15,7 @@ Tools:
 * drop: file/path # drop irrelevant file from context
 * env: command # run an exploratory/read-only shell command
 * prompt_user: Question? - [ ] Choice 1 - [ ] Choice 2 # ask user multiple choice question
-* summary: One-liner summary of answer # include when work is complete
+* summary: One-liner status summary (or answer) # include for every turn
 
 Example:
 <todo>

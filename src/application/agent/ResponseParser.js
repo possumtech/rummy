@@ -22,7 +22,7 @@ export default class ResponseParser {
 		if (prefill.endsWith("- [ ] ") && content.startsWith("- [ ] ")) {
 			return prefill.slice(0, -6) + content;
 		}
-		if (!content.includes("<todo>")) return prefill + content;
+		if (!content.includes("<todo>")) return prefill + content.trimStart();
 		return content;
 	}
 
