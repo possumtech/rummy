@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
+import msg from "../../domain/i18n/messages.js";
 import HeuristicMatcher, {
 	generateUnifiedDiff,
 } from "../../extraction/HeuristicMatcher.js";
@@ -47,7 +48,7 @@ export default class FindingsManager {
 					run_id: runId,
 					turn_seq: sequence ?? 0,
 				});
-				feedback.push(`info: ${invocation.path} # file retained`);
+				feedback.push(msg("feedback.file_retained", { path: invocation.path }));
 			}
 
 			if (tool === "drop" && projectId) {
@@ -61,7 +62,7 @@ export default class FindingsManager {
 						run_id: runId,
 					});
 				}
-				feedback.push(`info: ${invocation.path} # file dropped`);
+				feedback.push(msg("feedback.file_dropped", { path: invocation.path }));
 			}
 
 			if (tool === "edit") {
@@ -112,9 +113,7 @@ export default class FindingsManager {
 
 				for (const edit of edits) {
 					if (edit.search === null || edit.search === undefined) {
-						warnings.push(
-							"Could not parse SEARCH/REPLACE markers from an edit block.",
-						);
+						warnings.push(msg("warn.parse_edit_markers"));
 						continue;
 					}
 					const result = HeuristicMatcher.matchAndPatch(
@@ -135,7 +134,7 @@ export default class FindingsManager {
 					patch = generateUnifiedDiff(path, originalContent, currentContent);
 				}
 			} catch (err) {
-				error = `Could not read file for diff resolution: ${err.message}`;
+				error = msg("error.read_file_diff", { message: err.message });
 			}
 
 			if (warnings.length > 0) warning = warnings.join(" ");

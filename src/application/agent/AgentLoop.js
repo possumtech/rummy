@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import msg from "../../domain/i18n/messages.js";
 
 export default class AgentLoop {
 	#db;
@@ -49,11 +50,12 @@ export default class AgentLoop {
 			id: String(sessionId || ""),
 		});
 		if (!sessions || sessions.length === 0) {
-			throw new Error(`Session '${sessionId}' not found.`);
+			throw new Error(msg("error.session_not_found", { sessionId }));
 		}
 		const projectId = String(sessions[0].project_id || "");
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		if (!project) throw new Error(`Project '${projectId}' not found.`);
+		if (!project)
+			throw new Error(msg("error.project_not_found", { projectId }));
 
 		// Sync editor promotions
 		if (Array.isArray(projectBufferFiles)) {
@@ -85,7 +87,8 @@ export default class AgentLoop {
 			const existingRun = await this.#db.get_run_by_id.get({
 				id: currentRunId,
 			});
-			if (!existingRun) throw new Error(`Run '${currentRunId}' not found.`);
+			if (!existingRun)
+				throw new Error(msg("error.run_not_found", { runId: currentRunId }));
 
 			const remaining = await this.#db.get_unresolved_findings.all({
 				run_id: currentRunId,
@@ -281,7 +284,7 @@ export default class AgentLoop {
 
 	async resolve(runId, resolution) {
 		const run = await this.#db.get_run_by_id.get({ id: runId });
-		if (!run) throw new Error(`Run '${runId}' not found.`);
+		if (!run) throw new Error(msg("error.run_not_found", { runId }));
 
 		const { category, action } = resolution;
 		const id = Number(resolution.id);
@@ -293,12 +296,14 @@ export default class AgentLoop {
 			(f) => f.category === category && f.id === id,
 		);
 		if (!finding)
-			throw new Error(`Finding ${category}:${id} not found in run ${runId}`);
+			throw new Error(msg("error.finding_not_found", { category, id, runId }));
 
 		if (category === "diff") {
 			await this.#db.update_finding_diff_status.run({ id, status: action });
 			const label =
-				action === "modified" ? "edits partially accepted" : `edits ${action}`;
+				action === "modified"
+					? msg("feedback.edits_partial")
+					: msg("feedback.edits_action", { action });
 			await this.#db.insert_pending_context.run({
 				run_id: runId,
 				source_turn_id: finding.turn_id,
@@ -350,9 +355,7 @@ export default class AgentLoop {
 		});
 
 		// Rejection → stop, return control to client.
-		const hasRejection = allFindings.some(
-			(f) => f.status === "rejected",
-		);
+		const hasRejection = allFindings.some((f) => f.status === "rejected");
 		if (hasRejection) {
 			await this.#db.update_run_status.run({
 				id: runId,

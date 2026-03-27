@@ -1,0 +1,30 @@
+{
+	"prefill.open": "<todo>\n- [ ] ",
+	"prefill.checked": "- [x] {tool}: {argument}",
+	"prefill.continuation": "<todo>\n{checked}\n- [ ] ",
+
+	"feedback.file_retained": "info: {path} # file retained",
+	"feedback.file_dropped": "info: {path} # file dropped",
+	"feedback.diff_error": "error: {file} # {error}",
+	"feedback.edits_action": "edits {action}",
+	"feedback.edits_partial": "edits partially accepted",
+	"feedback.result": "{level}: {request} # {result}",
+
+	"warn.no_summary": "Every turn requires a summary: tool. Example:\n<todo>\n- [ ] summary: Investigated the auth module structure\n</todo>",
+	"warn.unknown_with_summary": "Summary provided but <unknown> is not empty. Either resolve unknowns with tools or clear <unknown></unknown> before summarizing.",
+	"warn.unknown_no_tools": "<unknown> has content but no tools were listed. Example:\n<todo>\n- [ ] read: path/to/file # investigate the unknown\n</todo>",
+	"warn.stray_output": "Output detected outside structured tags. ALL output must be inside <todo>, <known>, <unknown>, or <edit> tags. Plain text between tags is discarded.",
+	"warn.todo_edit_no_tag": "Todo lists edit: or create: but no <edit> tag was provided. Include an <edit file=\"path\"> block after the core tags.",
+	"warn.parse_edit_markers": "Could not parse SEARCH/REPLACE markers from an edit block.",
+
+	"protocol.allowed_tools": "allowed_tools: {tools}",
+	"protocol.missing_tag": "Missing required tag: <{tag}>",
+	"protocol.disallowed_tag": "Disallowed tag used: <{tag}>",
+
+	"error.assistant_node_missing": "Critical Error: assistant node not found in database for turn {turnId}",
+	"error.session_not_found": "Session '{sessionId}' not found.",
+	"error.project_not_found": "Project '{projectId}' not found.",
+	"error.run_not_found": "Run '{runId}' not found.",
+	"error.finding_not_found": "Finding {category}:{id} not found in run {runId}",
+	"error.read_file_diff": "Could not read file for diff resolution: {message}"
+}

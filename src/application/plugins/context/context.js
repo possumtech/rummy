@@ -1,3 +1,5 @@
+import msg from "../../../domain/i18n/messages.js";
+
 export default class ContextPlugin {
 	static register(hooks) {
 		hooks.onTurn(async (rummy) => {
@@ -16,12 +18,30 @@ export default class ContextPlugin {
 						row.result.includes("rejected") || row.result.includes("partially")
 							? "warn"
 							: "info";
-					lines.push(`${level}: ${row.request} # ${row.result}`);
+					lines.push(
+						msg("feedback.result", {
+							level,
+							request: row.request,
+							result: row.result,
+						}),
+					);
 				} else if (row.type === "notification") {
-					lines.push(`info: ${row.request} # ${row.result}`);
+					lines.push(
+						msg("feedback.result", {
+							level: "info",
+							request: row.request,
+							result: row.result,
+						}),
+					);
 				} else {
 					const level = row.is_error ? "error" : "info";
-					lines.push(`${level}: ${row.request} # ${row.result}`);
+					lines.push(
+						msg("feedback.result", {
+							level,
+							request: row.request,
+							result: row.result,
+						}),
+					);
 				}
 
 				if (rummy.turnId) {

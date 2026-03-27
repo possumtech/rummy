@@ -1,3 +1,4 @@
+import msg from "../../domain/i18n/messages.js";
 import Turn from "../../domain/turn/Turn.js";
 import TodoParser from "./TodoParser.js";
 import ToolExtractor from "./ToolExtractor.js";
@@ -28,11 +29,13 @@ export default class TurnExecutor {
 	}
 
 	#buildPrefill(processedItems) {
-		if (processedItems.length === 0) return "<todo>\n- [ ] ";
+		if (processedItems.length === 0) return msg("prefill.open");
 		const checked = processedItems
-			.map((item) => `- [x] ${item.tool}: ${item.argument}`)
+			.map((item) =>
+				msg("prefill.checked", { tool: item.tool, argument: item.argument }),
+			)
 			.join("\n");
-		return `<todo>\n${checked}\n- [ ] `;
+		return msg("prefill.continuation", { checked });
 	}
 
 	async execute({
@@ -193,9 +196,7 @@ export default class TurnExecutor {
 		});
 		const assistantNode = elements.find((el) => el.tag_name === "assistant");
 		if (!assistantNode) {
-			throw new Error(
-				`Critical Error: assistant node not found in database for turn ${turnId}`,
-			);
+			throw new Error(msg("error.assistant_node_missing", { turnId }));
 		}
 
 		const commitTag = async (tagName, content, attrs = {}, sequence = 0) => {
@@ -309,7 +310,7 @@ export default class TurnExecutor {
 		for (const req of required) {
 			if (!presentTags.has(req)) {
 				validationErrors.push({
-					content: `Missing required tag: <${req}>`,
+					content: msg("protocol.missing_tag", { tag: req }),
 					attrs: { protocol: "violation" },
 				});
 			}
@@ -317,7 +318,7 @@ export default class TurnExecutor {
 		for (const tag of tags) {
 			if (!allowed.includes(tag.tagName)) {
 				validationErrors.push({
-					content: `Disallowed tag used: <${tag.tagName}>`,
+					content: msg("protocol.disallowed_tag", { tag: tag.tagName }),
 					attrs: { protocol: "violation" },
 				});
 			}

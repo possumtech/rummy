@@ -1,3 +1,5 @@
+import msg from "../../domain/i18n/messages.js";
+
 export default class StateEvaluator {
 	#db;
 	#hooks;
@@ -47,30 +49,21 @@ export default class StateEvaluator {
 		const todoHasEdit = todoItems.some(
 			(t) => !t.completed && (t.tool === "edit" || t.tool === "create"),
 		);
-		const allTodoComplete =
+		const _allTodoComplete =
 			todoItems.length > 0 && todoItems.every((t) => t.completed);
 
 		// Collect warnings — hookable via agent.warn filter
 		let warnRules = [
-			{
-				when: !hasSummary,
-				msg: "Every turn requires a summary: tool. Example:\n<todo>\n- [ ] summary: Investigated the auth module structure\n</todo>",
-			},
+			{ when: !hasSummary, msg: msg("warn.no_summary") },
 			{
 				when: hasSummary && openUnknowns,
-				msg: "Summary provided but <unknown> is not empty. Either resolve unknowns with tools or clear <unknown></unknown> before summarizing.",
+				msg: msg("warn.unknown_with_summary"),
 			},
-			{
-				when: openUnknowns && !hasTools,
-				msg: "<unknown> has content but no tools were listed. Example:\n<todo>\n- [ ] read: path/to/file # investigate the unknown\n</todo>",
-			},
-			{
-				when: hasStrayOutput,
-				msg: "Output detected outside structured tags. ALL output must be inside <todo>, <known>, <unknown>, or <edit> tags. Plain text between tags is discarded.",
-			},
+			{ when: openUnknowns && !hasTools, msg: msg("warn.unknown_no_tools") },
+			{ when: hasStrayOutput, msg: msg("warn.stray_output") },
 			{
 				when: todoHasEdit && editTags.length === 0,
-				msg: 'Todo lists edit: or create: but no <edit> tag was provided. Include an <edit file="path"> block after the core tags.',
+				msg: msg("warn.todo_edit_no_tag"),
 			},
 		];
 		warnRules = await this.#hooks.agent.warn.filter(warnRules, {

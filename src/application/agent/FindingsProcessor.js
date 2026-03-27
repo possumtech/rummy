@@ -1,3 +1,5 @@
+import msg from "../../domain/i18n/messages.js";
+
 export default class FindingsProcessor {
 	#db;
 	#findingsManager;
@@ -57,7 +59,9 @@ export default class FindingsProcessor {
 			const contextNode = elements.find((el) => el.tag_name === "context");
 			if (contextNode) {
 				const errorLines = diffErrors
-					.map((d) => `error: ${d.file} # ${d.error}`)
+					.map((d) =>
+						msg("feedback.diff_error", { file: d.file, error: d.error }),
+					)
 					.join("\n");
 				await this.#db.insert_turn_element.run({
 					turn_id: turnId,
