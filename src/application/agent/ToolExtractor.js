@@ -8,15 +8,25 @@
  */
 
 const TOOL_TAGS = new Set([
-	"read", "drop", "edit", "create", "delete", "run", "env", "prompt_user",
+	"read",
+	"drop",
+	"edit",
+	"create",
+	"delete",
+	"run",
+	"env",
+	"prompt_user",
 ]);
 
-const STRUCTURAL_TAGS = new Set([
-	"todo", "known", "unknown", "summary",
-]);
+const STRUCTURAL_TAGS = new Set(["todo", "known", "unknown", "summary"]);
 
 const BREAKING_TOOLS = new Set([
-	"edit", "create", "delete", "run", "env", "prompt_user",
+	"edit",
+	"create",
+	"delete",
+	"run",
+	"env",
+	"prompt_user",
 ]);
 
 export default class ToolExtractor {
@@ -116,4 +126,4 @@ export default class ToolExtractor {
 	}
 }
 
-export { BREAKING_TOOLS, TOOL_TAGS, STRUCTURAL_TAGS };
+export { BREAKING_TOOLS, STRUCTURAL_TAGS, TOOL_TAGS };

@@ -81,7 +81,12 @@ test("FindingsManager", async (t) => {
 		await fs.writeFile(join(projectPath, "src/a.js"), "old code\n");
 
 		const { diffs } = await fm.processTools(projectPath, runId, 2, [
-			{ tool: "edit", path: "src/a.js", search: "old code", replace: "new code" },
+			{
+				tool: "edit",
+				path: "src/a.js",
+				search: "old code",
+				replace: "new code",
+			},
 		]);
 
 		assert.strictEqual(diffs.length, 1);

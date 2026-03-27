@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -22,8 +22,12 @@ export function generateUnifiedDiff(filePath, oldContent, newContent) {
 		if (err.stdout) return err.stdout;
 		return "";
 	} finally {
-		try { unlinkSync(oldPath); } catch {}
-		try { unlinkSync(newPath); } catch {}
+		try {
+			unlinkSync(oldPath);
+		} catch {}
+		try {
+			unlinkSync(newPath);
+		} catch {}
 	}
 }
 

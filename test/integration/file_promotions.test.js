@@ -2,14 +2,14 @@ import assert from "node:assert";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import TestDb from "../helpers/TestDb.js";
+import { fileURLToPath } from "node:url";
 import createHooks from "../../src/domain/hooks/Hooks.js";
-import { registerPlugins } from "../../src/plugins/index.js";
-import TurnBuilder from "../../src/domain/turn/TurnBuilder.js";
 import ProjectContext from "../../src/domain/project/ProjectContext.js";
 import RepoMap from "../../src/domain/repomap/RepoMap.js";
+import TurnBuilder from "../../src/domain/turn/TurnBuilder.js";
+import { registerPlugins } from "../../src/plugins/index.js";
+import TestDb from "../helpers/TestDb.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -89,7 +89,7 @@ async function buildTurn(tdb, hooks, projectPath, seq = 0) {
 }
 
 function getSystemDocuments(turn) {
-	const msgs = [];
+	const _msgs = [];
 	const json = turn.toJson();
 	return json.system;
 }
@@ -183,10 +183,9 @@ describe("File Promotion Lifecycle", () => {
 			"config.json": '{"key": "value"}\n',
 		});
 		const { execSync } = await import("node:child_process");
-		execSync(
-			"git add config.json && git commit --no-verify -m 'feat: init'",
-			{ cwd: projectPath },
-		);
+		execSync("git add config.json && git commit --no-verify -m 'feat: init'", {
+			cwd: projectPath,
+		});
 
 		const { tdb, hooks } = await setupDb(projectPath);
 		try {

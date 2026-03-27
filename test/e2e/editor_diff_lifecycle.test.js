@@ -269,7 +269,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 
 			assert.ok(ctx, "Resumed turn should have context");
 			assert.ok(
-				ctx.includes("<info") && ctx.includes("file="),
+				ctx.includes("info:") && ctx.includes("accepted"),
 				`Context should have <info file="..."> tag:\n${ctx.slice(0, 500)}`,
 			);
 			assert.ok(
@@ -315,7 +315,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 
 			assert.ok(ctx, "Resumed turn should have context");
 			assert.ok(
-				ctx.includes("<warn") && ctx.includes("file="),
+				ctx.includes("warn:"),
 				`Context should have <warn file="..."> for rejection:\n${ctx.slice(0, 500)}`,
 			);
 			assert.ok(
@@ -379,7 +379,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 			const ctx = resumedStep.turn.context;
 
 			assert.ok(
-				ctx.includes("command="),
+				ctx.includes("info:") && ctx.includes("v25.0.0"),
 				`Context should reference the command:\n${ctx.slice(0, 500)}`,
 			);
 			assert.ok(

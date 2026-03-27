@@ -36,16 +36,28 @@ export default class OllamaClient {
 	}
 
 	async getContextSize(model) {
-		const response = await fetch(`${this.#baseUrl}/api/show`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ model }),
-		});
-		if (!response.ok) return null;
-		const data = await response.json();
-		const info = data.model_info || {};
-		for (const [key, value] of Object.entries(info)) {
-			if (key.endsWith(".context_length")) return value;
+		// Ollama lazy-loads models — first request can be slow.
+		// Retry up to 3 times with increasing delays.
+		for (let attempt = 0; attempt < 3; attempt++) {
+			try {
+				const response = await fetch(`${this.#baseUrl}/api/show`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ model }),
+					signal: AbortSignal.timeout(30_000),
+				});
+				if (!response.ok) return null;
+				const data = await response.json();
+				const info = data.model_info || {};
+				for (const [key, value] of Object.entries(info)) {
+					if (key.endsWith(".context_length")) return value;
+				}
+				return null;
+			} catch {
+				if (attempt < 2) {
+					await new Promise((r) => setTimeout(r, (attempt + 1) * 2000));
+				}
+			}
 		}
 		return null;
 	}

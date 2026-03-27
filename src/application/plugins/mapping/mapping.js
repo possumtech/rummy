@@ -29,7 +29,11 @@ export default class RepoMapPlugin {
 			let index = 1;
 
 			for (const f of perspective.files) {
-				const visibility = f.content ? "full" : f.symbols?.length > 0 ? "symbols" : "path";
+				const visibility = f.content
+					? "full"
+					: f.symbols?.length > 0
+						? "symbols"
+						: "path";
 				const docEl = rummy.tag("document", {
 					index: String(index++),
 					visibility,

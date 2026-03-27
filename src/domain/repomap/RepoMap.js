@@ -75,7 +75,7 @@ export default class RepoMap {
 			});
 
 			// Route to antlrmap if supported, otherwise ctags
-			const ext = "." + relPath.split(".").pop();
+			const ext = `.${relPath.split(".").pop()}`;
 			if (this.#antlrmap && antlrmapSupported?.has(ext)) {
 				antlrQueue.push(relPath);
 			} else {
@@ -127,9 +127,7 @@ export default class RepoMap {
 		if (ctagsQueue.length > 0) {
 			const ctagsResults = this.#ctagsExtractor.extract(ctagsQueue);
 			for (const [path, symbols] of ctagsResults.entries()) {
-				const symbolWeight = estimateTokens(
-					JSON.stringify({ path, symbols }),
-				);
+				const symbolWeight = estimateTokens(JSON.stringify({ path, symbols }));
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 					project_id: this.#projectId,
@@ -185,7 +183,7 @@ export default class RepoMap {
 
 		if (!budget)
 			throw new Error(
-				"Context budget unavailable: set RUMMY_MAP_TOKEN_BUDGET or provide contextSize.",
+				"Context budget unavailable. Either the model's context size could not be fetched (check your model alias) or RUMMY_MAP_TOKEN_BUDGET is not set.",
 			);
 
 		const runId = options.runId || null;
@@ -304,9 +302,11 @@ export default class RepoMap {
 			currentTokens += finalTokens;
 		}
 
-		// Greedy warming: upgrade high-heat signature files to full content
-		// if budget permits. This gives the model more context to work with
-		// without requiring explicit <read> promotions.
+		// Greedy warming: upgrade high-heat signature files to full content.
+		// Capped at 30% of total budget — protects small-context models
+		// while letting large-context models benefit from more code.
+		const warmingBudget = Math.floor(budget * 0.3);
+		let warmingUsed = 0;
 		const signatureFiles = finalFiles.filter(
 			(f) => f.fidelity === "signatures" && f.heat > 0,
 		);
@@ -320,16 +320,26 @@ export default class RepoMap {
 			} catch {
 				continue;
 			}
-			const fullTokens = estimateTokens(JSON.stringify({ path: sigFile.path, content }));
+
+			// Skip binary/non-text content
+			if (content.includes("\0")) continue;
+
+			const fullTokens = estimateTokens(
+				JSON.stringify({ path: sigFile.path, content }),
+			);
 			const sigTokens = sigFile.tokens || 0;
 			const additionalTokens = fullTokens - sigTokens;
 
-			if (currentTokens + additionalTokens <= budget) {
+			if (
+				warmingUsed + additionalTokens <= warmingBudget &&
+				currentTokens + additionalTokens <= budget
+			) {
 				sigFile.content = content;
 				sigFile.fidelity = "full:warmed";
 				sigFile.tokens = fullTokens;
 				currentTokens += additionalTokens;
-			} else {
+				warmingUsed += additionalTokens;
+			} else if (warmingUsed >= warmingBudget) {
 				break;
 			}
 		}

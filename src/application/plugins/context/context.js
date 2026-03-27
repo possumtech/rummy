@@ -13,8 +13,7 @@ export default class ContextPlugin {
 			for (const row of pending) {
 				if (row.type === "diff") {
 					const level =
-						row.result.includes("rejected") ||
-						row.result.includes("partially")
+						row.result.includes("rejected") || row.result.includes("partially")
 							? "warn"
 							: "info";
 					lines.push(`${level}: ${row.request} # ${row.result}`);

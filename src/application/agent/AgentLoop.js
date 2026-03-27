@@ -148,7 +148,14 @@ export default class AgentLoop {
 		if (!noContext) {
 			try {
 				contextSize = await this.#llmProvider.getContextSize(requestedModel);
-			} catch (_err) {}
+				if (contextSize) {
+					console.log(`[RUMMY] Context size for '${requestedModel}': ${contextSize} tokens`);
+				} else {
+					console.warn(`[RUMMY] Context size returned null for '${requestedModel}'. Set RUMMY_MAP_TOKEN_BUDGET as fallback.`);
+				}
+			} catch (err) {
+				console.warn(`[RUMMY] Failed to fetch context size for '${requestedModel}': ${err.message}`);
+			}
 		}
 
 		let protocolRetries = 0;
@@ -494,9 +501,9 @@ export default class AgentLoop {
 			if (diffErrors.length > 0) {
 				const contextNode = elements.find((el) => el.tag_name === "context");
 				if (contextNode) {
-					const errorLines = diffErrors.map(
-						(d) => `error: ${d.file} # ${d.error}`,
-					).join("\n");
+					const errorLines = diffErrors
+						.map((d) => `error: ${d.file} # ${d.error}`)
+						.join("\n");
 					await this.#db.insert_turn_element.run({
 						turn_id: turnId,
 						parent_id: contextNode.id,
@@ -613,29 +620,41 @@ export default class AgentLoop {
 			// Phase 1: Classify turn state (flags from ToolExtractor + turn content)
 			const { hasBreaking, hasReads, hasSummary } = flags;
 			const unkRaw = (turnJson.assistant.unknown || "").trim();
-			const openUnknowns = unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
+			const openUnknowns =
+				unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
 			const todoList = turnJson.assistant.todo;
-			const todosIncomplete = todoList.length > 0 && todoList.some((t) => !t.completed);
+			const todosIncomplete =
+				todoList.length > 0 && todoList.some((t) => !t.completed);
 			const proposed = hasBreaking
 				? await this.#db.get_unresolved_findings.all({ run_id: currentRunId })
 				: [];
 
 			// Phase 2: Collect warnings (always injected, regardless of action)
 			const WARN_RULES = [
-				{ when: hasSummary && openUnknowns,
-					msg: "You emitted <summary> but <unknown> is not empty. Resolve unknowns before terminating." },
-				{ when: hasSummary && todosIncomplete,
-					msg: "You emitted <summary> but <todo> has unchecked items. Complete todos before terminating." },
-				{ when: openUnknowns && !hasBreaking && !hasReads,
-					msg: "<unknown> has content but no tools were used. Use tools to resolve unknowns." },
-				{ when: todosIncomplete && !hasBreaking && !hasReads && !hasSummary,
-					msg: "<todo> has unchecked items but no tools were used. Use tools to complete your plan." },
+				{
+					when: hasSummary && openUnknowns,
+					msg: "You emitted <summary> but <unknown> is not empty. Resolve unknowns before terminating.",
+				},
+				{
+					when: hasSummary && todosIncomplete,
+					msg: "You emitted <summary> but <todo> has unchecked items. Complete todos before terminating.",
+				},
+				{
+					when: openUnknowns && !hasBreaking && !hasReads,
+					msg: "<unknown> has content but no tools were used. Use tools to resolve unknowns.",
+				},
+				{
+					when: todosIncomplete && !hasBreaking && !hasReads && !hasSummary,
+					msg: "<todo> has unchecked items but no tools were used. Use tools to complete your plan.",
+				},
 			];
 			const warnings = WARN_RULES.filter((w) => w.when);
 			if (warnings.length > 0) {
 				const ctxNode = elements.find((el) => el.tag_name === "context");
 				if (ctxNode) {
-					const feedbackLines = warnings.map((w) => `warn: ${w.msg}`).join("\n");
+					const feedbackLines = warnings
+						.map((w) => `warn: ${w.msg}`)
+						.join("\n");
 					await this.#db.insert_turn_element.run({
 						turn_id: turnId,
 						parent_id: ctxNode.id,
@@ -649,19 +668,32 @@ export default class AgentLoop {
 
 			// Phase 3: Determine action (first matching rule wins)
 			const ACTION_TABLE = [
-				{ when: proposed.length > 0,                                    action: "proposed" },
-				{ when: hasBreaking,                                            action: "continue" },
-				{ when: hasReads,                                               action: "continue" },
-				{ when: warnings.length > 0 && inconsistencyRetries < MAX_INCONSISTENCY_RETRIES, action: "retry" },
-				{ when: hasSummary,                                             action: "completed" },
-				{ when: !openUnknowns && !todosIncomplete,                      action: "completed" },
-				{ when: true,                                                   action: "completed" },
+				{ when: proposed.length > 0, action: "proposed" },
+				{ when: hasBreaking, action: "continue" },
+				{ when: hasReads, action: "continue" },
+				{
+					when:
+						warnings.length > 0 &&
+						inconsistencyRetries < MAX_INCONSISTENCY_RETRIES,
+					action: "retry",
+				},
+				{ when: hasSummary, action: "completed" },
+				{ when: !openUnknowns && !todosIncomplete, action: "completed" },
+				{ when: true, action: "completed" },
 			];
 			const rule = ACTION_TABLE.find((r) => r.when);
 
 			if (rule.action === "proposed") {
-				await this.#db.update_run_status.run({ id: currentRunId, status: "proposed" });
-				return { runId: currentRunId, status: "proposed", turn: currentTurnSequence, proposed };
+				await this.#db.update_run_status.run({
+					id: currentRunId,
+					status: "proposed",
+				});
+				return {
+					runId: currentRunId,
+					status: "proposed",
+					turn: currentTurnSequence,
+					proposed,
+				};
 			}
 			if (rule.action === "retry") {
 				inconsistencyRetries++;
@@ -675,12 +707,20 @@ export default class AgentLoop {
 			// Completed: synthesize summary if model didn't provide one
 			if (!hasSummary) {
 				const knownText = turnJson.assistant.known || "";
-				const synthesized = knownText.split("\n").filter(Boolean).pop() || "Work completed.";
+				const synthesized =
+					knownText.split("\n").filter(Boolean).pop() || "Work completed.";
 				await commitAssistantTag("summary", synthesized, {}, 50);
 				await turnObj.hydrate();
 			}
-			await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
-			return { runId: currentRunId, status: "completed", turn: currentTurnSequence };
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "completed",
+			});
+			return {
+				runId: currentRunId,
+				status: "completed",
+				turn: currentTurnSequence,
+			};
 		}
 
 		return {

@@ -183,7 +183,7 @@ describe("E2E: Diff Content Verification", () => {
 		const ctx = resumedTurn.turn.context;
 		assert.ok(ctx, "Resumed turn should have context");
 		assert.ok(
-			ctx.includes("<info") && ctx.includes("file="),
+			ctx.includes("info:") && ctx.includes("accepted"),
 			`Resumed turn context should contain <info file="..."> tag. Context:\n${ctx.slice(0, 500)}`,
 		);
 		assert.ok(
@@ -239,7 +239,7 @@ describe("E2E: Diff Content Verification", () => {
 		const ctx = resumedTurn.turn.context;
 		assert.ok(ctx, "Resumed turn should have context");
 		assert.ok(
-			ctx.includes("<warn") && ctx.includes("file="),
+			ctx.includes("warn:"),
 			`Resumed turn context should contain <warn file="..."> tag for rejection. Context:\n${ctx.slice(0, 500)}`,
 		);
 		assert.ok(
@@ -294,7 +294,7 @@ describe("E2E: Diff Content Verification", () => {
 		const ctx = resumedTurn.turn.context;
 		assert.ok(ctx, "Resumed turn should have context");
 		assert.ok(
-			ctx.includes("<warn") && ctx.includes("file="),
+			ctx.includes("warn:"),
 			`Resumed turn context should contain <warn file="..."> for modified diff. Context:\n${ctx.slice(0, 500)}`,
 		);
 		assert.ok(
