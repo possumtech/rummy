@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import Turn from "../../domain/turn/Turn.js";
+import TodoParser from "./TodoParser.js";
 import ToolExtractor from "./ToolExtractor.js";
 
 /**
@@ -360,8 +361,19 @@ export default class AgentLoop {
 			);
 
 			const tags = this.#responseParser.parseActionTags(finalResponse.content);
+
+			// Parse the todo list from the <todo> tag content
+			const todoTag = tags.find((t) => t.tagName === "todo");
+			const todoContent = todoTag
+				? this.#responseParser.getNodeText(todoTag)
+				: "";
+			const { list: parsedTodo } = TodoParser.parse(todoContent);
+
 			const toolExtractor = new ToolExtractor(this.#responseParser);
-			const { tools, structural, flags } = toolExtractor.extract(tags);
+			const { tools, structural, flags } = toolExtractor.extract(
+				tags,
+				parsedTodo,
+			);
 
 			for (let i = 0; i < structural.length; i++) {
 				await commitAssistantTag(
@@ -622,9 +634,8 @@ export default class AgentLoop {
 			const unkRaw = (turnJson.assistant.unknown || "").trim().replace(/^[-*]\s*/, "");
 			const openUnknowns =
 				unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
-			const todoList = turnJson.assistant.todo;
 			const todosIncomplete =
-				todoList.length > 0 && todoList.some((t) => !t.completed);
+				parsedTodo.length > 0 && parsedTodo.some((t) => !t.completed);
 			const proposed = hasBreaking
 				? await this.#db.get_unresolved_findings.all({ run_id: currentRunId })
 				: [];

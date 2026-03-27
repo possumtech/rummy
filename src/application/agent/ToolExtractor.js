@@ -1,24 +1,17 @@
 /**
- * ToolExtractor: Extracts structured tool invocations from model output.
+ * ToolExtractor: Extracts tool invocations from model output.
  *
- * Takes raw parsed tags and produces a clean list of tool calls.
- * Everything downstream consumes these — FindingsManager, exit logic,
- * notifications. The format-specific parsing (XML tags, tool calls, etc.)
- * lives in ResponseParser. This module normalizes to a common shape.
+ * The todo list IS the command interface. Checked items are executed tools.
+ * The server parses tool invocations from checked todo items, not from XML tags.
+ *
+ * Two categories:
+ * - Todo-driven tools: read, drop, env, run, delete, prompt_user, summary
+ *   The checked todo item IS the action.
+ * - Tag-driven tools: edit only
+ *   Requires <edit file="...">SEARCH/REPLACE</edit> tag after the core tags.
  */
 
-const TOOL_TAGS = new Set([
-	"read",
-	"drop",
-	"edit",
-	"create",
-	"delete",
-	"run",
-	"env",
-	"prompt_user",
-]);
-
-const STRUCTURAL_TAGS = new Set(["todo", "known", "unknown", "summary"]);
+import TodoParser from "./TodoParser.js";
 
 const BREAKING_TOOLS = new Set([
 	"edit",
@@ -37,63 +30,71 @@ export default class ToolExtractor {
 	}
 
 	/**
-	 * Extract tool invocations and structural content from parsed tags.
-	 * Returns { tools, structural, flags }
+	 * Extract tool invocations from:
+	 * 1. Checked todo items (todo-driven tools)
+	 * 2. <edit> tags in content (tag-driven tools)
+	 * 3. Structural content (todo, known, unknown, summary)
 	 */
-	extract(tags) {
+	extract(tags, todoList) {
 		const tools = [];
 		const structural = [];
 
+		// 1. Structural content from parsed tags
 		for (const tag of tags) {
-			const name = tag.tagName;
-
-			if (STRUCTURAL_TAGS.has(name)) {
+			if (["todo", "known", "unknown", "summary"].includes(tag.tagName)) {
 				structural.push({
-					name,
+					name: tag.tagName,
 					content: this.#parser.getNodeText(tag),
 				});
-				continue;
 			}
+		}
 
-			if (!TOOL_TAGS.has(name)) continue;
+		// 2. Todo-driven tools from checked items
+		for (const item of todoList) {
+			if (!item.completed || !item.tool) continue;
 
-			const attrs = tag.attrs || [];
-			const content = this.#parser.getNodeText(tag);
+			const { tool, argument } = item;
 
-			if (name === "read" || name === "drop") {
-				const path = attrs.find((a) => a.name === "file")?.value;
-				if (path) tools.push({ tool: name, path });
-			} else if (name === "edit") {
-				const path = attrs.find((a) => a.name === "file")?.value;
-				if (path) {
-					const { search, replace } = this.#parseEditContent(content);
-					if (search && replace) {
-						tools.push({ tool: "edit", path, search, replace });
-					} else {
-						// No SEARCH/REPLACE markers = create/overwrite
-						tools.push({ tool: "create", path, content });
-					}
-				}
-			} else if (name === "create") {
-				const path = attrs.find((a) => a.name === "file")?.value;
-				if (path) tools.push({ tool: "create", path, content });
-			} else if (name === "delete") {
-				const path = attrs.find((a) => a.name === "file")?.value;
-				if (path) tools.push({ tool: "delete", path });
-			} else if (name === "run" || name === "env") {
-				tools.push({ tool: name, command: content });
-			} else if (name === "prompt_user") {
+			if (tool === "read" || tool === "drop") {
+				tools.push({ tool, path: argument });
+			} else if (tool === "delete") {
+				tools.push({ tool: "delete", path: argument });
+			} else if (tool === "env" || tool === "run") {
+				tools.push({ tool, command: argument });
+			} else if (tool === "prompt_user") {
 				tools.push({
 					tool: "prompt_user",
-					text: content,
-					config: this.#parser.parsePromptUser(tag),
+					text: argument,
+					config: this.#parsePromptUser(argument),
 				});
+			} else if (tool === "summary") {
+				// Summary is structural, already captured above
+			} else if (tool === "edit") {
+				// Edit is tag-driven — handled below from <edit> tags
+			}
+		}
+
+		// 3. Tag-driven tools: <edit> tags from content
+		for (const tag of tags) {
+			if (tag.tagName !== "edit") continue;
+			const attrs = tag.attrs || [];
+			const path = attrs.find((a) => a.name === "file")?.value;
+			if (!path) continue;
+
+			const content = this.#parser.getNodeText(tag);
+			const { search, replace } = this.#parseEditContent(content);
+			if (search && replace) {
+				tools.push({ tool: "edit", path, search, replace });
+			} else {
+				tools.push({ tool: "create", path, content });
 			}
 		}
 
 		const hasBreaking = tools.some((t) => BREAKING_TOOLS.has(t.tool));
 		const hasReads = tools.some((t) => t.tool === "read");
-		const hasSummary = structural.some((s) => s.name === "summary");
+		const hasSummary = todoList.some(
+			(t) => t.tool === "summary" && t.completed,
+		);
 
 		return {
 			tools,
@@ -115,15 +116,33 @@ export default class ToolExtractor {
 			return { search: null, replace: null };
 		}
 
-		const search = content
-			.substring(searchStart + searchMarker.length, dividerStart)
-			.trim();
-		const replace = content
-			.substring(dividerStart + dividerMarker.length, replaceEnd)
-			.trim();
+		return {
+			search: content
+				.substring(searchStart + searchMarker.length, dividerStart)
+				.trim(),
+			replace: content
+				.substring(dividerStart + dividerMarker.length, replaceEnd)
+				.trim(),
+		};
+	}
 
-		return { search, replace };
+	#parsePromptUser(text) {
+		const marker = "- [ ]";
+		const firstIdx = text.indexOf(marker);
+		if (firstIdx === -1) {
+			return { question: text.trim(), options: [] };
+		}
+		const question = text.substring(0, firstIdx).trim();
+		const options = text
+			.substring(firstIdx)
+			.split(marker)
+			.filter(Boolean)
+			.map((opt) => ({
+				label: opt.trim().split(/\r?\n|:/)[0].trim(),
+				description: opt.trim(),
+			}));
+		return { question, options };
 	}
 }
 
-export { BREAKING_TOOLS, STRUCTURAL_TAGS, TOOL_TAGS };
+export { BREAKING_TOOLS };
