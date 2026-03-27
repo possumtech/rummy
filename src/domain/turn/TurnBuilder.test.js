@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import test from "node:test";
 import TestDb from "../../../test/helpers/TestDb.js";
+import CoreToolsPlugin from "../../application/plugins/tools/tools.js";
 import createHooks from "../hooks/Hooks.js";
 import TurnBuilder from "./TurnBuilder.js";
 
@@ -41,6 +42,7 @@ test("TurnBuilder", async (t) => {
 			});
 
 			const hooks = createHooks();
+			CoreToolsPlugin.register(hooks);
 			const builder = new TurnBuilder(hooks);
 			const turn = await builder.build({
 				type: "ask",
@@ -73,6 +75,7 @@ test("TurnBuilder", async (t) => {
 			});
 
 			const hooks = createHooks();
+			CoreToolsPlugin.register(hooks);
 			const builder = new TurnBuilder(hooks);
 			const turn = await builder.build({
 				type: "act",
@@ -90,16 +93,12 @@ test("TurnBuilder", async (t) => {
 			const userMsg = msgs.find((m) => m.role === "user");
 			assert.ok(userMsg, "Should have user message");
 			assert.ok(
-				userMsg.content.includes("required_tools:"),
-				"User message should have required_tools",
-			);
-			assert.ok(
 				userMsg.content.includes("allowed_tools:"),
 				"User message should have allowed_tools",
 			);
 			assert.ok(
 				userMsg.content.includes("edit"),
-				"Act mode without unknowns should allow edit",
+				"Act mode should list edit in allowed_tools",
 			);
 		},
 	);
@@ -112,6 +111,7 @@ test("TurnBuilder", async (t) => {
 
 		let capturedNoContext = null;
 		const hooks = createHooks();
+			CoreToolsPlugin.register(hooks);
 		hooks.onTurn(async (rummy) => {
 			capturedNoContext = rummy.noContext;
 		});
@@ -144,6 +144,7 @@ test("TurnBuilder", async (t) => {
 		});
 
 		const hooks = createHooks();
+			CoreToolsPlugin.register(hooks);
 		const builder = new TurnBuilder(hooks);
 		await builder.build({
 			type: "ask",

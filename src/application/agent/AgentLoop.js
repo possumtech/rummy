@@ -235,6 +235,8 @@ export default class AgentLoop {
 				elements: turn.elements,
 				inconsistencyRetries,
 				maxInconsistencyRetries: MAX_INCONSISTENCY_RETRIES,
+				parsedTodo: turn.parsedTodo,
+				tags: turn.tags,
 			});
 
 			if (state.action === "proposed") {

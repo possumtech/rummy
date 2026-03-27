@@ -102,29 +102,28 @@ test("ResponseParser", async (t) => {
 		assert.strictEqual(parser.mergePrefill(prefill, full), full);
 	});
 
-	await t.test("parseActionTags should extract various tags", () => {
+	await t.test("parseActionTags should extract core XML tags", () => {
 		const content = `
-			<read file="test.js"/>
-			<todo>- [ ] edit: do it</todo>
-			<summary>Done</summary>
+			<todo>- [ ] edit: src/main.js # fix bug</todo>
+			<known>The file has a null reference.</known>
+			<unknown></unknown>
 			<invalid>ignore me</invalid>
 		`;
 		const tags = parser.parseActionTags(content);
-		assert.ok(tags.some((t) => t.tagName === "read"));
 		assert.ok(tags.some((t) => t.tagName === "todo"));
-		assert.ok(tags.some((t) => t.tagName === "summary"));
+		assert.ok(tags.some((t) => t.tagName === "known"));
+		assert.ok(tags.some((t) => t.tagName === "unknown"));
 		assert.ok(!tags.some((t) => t.tagName === "invalid"));
-
-		const readTag = tags.find((t) => t.tagName === "read");
-		assert.strictEqual(
-			readTag.attrs.find((a) => a.name === "file").value,
-			"test.js",
-		);
 	});
 
-	await t.test("parseActionTags should handle self-closing tags", () => {
-		const content = `<read file="a.js"/><read file="b.js"/>`;
+	await t.test("parseActionTags should extract edit tags with file attr", () => {
+		const content = '<edit file="a.js">content</edit><edit file="b.js">more</edit>';
 		const tags = parser.parseActionTags(content);
-		assert.strictEqual(tags.filter((t) => t.tagName === "read").length, 2);
+		assert.strictEqual(tags.filter((t) => t.tagName === "edit").length, 2);
+		const first = tags.find((t) => t.tagName === "edit");
+		assert.strictEqual(
+			first.attrs.find((a) => a.name === "file").value,
+			"a.js",
+		);
 	});
 });

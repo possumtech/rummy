@@ -17,6 +17,8 @@ export default class StateEvaluator {
 		elements,
 		inconsistencyRetries,
 		maxInconsistencyRetries,
+		parsedTodo,
+		tags,
 	}) {
 		const { hasAct, hasReads, hasSummary } = flags;
 		const unkRaw = (turnJson.assistant.unknown || "")
@@ -39,6 +41,15 @@ export default class StateEvaluator {
 		const hasStrayOutput =
 			strippedContent.length > 0 && !/^[\s\n]*$/.test(strippedContent);
 
+		// Cross-validate todo items against actual output
+		const todoItems = parsedTodo || [];
+		const editTags = (tags || []).filter((t) => t.tagName === "edit");
+		const todoHasEdit = todoItems.some(
+			(t) => !t.completed && (t.tool === "edit" || t.tool === "create"),
+		);
+		const allTodoComplete = todoItems.length > 0
+			&& todoItems.every((t) => t.completed);
+
 		// Collect warnings — hookable via agent.warn filter
 		let warnRules = [
 			{
@@ -57,12 +68,22 @@ export default class StateEvaluator {
 				when: hasStrayOutput,
 				msg: "Output detected outside structured tags. ALL output must be inside <todo>, <known>, <unknown>, or <edit> tags. Plain text between tags is discarded.",
 			},
+			{
+				when: todoHasEdit && editTags.length === 0,
+				msg: "Todo lists edit: or create: but no <edit> tag was provided. Include an <edit file=\"path\"> block after the core tags.",
+			},
+			{
+				when: allTodoComplete && !hasSummary,
+				msg: "All todo items are checked but no summary: tool was included. Add a summary when work is complete. Example:\n<todo>\n- [ ] summary: Completed the requested changes\n</todo>",
+			},
 		];
 		warnRules = await this.#hooks.agent.warn.filter(warnRules, {
 			flags,
 			tools,
 			turnJson,
 			finalResponse,
+			parsedTodo: todoItems,
+			tags,
 		});
 
 		const warnings = warnRules.filter((w) => w.when);

@@ -42,16 +42,12 @@ export default class TurnBuilder {
 		const contextEl = doc.createElement("context");
 		root.appendChild(contextEl);
 
-		// 3. User Prompt with tool constraints as plain text
+		// 3. User Prompt with tool constraints from ToolRegistry
 		const userEl = doc.createElement("user");
-		const constraints = await db.get_protocol_constraints.get({
-			type,
-			has_unknowns: hasUnknowns ? 1 : 0,
-		});
+		const allowedTools = this.#hooks.tools.allForMode(type);
 		let userText = "";
-		if (constraints) {
-			userText += `required_tools: ${constraints.required_tags}\n`;
-			userText += `allowed_tools: ${constraints.allowed_tags}\n\n`;
+		if (allowedTools.length > 0) {
+			userText += `allowed_tools: ${allowedTools.join(" ")}\n\n`;
 		}
 		userText += prompt;
 		userEl.appendChild(doc.createTextNode(userText));

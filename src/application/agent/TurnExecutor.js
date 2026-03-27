@@ -288,6 +288,8 @@ export default class TurnExecutor {
 			turnJson: turnObj.toJson(),
 			validationErrors,
 			commitTag,
+			parsedTodo,
+			tags,
 		};
 	}
 
@@ -312,32 +314,10 @@ export default class TurnExecutor {
 			}
 		}
 		for (const tag of tags) {
-			if (tag.tagName === "summary") continue;
 			if (!allowed.includes(tag.tagName)) {
 				validationErrors.push({
 					content: `Disallowed tag used: <${tag.tagName}>`,
 					attrs: { protocol: "violation" },
-				});
-			}
-		}
-
-		const turnJson = turnObj.toJson();
-		const hasUnknownsNow =
-			turnJson.assistant.unknown &&
-			turnJson.assistant.unknown.trim().length > 0 &&
-			!/^<unknown\s*\/>$/i.test(turnJson.assistant.unknown) &&
-			!/^<unknown\s*>\s*<\/unknown\s*>$/i.test(turnJson.assistant.unknown);
-
-		if (!hasUnknownsNow && !presentTags.has("summary")) {
-			const contextNode = elements.find((el) => el.tag_name === "context");
-			if (contextNode) {
-				await this.#db.insert_turn_element.run({
-					turn_id: turnId,
-					parent_id: contextNode.id,
-					tag_name: "warn",
-					content: "No unknowns but no <summary> provided.",
-					attributes: JSON.stringify({ protocol: "warning" }),
-					sequence: 150,
 				});
 			}
 		}

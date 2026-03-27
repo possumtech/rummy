@@ -216,27 +216,25 @@ VALUES
 	'ask'
 	, 1
 	, 'todo known unknown'
-	, 'todo known unknown read drop env prompt_user summary'
+	, 'todo known unknown'
 ),
 (
 	'ask'
 	, 0
 	, 'todo known unknown'
-	, 'todo known unknown read drop env prompt_user summary'
+	, 'todo known unknown'
 ),
 (
 	'act'
 	, 1
 	, 'todo known unknown'
-	, 'todo known unknown read drop env prompt_user edit create delete run '
-	|| 'summary'
+	, 'todo known unknown edit'
 ),
 (
 	'act'
 	, 0
 	, 'todo known unknown'
-	, 'todo known unknown read drop env prompt_user edit create delete run '
-	|| 'summary'
+	, 'todo known unknown edit'
 );
 
 -- Canonical ranking query: src/domain/repomap/get_ranked_repo_map.sql

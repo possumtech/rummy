@@ -28,7 +28,7 @@ export default class ToolExtractor {
 
 		// 1. Structural content from parsed tags
 		for (const tag of tags) {
-			if (["todo", "known", "unknown", "summary"].includes(tag.tagName)) {
+			if (["todo", "known", "unknown"].includes(tag.tagName)) {
 				structural.push({
 					name: tag.tagName,
 					content: this.#parser.getNodeText(tag),
@@ -55,7 +55,7 @@ export default class ToolExtractor {
 					config: this.#parsePromptUser(argument),
 				});
 			} else if (tool === "summary") {
-				// Summary is structural, already captured above
+				structural.push({ name: "summary", content: argument });
 			} else if (tool === "edit") {
 				// Edit is tag-driven — handled below from <edit> tags
 			}

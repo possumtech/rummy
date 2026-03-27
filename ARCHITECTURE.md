@@ -69,7 +69,7 @@ Two separate tables store promotions based on their nature:
 | Source   | Table | Set by                   | Scope   | Lifecycle                              |
 |----------|-------|--------------------------|---------|----------------------------------------|
 | `client` | `client_promotions` | Client RPC (`activate`, `readOnly`, `ignore`) | Project | Persistent until client changes it |
-| `agent`  | `file_promotions` | Model `<read>` tag       | Run     | Persistent within run, removed by decay or `<drop>` |
+| `agent`  | `file_promotions` | Model `read:` tool       | Run     | Persistent within run, removed by decay or `drop:` |
 | `editor` | `file_promotions` | Buffer sync (`projectBufferFiles`) | Turn | Transient — cleared and re-synced each turn |
 
 **Client promotions** carry a constraint that determines fidelity:
@@ -189,8 +189,8 @@ The system prompts (`system.ask.md`, `system.act.md`) use the term **"Retained"*
 to describe agent-promoted files. This is intentional — the model does not need to
 know about the internal promotion/fidelity machinery. From the model's perspective:
 
-- `<read file="path"/>` → "Marks file as Retained" (creates agent promotion)
-- `<drop file="path"/>` → "Unmark file as Retained" (removes agent promotion)
+- `- [ ] read: path` → "Marks file as Retained" (creates agent promotion)
+- `- [ ] drop: path` → "Unmark file as Retained" (removes agent promotion)
 
 Internal code and documentation use "agent promotion." Model-facing text uses
 "Retained." These refer to the same mechanism.
@@ -480,9 +480,12 @@ unclosed so the model fills in remaining work.
 | Unknowns present, no tools listed | Concrete example: `- [ ] read: path/to/file # investigate` |
 | No tools and no summary | Concrete example: `- [ ] summary: Described the architecture` |
 | Output outside structured tags | All output must be inside `<todo>`, `<known>`, `<unknown>`, `<edit>` |
+| `edit:` in todo but no `<edit>` tag | Todo promised an edit but no `<edit file="...">` block was provided |
+| All todo items checked, no summary | Work appears complete but no `summary:` tool signals completion |
 
-Warnings include concrete templates of correct behavior, not just error descriptions.
-The model sees these as feedback in the next retry turn.
+Warnings include concrete templates of correct behavior. Both the warning rules
+and the action table are hookable via `hooks.agent.warn` and `hooks.agent.action`
+filters — plugins can add, remove, or reorder rules.
 
 **Phase 2 — Action** (first matching rule wins):
 
@@ -518,13 +521,38 @@ object in `run/step/completed` notifications:
 }
 ```
 
-### 6.6 Protocol Validation
+### 6.6 Tags vs Tools
 
-- **Required tags**: `todo`, `known`, `unknown` must be present.
-- **Allowed tools**: mode-dependent. ASK mode cannot use edit/delete/run.
-- **Tool constraints** are delivered as `required_tools:` and `allowed_tools:`
-  lines at the top of the user message.
-- Violations trigger a retry (up to 5 attempts) with errors in feedback.
+This distinction is critical and must not be conflated.
+
+**Tags** are XML structural elements in the model's output. The model produces
+exactly these tags:
+
+| Tag | Mode | Purpose |
+|---|---|---|
+| `<todo>` | Both | Contains `- [ ] tool: arg # desc` items |
+| `<known>` | Both | Facts, analysis, plans |
+| `<unknown>` | Both | What remains unknown |
+| `<edit file="path">` | Act | SEARCH/REPLACE block for file edits |
+
+There are no `<read>`, `<drop>`, `<summary>`, `<env>`, `<run>`, `<create>`,
+`<delete>`, or `<prompt_user>` tags. These are **tool verbs**, not tags.
+
+**Tools** are verb-prefixed items inside `<todo>`. The server parses them from
+the todo list and executes them. Tools are registered in the `ToolRegistry` and
+are mode-dependent — `allowed_tools:` is injected into the user message per turn.
+
+### 6.7 Protocol Validation
+
+Two levels of validation:
+
+1. **Tag validation** (static): `todo`, `known`, `unknown` are required.
+   `edit` is allowed only in act mode. Stored in `protocol_constraints` table.
+2. **Tool validation** (dynamic): tool names in `<todo>` items are checked
+   against `ToolRegistry.allForMode(type)`. Delivered as `allowed_tools:`
+   in the user message.
+
+Violations trigger a retry (up to 5 attempts) with errors in feedback.
 
 ---
 
