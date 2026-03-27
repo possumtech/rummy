@@ -373,6 +373,13 @@ startRun (optional)
 findings exist on the run. The client must resolve all findings before the
 agent can continue.
 
+**Resolution behavior**: When all findings are resolved:
+- **All accepted** → the server auto-resumes the run (next turn begins immediately).
+- **Any rejected or modified** → the server returns `{ status: "resolved" }` and
+  stops. The client decides whether to continue (`:` prefix) or abandon. Rejection
+  feedback is stored in `pending_context` and appears in the next turn the client
+  initiates.
+
 **Who applies diffs to disk?** The client. The server proposes diffs as findings.
 The client resolves them (accept/reject) and writes accepted changes to its own
 filesystem. The server never touches the working tree.

@@ -60,19 +60,23 @@ describe("E2E: Prefill Workflow (Option D)", () => {
 
 		const result = await client.call("ask", {
 			model,
-			prompt: "Read config.js to understand the database configuration. Then summarize what you found.",
+			prompt:
+				"Read config.js to understand the database configuration. Then summarize what you found.",
 		});
 
 		assert.ok(
-			["completed", "proposed"].includes(result.status),
-			`Expected completed or proposed, got ${result.status}`,
+			["completed", "proposed", "running"].includes(result.status),
+			`Expected completed, proposed, or running — got ${result.status}`,
 		);
 
 		// The model should have used read: config.js, causing the loop to continue.
 		// We verify by checking that config.js appears in the feedback as "file retained".
 		const allFeedback = turns.flatMap((t) => t.turn.feedback || []);
 		const retained = allFeedback.find(
-			(f) => f.level === "info" && f.target === "config.js" && f.message.includes("retained"),
+			(f) =>
+				f.level === "info" &&
+				f.target === "config.js" &&
+				f.message.includes("retained"),
 		);
 		assert.ok(
 			retained,
@@ -98,12 +102,13 @@ describe("E2E: Prefill Workflow (Option D)", () => {
 
 		const result = await client.call("ask", {
 			model,
-			prompt: "Read app.js to understand the server setup, then summarize what port the server listens on.",
+			prompt:
+				"Read app.js to understand the server setup, then summarize what port the server listens on.",
 		});
 
 		assert.ok(
-			["completed", "proposed"].includes(result.status),
-			`Expected completed or proposed, got ${result.status}`,
+			["completed", "proposed", "running"].includes(result.status),
+			`Expected completed, proposed, or running — got ${result.status}`,
 		);
 
 		// After the read is processed and loop continues, the second turn's

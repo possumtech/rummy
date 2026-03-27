@@ -97,11 +97,19 @@ export default class Turn {
 		// Parse feedback lines from <feedback> elements into structured entries.
 		// Format: "level: target # message"
 		const feedback = getTags("feedback").flatMap((f) =>
-			(f.content || "").split("\n").filter(Boolean).map((line) => {
-				const match = line.match(/^(info|warn|error):\s*(.+?)\s*#\s*(.+)$/);
-				if (match) return { level: match[1], target: match[2], message: match[3].trim() };
-				return { level: "info", target: "", message: line.trim() };
-			}),
+			(f.content || "")
+				.split("\n")
+				.filter(Boolean)
+				.map((line) => {
+					const match = line.match(/^(info|warn|error):\s*(.+?)\s*#\s*(.+)$/);
+					if (match)
+						return {
+							level: match[1],
+							target: match[2],
+							message: match[3].trim(),
+						};
+					return { level: "info", target: "", message: line.trim() };
+				}),
 		);
 
 		return {

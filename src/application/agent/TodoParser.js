@@ -78,7 +78,6 @@ export default class TodoParser {
 
 		return { list, next };
 	}
-
 }
 
 export { VALID_TOOLS };

@@ -135,7 +135,8 @@ CREATE TABLE IF NOT EXISTS repo_map_files (
 	, UNIQUE (project_id, path)
 );
 
--- Client Promotions: user intent about file visibility (by path, no FK to file index)
+-- Client Promotions: user intent about file visibility
+-- (by path, no FK to file index)
 CREATE TABLE IF NOT EXISTS client_promotions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE

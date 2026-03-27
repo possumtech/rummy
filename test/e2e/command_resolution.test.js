@@ -252,11 +252,12 @@ describe("E2E: Command Resolution", () => {
 			"proposed",
 			`Expected proposed, got ${actResult.status}`,
 		);
-		const proposingSeq = actResult.turn;
+		const _proposingSeq = actResult.turn;
 
 		// Reject the command — no output, no execution
+		let lastResolve;
 		for (const f of actResult.proposed) {
-			await client.call("run/resolve", {
+			lastResolve = await client.call("run/resolve", {
 				runId: actResult.runId,
 				resolution: {
 					category: f.category,
@@ -266,31 +267,11 @@ describe("E2E: Command Resolution", () => {
 			});
 		}
 
-		const startTime = Date.now();
-		let resumedTurn = null;
-		while (Date.now() - startTime < 60_000) {
-			for (const [seq, payload] of turns) {
-				if (seq > proposingSeq && payload.runId === actResult.runId) {
-					resumedTurn = payload;
-					break;
-				}
-			}
-			if (resumedTurn) break;
-			await new Promise((r) => setTimeout(r, 500));
-		}
-
-		assert.ok(resumedTurn, "Should have received a resumed turn notification");
-
-		const ctx = resumedTurn.turn.context;
-		assert.ok(ctx, "Resumed turn should have context");
-
-		assert.ok(
-			ctx.includes("ls -la") || ctx.includes("ls"),
-			`Context should reference the command. Context:\n${ctx.slice(0, 500)}`,
-		);
-		assert.ok(
-			ctx.includes("rejected"),
-			`Context should indicate rejection. Context:\n${ctx.slice(0, 500)}`,
+		// Rejection should return resolved (no auto-resume)
+		assert.strictEqual(
+			lastResolve.status,
+			"resolved",
+			`Rejected findings should return 'resolved', got ${lastResolve.status}`,
 		);
 
 		client.removeAllListeners("run/step/completed");

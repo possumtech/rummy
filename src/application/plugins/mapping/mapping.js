@@ -38,7 +38,9 @@ export default class RepoMapPlugin {
 				if (f.content) {
 					docEl.appendChild(rummy.tag("document_content", {}, [f.content]));
 				} else if (f.symbols && f.symbols.length > 0) {
-					docEl.appendChild(rummy.tag("document_content", {}, [f.symbols.join(", ")]));
+					docEl.appendChild(
+						rummy.tag("document_content", {}, [f.symbols.join(", ")]),
+					);
 				}
 
 				docsEl.appendChild(docEl);

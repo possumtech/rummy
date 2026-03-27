@@ -94,8 +94,12 @@ log("hi");
 			"something",
 		);
 
-		strictEqual(result.patch, null);
-		ok(result.error.includes("SEARCH block is empty"));
+		ok(result.patch, "Empty search should append to end of file");
+		ok(
+			result.patch.includes("+something"),
+			"Patch should contain appended content",
+		);
+		strictEqual(result.error, null);
 	});
 
 	it("should fail if no match is found", () => {

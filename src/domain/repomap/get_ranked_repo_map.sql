@@ -33,7 +33,9 @@ SELECT
 			)
 	) * 2 + f.is_root AS heat
 FROM repo_map_files AS f
-LEFT JOIN client_promotions AS cp ON f.project_id = cp.project_id AND f.path = cp.path
+LEFT JOIN
+	client_promotions AS cp
+	ON f.project_id = cp.project_id AND f.path = cp.path
 LEFT JOIN
 	file_promotions AS ap
 	ON f.id = ap.file_id AND ap.source = 'agent' AND ap.run_id = :run_id

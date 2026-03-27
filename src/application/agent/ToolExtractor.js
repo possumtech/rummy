@@ -80,8 +80,8 @@ export default class ToolExtractor {
 			if (!path) continue;
 
 			const content = this.#parser.getNodeText(tag);
-			const { search, replace } = this.#parseEditContent(content);
-			if (search && replace) {
+			const { search, replace, hasMarkers } = this.#parseEditContent(content);
+			if (hasMarkers) {
 				tools.push({ tool: "edit", path, search, replace });
 			} else {
 				tools.push({ tool: "create", path, content });
@@ -112,14 +112,15 @@ export default class ToolExtractor {
 			return { search: null, replace: null };
 		}
 
-		return {
-			search: content
-				.substring(searchStart + searchMarker.length, dividerStart)
-				.trim(),
-			replace: content
-				.substring(dividerStart + dividerMarker.length, replaceEnd)
-				.trim(),
-		};
+		const search = content
+			.substring(searchStart + searchMarker.length, dividerStart)
+			.trim();
+		const replace = content
+			.substring(dividerStart + dividerMarker.length, replaceEnd)
+			.trim();
+
+		// Markers present → always return strings (even if empty)
+		return { search, replace, hasMarkers: true };
 	}
 
 	#parsePromptUser(text) {
@@ -134,7 +135,10 @@ export default class ToolExtractor {
 			.split(marker)
 			.filter(Boolean)
 			.map((opt) => ({
-				label: opt.trim().split(/\r?\n|:/)[0].trim(),
+				label: opt
+					.trim()
+					.split(/\r?\n|:/)[0]
+					.trim(),
 				description: opt.trim(),
 			}));
 		return { question, options };

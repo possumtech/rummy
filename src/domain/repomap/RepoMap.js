@@ -99,7 +99,12 @@ export default class RepoMap {
 					}
 
 					const symbolWeight = estimateTokens(
-						JSON.stringify({ path: relPath, symbols: symbols.map((s) => s.params ? `${s.name}(${s.params.join(", ")})` : s.name) }),
+						JSON.stringify({
+							path: relPath,
+							symbols: symbols.map((s) =>
+								s.params ? `${s.name}(${s.params.join(", ")})` : s.name,
+							),
+						}),
 					);
 
 					const { id: fileId } = await this.#db.upsert_repo_map_file.get({
@@ -130,7 +135,14 @@ export default class RepoMap {
 		if (ctagsQueue.length > 0) {
 			const ctagsResults = this.#ctagsExtractor.extract(ctagsQueue);
 			for (const [path, symbols] of ctagsResults.entries()) {
-				const symbolWeight = estimateTokens(JSON.stringify({ path, symbols: symbols.map((s) => s.params ? `${s.name}(${s.params})` : s.name) }));
+				const symbolWeight = estimateTokens(
+					JSON.stringify({
+						path,
+						symbols: symbols.map((s) =>
+							s.params ? `${s.name}(${s.params})` : s.name,
+						),
+					}),
+				);
 
 				const { id: fileId } = await this.#db.upsert_repo_map_file.get({
 					project_id: this.#projectId,
@@ -178,7 +190,9 @@ export default class RepoMap {
 		if (symbolNames.length === 0) return;
 
 		// Escape regex special chars in symbol names
-		const escaped = symbolNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+		const escaped = symbolNames.map((n) =>
+			n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+		);
 		const pattern = new RegExp(`\\b(?:${escaped.join("|")})\\b`, "g");
 
 		for (const { fileId, content } of reindexedFiles) {
@@ -283,7 +297,11 @@ export default class RepoMap {
 		}
 
 		for (const file of rankedFiles) {
-			const baseFidelity = this.#deriveFidelity(file, currentTurn, decayThreshold);
+			const baseFidelity = this.#deriveFidelity(
+				file,
+				currentTurn,
+				decayThreshold,
+			);
 
 			if (baseFidelity === "excluded") continue;
 			if (baseFidelity === "decayed") continue;
@@ -317,13 +335,17 @@ export default class RepoMap {
 				fidelity = "symbols";
 			}
 
-			const symbols = fidelity === "symbols"
-				? (tagMap.get(file.path) || []).map((s) => s.params ? `${s.name}(${s.params})` : s.name)
-				: [];
+			const symbols =
+				fidelity === "symbols"
+					? (tagMap.get(file.path) || []).map((s) =>
+							s.params ? `${s.name}(${s.params})` : s.name,
+						)
+					: [];
 
-			let displayFile = symbols.length > 0
-				? { path: file.path, size: file.size, symbols, fidelity }
-				: { path: file.path, size: file.size, fidelity: "path" };
+			let displayFile =
+				symbols.length > 0
+					? { path: file.path, size: file.size, symbols, fidelity }
+					: { path: file.path, size: file.size, fidelity: "path" };
 
 			let finalTokens =
 				file.symbol_tokens || estimateTokens(JSON.stringify(displayFile));

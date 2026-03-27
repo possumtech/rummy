@@ -29,8 +29,10 @@ async function createTestProject(files) {
 describe("Cross-Reference Population", () => {
 	it("should populate references when file B mentions symbols from file A", async () => {
 		const projectPath = await createTestProject({
-			"utils.js": "export function calculateTotal(items) {\n\treturn items.reduce((sum, i) => sum + i.price, 0);\n}\n\nexport function formatCurrency(amount) {\n\treturn `$${amount.toFixed(2)}`;\n}\n",
-			"app.js": "import { calculateTotal, formatCurrency } from './utils.js';\n\nconst total = calculateTotal(cart);\nconsole.log(formatCurrency(total));\n",
+			"utils.js":
+				"export function calculateTotal(items) {\n\treturn items.reduce((sum, i) => sum + i.price, 0);\n}\n\nexport function formatCurrency(amount) {\n\treturn `$${amount.toFixed(2)}`;\n}\n",
+			"app.js":
+				"import { calculateTotal, formatCurrency } from './utils.js';\n\nconst total = calculateTotal(cart);\nconsole.log(formatCurrency(total));\n",
 		});
 
 		const tdb = await TestDb.create();
@@ -79,7 +81,8 @@ describe("Cross-Reference Population", () => {
 
 	it("should not create self-references", async () => {
 		const projectPath = await createTestProject({
-			"math.js": "export function add(a, b) {\n\treturn a + b;\n}\n\nconst result = add(1, 2);\n",
+			"math.js":
+				"export function add(a, b) {\n\treturn a + b;\n}\n\nconst result = add(1, 2);\n",
 		});
 
 		const tdb = await TestDb.create();
@@ -100,7 +103,9 @@ describe("Cross-Reference Population", () => {
 			const mathId = files.find((f) => f.path === "math.js")?.id;
 			assert.ok(mathId, "math.js should be indexed");
 
-			const selfRefs = await tdb.db.get_file_references.all({ file_id: mathId });
+			const selfRefs = await tdb.db.get_file_references.all({
+				file_id: mathId,
+			});
 
 			assert.strictEqual(
 				selfRefs.length,
@@ -115,7 +120,8 @@ describe("Cross-Reference Population", () => {
 
 	it("should skip short symbol names (< 3 chars)", async () => {
 		const projectPath = await createTestProject({
-			"defs.js": "export const id = 1;\nexport function go() {}\nexport class UserService {}\n",
+			"defs.js":
+				"export const id = 1;\nexport function go() {}\nexport class UserService {}\n",
 			"consumer.js": "const x = id;\ngo();\nconst svc = new UserService();\n",
 		});
 
@@ -137,7 +143,9 @@ describe("Cross-Reference Population", () => {
 			const consumerId = files.find((f) => f.path === "consumer.js")?.id;
 			assert.ok(consumerId, "consumer.js should be indexed");
 
-			const refs = await tdb.db.get_file_references.all({ file_id: consumerId });
+			const refs = await tdb.db.get_file_references.all({
+				file_id: consumerId,
+			});
 			const refNames = refs.map((r) => r.symbol_name);
 
 			assert.ok(
@@ -160,8 +168,10 @@ describe("Cross-Reference Population", () => {
 
 	it("heat should increase when a promoted file references another file's symbols", async () => {
 		const projectPath = await createTestProject({
-			"config.js": "export const DATABASE_URL = 'postgres://localhost/app';\nexport const MAX_RETRIES = 3;\n",
-			"server.js": "import { DATABASE_URL, MAX_RETRIES } from './config.js';\nconsole.log(DATABASE_URL, MAX_RETRIES);\n",
+			"config.js":
+				"export const DATABASE_URL = 'postgres://localhost/app';\nexport const MAX_RETRIES = 3;\n",
+			"server.js":
+				"import { DATABASE_URL, MAX_RETRIES } from './config.js';\nconsole.log(DATABASE_URL, MAX_RETRIES);\n",
 		});
 
 		const tdb = await TestDb.create();

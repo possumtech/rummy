@@ -17,9 +17,13 @@ async function createIsolatedSession(files = {}) {
 	);
 	await fs.mkdir(projectPath, { recursive: true });
 
-	const fileEntries = Object.keys(files).length > 0
-		? files
-		: { "math.js": "function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n" };
+	const fileEntries =
+		Object.keys(files).length > 0
+			? files
+			: {
+					"math.js":
+						"function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
+				};
 
 	for (const [name, content] of Object.entries(fileEntries)) {
 		await fs.writeFile(join(projectPath, name), content);
@@ -105,7 +109,7 @@ describe("E2E: Diff Resolution", () => {
 		try {
 			const actResult = await actAndExpectProposed(
 				client,
-				'The add function in math.js returns a - b but should return a + b. Fix this single bug using the edit tool with SEARCH/REPLACE format.',
+				"The add function in math.js returns a - b but should return a + b. Fix this single bug using the edit tool with SEARCH/REPLACE format.",
 			);
 
 			const resolveResult = await resolveAll(
@@ -125,14 +129,14 @@ describe("E2E: Diff Resolution", () => {
 		}
 	});
 
-	it("rejecting all diffs should auto-resume with rejection info", {
+	it("rejecting all diffs should return resolved without auto-resuming", {
 		timeout: TIMEOUT,
 	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
 		try {
 			const actResult = await actAndExpectProposed(
 				client,
-				'The add function in math.js returns a - b but should return a + b. Fix this bug using the edit tool with SEARCH/REPLACE format.',
+				"The add function in math.js returns a - b but should return a + b. Fix this bug using the edit tool with SEARCH/REPLACE format.",
 			);
 
 			const resolveResult = await resolveAll(
@@ -143,9 +147,10 @@ describe("E2E: Diff Resolution", () => {
 			);
 
 			assert.ok(resolveResult, "Should have a resolve result");
-			assert.ok(
-				["completed", "proposed", "running"].includes(resolveResult.status),
-				`Expected valid status after rejection, got ${resolveResult.status}`,
+			assert.strictEqual(
+				resolveResult.status,
+				"resolved",
+				`Rejected findings should return 'resolved' (no auto-resume), got ${resolveResult.status}`,
 			);
 		} finally {
 			await cleanup();
@@ -156,8 +161,10 @@ describe("E2E: Diff Resolution", () => {
 		timeout: TIMEOUT,
 	}, async () => {
 		const { client, cleanup } = await createIsolatedSession({
-			"math.js": "function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
-			"greet.js": "function greet(name) {\n\treturn 'goodby ' + name;\n}\nmodule.exports = { greet };\n",
+			"math.js":
+				"function add(a, b) {\n\treturn a - b;\n}\nmodule.exports = { add };\n",
+			"greet.js":
+				"function greet(name) {\n\treturn 'goodby ' + name;\n}\nmodule.exports = { greet };\n",
 		});
 		try {
 			const actResult = await actAndExpectProposed(

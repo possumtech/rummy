@@ -158,12 +158,18 @@ export default class AgentLoop {
 			try {
 				contextSize = await this.#llmProvider.getContextSize(requestedModel);
 				if (contextSize) {
-					console.log(`[RUMMY] Context size for '${requestedModel}': ${contextSize} tokens`);
+					console.log(
+						`[RUMMY] Context size for '${requestedModel}': ${contextSize} tokens`,
+					);
 				} else {
-					console.warn(`[RUMMY] Context size returned null for '${requestedModel}'. Set RUMMY_MAP_TOKEN_BUDGET as fallback.`);
+					console.warn(
+						`[RUMMY] Context size returned null for '${requestedModel}'. Set RUMMY_MAP_TOKEN_BUDGET as fallback.`,
+					);
 				}
 			} catch (err) {
-				console.warn(`[RUMMY] Failed to fetch context size for '${requestedModel}': ${err.message}`);
+				console.warn(
+					`[RUMMY] Failed to fetch context size for '${requestedModel}': ${err.message}`,
+				);
 			}
 		}
 
@@ -221,7 +227,9 @@ export default class AgentLoop {
 				const lastTurn = new Turn(this.#db, lastTurnRow.turn_id);
 				await lastTurn.hydrate();
 				const lastJson = lastTurn.toJson();
-				const unknownText = (lastJson.assistant.unknown || "").trim().replace(/^[-*]\s*/, "");
+				const unknownText = (lastJson.assistant.unknown || "")
+					.trim()
+					.replace(/^[-*]\s*/, "");
 				hasUnknowns =
 					unknownText.length > 0 &&
 					!/^(none\.?|n\/a|nothing\.?|-)$/i.test(unknownText) &&
@@ -647,7 +655,9 @@ export default class AgentLoop {
 			// --- DECLARATIVE STATE TABLE ---
 			// Phase 1: Classify turn state
 			const { hasAct, hasReads, hasSummary } = flags;
-			const unkRaw = (turnJson.assistant.unknown || "").trim().replace(/^[-*]\s*/, "");
+			const unkRaw = (turnJson.assistant.unknown || "")
+				.trim()
+				.replace(/^[-*]\s*/, "");
 			const openUnknowns =
 				unkRaw.length > 0 && !/^(none\.?|n\/a|nothing\.?|-)$/i.test(unkRaw);
 			const hasTools = tools.length > 0;
@@ -656,13 +666,14 @@ export default class AgentLoop {
 				: [];
 
 			// Detect stray output outside structured tags
-			const allowedTagPattern = /<(?:todo|known|unknown|edit)[^>]*>[\s\S]*?<\/(?:todo|known|unknown|edit)>/gi;
+			const allowedTagPattern =
+				/<(?:todo|known|unknown|edit)[^>]*>[\s\S]*?<\/(?:todo|known|unknown|edit)>/gi;
 			const strippedContent = (finalResponse.content || "")
 				.replace(allowedTagPattern, "")
 				.replace(/<(?:todo|known|unknown|edit)[^>]*\/>/gi, "")
 				.trim();
-			const hasStrayOutput = strippedContent.length > 0
-				&& !/^[\s\n]*$/.test(strippedContent);
+			const hasStrayOutput =
+				strippedContent.length > 0 && !/^[\s\n]*$/.test(strippedContent);
 
 			// Phase 2: Collect warnings with concrete examples
 			const WARN_RULES = [
@@ -833,7 +844,24 @@ export default class AgentLoop {
 			};
 		}
 
-		// All findings resolved — auto-resume the run
+		// All findings resolved. Only auto-resume if everything was accepted.
+		// If any finding was rejected or modified, return control to the client.
+		const allFindings = await this.#db.get_findings_by_run_id.all({
+			run_id: runId,
+		});
+		const hasRejection = allFindings.some(
+			(f) => f.status === "rejected" || f.status === "modified",
+		);
+
+		if (hasRejection) {
+			await this.#db.update_run_status.run({
+				id: runId,
+				status: "running",
+			});
+			return { runId, status: "resolved" };
+		}
+
+		// All accepted — auto-resume the run
 		return this.run(run.type, run.session_id, null, "", null, runId);
 	}
 

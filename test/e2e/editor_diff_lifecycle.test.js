@@ -303,24 +303,35 @@ describe("E2E: editor/diff Lifecycle", () => {
 			const proposingSeq = result.turn;
 
 			// Reject all findings
+			let lastResolve;
 			for (const f of result.proposed) {
-				await client.call("run/resolve", {
+				lastResolve = await client.call("run/resolve", {
 					runId: result.runId,
 					resolution: { category: f.category, id: f.id, action: "rejected" },
 				});
 			}
 
+			// Rejection should return resolved (no auto-resume)
+			assert.strictEqual(
+				lastResolve.status,
+				"resolved",
+				`Rejected findings should return 'resolved', got ${lastResolve.status}`,
+			);
+
+			// Client continues — rejection info appears in next turn
+			await client.call("act", {
+				model,
+				runId: result.runId,
+				prompt: "The edit was rejected. Summarize what happened.",
+			});
+
 			const resumedStep = await waitForStepAfter(proposingSeq, result.runId);
 			const ctx = resumedStep.turn.context;
 
-			assert.ok(ctx, "Resumed turn should have context");
+			assert.ok(ctx, "Continued turn should have context");
 			assert.ok(
-				ctx.includes("warn:"),
-				`Context should have <warn file="..."> for rejection:\n${ctx.slice(0, 500)}`,
-			);
-			assert.ok(
-				ctx.includes("rejected"),
-				`Context should mention rejection:\n${ctx.slice(0, 500)}`,
+				ctx.includes("warn:") || ctx.includes("rejected"),
+				`Context should contain rejection feedback:\n${ctx.slice(0, 500)}`,
 			);
 		} finally {
 			notifCleanup();

@@ -72,12 +72,11 @@ export default class HeuristicMatcher {
 		const fileTokens = fileLines.map((l) => l.trim());
 
 		if (searchTokens.length === 0) {
-			return {
-				patch: null,
-				warning: null,
-				error:
-					"SEARCH block is empty or only whitespace. Please provide exact lines to replace.",
-			};
+			// Empty SEARCH = append REPLACE to end of file
+			const trailing = fileContent.endsWith("\n") ? "" : "\n";
+			const newContent = `${fileContent + trailing + replaceBlock}\n`;
+			const patch = generateUnifiedDiff(filePath, fileContent, newContent);
+			return { patch, newContent, warning: null, error: null };
 		}
 
 		let matchStartIndex = -1;

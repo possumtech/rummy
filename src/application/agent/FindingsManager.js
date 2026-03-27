@@ -111,7 +111,7 @@ export default class FindingsManager {
 				let currentContent = originalContent;
 
 				for (const edit of edits) {
-					if (!edit.search || !edit.replace) {
+					if (edit.search === null || edit.search === undefined) {
 						warnings.push(
 							"Could not parse SEARCH/REPLACE markers from an edit block.",
 						);

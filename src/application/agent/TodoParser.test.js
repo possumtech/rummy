@@ -84,5 +84,4 @@ test("TodoParser", async (t) => {
 		assert.strictEqual(list[0].argument, "cat file.txt | grep error | wc -l");
 		assert.strictEqual(list[0].description, "count errors");
 	});
-
 });

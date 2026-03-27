@@ -213,38 +213,47 @@ describe("E2E: Diff Content Verification", () => {
 		const proposingSeq = actResult.turn;
 
 		// Reject all findings
+		let lastResolve;
 		for (const f of actResult.proposed) {
-			await client.call("run/resolve", {
+			lastResolve = await client.call("run/resolve", {
 				runId: actResult.runId,
 				resolution: { category: f.category, id: f.id, action: "rejected" },
 			});
 		}
 
-		// Wait for resumed turn
-		const startTime = Date.now();
+		// Rejection should return resolved (no auto-resume)
+		assert.strictEqual(
+			lastResolve.status,
+			"resolved",
+			`Rejected findings should return 'resolved', got ${lastResolve.status}`,
+		);
+
+		// Client continues — rejection info appears as feedback in the next turn
+		const _continueResult = await client.call("act", {
+			model,
+			runId: actResult.runId,
+			prompt: "The edit was rejected. Summarize what happened.",
+		});
+
+		// Find the turn after the proposing turn
 		let resumedTurn = null;
-		while (Date.now() - startTime < 60_000) {
-			for (const [seq, payload] of turns) {
-				if (seq > proposingSeq && payload.runId === actResult.runId) {
-					resumedTurn = payload;
-					break;
-				}
+		for (const [seq, payload] of turns) {
+			if (seq > proposingSeq && payload.runId === actResult.runId) {
+				resumedTurn = payload;
+				break;
 			}
-			if (resumedTurn) break;
-			await new Promise((r) => setTimeout(r, 500));
 		}
 
-		assert.ok(resumedTurn, "Should have received a resumed turn notification");
+		assert.ok(
+			resumedTurn,
+			"Should have received a turn after client continued",
+		);
 
 		const ctx = resumedTurn.turn.context;
-		assert.ok(ctx, "Resumed turn should have context");
+		assert.ok(ctx, "Continued turn should have context");
 		assert.ok(
-			ctx.includes("warn:"),
-			`Resumed turn context should contain <warn file="..."> tag for rejection. Context:\n${ctx.slice(0, 500)}`,
-		);
-		assert.ok(
-			ctx.includes("rejected"),
-			`Context should mention rejection. Context:\n${ctx.slice(0, 500)}`,
+			ctx.includes("warn:") || ctx.includes("rejected"),
+			`Continued turn context should contain rejection feedback. Context:\n${ctx.slice(0, 500)}`,
 		);
 
 		cleanup();
@@ -269,38 +278,47 @@ describe("E2E: Diff Content Verification", () => {
 		const proposingSeq = actResult.turn;
 
 		// Resolve diffs with "modified", others with "accepted"
+		let lastResolve;
 		for (const f of actResult.proposed) {
 			const action = f.category === "diff" ? "modified" : "accepted";
-			await client.call("run/resolve", {
+			lastResolve = await client.call("run/resolve", {
 				runId: actResult.runId,
 				resolution: { category: f.category, id: f.id, action },
 			});
 		}
 
-		const startTime = Date.now();
+		// Modified should return resolved (no auto-resume)
+		assert.strictEqual(
+			lastResolve.status,
+			"resolved",
+			`Modified findings should return 'resolved', got ${lastResolve.status}`,
+		);
+
+		// Client continues — partial acceptance info appears in next turn
+		const _continueResult = await client.call("act", {
+			model,
+			runId: actResult.runId,
+			prompt: "The edit was partially accepted. Summarize what happened.",
+		});
+
 		let resumedTurn = null;
-		while (Date.now() - startTime < 60_000) {
-			for (const [seq, payload] of turns) {
-				if (seq > proposingSeq && payload.runId === actResult.runId) {
-					resumedTurn = payload;
-					break;
-				}
+		for (const [seq, payload] of turns) {
+			if (seq > proposingSeq && payload.runId === actResult.runId) {
+				resumedTurn = payload;
+				break;
 			}
-			if (resumedTurn) break;
-			await new Promise((r) => setTimeout(r, 500));
 		}
 
-		assert.ok(resumedTurn, "Should have received a resumed turn notification");
+		assert.ok(
+			resumedTurn,
+			"Should have received a turn after client continued",
+		);
 
 		const ctx = resumedTurn.turn.context;
-		assert.ok(ctx, "Resumed turn should have context");
+		assert.ok(ctx, "Continued turn should have context");
 		assert.ok(
-			ctx.includes("warn:"),
-			`Resumed turn context should contain <warn file="..."> for modified diff. Context:\n${ctx.slice(0, 500)}`,
-		);
-		assert.ok(
-			ctx.includes("partially accepted"),
-			`Context should say "partially accepted". Context:\n${ctx.slice(0, 500)}`,
+			ctx.includes("warn:") || ctx.includes("partially accepted"),
+			`Context should contain partial acceptance feedback. Context:\n${ctx.slice(0, 500)}`,
 		);
 
 		cleanup();

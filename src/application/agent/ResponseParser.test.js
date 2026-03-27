@@ -84,18 +84,21 @@ test("ResponseParser", async (t) => {
 		);
 	});
 
-	await t.test("mergePrefill should handle partial echo of continuation", () => {
-		const prefill = "<todo>\n- [x] read: src/main.js\n- [ ] ";
-		// Provider echoed trailing "- [ ] " but not checked items
-		assert.strictEqual(
-			parser.mergePrefill(prefill, "- [ ] edit: src/main.js\n</todo>"),
-			"<todo>\n- [x] read: src/main.js\n- [ ] edit: src/main.js\n</todo>",
-		);
-	});
+	await t.test(
+		"mergePrefill should handle partial echo of continuation",
+		() => {
+			const prefill = "<todo>\n- [x] read: src/main.js\n- [ ] ";
+			// Provider echoed trailing "- [ ] " but not checked items
+			assert.strictEqual(
+				parser.mergePrefill(prefill, "- [ ] edit: src/main.js\n</todo>"),
+				"<todo>\n- [x] read: src/main.js\n- [ ] edit: src/main.js\n</todo>",
+			);
+		},
+	);
 
 	await t.test("mergePrefill should handle full echo of continuation", () => {
 		const prefill = "<todo>\n- [x] read: src/main.js\n- [ ] ";
-		const full = prefill + "edit: src/main.js\n</todo>";
+		const full = `${prefill}edit: src/main.js\n</todo>`;
 		assert.strictEqual(parser.mergePrefill(prefill, full), full);
 	});
 
