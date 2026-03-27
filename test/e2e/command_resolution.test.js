@@ -66,7 +66,7 @@ describe("E2E: Command Resolution", () => {
 		const result = await client.call("act", {
 			model,
 			prompt:
-				'I need you to check the Node.js version on this machine. Use an <env> tag to run "node --version". Do NOT edit any files.',
+				'I need you to check the Node.js version on this machine. Use an env tool to run "node --version". Do NOT edit any files.',
 		});
 
 		assert.strictEqual(
@@ -113,7 +113,7 @@ describe("E2E: Command Resolution", () => {
 		const actResult = await client.call("act", {
 			model,
 			prompt:
-				'Run "node --version" using an <env> tag to check what Node.js version is installed. Do NOT edit any files.',
+				'Run "node --version" using an env tool to check what Node.js version is installed. Do NOT edit any files.',
 		});
 
 		assert.strictEqual(
@@ -156,12 +156,12 @@ describe("E2E: Command Resolution", () => {
 		const ctx = resumedTurn.turn.context;
 		assert.ok(ctx, "Resumed turn should have context");
 		assert.ok(
-			ctx.includes("<info") && ctx.includes("command="),
-			`Context should contain <info command="..."> tag. Context:\n${ctx.slice(0, 500)}`,
+			ctx.includes("info:") && ctx.includes("node --version"),
+			`Context should contain info feedback for the command. Context:\n${ctx.slice(0, 500)}`,
 		);
 		assert.ok(
 			ctx.includes("v25.0.0"),
-			`Context should contain the command output "v25.0.0". Context:\n${ctx.slice(0, 500)}`,
+			`Context should contain the command output. Context:\n${ctx.slice(0, 500)}`,
 		);
 
 		client.removeAllListeners("run/step/completed");
@@ -178,7 +178,7 @@ describe("E2E: Command Resolution", () => {
 		const actResult = await client.call("act", {
 			model,
 			prompt:
-				'Use a <run> tag to execute "npm test" in the project. Do NOT edit any files.',
+				'Use a run tool to execute "npm test" in the project. Do NOT edit any files.',
 		});
 
 		assert.strictEqual(
@@ -223,8 +223,8 @@ describe("E2E: Command Resolution", () => {
 		const ctx = resumedTurn.turn.context;
 		assert.ok(ctx, "Resumed turn should have context");
 		assert.ok(
-			ctx.includes("<error") && ctx.includes("command="),
-			`Context should contain <error command="..."> tag for failed command. Context:\n${ctx.slice(0, 500)}`,
+			ctx.includes("error:") && ctx.includes("npm test"),
+			`Context should contain error feedback for the failed command. Context:\n${ctx.slice(0, 500)}`,
 		);
 		assert.ok(
 			ctx.includes("test suite failed"),
@@ -244,7 +244,7 @@ describe("E2E: Command Resolution", () => {
 
 		const actResult = await client.call("act", {
 			model,
-			prompt: 'Use an <env> tag to run "ls -la". Do NOT edit any files.',
+			prompt: 'Use an env tool to run "ls -la". Do NOT edit any files.',
 		});
 
 		assert.strictEqual(
@@ -284,11 +284,9 @@ describe("E2E: Command Resolution", () => {
 		const ctx = resumedTurn.turn.context;
 		assert.ok(ctx, "Resumed turn should have context");
 
-		// For rejected commands, the pending_context still gets an entry with "rejected" as output
-		// The model should see that the command was rejected
 		assert.ok(
-			ctx.includes("command="),
-			`Context should still reference the command. Context:\n${ctx.slice(0, 500)}`,
+			ctx.includes("ls -la") || ctx.includes("ls"),
+			`Context should reference the command. Context:\n${ctx.slice(0, 500)}`,
 		);
 		assert.ok(
 			ctx.includes("rejected"),

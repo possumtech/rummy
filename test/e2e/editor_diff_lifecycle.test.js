@@ -345,7 +345,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 			const result = await client.call("act", {
 				model,
 				prompt:
-					'Run "node --version" using an <env> tag. Do NOT edit any files.',
+					'Run "node --version" using an env tool. Do NOT edit any files.',
 			});
 
 			assert.strictEqual(

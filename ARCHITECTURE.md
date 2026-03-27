@@ -101,7 +101,7 @@ The model sees fidelity as the `visibility` attribute on documents.
 |----------------|-------------------------|-----------------|
 | `full`         | Complete source         | Yes             |
 | `full:readonly`| Complete source         | No              |
-| `symbols`      | Symbol names only       | No              |
+| `symbols`      | Symbol names + params   | No              |
 | `path`         | File path only          | No              |
 | `excluded`     | Invisible               | No              |
 
