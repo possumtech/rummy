@@ -310,40 +310,6 @@ SELECT
 FROM turns AS t
 JOIN turn_elements AS te ON t.id = te.turn_id AND te.tag_name = 'content';
 
--- RELATIONAL TURN SUMMARY VIEW
-CREATE VIEW IF NOT EXISTS v_turns_summary AS
-SELECT
-	t.id as turn_id,
-	t.run_id,
-	t.sequence,
-	(
-		SELECT content
-		FROM turn_elements
-		WHERE turn_id = t.id AND tag_name = 'reasoning_content'
-		LIMIT 1
-	) as reasoning
-	,
-	(
-		SELECT content
-		FROM turn_elements
-		WHERE turn_id = t.id AND tag_name = 'content'
-		LIMIT 1
-	) as assistant_content
-	,
-	(
-		SELECT content
-		FROM turn_elements
-		WHERE turn_id = t.id AND tag_name = 'todo'
-		LIMIT 1
-	) as todo_text
-	,
-	EXISTS(
-		SELECT 1
-		FROM turn_elements
-		WHERE turn_id = t.id AND tag_name = 'todo' AND content NOT LIKE '%- [ ]%'
-	) as is_complete
-FROM turns AS t;
-
 -- INDEXES
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
