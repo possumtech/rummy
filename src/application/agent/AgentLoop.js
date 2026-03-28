@@ -28,13 +28,19 @@ export default class AgentLoop {
 		this.#sessionManager = sessionManager;
 	}
 
+	async #generateAlias(modelAlias) {
+		const prefix = `${modelAlias}_`;
+		const row = await this.#db.get_next_run_alias.get({ prefix });
+		return `${prefix}${row.next_seq}`;
+	}
+
 	async run(
 		type,
 		sessionId,
 		model,
 		prompt,
 		projectBufferFiles = null,
-		runId = null,
+		run = null,
 		options = {},
 	) {
 		const hook = type === "ask" ? this.#hooks.ask : this.#hooks.act;
@@ -43,7 +49,7 @@ export default class AgentLoop {
 			model,
 			prompt,
 			projectBufferFiles,
-			runId,
+			run,
 		});
 
 		const sessions = await this.#db.get_session_by_id.all({
@@ -57,7 +63,6 @@ export default class AgentLoop {
 		if (!project)
 			throw new Error(msg("error.project_not_found", { projectId }));
 
-		// Sync editor promotions
 		if (Array.isArray(projectBufferFiles)) {
 			await this.#db.reset_editor_promotions.run({ project_id: projectId });
 			for (const path of projectBufferFiles) {
@@ -70,32 +75,37 @@ export default class AgentLoop {
 
 		const noContext = options?.noContext === true;
 		const isFork = options?.fork === true;
-		let currentRunId = runId;
+		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
+		let currentRunId = null;
+		let currentAlias = null;
 		let parentRunId = null;
 
-		if (currentRunId && isFork) {
-			parentRunId = currentRunId;
+		if (run && isFork) {
+			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
+			if (!existingRun) throw new Error(msg("error.run_not_found", { runId: run }));
+			parentRunId = existingRun.id;
 			currentRunId = crypto.randomUUID();
+			currentAlias = await this.#generateAlias(requestedModel);
 			await this.#db.create_run.run({
 				id: currentRunId,
 				session_id: String(sessionId || ""),
 				parent_run_id: parentRunId,
 				type: String(type || "ask"),
-				config: JSON.stringify({ model, noContext }),
+				config: JSON.stringify({ model: requestedModel, noContext }),
+				alias: currentAlias,
 			});
-		} else if (currentRunId) {
-			const existingRun = await this.#db.get_run_by_id.get({
-				id: currentRunId,
-			});
-			if (!existingRun)
-				throw new Error(msg("error.run_not_found", { runId: currentRunId }));
+		} else if (run) {
+			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
+			if (!existingRun) throw new Error(msg("error.run_not_found", { runId: run }));
+			currentRunId = existingRun.id;
+			currentAlias = existingRun.alias;
 
 			const remaining = await this.#db.get_unresolved_findings.all({
 				run_id: currentRunId,
 			});
 			if (remaining.length > 0) {
 				return {
-					runId: currentRunId,
+					run: currentAlias,
 					status: "proposed",
 					remainingCount: remaining.length,
 					proposed: remaining,
@@ -108,16 +118,16 @@ export default class AgentLoop {
 			});
 		} else {
 			currentRunId = crypto.randomUUID();
+			currentAlias = await this.#generateAlias(requestedModel);
 			await this.#db.create_run.run({
 				id: currentRunId,
 				session_id: String(sessionId || ""),
 				parent_run_id: null,
 				type: String(type || "ask"),
-				config: JSON.stringify({ model, noContext }),
+				config: JSON.stringify({ model: requestedModel, noContext }),
+				alias: currentAlias,
 			});
 		}
-
-		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 
 		// Always fetch model metadata (populates capabilities for schema selection).
 		// Context size is also needed for budget computation in non-Lite mode.
@@ -144,6 +154,7 @@ export default class AgentLoop {
 				project,
 				sessionId,
 				currentRunId,
+				currentAlias,
 				parentRunId,
 				requestedModel,
 				loopPrompt: prompt,
@@ -168,7 +179,7 @@ export default class AgentLoop {
 
 			await turn.turnObj.hydrate();
 			await this.#hooks.run.step.completed.emit({
-				runId: currentRunId,
+				run: currentAlias,
 				sessionId,
 				turn: turn.turnObj,
 				projectFiles: await this.#sessionManager.getFiles(project.path),
@@ -194,7 +205,7 @@ export default class AgentLoop {
 					status: "proposed",
 				});
 				return {
-					runId: currentRunId,
+					run: currentAlias,
 					status: "proposed",
 					turn: turn.turnSequence,
 					proposed: state.proposed,
@@ -214,34 +225,35 @@ export default class AgentLoop {
 				status: "completed",
 			});
 			return {
-				runId: currentRunId,
+				run: currentAlias,
 				status: "completed",
 				turn: turn.turnSequence,
 			};
 		}
 
 		return {
-			runId: currentRunId,
+			run: currentAlias,
 			status: "running",
 			turn: 0,
 		};
 	}
 
-	async resolve(runId, resolution) {
-		const run = await this.#db.get_run_by_id.get({ id: runId });
-		if (!run) throw new Error(msg("error.run_not_found", { runId }));
+	async resolve(runAlias, resolution) {
+		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
+		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		const resolvedRunId = runRow.id;
 
 		const { category, action } = resolution;
 		const id = Number(resolution.id);
 
 		const findings = await this.#db.get_findings_by_run_id.all({
-			run_id: runId,
+			run_id: resolvedRunId,
 		});
 		const finding = findings.find(
 			(f) => f.category === category && f.id === id,
 		);
 		if (!finding)
-			throw new Error(msg("error.finding_not_found", { category, id, runId }));
+			throw new Error(msg("error.finding_not_found", { category, id, runId: resolvedRunId }));
 
 		if (category === "diff") {
 			await this.#db.update_finding_diff_status.run({ id, status: action });
@@ -250,7 +262,7 @@ export default class AgentLoop {
 					? msg("feedback.edits_partial")
 					: msg("feedback.edits_action", { action });
 			await this.#db.insert_pending_context.run({
-				run_id: runId,
+				run_id: resolvedRunId,
 				source_turn_id: finding.turn_id,
 				type: "diff",
 				request: finding.file || "unknown",
@@ -260,7 +272,7 @@ export default class AgentLoop {
 		} else if (category === "command") {
 			await this.#db.update_finding_command_status.run({ id, status: action });
 			await this.#db.insert_pending_context.run({
-				run_id: runId,
+				run_id: resolvedRunId,
 				source_turn_id: finding.turn_id,
 				type: "command",
 				request: finding.patch || "unknown",
@@ -273,7 +285,7 @@ export default class AgentLoop {
 				status: "responded",
 			});
 			await this.#db.insert_pending_context.run({
-				run_id: runId,
+				run_id: resolvedRunId,
 				source_turn_id: finding.turn_id,
 				type: "notification",
 				request: finding.patch || "prompt_user",
@@ -283,11 +295,11 @@ export default class AgentLoop {
 		}
 
 		const remaining = await this.#db.get_unresolved_findings.all({
-			run_id: runId,
+			run_id: resolvedRunId,
 		});
 		if (remaining.length > 0) {
 			return {
-				runId,
+				run: runAlias,
 				status: "proposed",
 				remainingCount: remaining.length,
 				proposed: remaining,
@@ -296,21 +308,20 @@ export default class AgentLoop {
 
 		// All findings resolved. Determine next action.
 		const allFindings = await this.#db.get_findings_by_run_id.all({
-			run_id: runId,
+			run_id: resolvedRunId,
 		});
 
 		// Rejection → stop, return control to client.
 		const hasRejection = allFindings.some((f) => f.status === "rejected");
 		if (hasRejection) {
 			await this.#db.update_run_status.run({
-				id: runId,
+				id: resolvedRunId,
 				status: "running",
 			});
-			return { runId, status: "resolved" };
+			return { run: runAlias, status: "resolved" };
 		}
 
-		// Any accepted/modified finding → auto-resume. The model needs to see
-		// results: command output, edit confirmation, prompt_user response.
+		// Any accepted/modified finding → auto-resume.
 		const hasResolvableFinding = allFindings.some(
 			(f) =>
 				(f.category === "diff" || f.category === "command") &&
@@ -320,19 +331,21 @@ export default class AgentLoop {
 			(f) => f.category === "notification" && f.status === "responded",
 		);
 		if (hasResolvableFinding || hasRespondedPrompt) {
-			return this.run(run.type, run.session_id, null, "", null, runId);
+			return this.run(runRow.type, runRow.session_id, null, "", null, runAlias);
 		}
 
 		// No findings that need follow-up — complete.
 		await this.#db.update_run_status.run({
-			id: runId,
+			id: resolvedRunId,
 			status: "completed",
 		});
-		return { runId, status: "completed" };
+		return { run: runAlias, status: "completed" };
 	}
 
-	async getRunHistory(runId) {
-		const historyRows = await this.#db.get_turn_history.all({ run_id: runId });
+	async getRunHistory(runAlias) {
+		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
+		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		const historyRows = await this.#db.get_turn_history.all({ run_id: runRow.id });
 		return historyRows.map((r) => ({ role: r.role, content: r.content }));
 	}
 }

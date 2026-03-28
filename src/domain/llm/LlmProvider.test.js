@@ -1,11 +1,13 @@
-import { strictEqual } from "node:assert";
+import { strictEqual, throws } from "node:assert";
 import { describe, it, mock } from "node:test";
 import OllamaClient from "../../infrastructure/llm/OllamaClient.js";
 import OpenRouterClient from "../../infrastructure/llm/OpenRouterClient.js";
 import LlmProvider from "./LlmProvider.js";
 
 describe("LlmProvider", () => {
-	it("should route completion requests to OllamaClient when model starts with ollama/", async () => {
+	it("should route to OllamaClient when alias resolves to ollama/ prefix", async () => {
+		process.env.RUMMY_MODEL_local_llama = "ollama/llama3";
+
 		const completionMock = mock.method(
 			OllamaClient.prototype,
 			"completion",
@@ -16,15 +18,18 @@ describe("LlmProvider", () => {
 		);
 
 		const provider = new LlmProvider({});
-		const result = await provider.completion([], "ollama/llama3");
+		const result = await provider.completion([], "local_llama");
 
 		strictEqual(result, "ollama result");
 		strictEqual(completionMock.mock.callCount(), 1);
 
 		completionMock.mock.restore();
+		delete process.env.RUMMY_MODEL_local_llama;
 	});
 
-	it("should route completion requests to OpenRouterClient by default", async () => {
+	it("should route to OpenRouterClient when alias resolves to non-ollama model", async () => {
+		process.env.RUMMY_MODEL_gpt = "gpt-4";
+
 		const completionMock = mock.method(
 			OpenRouterClient.prototype,
 			"completion",
@@ -35,33 +40,19 @@ describe("LlmProvider", () => {
 		);
 
 		const provider = new LlmProvider({});
-		const result = await provider.completion([], "gpt-4");
+		const result = await provider.completion([], "gpt");
 
 		strictEqual(result, "openrouter result");
 		strictEqual(completionMock.mock.callCount(), 1);
 
 		completionMock.mock.restore();
+		delete process.env.RUMMY_MODEL_gpt;
 	});
 
-	it("should resolve aliases from environment variables before routing", async () => {
-		process.env.RUMMY_MODEL_my_alias = "ollama/llama3";
-
-		const completionMock = mock.method(
-			OllamaClient.prototype,
-			"completion",
-			async (_messages, model) => {
-				strictEqual(model, "llama3");
-				return "ollama result";
-			},
+	it("should throw for undefined alias", () => {
+		throws(
+			() => LlmProvider.resolve("nonexistent"),
+			/Unknown model alias 'nonexistent'/,
 		);
-
-		const provider = new LlmProvider({});
-		const result = await provider.completion([], "my_alias");
-
-		strictEqual(result, "ollama result");
-		strictEqual(completionMock.mock.callCount(), 1);
-
-		completionMock.mock.restore();
-		delete process.env.RUMMY_MODEL_my_alias;
 	});
 });

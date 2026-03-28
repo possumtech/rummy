@@ -1,4 +1,4 @@
--- PREP: get_run_by_id
+-- PREP: get_run_by_alias
 SELECT
 	id
 	, session_id
@@ -10,4 +10,4 @@ SELECT
 	, created_at
 FROM runs
 WHERE
-	id = :id;
+	alias = :alias;

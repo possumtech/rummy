@@ -112,7 +112,7 @@ export default class CoreRpcPlugin {
 					ctx.sessionId,
 					params.model,
 					params.prompt,
-					params.runId,
+					params.run,
 					{
 						temperature: params.temperature,
 						noContext: params.noContext,
@@ -121,14 +121,14 @@ export default class CoreRpcPlugin {
 				);
 			},
 			description:
-				"Non-mutating query. Model responds with JSON: { todo, known[], unknown[], summary }. Returns { runId, status, turn }.",
+				"Non-mutating query. Returns { run, status, turn }.",
 			longRunning: true,
 			params: {
 				prompt: "string — user message",
-				model: "string — optional override",
-				runId: "string — continue existing run",
+				model: "string — model alias",
+				run: "string — continue existing run",
 				noContext: "boolean — skip file map (Lite mode)",
-				fork: "boolean — branch from runId history",
+				fork: "boolean — branch from run history",
 			},
 			requiresInit: true,
 		});
@@ -145,7 +145,7 @@ export default class CoreRpcPlugin {
 					ctx.sessionId,
 					params.model,
 					params.prompt,
-					params.runId,
+					params.run,
 					{
 						temperature: params.temperature,
 						noContext: params.noContext,
@@ -154,26 +154,26 @@ export default class CoreRpcPlugin {
 				);
 			},
 			description:
-				"Mutating directive. Model responds with JSON: { todo, known[], unknown[], summary, edits[] }. Returns { runId, status, turn, proposed? }.",
+				"Mutating directive. Returns { run, status, turn, proposed? }.",
 			longRunning: true,
 			params: {
 				prompt: "string — user message",
-				model: "string — optional override",
-				runId: "string — continue existing run",
+				model: "string — model alias",
+				run: "string — continue existing run",
 				noContext: "boolean — skip file map (Lite mode)",
-				fork: "boolean — branch from runId history",
+				fork: "boolean — branch from run history",
 			},
 			requiresInit: true,
 		});
 
 		r.register("run/resolve", {
 			handler: async (params, ctx) =>
-				ctx.projectAgent.resolve(params.runId, params.resolution),
+				ctx.projectAgent.resolve(params.run, params.resolution),
 			description:
-				"Resolve a finding. Returns { runId, status } — 'proposed' if more remain, 'resolved' if rejected, 'completed' if done, or auto-resumes.",
+				"Resolve a finding. Returns { run, status }.",
 			longRunning: true,
 			params: {
-				runId: "string",
+				run: "string — run name",
 				resolution:
 					"{ category: 'diff'|'command'|'notification', id: number, action: 'accepted'|'rejected'|'modified', output?: string }",
 			},
@@ -182,14 +182,62 @@ export default class CoreRpcPlugin {
 
 		r.register("run/abort", {
 			handler: async (params, ctx) => {
+				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
+				if (!runRow) throw new Error(`Run '${params.run}' not found.`);
 				await ctx.db.update_run_status.run({
-					id: params.runId,
+					id: runRow.id,
 					status: "aborted",
 				});
 				return { status: "ok" };
 			},
 			description: "Abandon run. Unresolved findings discarded.",
-			params: { runId: "string" },
+			params: { run: "string — run name" },
+			requiresInit: true,
+		});
+
+		r.register("run/rename", {
+			handler: async (params, ctx) => {
+				const { run, name } = params;
+				if (!name || !/^[a-z_]{1,20}$/.test(name)) {
+					throw new Error("Name must match [a-z_]{1,20}.");
+				}
+				const runRow = await ctx.db.get_run_by_alias.get({ alias: run });
+				if (!runRow) throw new Error(`Run '${run}' not found.`);
+				try {
+					await ctx.db.rename_run.run({
+						id: runRow.id,
+						old_alias: runRow.alias,
+						new_alias: name,
+					});
+				} catch (err) {
+					if (err.message.includes("UNIQUE")) {
+						throw new Error(`Name '${name}' is already taken.`);
+					}
+					throw err;
+				}
+				return { run: name };
+			},
+			description: "Rename a run. Must be unique, [a-z_]{1,20}.",
+			params: {
+				run: "string — current run name",
+				name: "string — new name, [a-z_]{1,20}",
+			},
+			requiresInit: true,
+		});
+
+		r.register("getRuns", {
+			handler: async (_params, ctx) => {
+				const rows = await ctx.db.get_runs_by_session.all({
+					session_id: ctx.sessionId,
+				});
+				return rows.map((r) => ({
+					run: r.alias,
+					type: r.type,
+					status: r.status,
+					created: r.created_at,
+				}));
+			},
+			description: "List all runs for the current session.",
 			requiresInit: true,
 		});
 

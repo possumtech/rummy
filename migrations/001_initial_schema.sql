@@ -34,8 +34,11 @@ CREATE TABLE IF NOT EXISTS runs (
 		status IN ('queued', 'running', 'proposed', 'completed', 'failed', 'aborted')
 	)
 	, config JSON
+	, alias TEXT NOT NULL UNIQUE
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_runs_alias ON runs (alias) WHERE alias IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT

@@ -23,11 +23,14 @@ export default class LlmProvider {
 		return this.#capabilities;
 	}
 
+	static resolve(alias) {
+		const actual = process.env[`RUMMY_MODEL_${alias}`];
+		if (!actual) throw new Error(`Unknown model alias '${alias}'. Define RUMMY_MODEL_${alias} in your environment.`);
+		return actual;
+	}
+
 	async completion(messages, model, options = {}) {
-		const resolvedModel = process.env[`RUMMY_MODEL_${model}`] || model;
-		console.log(
-			`[LlmProvider DEBUG] Resolving model '${model}' -> '${resolvedModel}'`,
-		);
+		const resolvedModel = LlmProvider.resolve(model);
 
 		const temperature =
 			options.temperature ??
@@ -49,7 +52,7 @@ export default class LlmProvider {
 	}
 
 	async getContextSize(model) {
-		const resolvedModel = process.env[`RUMMY_MODEL_${model}`] || model;
+		const resolvedModel = LlmProvider.resolve(model);
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");
 			return this.#ollama.getContextSize(localModel);

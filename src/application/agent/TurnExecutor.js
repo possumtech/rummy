@@ -30,6 +30,7 @@ export default class TurnExecutor {
 		project,
 		sessionId,
 		currentRunId,
+		currentAlias,
 		parentRunId,
 		requestedModel,
 		loopPrompt,
@@ -95,7 +96,7 @@ export default class TurnExecutor {
 
 		await this.#hooks.run.progress.emit({
 			sessionId,
-			runId: currentRunId,
+			run: currentAlias,
 			turn: currentTurnSequence,
 			status: "thinking",
 		});
@@ -123,7 +124,7 @@ export default class TurnExecutor {
 
 		await this.#hooks.run.progress.emit({
 			sessionId,
-			runId: currentRunId,
+			run: currentAlias,
 			turn: currentTurnSequence,
 			status: "processing",
 		});

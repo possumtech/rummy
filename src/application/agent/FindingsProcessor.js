@@ -15,6 +15,7 @@ export default class FindingsProcessor {
 		projectPath,
 		projectId,
 		runId,
+		runAlias,
 		turnId,
 		turnSequence,
 		tools,
@@ -46,7 +47,7 @@ export default class FindingsProcessor {
 			});
 			await this.#hooks.editor.diff.emit({
 				sessionId,
-				runId,
+				run: runAlias,
 				findingId: row?.id,
 				type: diff.type,
 				file: diff.file,
@@ -84,7 +85,7 @@ export default class FindingsProcessor {
 			});
 			await this.#hooks.run.command.emit({
 				sessionId,
-				runId,
+				run: runAlias,
 				findingId: row?.id,
 				type: cmd.type,
 				command: cmd.command,
@@ -106,7 +107,7 @@ export default class FindingsProcessor {
 			if (notif.type === "prompt_user" && notif.config) {
 				await this.#hooks.ui.prompt.emit({
 					sessionId,
-					runId,
+					run: runAlias,
 					findingId: row?.id,
 					question: notif.config.question,
 					options: notif.config.options,

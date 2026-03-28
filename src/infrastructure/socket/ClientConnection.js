@@ -31,7 +31,7 @@ export default class ClientConnection {
 		this.#hooks.run.progress.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("run/progress", {
-					runId: payload.runId,
+					run: payload.runAlias || payload.run,
 					turn: payload.turn,
 					status: payload.status,
 				});
@@ -59,7 +59,7 @@ export default class ClientConnection {
 		this.#hooks.ui.prompt.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("ui/prompt", {
-					runId: payload.runId,
+					run: payload.runAlias || payload.run,
 					findingId: payload.findingId,
 					question: payload.question,
 					options: payload.options,
@@ -71,7 +71,7 @@ export default class ClientConnection {
 			if (payload.sessionId === this.#context.sessionId) {
 				const method = payload.type === "env" ? "run/env" : "run/run";
 				this.#sendNotification(method, {
-					runId: payload.runId,
+					run: payload.runAlias || payload.run,
 					findingId: payload.findingId,
 					command: payload.command,
 				});
@@ -87,7 +87,7 @@ export default class ClientConnection {
 					);
 				}
 				this.#sendNotification("run/step/completed", {
-					runId: payload.runId,
+					run: payload.runAlias || payload.run,
 					turn,
 					files: payload.projectFiles,
 				});
@@ -97,7 +97,7 @@ export default class ClientConnection {
 		this.#hooks.editor.diff.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
 				this.#sendNotification("editor/diff", {
-					runId: payload.runId,
+					run: payload.runAlias || payload.run,
 					findingId: payload.findingId,
 					type: payload.type,
 					file: payload.file,

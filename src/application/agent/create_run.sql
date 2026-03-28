@@ -5,6 +5,7 @@ INSERT INTO runs (
 	, parent_run_id
 	, type
 	, config
+	, alias
 )
 VALUES (
 	:id
@@ -12,4 +13,5 @@ VALUES (
 	, :parent_run_id
 	, :type
 	, :config
+	, :alias
 );
