@@ -3,9 +3,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const responseSchema = JSON.parse(
-	readFileSync(join(__dirname, "../../domain/schema/response.json"), "utf8"),
-);
+const schemas = {
+	ask: JSON.parse(
+		readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
+	),
+	act: JSON.parse(
+		readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
+	),
+};
 
 export default class OpenRouterClient {
 	#apiKey;
@@ -29,8 +34,7 @@ export default class OpenRouterClient {
 
 		// Strip prefill if present — structured outputs don't use it
 		let finalMessages = messages;
-		const lastMsg = messages.at(-1);
-		if (lastMsg?.role === "assistant") {
+		if (messages.at(-1)?.role === "assistant") {
 			finalMessages = messages.slice(0, -1);
 		}
 
@@ -42,19 +46,19 @@ export default class OpenRouterClient {
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
-		// Use structured outputs if model supports it
 		const supportsStructured =
 			this.#capabilities?.supports(model, "structured_outputs") ??
 			this.#capabilities?.supports(model, "response_format") ??
 			false;
 
 		if (supportsStructured) {
+			const schema = schemas[options.mode] || schemas.ask;
 			body.response_format = {
 				type: "json_schema",
 				json_schema: {
-					name: "rummy_response",
+					name: `rummy_${options.mode || "ask"}`,
 					strict: true,
-					schema: responseSchema,
+					schema,
 				},
 			};
 		}

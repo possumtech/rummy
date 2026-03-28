@@ -115,7 +115,7 @@ export default class TurnExecutor {
 		const result = await this.#llmProvider.completion(
 			filteredMessages,
 			requestedModel,
-			{ temperature: options?.temperature },
+			{ temperature: options?.temperature, mode: type },
 		);
 		const responseMessage = result.choices?.[0]?.message;
 		const rawReasoning = responseMessage?.reasoning_content;
@@ -211,8 +211,8 @@ export default class TurnExecutor {
 		);
 
 		// Commit structured fields as DB elements
-		await commitTag("known", parsed.known || "", {}, 3);
-		await commitTag("unknown", parsed.unknown || "", {}, 4);
+		await commitTag("known", JSON.stringify(parsed.known || []), {}, 3);
+		await commitTag("unknown", JSON.stringify(parsed.unknown || []), {}, 4);
 		if (parsed.summary) {
 			await commitTag("summary", parsed.summary, {}, 5);
 		}
@@ -229,8 +229,8 @@ export default class TurnExecutor {
 			turnSequence: currentTurnSequence,
 			tools,
 			structural: [
-				{ name: "known", content: parsed.known || "" },
-				{ name: "unknown", content: parsed.unknown || "" },
+				{ name: "known", content: parsed.known || [] },
+				{ name: "unknown", content: parsed.unknown || [] },
 				...(parsed.summary
 					? [{ name: "summary", content: parsed.summary }]
 					: []),

@@ -3,9 +3,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const responseSchema = JSON.parse(
-	readFileSync(join(__dirname, "../../domain/schema/response.json"), "utf8"),
-);
+const schemas = {
+	ask: JSON.parse(
+		readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
+	),
+	act: JSON.parse(
+		readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
+	),
+};
 
 export default class OllamaClient {
 	#baseUrl;
@@ -23,11 +28,12 @@ export default class OllamaClient {
 			finalMessages = messages.slice(0, -1);
 		}
 
+		const schema = schemas[options.mode] || schemas.ask;
 		const body = {
 			model,
 			messages: finalMessages,
 			think: true,
-			format: responseSchema,
+			format: schema,
 		};
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;

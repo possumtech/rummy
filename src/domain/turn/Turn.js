@@ -170,8 +170,8 @@ export default class Turn {
 				reasoning_content: getChildContent(assistantNode, "reasoning_content"),
 				todo,
 				next_todo,
-				known: getChildContent(assistantNode, "known"),
-				unknown: getChildContent(assistantNode, "unknown"),
+				known: JSON.parse(getChildContent(assistantNode, "known") || "[]"),
+				unknown: JSON.parse(getChildContent(assistantNode, "unknown") || "[]"),
 				summary: getChildContent(assistantNode, "summary"),
 			},
 			usage: {

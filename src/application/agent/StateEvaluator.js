@@ -22,8 +22,8 @@ export default class StateEvaluator {
 		parsedTodo,
 	}) {
 		const { hasAct, hasReads, hasSummary } = flags;
-		const unkRaw = (turnJson.assistant.unknown || "").trim();
-		const openUnknowns = unkRaw.length > 0;
+		const unknowns = turnJson.assistant.unknown || [];
+		const openUnknowns = Array.isArray(unknowns) ? unknowns.length > 0 : false;
 		const hasTools = tools.length > 0;
 		const proposed = await this.#db.get_unresolved_findings.all({ run_id: runId });
 

@@ -10,28 +10,18 @@
 				"required": ["tool", "argument", "description"],
 				"additionalProperties": false,
 				"properties": {
-					"tool": { "type": "string" },
+					"tool": {
+						"type": "string",
+						"enum": ["read", "drop", "env", "summary"]
+					},
 					"argument": { "type": "string" },
 					"description": { "type": "string" }
 				}
 			}
 		},
-		"known": { "type": "string" },
-		"unknown": { "type": "string" },
+		"known": { "type": "array", "items": { "type": "string" } },
+		"unknown": { "type": "array", "items": { "type": "string" } },
 		"summary": { "type": "string" },
-		"edits": {
-			"type": "array",
-			"items": {
-				"type": "object",
-				"required": ["file", "search", "replace"],
-				"additionalProperties": false,
-				"properties": {
-					"file": { "type": "string" },
-					"search": { "type": "string" },
-					"replace": { "type": "string" }
-				}
-			}
-		},
 		"prompt": {
 			"type": "object",
 			"required": ["question", "options"],

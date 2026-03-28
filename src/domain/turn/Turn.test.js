@@ -148,8 +148,8 @@ test("Turn", async (t) => {
 					{ tool: "read", argument: "src/a.js", description: "check file" },
 					{ tool: "edit", argument: "fix the thing", description: "fix bug" },
 				],
-				known: "The file has a bug",
-				unknown: "Why it was written this way",
+				known: ["The file has a bug"],
+				unknown: ["Why it was written this way"],
 				summary: "Fixed a bug in src/a.js",
 			}),
 			attributes: "{}",
@@ -169,7 +169,7 @@ test("Turn", async (t) => {
 			turn_id: turnId,
 			parent_id: assistantEl.id,
 			tag_name: "known",
-			content: "The file has a bug",
+			content: JSON.stringify(["The file has a bug"]),
 			attributes: "{}",
 			sequence: seq++,
 		});
@@ -178,7 +178,7 @@ test("Turn", async (t) => {
 			turn_id: turnId,
 			parent_id: assistantEl.id,
 			tag_name: "unknown",
-			content: "Why it was written this way",
+			content: JSON.stringify(["Why it was written this way"]),
 			attributes: "{}",
 			sequence: seq++,
 		});
@@ -293,8 +293,8 @@ test("Turn", async (t) => {
 				"Content should be JSON with todo",
 			);
 			assert.strictEqual(json.assistant.reasoning_content, "Let me think...");
-			assert.strictEqual(json.assistant.known, "The file has a bug");
-			assert.strictEqual(json.assistant.unknown, "Why it was written this way");
+			assert.deepStrictEqual(json.assistant.known, ["The file has a bug"]);
+			assert.deepStrictEqual(json.assistant.unknown, ["Why it was written this way"]);
 			assert.strictEqual(json.assistant.summary, "Fixed a bug in src/a.js");
 
 			// Usage
