@@ -70,11 +70,11 @@ async function actAndExpectProposed(client, prompt) {
 	return result;
 }
 
-async function resolveAll(client, runId, proposed, action = "accepted") {
+async function resolveAll(client, run, proposed, action = "accepted") {
 	let last;
 	for (const finding of proposed) {
 		last = await client.call("run/resolve", {
-			runId,
+			run,
 			resolution: { category: finding.category, id: finding.id, action },
 		});
 	}
@@ -96,7 +96,7 @@ describe("E2E: Diff Resolution", () => {
 				assert.strictEqual(finding.status, "proposed");
 			}
 
-			await resolveAll(client, result.runId, result.proposed);
+			await resolveAll(client, result.run, result.proposed);
 		} finally {
 			await cleanup();
 		}
@@ -114,7 +114,7 @@ describe("E2E: Diff Resolution", () => {
 
 			const resolveResult = await resolveAll(
 				client,
-				actResult.runId,
+				actResult.run,
 				actResult.proposed,
 				"accepted",
 			);
@@ -142,7 +142,7 @@ describe("E2E: Diff Resolution", () => {
 
 			const resolveResult = await resolveAll(
 				client,
-				actResult.runId,
+				actResult.run,
 				actResult.proposed,
 				"rejected",
 			);
@@ -180,7 +180,7 @@ describe("E2E: Diff Resolution", () => {
 			if (diffFindings.length >= 2) {
 				const first = diffFindings[0];
 				const partialResult = await client.call("run/resolve", {
-					runId: actResult.runId,
+					run: actResult.run,
 					resolution: {
 						category: first.category,
 						id: first.id,
@@ -202,12 +202,12 @@ describe("E2E: Diff Resolution", () => {
 					"Remaining count should decrease",
 				);
 
-				await resolveAll(client, actResult.runId, partialResult.proposed);
+				await resolveAll(client, actResult.run, partialResult.proposed);
 			} else {
 				console.log(
 					"  [NOTE] Model merged findings into fewer than 2 diffs; partial resolution not testable this run.",
 				);
-				await resolveAll(client, actResult.runId, actResult.proposed);
+				await resolveAll(client, actResult.run, actResult.proposed);
 			}
 		} finally {
 			await cleanup();

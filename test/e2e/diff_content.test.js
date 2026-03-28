@@ -127,7 +127,7 @@ describe("E2E: Diff Content Verification", () => {
 		// Clean up
 		for (const f of result.proposed) {
 			await client.call("run/resolve", {
-				runId: result.runId,
+				run: result.run,
 				resolution: { category: f.category, id: f.id, action: "accepted" },
 			});
 		}
@@ -157,7 +157,7 @@ describe("E2E: Diff Content Verification", () => {
 		let _resolveResult;
 		for (const f of actResult.proposed) {
 			_resolveResult = await client.call("run/resolve", {
-				runId: actResult.runId,
+				run: actResult.run,
 				resolution: { category: f.category, id: f.id, action: "accepted" },
 			});
 		}
@@ -168,7 +168,7 @@ describe("E2E: Diff Content Verification", () => {
 		let resumedTurn = null;
 		while (Date.now() - startTime < 60_000) {
 			for (const [seq, payload] of turns) {
-				if (seq > proposingSeq && payload.runId === actResult.runId) {
+				if (seq > proposingSeq && payload.run === actResult.run) {
 					resumedTurn = payload;
 					break;
 				}
@@ -216,7 +216,7 @@ describe("E2E: Diff Content Verification", () => {
 		let lastResolve;
 		for (const f of actResult.proposed) {
 			lastResolve = await client.call("run/resolve", {
-				runId: actResult.runId,
+				run: actResult.run,
 				resolution: { category: f.category, id: f.id, action: "rejected" },
 			});
 		}
@@ -231,14 +231,14 @@ describe("E2E: Diff Content Verification", () => {
 		// Client continues — rejection info appears as feedback in the next turn
 		const _continueResult = await client.call("act", {
 			model,
-			runId: actResult.runId,
+			run: actResult.run,
 			prompt: "The edit was rejected. Summarize what happened.",
 		});
 
 		// Find the turn after the proposing turn
 		let resumedTurn = null;
 		for (const [seq, payload] of turns) {
-			if (seq > proposingSeq && payload.runId === actResult.runId) {
+			if (seq > proposingSeq && payload.run === actResult.run) {
 				resumedTurn = payload;
 				break;
 			}
@@ -282,7 +282,7 @@ describe("E2E: Diff Content Verification", () => {
 		for (const f of actResult.proposed) {
 			const action = f.category === "diff" ? "modified" : "accepted";
 			lastResolve = await client.call("run/resolve", {
-				runId: actResult.runId,
+				run: actResult.run,
 				resolution: { category: f.category, id: f.id, action },
 			});
 		}
@@ -295,7 +295,7 @@ describe("E2E: Diff Content Verification", () => {
 
 		let resumedTurn = null;
 		for (const [seq, payload] of turns) {
-			if (seq > proposingSeq && payload.runId === actResult.runId) {
+			if (seq > proposingSeq && payload.run === actResult.run) {
 				resumedTurn = payload;
 				break;
 			}

@@ -140,7 +140,7 @@ describe("E2E: Foundation — Happy Path Contract", () => {
 		// Clean up — accept the diff
 		for (const f of result.proposed) {
 			await client.call("run/resolve", {
-				runId: result.runId,
+				run: result.run,
 				resolution: { category: f.category, id: f.id, action: "accepted" },
 			});
 		}
@@ -173,7 +173,7 @@ describe("E2E: Foundation — Happy Path Contract", () => {
 		// Clean up
 		for (const f of result.proposed) {
 			await client.call("run/resolve", {
-				runId: result.runId,
+				run: result.run,
 				resolution: { category: f.category, id: f.id, action: "rejected" },
 			});
 		}

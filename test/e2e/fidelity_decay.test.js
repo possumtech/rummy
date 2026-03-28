@@ -63,7 +63,7 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 			prompt:
 				"What color is the robe in the wizard file (src/secret/wizard.txt)?",
 		});
-		const runId = result1.runId;
+		const run = result1.run;
 
 		// Verify the model found "purple" somewhere in its output
 		const start = Date.now();
@@ -93,7 +93,7 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 		// Step 2: Continue the SAME run — mention the path to refresh attention
 		await client.call("ask", {
 			model,
-			runId,
+			run,
 			prompt:
 				"Confirmed. Repeat the full path src/secret/wizard.txt back to me.",
 		});
@@ -115,7 +115,7 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 		for (let i = 0; i < 6; i++) {
 			await client.call("ask", {
 				model,
-				runId,
+				run,
 				prompt: "Say 'Acknowledged'. Do not mention any files.",
 			});
 		}

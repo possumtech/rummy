@@ -78,7 +78,7 @@ function notificationCollector(client) {
 			}, 200);
 		});
 
-	const waitForStepAfter = (seq, runId, timeoutMs = 60_000) =>
+	const waitForStepAfter = (seq, run, timeoutMs = 60_000) =>
 		new Promise((resolve, reject) => {
 			const timer = setTimeout(
 				() => reject(new Error(`Timeout waiting for step after seq ${seq}`)),
@@ -86,7 +86,7 @@ function notificationCollector(client) {
 			);
 			const interval = setInterval(() => {
 				const found = steps.find(
-					(s) => s.turn.sequence > seq && s.runId === runId,
+					(s) => s.turn.sequence > seq && s.run === run,
 				);
 				if (found) {
 					clearTimeout(timer);
@@ -139,7 +139,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 			);
 
 			const d = diffs[0];
-			assert.ok(d.runId, "Should have runId");
+			assert.ok(d.run, "Should have run");
 			assert.ok(d.findingId, "Should have findingId");
 			assert.strictEqual(d.type, "edit", "Should be an edit type");
 			assert.ok(
@@ -167,7 +167,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 			// Clean up findings
 			for (const f of result.proposed) {
 				await client.call("run/resolve", {
-					runId: result.runId,
+					run: result.run,
 					resolution: { category: f.category, id: f.id, action: "accepted" },
 				});
 			}
@@ -212,7 +212,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 
 			// Resolve using the findingId from the notification
 			const resolveResult = await client.call("run/resolve", {
-				runId: result.runId,
+				run: result.run,
 				resolution: {
 					category: "diff",
 					id: diffNotif.findingId,
@@ -224,7 +224,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 			if (resolveResult.status === "proposed") {
 				for (const f of resolveResult.proposed) {
 					await client.call("run/resolve", {
-						runId: result.runId,
+						run: result.run,
 						resolution: { category: f.category, id: f.id, action: "accepted" },
 					});
 				}
@@ -258,13 +258,13 @@ describe("E2E: editor/diff Lifecycle", () => {
 			// Accept all findings
 			for (const f of result.proposed) {
 				await client.call("run/resolve", {
-					runId: result.runId,
+					run: result.run,
 					resolution: { category: f.category, id: f.id, action: "accepted" },
 				});
 			}
 
 			// Wait for the auto-resumed turn
-			const resumedStep = await waitForStepAfter(proposingSeq, result.runId);
+			const resumedStep = await waitForStepAfter(proposingSeq, result.run);
 			const ctx = resumedStep.turn.context;
 
 			assert.ok(ctx, "Resumed turn should have context");
@@ -306,7 +306,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 			let lastResolve;
 			for (const f of result.proposed) {
 				lastResolve = await client.call("run/resolve", {
-					runId: result.runId,
+					run: result.run,
 					resolution: { category: f.category, id: f.id, action: "rejected" },
 				});
 			}
@@ -321,11 +321,11 @@ describe("E2E: editor/diff Lifecycle", () => {
 			// Client continues — rejection info appears in next turn
 			await client.call("act", {
 				model,
-				runId: result.runId,
+				run: result.run,
 				prompt: "The edit was rejected. Summarize what happened.",
 			});
 
-			const resumedStep = await waitForStepAfter(proposingSeq, result.runId);
+			const resumedStep = await waitForStepAfter(proposingSeq, result.run);
 			const ctx = resumedStep.turn.context;
 
 			assert.ok(ctx, "Continued turn should have context");
@@ -375,7 +375,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 			// Accept with simulated output
 			for (const f of result.proposed) {
 				await client.call("run/resolve", {
-					runId: result.runId,
+					run: result.run,
 					resolution: {
 						category: f.category,
 						id: f.id,
@@ -386,7 +386,7 @@ describe("E2E: editor/diff Lifecycle", () => {
 				});
 			}
 
-			const resumedStep = await waitForStepAfter(proposingSeq, result.runId);
+			const resumedStep = await waitForStepAfter(proposingSeq, result.run);
 			const ctx = resumedStep.turn.context;
 
 			assert.ok(

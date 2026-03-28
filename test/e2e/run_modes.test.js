@@ -67,7 +67,7 @@ describe("E2E: Run Modes", () => {
 					["completed", "proposed"].includes(result.status),
 					`Expected completed or proposed, got ${result.status}`,
 				);
-				assert.ok(result.runId, "Should have a runId");
+				assert.ok(result.run, "Should have a run");
 
 				assert.ok(
 					notifications.length > 0,
@@ -111,7 +111,7 @@ describe("E2E: Run Modes", () => {
 					["completed", "proposed"].includes(result.status),
 					`Expected completed or proposed, got ${result.status}`,
 				);
-				assert.ok(result.runId, "Should have a runId");
+				assert.ok(result.run, "Should have a run");
 
 				assert.ok(
 					notifications.length > 0,
@@ -147,12 +147,12 @@ describe("E2E: Run Modes", () => {
 					["completed", "proposed"].includes(firstResult.status),
 					`First ask should complete or propose, got ${firstResult.status}`,
 				);
-				assert.ok(firstResult.runId, "First ask should have a runId");
+				assert.ok(firstResult.run, "First ask should have a run");
 
 				if (firstResult.status === "proposed") {
 					for (const f of firstResult.proposed) {
 						await client.call("run/resolve", {
-							runId: firstResult.runId,
+							run: firstResult.run,
 							resolution: {
 								category: f.category,
 								id: f.id,
@@ -169,7 +169,7 @@ describe("E2E: Run Modes", () => {
 
 				const forkResult = await client.call("ask", {
 					model,
-					runId: firstResult.runId,
+					run: firstResult.run,
 					fork: true,
 					prompt: "What was my previous question about? Be brief.",
 				});
@@ -178,15 +178,15 @@ describe("E2E: Run Modes", () => {
 					["completed", "proposed"].includes(forkResult.status),
 					`Fork ask should complete or propose, got ${forkResult.status}`,
 				);
-				assert.ok(forkResult.runId, "Fork should have a runId");
+				assert.ok(forkResult.run, "Fork should have a run");
 				assert.notStrictEqual(
-					forkResult.runId,
-					firstResult.runId,
-					"Forked run should have a DIFFERENT runId than the parent",
+					forkResult.run,
+					firstResult.run,
+					"Forked run should have a DIFFERENT run than the parent",
 				);
 
 				const forkTurn = notifications.find(
-					(n) => n.runId === forkResult.runId,
+					(n) => n.run === forkResult.run,
 				);
 				if (forkTurn) {
 					const text = [
@@ -225,12 +225,12 @@ describe("E2E: Run Modes", () => {
 					["completed", "proposed"].includes(firstResult.status),
 					`First ask should complete or propose, got ${firstResult.status}`,
 				);
-				const parentRunId = firstResult.runId;
+				const parentRun = firstResult.run;
 
 				if (firstResult.status === "proposed") {
 					for (const f of firstResult.proposed) {
 						await client.call("run/resolve", {
-							runId: parentRunId,
+							run: parentRun,
 							resolution: {
 								category: f.category,
 								id: f.id,
@@ -244,27 +244,27 @@ describe("E2E: Run Modes", () => {
 
 				const forkResult = await client.call("ask", {
 					model,
-					runId: parentRunId,
+					run: parentRun,
 					fork: true,
 					prompt: "Say hello.",
 				});
 
-				assert.ok(forkResult.runId, "Fork should have a runId");
+				assert.ok(forkResult.run, "Fork should have a run");
 				assert.notStrictEqual(
-					forkResult.runId,
-					parentRunId,
+					forkResult.run,
+					parentRun,
 					"Fork should create a new run",
 				);
 
 				// Parent run should still be usable — continue it independently
 				const parentNotifications = [];
 				client.on("run/step/completed", (params) => {
-					if (params.runId === parentRunId) parentNotifications.push(params);
+					if (params.run === parentRun) parentNotifications.push(params);
 				});
 
 				const continueResult = await client.call("ask", {
 					model,
-					runId: parentRunId,
+					run: parentRun,
 					prompt: "What is 3+3? Reply with just the number.",
 				});
 
@@ -273,9 +273,9 @@ describe("E2E: Run Modes", () => {
 					`Continuing parent should complete or propose, got ${continueResult.status}`,
 				);
 				assert.strictEqual(
-					continueResult.runId,
-					parentRunId,
-					"Continuing parent run should keep the same runId",
+					continueResult.run,
+					parentRun,
+					"Continuing parent run should keep the same run",
 				);
 
 				if (parentNotifications.length > 0) {

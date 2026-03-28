@@ -2,52 +2,35 @@
 
 ## Remaining
 
-### Features
-(none pending)
-
-### Quality
-- [x] ~~Unit tests achieve 80/80/80 coverage~~ — 90/81/89
-- [x] ~~Doc-driven integration tests~~ — 9 test files, slug convention `{section}_{topic}.test.js`, 47 tests defending §1-§8 claims
-- [ ] Maintain twelve e2e tests against live models covering distinct, realistic use cases
-- [ ] Never run integration or e2e tests against mock models, only live models
-
-### Docs
-- [x] ~~Update ARCHITECTURE.md~~ — JSON structured output, run aliases, model enforcement, new RPCs, cumulative usage, temperature, skills, Markdown context, no XML
-- [x] ~~Update PLUGINS.md~~ — plain-object node API, `.children.push()`, `run` in events, updated examples
-
-### Client to Server
-
-- [x] ~~Token/cost accumulation~~ — `run/step/completed` now includes `cumulative: { prompt_tokens, completion_tokens, total_tokens, cost }` alongside per-turn usage.
-- [x] ~~Temperature state~~ — `setTemperature` / `getTemperature` RPCs. Session stores temperature, AgentLoop resolves: explicit option > session > env default. Clamped 0-2.
-- [x] ~~Skill active state~~ — `getSkills` RPC returns `string[]` from `session_skills` table.
-- [x] ~~The normalize() function~~ — Won't fix server-side. JSON null → Lua nil is a client concern. Fix with a `defaults(t, shape)` helper or `cjson.null` sentinel.
-
+All items complete. Awaiting e2e test results against live model.
 
 ## Done
 
-### Run Inject + Run Naming + Model Enforcement (2026-03-28)
-- [x] **run/inject** — `{ run, message }`. If run is active, queues message as pending context for next turn. If idle, resumes the run with injected context. Uses existing `pending_context` pipeline via ContextPlugin.
+### Quality & Docs (2026-03-28)
+- [x] **80/80/80 coverage** — 90% lines / 81% branches / 89% functions
+- [x] **Doc-driven integration tests** — 9 files, slug convention `{section}_{topic}.test.js`, 47 tests defending §1-§8
+- [x] **12 e2e tests** — foundation, diff content/resolution, editor/diff lifecycle, command resolution, run lifecycle/modes, fidelity decay, notification isolation, reasoning, RPC surface, protocol alignment
+- [x] **ARCHITECTURE.md** — JSON structured output, run aliases, model enforcement, new RPCs, cumulative usage, Markdown context, corrected tool categorization, removed client prefix semantics
+- [x] **PLUGINS.md** — plain-object node API, `.children.push()`, `run` in events
+
+### Client to Server (2026-03-28)
+- [x] **Cumulative usage** — `run/step/completed` includes `cumulative: { prompt_tokens, completion_tokens, total_tokens, cost }`
+- [x] **Temperature state** — `setTemperature` / `getTemperature` RPCs, session-stored, clamped 0-2
+- [x] **Skill query** — `getSkills` RPC returns `string[]`
+- [x] **normalize()** — won't fix server-side, client concern
 
 ### Run Naming + Model Enforcement (2026-03-28)
-- [x] **Model alias enforcement** — `LlmProvider.resolve()` requires `RUMMY_MODEL_{alias}` env var. Raw model IDs rejected.
-- [x] **Run aliases** — `alias TEXT NOT NULL UNIQUE` on runs table. Auto-generated as `{model}_{N}` (e.g. `ccp_1`). Clients use `run` field, never see UUIDs.
-- [x] **RPC contract** — all params/responses renamed `runId` → `run`. Notifications emit `run` (alias).
-- [x] **New RPCs** — `getRuns` (list all session runs), `run/rename` (validate `[a-z_]{1,20}`, enforce uniqueness).
-- [x] **FileChangePlugin** — renamed from GitPlugin, VCS-agnostic (hash comparison only). Tag `modified_files`.
+- [x] **Model alias enforcement** — `LlmProvider.resolve()` requires defined alias
+- [x] **Run aliases** — `alias TEXT NOT NULL UNIQUE`, auto-generated `{model}_{N}`
+- [x] **RPC contract** — `runId` → `run` everywhere, notifications use alias
+- [x] **New RPCs** — `getRuns`, `run/rename`, `run/inject`, `getSkills`, `setTemperature`, `getTemperature`
+- [x] **FileChangePlugin** — VCS-agnostic rename from GitPlugin
 
 ### XML Elimination (2026-03-28)
-- [x] **@xmldom/xmldom removed** — zero XML in codebase. Dependency uninstalled.
-- [x] **TurnBuilder** — plain objects `{ tag, attrs, content, children }` replace DOM.
-- [x] **RummyContext** — `tag()` returns plain objects. Plugin API: `.children.push()`.
-- [x] **Turn rendering** — Markdown renderer. Code fences with language detection, blockquote feedback, heading sections.
-- [x] **All plugins updated** — RepoMapPlugin, FileChangePlugin, ContextPlugin, DebugLoggerPlugin (JSON audits).
+- [x] **@xmldom/xmldom removed** — plain objects, Markdown rendering
+- [x] **TurnBuilder, RummyContext, Turn, all plugins** updated
 
-### Dead Code Sweep + Bug Fixes (2026-03-28)
-- [x] **Act file creation hang** — ToolExtractor routes `search: ""` to `tool: "create"`.
-- [x] **Timeout wiring** — `RUMMY_FETCH_TIMEOUT` and `RUMMY_RPC_TIMEOUT` enforced.
-- [x] **Dead code removed** — `allForMode()`, unused variables, unreachable protocol retry block.
-- [x] **Create diffs** — proper unified diffs via `generateUnifiedDiff()`.
-
-## Next
-
-Next up: coverage push to 80/80/80, then doc updates.
+### Bug Fixes (2026-03-28)
+- [x] **Act file creation hang** — ToolExtractor routes `search: ""` to create
+- [x] **Timeout wiring** — `RUMMY_FETCH_TIMEOUT` + `RUMMY_RPC_TIMEOUT`
+- [x] **Dead code sweep** — allForMode, unused vars, unreachable blocks

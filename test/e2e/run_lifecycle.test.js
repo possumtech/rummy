@@ -64,10 +64,10 @@ describe("E2E: Run Lifecycle", () => {
 				"proposed",
 				"Model completed instead of proposing. Non-deterministic — re-run the test.",
 			);
-			assert.ok(actResult.runId);
+			assert.ok(actResult.run);
 
 			const abortResult = await client.call("run/abort", {
-				runId: actResult.runId,
+				run: actResult.run,
 			});
 
 			assert.strictEqual(abortResult.status, "ok");
@@ -97,7 +97,7 @@ describe("E2E: Run Lifecycle", () => {
 			// Try to send another act on the same run without resolving
 			const secondResult = await client.call("act", {
 				model,
-				runId: actResult.runId,
+				run: actResult.run,
 				prompt: "Now also add error handling.",
 			});
 
@@ -110,7 +110,7 @@ describe("E2E: Run Lifecycle", () => {
 			// Clean up
 			for (const finding of secondResult.proposed) {
 				await client.call("run/resolve", {
-					runId: actResult.runId,
+					run: actResult.run,
 					resolution: {
 						category: finding.category,
 						id: finding.id,
@@ -123,7 +123,7 @@ describe("E2E: Run Lifecycle", () => {
 		}
 	});
 
-	it("run continuation: ask with same runId preserves history", {
+	it("run continuation: ask with same run preserves history", {
 		timeout: TIMEOUT,
 	}, async () => {
 		const { client, cleanup } = await createIsolatedSession();
@@ -140,12 +140,12 @@ describe("E2E: Run Lifecycle", () => {
 				["completed", "proposed"].includes(firstResult.status),
 				`First ask should complete or propose, got ${firstResult.status}`,
 			);
-			assert.ok(firstResult.runId);
+			assert.ok(firstResult.run);
 
 			if (firstResult.status === "proposed") {
 				for (const f of firstResult.proposed) {
 					await client.call("run/resolve", {
-						runId: firstResult.runId,
+						run: firstResult.run,
 						resolution: {
 							category: f.category,
 							id: f.id,
@@ -159,7 +159,7 @@ describe("E2E: Run Lifecycle", () => {
 
 			const secondResult = await client.call("ask", {
 				model,
-				runId: firstResult.runId,
+				run: firstResult.run,
 				prompt: "What was my previous question about?",
 			});
 
@@ -167,10 +167,10 @@ describe("E2E: Run Lifecycle", () => {
 				["completed", "proposed"].includes(secondResult.status),
 				`Second ask should complete or propose, got ${secondResult.status}`,
 			);
-			assert.strictEqual(secondResult.runId, firstResult.runId);
+			assert.strictEqual(secondResult.run, firstResult.run);
 
 			const secondTurn = turns.find(
-				(t) => t.turn.sequence > 0 && t.runId === firstResult.runId,
+				(t) => t.turn.sequence > 0 && t.run === firstResult.run,
 			);
 			if (secondTurn) {
 				const text = [
@@ -214,7 +214,7 @@ describe("E2E: Run Lifecycle", () => {
 			);
 
 			const notif = notifications[0];
-			assert.ok(notif.runId, "Notification should have runId");
+			assert.ok(notif.run, "Notification should have run");
 			assert.ok(notif.turn, "Notification should have turn object");
 			assert.ok(
 				Number.isInteger(notif.turn.sequence),

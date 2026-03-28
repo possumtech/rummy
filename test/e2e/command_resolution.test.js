@@ -90,7 +90,7 @@ describe("E2E: Command Resolution", () => {
 		// Clean up
 		for (const f of result.proposed) {
 			await client.call("run/resolve", {
-				runId: result.runId,
+				run: result.run,
 				resolution: {
 					category: f.category,
 					id: f.id,
@@ -126,7 +126,7 @@ describe("E2E: Command Resolution", () => {
 		// Accept the command with simulated output
 		for (const f of actResult.proposed) {
 			await client.call("run/resolve", {
-				runId: actResult.runId,
+				run: actResult.run,
 				resolution: {
 					category: f.category,
 					id: f.id,
@@ -142,7 +142,7 @@ describe("E2E: Command Resolution", () => {
 		let resumedTurn = null;
 		while (Date.now() - startTime < 60_000) {
 			for (const [seq, payload] of turns) {
-				if (seq > proposingSeq && payload.runId === actResult.runId) {
+				if (seq > proposingSeq && payload.run === actResult.run) {
 					resumedTurn = payload;
 					break;
 				}
@@ -191,7 +191,7 @@ describe("E2E: Command Resolution", () => {
 		// Accept with error output — simulating a failed command
 		for (const f of actResult.proposed) {
 			await client.call("run/resolve", {
-				runId: actResult.runId,
+				run: actResult.run,
 				resolution: {
 					category: f.category,
 					id: f.id,
@@ -209,7 +209,7 @@ describe("E2E: Command Resolution", () => {
 		let resumedTurn = null;
 		while (Date.now() - startTime < 60_000) {
 			for (const [seq, payload] of turns) {
-				if (seq > proposingSeq && payload.runId === actResult.runId) {
+				if (seq > proposingSeq && payload.run === actResult.run) {
 					resumedTurn = payload;
 					break;
 				}
@@ -258,7 +258,7 @@ describe("E2E: Command Resolution", () => {
 		let lastResolve;
 		for (const f of actResult.proposed) {
 			lastResolve = await client.call("run/resolve", {
-				runId: actResult.runId,
+				run: actResult.run,
 				resolution: {
 					category: f.category,
 					id: f.id,
