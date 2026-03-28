@@ -95,6 +95,7 @@ export default function createHooks(debug = false) {
 			action: createFilter("agent.action"),
 		},
 		tools,
+		models: null, // ModelCapabilities, attached by ProjectAgent
 
 		// Utility to add raw filters/events directly if needed for tests
 		addFilter: registry.addFilter.bind(registry),

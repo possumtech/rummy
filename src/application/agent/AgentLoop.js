@@ -139,13 +139,10 @@ export default class AgentLoop {
 			}
 		}
 
-		let protocolRetries = 0;
-		const MAX_PROTOCOL_RETRIES = 5;
 		let inconsistencyRetries = 0;
 		const MAX_INCONSISTENCY_RETRIES = 3;
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = 15;
-		let processedItems = [];
 
 		// --- THE ATOMIC TURN LOOP ---
 		while (loopIteration < MAX_LOOP_ITERATIONS) {
@@ -161,11 +158,8 @@ export default class AgentLoop {
 				loopPrompt: prompt,
 				noContext,
 				contextSize,
-				processedItems,
 				options,
 			});
-
-			processedItems = turn.processedItems;
 
 			// Protocol violation — retry
 			if (
@@ -256,7 +250,6 @@ export default class AgentLoop {
 			}
 			if (state.action === "retry") {
 				inconsistencyRetries++;
-				processedItems = [];
 				continue;
 			}
 			if (state.action === "continue") {

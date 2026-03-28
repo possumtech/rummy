@@ -87,8 +87,28 @@ export default class Turn {
 		};
 
 		const meta = JSON.parse(getChildContent(assistantNode, "meta") || "{}");
-		const todoRaw = getChildContent(assistantNode, "todo") || "";
-		const { list: todo, next: next_todo } = TodoParser.parse(todoRaw);
+		const contentRaw = getChildContent(assistantNode, "content") || "";
+
+		// Parse structured JSON response for todo items
+		let todo = [];
+		let next_todo = null;
+		try {
+			const parsed = JSON.parse(contentRaw);
+			todo = (parsed.todo || []).map((t) => ({
+				tool: t.tool,
+				argument: t.argument,
+				description: t.description,
+				completed: false,
+			}));
+			next_todo = todo[0] || null;
+		} catch {
+			// Fallback for non-JSON content (legacy XML turns in history)
+			const { list, next } = TodoParser.parse(
+				getChildContent(assistantNode, "todo") || "",
+			);
+			todo = list;
+			next_todo = next;
+		}
 
 		// FETCH SEQUENCE FROM ROOT TURN NODE ATTRIBUTES OR SQL DATA
 		const rawSeq = turnNode?.attributes?.sequence ?? turnNode?.sequence ?? 0;

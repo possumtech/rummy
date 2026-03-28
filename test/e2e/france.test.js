@@ -47,8 +47,18 @@ describe("Happy Path E2E: France", () => {
 						{
 							message: {
 								role: "assistant",
-								content:
-									"<todo>- [x] summary: Answer question</todo><known>The user is asking about France.</known><unknown></unknown><summary>The capital of France is Paris.</summary>",
+								content: JSON.stringify({
+									todo: [
+										{
+											tool: "summary",
+											argument: "The capital of France is Paris.",
+											description: "answer",
+										},
+									],
+									known: "The user is asking about France.",
+									unknown: "",
+									summary: "The capital of France is Paris.",
+								}),
 							},
 						},
 					],
@@ -84,7 +94,7 @@ describe("Happy Path E2E: France", () => {
 			"Todo should be an array",
 		);
 		assert.ok(finalTurn.assistant.todo.length > 0, "Todo should not be empty");
-		assert.strictEqual(finalTurn.assistant.todo[0].completed, true);
+		assert.strictEqual(finalTurn.assistant.todo[0].tool, "summary");
 
 		assert.ok(
 			finalTurn.context.includes("<context"),

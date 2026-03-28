@@ -1,3 +1,12 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const responseSchema = JSON.parse(
+	readFileSync(join(__dirname, "../../domain/schema/response.json"), "utf8"),
+);
+
 export default class OllamaClient {
 	#baseUrl;
 	#hooks;
@@ -8,7 +17,18 @@ export default class OllamaClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		const body = { model, messages, think: true };
+		// Strip prefill if present — structured outputs don't use it
+		let finalMessages = messages;
+		if (messages.at(-1)?.role === "assistant") {
+			finalMessages = messages.slice(0, -1);
+		}
+
+		const body = {
+			model,
+			messages: finalMessages,
+			think: true,
+			format: responseSchema,
+		};
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 

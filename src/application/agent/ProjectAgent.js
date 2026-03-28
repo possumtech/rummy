@@ -4,7 +4,6 @@ import SessionManager from "../session/SessionManager.js";
 import AgentLoop from "./AgentLoop.js";
 import FindingsManager from "./FindingsManager.js";
 import FindingsProcessor from "./FindingsProcessor.js";
-import ResponseParser from "./ResponseParser.js";
 import StateEvaluator from "./StateEvaluator.js";
 import TurnExecutor from "./TurnExecutor.js";
 
@@ -24,12 +23,12 @@ export default class ProjectAgent {
 		this.#hooks = hooks;
 		this.#sessionManager = new SessionManager(db, hooks);
 
-		const parser = new ResponseParser();
 		const llm = new LlmProvider(hooks);
+		hooks.models = llm.capabilities;
 		const turnBuilder = new TurnBuilder(hooks);
 		this.#findingsManager = new FindingsManager(db);
 
-		const turnExecutor = new TurnExecutor(db, llm, hooks, turnBuilder, parser);
+		const turnExecutor = new TurnExecutor(db, llm, hooks, turnBuilder);
 		const findingsProcessor = new FindingsProcessor(
 			db,
 			this.#findingsManager,

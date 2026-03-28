@@ -1,6 +1,5 @@
 import msg from "../../domain/i18n/messages.js";
 import Turn from "../../domain/turn/Turn.js";
-import TodoParser from "./TodoParser.js";
 import ToolExtractor from "./ToolExtractor.js";
 
 export default class TurnExecutor {
@@ -8,14 +7,12 @@ export default class TurnExecutor {
 	#llmProvider;
 	#hooks;
 	#turnBuilder;
-	#responseParser;
 
-	constructor(db, llmProvider, hooks, turnBuilder, responseParser) {
+	constructor(db, llmProvider, hooks, turnBuilder) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#turnBuilder = turnBuilder;
-		this.#responseParser = responseParser;
 	}
 
 	#resolveAlias(modelId) {
@@ -28,18 +25,6 @@ export default class TurnExecutor {
 		return modelId;
 	}
 
-	#buildPrefill(processedItems) {
-		if (processedItems.length === 0) return msg("prefill.open");
-		const checked = processedItems
-			.map((item) =>
-				item.description
-					? msg("prefill.checked_desc", item)
-					: msg("prefill.checked", item),
-			)
-			.join("\n");
-		return msg("prefill.continuation", { checked });
-	}
-
 	async execute({
 		type,
 		project,
@@ -50,7 +35,6 @@ export default class TurnExecutor {
 		loopPrompt,
 		noContext,
 		contextSize,
-		processedItems,
 		options,
 	}) {
 		// Determine turn sequence
@@ -85,27 +69,6 @@ export default class TurnExecutor {
 			historyMessages.push(...msgs);
 		}
 
-		// Peek at last turn state
-		let hasUnknowns = true;
-		let todoComplete = false;
-		const lastTurnRow = historyRows.at(-1);
-		if (lastTurnRow) {
-			const lastTurn = new Turn(this.#db, lastTurnRow.turn_id);
-			await lastTurn.hydrate();
-			const lastJson = lastTurn.toJson();
-			const unknownText = (lastJson.assistant.unknown || "")
-				.trim()
-				.replace(/^[-*]\s*/, "");
-			hasUnknowns =
-				unknownText.length > 0 &&
-				!/^(none\.?|n\/a|nothing\.?|-)$/i.test(unknownText) &&
-				!/^<unknown\s*\/>$/i.test(unknownText) &&
-				!/^<unknown\s*>\s*<\/unknown\s*>$/i.test(unknownText);
-			todoComplete =
-				lastJson.assistant.todo.length > 0 &&
-				lastJson.assistant.todo.every((t) => t.completed);
-		}
-
 		// Create fresh turn in DB
 		const turnRow = await this.#db.create_empty_turn.get({
 			run_id: String(currentRunId || ""),
@@ -122,8 +85,8 @@ export default class TurnExecutor {
 			db: this.#db,
 			prompt: loopPrompt,
 			sequence: Number(currentTurnSequence),
-			hasUnknowns,
-			todoComplete,
+			hasUnknowns: true,
+			todoComplete: false,
 			turnId,
 			runId: currentRunId,
 			noContext,
@@ -137,7 +100,7 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Serialize and call LLM
+		// Serialize and call LLM (no prefill — structured output enforces schema)
 		const currentTurnMessages = await turnObj.serialize();
 		const newUserMsg = currentTurnMessages.find((m) => m.role === "user");
 		const filteredMessages = await this.#hooks.llm.messages.filter(
@@ -149,18 +112,14 @@ export default class TurnExecutor {
 			{ model: requestedModel, sessionId, runId: currentRunId },
 		);
 
-		const prefill = this.#buildPrefill(processedItems);
 		const result = await this.#llmProvider.completion(
-			[...filteredMessages, { role: "assistant", content: prefill }],
+			filteredMessages,
 			requestedModel,
 			{ temperature: options?.temperature },
 		);
 		const responseMessage = result.choices?.[0]?.message;
 		const rawReasoning = responseMessage?.reasoning_content;
-		const mergedContent = this.#responseParser.mergePrefill(
-			prefill,
-			responseMessage?.content || "",
-		);
+		const rawContent = responseMessage?.content || "";
 
 		await this.#hooks.run.progress.emit({
 			sessionId,
@@ -172,11 +131,25 @@ export default class TurnExecutor {
 		const finalResponse = await this.#hooks.llm.response.filter(
 			{
 				...responseMessage,
-				content: mergedContent,
+				content: rawContent,
 				reasoning_content: rawReasoning,
 			},
 			{ model: requestedModel, sessionId, runId: currentRunId },
 		);
+
+		// Parse structured JSON response (strip markdown code fences if present)
+		let jsonContent = (finalResponse.content || "").trim();
+		if (jsonContent.startsWith("```")) {
+			jsonContent = jsonContent
+				.replace(/^```(?:json)?\s*\n?/, "")
+				.replace(/\n?```\s*$/, "");
+		}
+		let parsed;
+		try {
+			parsed = JSON.parse(jsonContent);
+		} catch {
+			parsed = { todo: [], known: finalResponse.content, unknown: "" };
+		}
 
 		// Commit usage stats
 		const usage = result.usage || {
@@ -237,100 +210,39 @@ export default class TurnExecutor {
 			2,
 		);
 
-		// Parse response and extract tools
-		const tags = this.#responseParser.parseActionTags(finalResponse.content);
-		const todoTag = tags.find((t) => t.tagName === "todo");
-		const todoContent = todoTag
-			? this.#responseParser.getNodeText(todoTag)
-			: "";
-		const { list: parsedTodo } = TodoParser.parse(todoContent);
-
-		const toolExtractor = new ToolExtractor(
-			this.#responseParser,
-			this.#hooks.tools,
-		);
-		const { tools, structural, flags } = toolExtractor.extract(
-			tags,
-			parsedTodo,
-		);
-
-		// Accumulate processed items for continuation prefill.
-		// Summary is a completion signal, not an executed tool — exclude from prefill.
-		const newProcessedItems = [...processedItems];
-		for (const item of parsedTodo) {
-			if (!item.completed && item.tool && item.tool !== "summary") {
-				newProcessedItems.push({
-					tool: item.tool,
-					argument: item.argument,
-					description: item.description,
-				});
-			}
+		// Commit structured fields as DB elements
+		await commitTag("known", parsed.known || "", {}, 3);
+		await commitTag("unknown", parsed.unknown || "", {}, 4);
+		if (parsed.summary) {
+			await commitTag("summary", parsed.summary, {}, 5);
 		}
 
-		// Commit structural tags
-		for (let i = 0; i < structural.length; i++) {
-			await commitTag(structural[i].name, structural[i].content, {}, i + 3);
-		}
+		// Extract tools from structured JSON
+		const toolExtractor = new ToolExtractor(null, this.#hooks.tools);
+		const { tools, flags } = toolExtractor.extractFromJson(parsed);
 
 		await turnObj.hydrate();
-
-		// Protocol validation
-		const validationErrors = await this.#validate(
-			type,
-			hasUnknowns,
-			tags,
-			turnObj,
-			elements,
-			turnId,
-		);
 
 		return {
 			turnObj,
 			turnId,
 			turnSequence: currentTurnSequence,
 			tools,
-			structural,
+			structural: [
+				{ name: "known", content: parsed.known || "" },
+				{ name: "unknown", content: parsed.unknown || "" },
+				...(parsed.summary
+					? [{ name: "summary", content: parsed.summary }]
+					: []),
+			],
 			flags,
 			elements,
-			processedItems: newProcessedItems,
 			finalResponse,
 			turnJson: turnObj.toJson(),
-			validationErrors,
+			validationErrors: [],
 			commitTag,
-			parsedTodo,
-			tags,
+			parsedTodo: parsed.todo || [],
+			tags: [],
 		};
-	}
-
-	async #validate(type, hasUnknowns, tags, _turnObj, _elements, _turnId) {
-		const validationErrors = [];
-		const constraints = await this.#db.get_protocol_constraints.get({
-			type,
-			has_unknowns: hasUnknowns ? 1 : 0,
-		});
-		if (!constraints) return validationErrors;
-
-		const required = constraints.required_tags.split(/\s+/).filter(Boolean);
-		const allowed = constraints.allowed_tags.split(/\s+/).filter(Boolean);
-		const presentTags = new Set(tags.map((t) => t.tagName));
-
-		for (const req of required) {
-			if (!presentTags.has(req)) {
-				validationErrors.push({
-					content: msg("protocol.missing_tag", { tag: req }),
-					attrs: { protocol: "violation" },
-				});
-			}
-		}
-		for (const tag of tags) {
-			if (!allowed.includes(tag.tagName)) {
-				validationErrors.push({
-					content: msg("protocol.disallowed_tag", { tag: tag.tagName }),
-					attrs: { protocol: "violation" },
-				});
-			}
-		}
-
-		return validationErrors;
 	}
 }

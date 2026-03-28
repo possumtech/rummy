@@ -1,18 +1,26 @@
+import ModelCapabilities from "../../infrastructure/llm/ModelCapabilities.js";
 import OllamaClient from "../../infrastructure/llm/OllamaClient.js";
 import OpenRouterClient from "../../infrastructure/llm/OpenRouterClient.js";
 
 export default class LlmProvider {
 	#openRouter;
 	#ollama;
+	#capabilities;
 
 	constructor(hooks) {
+		this.#capabilities = new ModelCapabilities();
 		this.#openRouter = new OpenRouterClient(
 			process.env.OPENROUTER_API_KEY,
 			hooks,
+			this.#capabilities,
 		);
 
 		const ollamaUrl = process.env.OLLAMA_BASE_URL;
 		this.#ollama = new OllamaClient(ollamaUrl, hooks);
+	}
+
+	get capabilities() {
+		return this.#capabilities;
 	}
 
 	async completion(messages, model, options = {}) {
