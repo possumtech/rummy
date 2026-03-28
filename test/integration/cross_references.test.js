@@ -192,6 +192,7 @@ describe("Cross-Reference Population", () => {
 				parent_run_id: null,
 				type: "ask",
 				config: "{}",
+				alias: "test_1",
 			});
 
 			const ctx = await ProjectContext.open(projectPath);

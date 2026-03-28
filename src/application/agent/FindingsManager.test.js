@@ -33,6 +33,7 @@ test("FindingsManager", async (t) => {
 			parent_run_id: null,
 			type: "act",
 			config: "{}",
+			alias: "test_1",
 		});
 		runId = "r1";
 	});

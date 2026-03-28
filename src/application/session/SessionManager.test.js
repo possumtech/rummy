@@ -128,9 +128,11 @@ test("SessionManager", async (t) => {
 		},
 	);
 
-	await t.test("startRun should create a run", async () => {
-		const runId = await manager.startRun(sessionId, { type: "ask" });
-		assert.ok(runId);
+	await t.test("startRun should create a run with alias", async () => {
+		const result = await manager.startRun(sessionId, { type: "ask" });
+		assert.ok(result.runId);
+		assert.ok(result.alias);
+		assert.ok(result.alias.includes("_"), "alias should be model_N format");
 	});
 
 	await t.test("addSkill and removeSkill should work", async () => {

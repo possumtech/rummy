@@ -33,6 +33,7 @@ async function setup() {
 		parent_run_id: null,
 		type: "ask",
 		config: "{}",
+		alias: `test_${runId.slice(0, 8)}`,
 	});
 	const turnRow = await tdb.db.create_empty_turn.get({
 		run_id: runId,

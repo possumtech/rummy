@@ -61,6 +61,7 @@ async function setupDb(projectPath) {
 		parent_run_id: null,
 		type: "ask",
 		config: "{}",
+		alias: "test_1",
 	});
 
 	return { tdb, hooks };

@@ -168,6 +168,7 @@ export default class AgentLoop {
 				projectPath: project.path,
 				projectId,
 				runId: currentRunId,
+				runAlias: currentAlias,
 				turnId: turn.turnId,
 				turnSequence: turn.turnSequence,
 				tools: turn.tools,

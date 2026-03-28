@@ -26,6 +26,7 @@ test("TurnBuilder", async (t) => {
 			parent_run_id: null,
 			type: "ask",
 			config: "{}",
+			alias: "test_1",
 		});
 	});
 

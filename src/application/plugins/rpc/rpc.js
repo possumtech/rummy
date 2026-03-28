@@ -90,9 +90,11 @@ export default class CoreRpcPlugin {
 		});
 
 		r.register("startRun", {
-			handler: async (params, ctx) =>
-				ctx.projectAgent.startRun(ctx.sessionId, params),
-			description: "Pre-create a run. Returns runId.",
+			handler: async (params, ctx) => {
+				const result = await ctx.projectAgent.startRun(ctx.sessionId, params);
+				return { run: result.alias };
+			},
+			description: "Pre-create a run. Returns { run }.",
 			params: {
 				model: "string — optional model override",
 				projectBufferFiles: "string[] — open files in IDE",
@@ -284,27 +286,27 @@ export default class CoreRpcPlugin {
 		// Notifications
 		r.registerNotification(
 			"run/step/completed",
-			"Turn finished. Payload: { runId, turn: { sequence, assistant: { todo[], known[], unknown[], summary, content }, feedback[], usage: { prompt_tokens, completion_tokens, cost } }, files[] }.",
+			"Turn finished. Payload: { run, turn: { sequence, assistant: { todo[], known[], unknown[], summary, content }, feedback[], usage: { prompt_tokens, completion_tokens, cost } }, files[] }.",
 		);
 		r.registerNotification(
 			"run/progress",
-			"Turn status. Payload: { runId, turn, status: 'thinking'|'processing'|'retrying' }.",
+			"Turn status. Payload: { run, turn, status: 'thinking'|'processing'|'retrying' }.",
 		);
 		r.registerNotification(
 			"editor/diff",
-			"Proposed edit. Payload: { runId, findingId, type: 'edit', file, patch (unified diff) }.",
+			"Proposed edit. Payload: { run, findingId, type: 'edit', file, patch (unified diff) }.",
 		);
 		r.registerNotification(
 			"run/env",
-			"Proposed read-only command. Payload: { runId, findingId, command }.",
+			"Proposed read-only command. Payload: { run, findingId, command }.",
 		);
 		r.registerNotification(
 			"run/run",
-			"Proposed shell command. Payload: { runId, findingId, command }.",
+			"Proposed shell command. Payload: { run, findingId, command }.",
 		);
 		r.registerNotification(
 			"ui/prompt",
-			"Model question. Payload: { runId, findingId, question, options[] }.",
+			"Model question. Payload: { run, findingId, question, options[] }.",
 		);
 		r.registerNotification(
 			"ui/render",

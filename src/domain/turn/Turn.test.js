@@ -31,6 +31,7 @@ test("Turn", async (t) => {
 			parent_run_id: null,
 			type: "ask",
 			config: "{}",
+			alias: "test_1",
 		});
 
 		const turn = await db.create_empty_turn.get({ run_id: runId, sequence: 1 });
