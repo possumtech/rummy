@@ -1,13 +1,13 @@
-# Phase 1: Wire Format + Known Structure
+# Phase 1: Full Architecture
 
-Replace `response_format` JSON schema with native tool calling. Introduce `{key, state, value}` known structure. No persistence changes — everything is ephemeral within the turn.
+Native tool calling + known K/V store with file bootstrapping + summary log + no message history. The known store, summary log, and unknown list ARE the model's context.
 
 ## Enforcement Layers
 
-1. **Tool definitions** — `tools` array with `strict: true` on each tool schema. Constrained decoding enforces argument shapes. The `tools` array itself restricts which tool names are valid per mode (ask: 7, act: 10).
-2. **Content suppression** — `tool_choice: "required"` suppresses content generation. `response_format` set to empty-object shim as explicit signal to not populate content.
-3. **Prompt instructions + examples** — System prompt describes each tool's purpose, constraints, and includes concrete examples of correct tool call sets.
-4. **Server-side validation** — Confirms `known` and `summary` are present in `tool_calls`. Ignores `content` entirely. Rejects and retries on violation.
+1. **Tool definitions** — `tools` array with `strict: true` on each tool schema. Constrained decoding enforces argument shapes. The `tools` array restricts valid tool names per mode (ask: 7, act: 10).
+2. **Content suppression** — `tool_choice: "required"` suppresses content. `response_format` set to empty-object shim as explicit signal to not populate content.
+3. **Prompt instructions + examples** — system prompt describes each tool's purpose, constraints, and includes concrete examples of correct tool call sets.
+4. **Server-side validation** — confirms `known` and `summary` are present in `tool_calls`. Ignores `content`. Rejects and retries on violation.
 
 ## API Request Shape
 
@@ -33,7 +33,17 @@ Replace `response_format` JSON schema with native tool calling. Introduce `{key,
 }
 ```
 
-`tool_choice: "required"` forces tool calls and suppresses content. The `response_format` shim forces any produced content to `{}` — an explicit signal that content generation is wasted work. The server reads exclusively from `tool_calls` and never touches `content`.
+`tool_choice: "required"` forces tool calls and suppresses content. The `response_format` shim forces any produced content to `{}`. The server reads exclusively from `tool_calls` and never touches `content`.
+
+## Model Context (what the model sees each turn)
+
+No message history. Assembled from tool results and system prompt:
+
+1. **System prompt** — brief role description + behavioral constraints
+2. **Known entries** — `[{key, state, value}]` from previous turn's `known` result (or file bootstrap on first turn)
+3. **Unknown list** — previous turn's unknown items, copied back verbatim
+4. **Summary log** — `[{tool, target, status, key, value}]` accumulated across entire run
+5. **User message** — current user input
 
 ## Tools
 
@@ -60,7 +70,7 @@ Model emits its accumulated facts and analysis as keyed entries.
             "required": ["key", "value"],
             "additionalProperties": false,
             "properties": {
-              "key": { "type": "string", "description": "Key name. Knowledge keys: _known_ prefix. Empty string to delete." },
+              "key": { "type": "string", "description": "Key name. Knowledge keys use /:known/ prefix. Empty string to delete." },
               "value": { "type": "string", "description": "The knowledge value." }
             }
           }
@@ -71,9 +81,7 @@ Model emits its accumulated facts and analysis as keyed entries.
 }
 ```
 
-**Result:** `[{key, state, value}]` — the full known index.
-
-At Phase 1 (no persistence), the result echoes back the entries the model sent, all with `state: "full"`, plus any `_tool_` keys generated during the turn with `state: "stored"`.
+**Result:** `[{key, state, value}]` — the full known index. Includes file keys, `/:known/*` entries, and all `/:[tool]/*` result keys.
 
 ### `summary` (shared, required)
 
@@ -98,9 +106,7 @@ Model emits a one-liner status update or answer.
 }
 ```
 
-**Result:** `[{tool, target, status, key, value}]` — chronological log of all tool calls and summaries in the turn.
-
-At Phase 1 (no persistence), the log covers the current turn only.
+**Result:** `[{tool, target, status, key, value}]` — chronological log of all tool calls and summaries across the entire run.
 
 ### `unknown` (shared, optional)
 
@@ -138,14 +144,14 @@ Model articulates its uncertainty boundary.
   "type": "function",
   "function": {
     "name": "read",
-    "description": "Load a key's value into context. Key is a relative file path (src/app.js), a _known_ entry, or a _tool_ result.",
+    "description": "Load a key's value into context. Key is a relative file path (src/app.js), a /:known/ entry, or a /:[tool]/ result.",
     "strict": true,
     "parameters": {
       "type": "object",
       "required": ["key", "reason"],
       "additionalProperties": false,
       "properties": {
-        "key": { "type": "string", "description": "Relative file path, _known_ key, or _tool_ key." },
+        "key": { "type": "string", "description": "Relative file path, /:known/ key, or /:[tool]/ key." },
         "reason": { "type": "string", "description": "Why this key is needed." }
       }
     }
@@ -153,7 +159,7 @@ Model articulates its uncertainty boundary.
 }
 ```
 
-**Result:** `pass: {key} # file retained ({N} lines) [_tool_{id}]`
+**Result:** `pass: {key} # file retained ({N} lines) [/:read/{N}]`
 
 ### `drop` (shared)
 
@@ -162,14 +168,14 @@ Model articulates its uncertainty boundary.
   "type": "function",
   "function": {
     "name": "drop",
-    "description": "Demote a key from context. Key is a relative file path, _known_ entry, or _tool_ result.",
+    "description": "Demote a key from context. Key is a relative file path, /:known/ entry, or /:[tool]/ result.",
     "strict": true,
     "parameters": {
       "type": "object",
       "required": ["key", "reason"],
       "additionalProperties": false,
       "properties": {
-        "key": { "type": "string", "description": "Relative file path, _known_ key, or _tool_ key." },
+        "key": { "type": "string", "description": "Relative file path, /:known/ key, or /:[tool]/ key." },
         "reason": { "type": "string", "description": "Why this is no longer relevant." }
       }
     }
@@ -201,7 +207,7 @@ Model articulates its uncertainty boundary.
 }
 ```
 
-**Result:** `pass: {command} # exit 0 [_tool_{id}]` or `error: {command} # exit {code} [_tool_{id}]`
+**Result:** `pass: {command} # exit 0 [/:env/{N}]` or `error: {command} # exit {code} [/:env/{N}]`
 
 ### `prompt` (shared)
 
@@ -249,7 +255,7 @@ Model articulates its uncertainty boundary.
 }
 ```
 
-**Result:** `pass: {command} # exit 0 [_tool_{id}]` or `error: {command} # exit {code} [_tool_{id}]`
+**Result:** `pass: {command} # exit 0 [/:run/{N}]` or `error: {command} # exit {code} [/:run/{N}]`
 
 ### `delete` (act only)
 
@@ -258,14 +264,14 @@ Model articulates its uncertainty boundary.
   "type": "function",
   "function": {
     "name": "delete",
-    "description": "Delete a key. Removes file from disk if key is a file path, removes entry if _known_ or _tool_ key.",
+    "description": "Delete a key. Removes file from disk if key is a file path, removes entry if /:known/ or /:[tool]/ key.",
     "strict": true,
     "parameters": {
       "type": "object",
       "required": ["key", "reason"],
       "additionalProperties": false,
       "properties": {
-        "key": { "type": "string", "description": "Relative file path, _known_ key, or _tool_ key." },
+        "key": { "type": "string", "description": "Relative file path, /:known/ key, or /:[tool]/ key." },
         "reason": { "type": "string", "description": "Why this should be deleted." }
       }
     }
@@ -273,7 +279,7 @@ Model articulates its uncertainty boundary.
 }
 ```
 
-**Result:** `pass: {key} # deleted [_tool_{id}]`
+**Result:** `pass: {key} # deleted [/:delete/{N}]`
 
 ### `edit` (act only)
 
@@ -298,15 +304,68 @@ Model articulates its uncertainty boundary.
 }
 ```
 
-**Result:** `pass: {file} # edit applied [_tool_{id}]` or `warn: {file} # edits rejected by user [_tool_{id}]`
+**Result:** `pass: {file} # edit applied [/:edit/{N}]` or `warn: {file} # edits rejected by user [/:edit/{N}]`
 
 ## Tables
 
-No new tables in Phase 1. Existing tables with modified usage or schema additions:
+### `known_entries` (new)
+
+```sql
+CREATE TABLE IF NOT EXISTS known_entries (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, key TEXT NOT NULL
+	, value TEXT NOT NULL
+	, state TEXT NOT NULL DEFAULT 'full'
+		CHECK (state IN ('file', 'symbols', 'stored', 'full'))
+	, write_count INTEGER NOT NULL DEFAULT 1
+	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_key
+ON known_entries (run_id, key);
+```
+
+### `run_log` (new)
+
+```sql
+CREATE TABLE IF NOT EXISTS run_log (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
+	, tool TEXT NOT NULL
+	, target TEXT NOT NULL DEFAULT ''
+	, status TEXT NOT NULL CHECK (status IN ('pass', 'info', 'warn', 'error', 'summary'))
+	, key TEXT NOT NULL DEFAULT ''
+	, sequence INTEGER NOT NULL
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_run_log_run
+ON run_log (run_id, sequence);
+```
+
+### `runs` (modified)
+
+```sql
+ALTER TABLE runs ADD COLUMN next_result_seq INTEGER NOT NULL DEFAULT 1;
+```
+
+### `pending_context` (modified)
+
+```sql
+ALTER TABLE pending_context ADD COLUMN tool_call_id TEXT;
+```
+
+### `findings_diffs`, `findings_commands`, `findings_notifications` (modified)
+
+```sql
+ALTER TABLE findings_diffs ADD COLUMN tool_call_id TEXT;
+ALTER TABLE findings_commands ADD COLUMN tool_call_id TEXT;
+ALTER TABLE findings_notifications ADD COLUMN tool_call_id TEXT;
+```
 
 ### `turn_elements` (modified usage)
 
-Tool calls are stored as child elements of the assistant node. Each tool call becomes a `turn_element`. Content is dead — not stored.
+Tool calls stored as children of the assistant node. Content is dead — not stored.
 
 ```
 turn (tag_name='turn')
@@ -319,49 +378,28 @@ turn (tag_name='turn')
        │    content: NULL
        │    attributes: {"id": "call_def", "name": "known", "arguments": "{...}"}
        │
-       └─ ... (one tool_call per call in the response)
+       └─ ...
 ```
 
-Tool results are stored as `pending_context` rows (see below), not as `turn_elements`. They become `role: "tool"` messages during serialization.
+### `v_turn_history` (view — drop or replace)
 
-### `pending_context` (modified usage)
+Turn history is no longer sent to the model. The view may still be useful for debugging/UI but is no longer part of the critical path.
 
-Each row maps to a `role: "tool"` message. New column `tool_call_id` links the result to its originating call:
+## Server Execution Order
 
-```sql
--- Migration: add tool_call_id to pending_context
-ALTER TABLE pending_context ADD COLUMN tool_call_id TEXT;
-```
+The model emits all tool calls as a parallel batch. The server processes in strict order:
 
-| Column | Old usage | New usage |
-|--------|-----------|-----------|
-| `type` | `command`, `env`, `diff`, `notification`, `inject` | Same values, unchanged |
-| `request` | Original request text | Original request text |
-| `result` | Formatted result text | Tool result content string |
-| `is_error` | Boolean | Boolean |
-| `source_turn_id` | Turn that produced the finding | Turn that produced the tool call |
-| `tool_call_id` | *(new)* | The `tool_calls[].id` from the assistant message |
-
-### `findings_diffs`, `findings_commands`, `findings_notifications`
-
-Unchanged structure. The `FindingsProcessor` reads from `tool_calls` instead of parsed JSON `todo`, but the findings tables are the same. New column links each finding to its originating tool call:
-
-```sql
--- Migration: add tool_call_id to findings tables
-ALTER TABLE findings_diffs ADD COLUMN tool_call_id TEXT;
-ALTER TABLE findings_commands ADD COLUMN tool_call_id TEXT;
-ALTER TABLE findings_notifications ADD COLUMN tool_call_id TEXT;
-```
-
-### `v_turn_history` (view — needs update)
-
-The current view selects `tag_name = 'content'` for assistant messages. With tool calling, the assistant message has both `content` and `tool_call` elements. The view needs to be updated to reconstruct the full assistant message from its child elements, or replaced with a query that joins tool calls and tool results into the message history format.
+1. **Execute action tools** — `read`, `drop`, `env`, `run`, `delete`, `edit`, `prompt`. Generate result keys (`/:read/1`, `/:edit/2`, etc.). Store full results in the known store as `stored`.
+2. **Process `unknown`** — store for injection into next turn.
+3. **Build `known` result** — UPSERT the model's `known` entries (increment `write_count`), then query the full store. Result includes all file keys, `/:known/*` entries, and `/:[tool]/*` result keys.
+4. **Build `summary` result** — append this turn's tool call records and summary text to `run_log`. Return the full accumulated log for the run.
+5. **Send all `role: "tool"` results** — one per tool call, linked by `tool_call_id`.
 
 ## Examples
 
 ### Example 1: Ask mode — first turn, model reads files
 
-**Model response** (content is null, server reads tool_calls only):
+**Model response:**
 
 ```json
 {
@@ -373,7 +411,7 @@ The current view selects `tag_name = 'content'` for assistant messages. With too
       "type": "function",
       "function": {
         "name": "known",
-        "arguments": "{\"entries\":[{\"key\":\"_known_framework\",\"value\":\"Express with passport middleware\"}]}"
+        "arguments": "{\"entries\":[{\"key\":\"/:known/framework\",\"value\":\"Express with passport middleware\"}]}"
       }
     },
     {
@@ -412,49 +450,44 @@ The current view selects `tag_name = 'content'` for assistant messages. With too
 }
 ```
 
-**Server sends back (one message per tool result, in order):**
+**Server execution order:**
+
+Step 1 — execute action tools, generate result keys:
+- `read(src/config.js)` → `/:read/1`, stored in known as `stored`
+- `read(src/routes/auth.js)` → `/:read/2`, stored in known as `stored`
+
+Step 2 — process unknown:
+- Store `["Which session store is configured", "Whether tokens are rotated"]` for next turn
+
+Step 3 — build known result (UPSERT `/:known/framework`, then query full store):
 
 ```json
-{
-  "role": "tool",
-  "tool_call_id": "call_001",
-  "content": "[{\"key\":\"_known_framework\",\"state\":\"full\",\"value\":\"Express with passport middleware\"},{\"key\":\"_tool_a3f8x\",\"state\":\"stored\",\"value\":\"\"},{\"key\":\"_tool_b7k2m\",\"state\":\"stored\",\"value\":\"\"}]"
-}
+{"role": "tool", "tool_call_id": "call_001", "content": "[{\"key\":\"src/app.js\",\"state\":\"symbols\",\"value\":\"createApp()\\nlisten(port)\"},{\"key\":\"src/config.js\",\"state\":\"file\",\"value\":\"const config = {\\n  port: 3000,\\n  ...\"},{\"key\":\"src/routes/auth.js\",\"state\":\"file\",\"value\":\"router.post('/login', ...\"},{\"key\":\"src/utils.js\",\"state\":\"stored\",\"value\":\"\"},{\"key\":\"/:known/framework\",\"state\":\"full\",\"value\":\"Express with passport middleware\"},{\"key\":\"/:read/1\",\"state\":\"stored\",\"value\":\"\"},{\"key\":\"/:read/2\",\"state\":\"stored\",\"value\":\"\"}]"}
+```
+
+Step 1 results — action tool responses:
+
+```json
+{"role": "tool", "tool_call_id": "call_002", "content": "pass: src/config.js # file retained (89 lines) [/:read/1]"}
 ```
 
 ```json
-{
-  "role": "tool",
-  "tool_call_id": "call_002",
-  "content": "pass: src/config.js # file retained (89 lines) [_tool_a3f8x]"
-}
+{"role": "tool", "tool_call_id": "call_003", "content": "pass: src/routes/auth.js # file retained (156 lines) [/:read/2]"}
 ```
+
+Step 2 result — unknown response:
 
 ```json
-{
-  "role": "tool",
-  "tool_call_id": "call_003",
-  "content": "pass: src/routes/auth.js # file retained (156 lines) [_tool_b7k2m]"
-}
+{"role": "tool", "tool_call_id": "call_004", "content": "[\"Which session store is configured\",\"Whether tokens are rotated\"]"}
 ```
+
+Step 4 — build summary log:
 
 ```json
-{
-  "role": "tool",
-  "tool_call_id": "call_004",
-  "content": "[\"Which session store is configured\",\"Whether tokens are rotated\"]"
-}
+{"role": "tool", "tool_call_id": "call_005", "content": "[{\"tool\":\"read\",\"target\":\"src/config.js\",\"status\":\"pass\",\"key\":\"/:read/1\",\"value\":\"\"},{\"tool\":\"read\",\"target\":\"src/routes/auth.js\",\"status\":\"pass\",\"key\":\"/:read/2\",\"value\":\"\"},{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"Reading config and routes to understand the auth flow.\"}]"}
 ```
 
-```json
-{
-  "role": "tool",
-  "tool_call_id": "call_005",
-  "content": "[{\"tool\":\"read\",\"target\":\"src/config.js\",\"status\":\"pass\",\"key\":\"_tool_a3f8x\",\"value\":\"\"},{\"tool\":\"read\",\"target\":\"src/routes/auth.js\",\"status\":\"pass\",\"key\":\"_tool_b7k2m\",\"value\":\"\"},{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"Reading config and routes to understand the auth flow.\"}]"
-}
-```
-
-### Example 2: Act mode — model edits a file and runs a command
+### Example 2: Act mode — edit + run
 
 **Model response:**
 
@@ -468,7 +501,7 @@ The current view selects `tag_name = 'content'` for assistant messages. With too
       "type": "function",
       "function": {
         "name": "known",
-        "arguments": "{\"entries\":[{\"key\":\"_known_port_change\",\"value\":\"3000 -> 8080 in src/config.js\"}]}"
+        "arguments": "{\"entries\":[{\"key\":\"/:known/port_change\",\"value\":\"3000 -> 8080 in src/config.js\"}]}"
       }
     },
     {
@@ -499,157 +532,42 @@ The current view selects `tag_name = 'content'` for assistant messages. With too
 }
 ```
 
-**Server executes edit (user accepts), then run, then sends results:**
+**Server sends results (user accepts edit, test fails):**
 
 ```json
-{ "role": "tool", "tool_call_id": "call_010", "content": "[{\"key\":\"_known_port_change\",\"state\":\"full\",\"value\":\"3000 -> 8080 in src/config.js\"},{\"key\":\"_tool_p4w9n\",\"state\":\"stored\",\"value\":\"\"},{\"key\":\"_tool_q1r6t\",\"state\":\"stored\",\"value\":\"\"}]" }
+{"role": "tool", "tool_call_id": "call_010", "content": "[{\"key\":\"src/config.js\",\"state\":\"file\",\"value\":\"...\"},{\"key\":\"/:known/port_change\",\"state\":\"full\",\"value\":\"3000 -> 8080 in src/config.js\"},{\"key\":\"/:edit/3\",\"state\":\"stored\",\"value\":\"\"},{\"key\":\"/:run/4\",\"state\":\"stored\",\"value\":\"\"}]"}
 ```
 
 ```json
-{ "role": "tool", "tool_call_id": "call_011", "content": "pass: src/config.js # edit applied [_tool_p4w9n]" }
+{"role": "tool", "tool_call_id": "call_011", "content": "pass: src/config.js # edit applied [/:edit/3]"}
 ```
 
 ```json
-{ "role": "tool", "tool_call_id": "call_012", "content": "error: npm test # exit 1 [_tool_q1r6t]" }
+{"role": "tool", "tool_call_id": "call_012", "content": "error: npm test # exit 1 [/:run/4]"}
 ```
 
 ```json
-{ "role": "tool", "tool_call_id": "call_013", "content": "[{\"tool\":\"edit\",\"target\":\"src/config.js\",\"status\":\"pass\",\"key\":\"_tool_p4w9n\",\"value\":\"\"},{\"tool\":\"run\",\"target\":\"npm test\",\"status\":\"error\",\"key\":\"_tool_q1r6t\",\"value\":\"\"},{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"Changing port to 8080 and running tests.\"}]" }
+{"role": "tool", "tool_call_id": "call_013", "content": "[{\"tool\":\"read\",\"target\":\"src/config.js\",\"status\":\"pass\",\"key\":\"/:read/1\",\"value\":\"\"},{\"tool\":\"read\",\"target\":\"src/routes/auth.js\",\"status\":\"pass\",\"key\":\"/:read/2\",\"value\":\"\"},{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"Reading config and routes to understand the auth flow.\"},{\"tool\":\"edit\",\"target\":\"src/config.js\",\"status\":\"pass\",\"key\":\"/:edit/3\",\"value\":\"\"},{\"tool\":\"run\",\"target\":\"npm test\",\"status\":\"error\",\"key\":\"/:run/4\",\"value\":\"\"},{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"Changing port to 8080 and running tests.\"}]"}
 ```
+
+Note: the summary log spans the entire run — it includes entries from Example 1 (turn 1) and this turn (turn 2).
 
 ### Example 3: Act mode — edit rejected by user
 
-**Model proposes an edit, user rejects it:**
-
 ```json
-{
-  "role": "assistant",
-  "content": null,
-  "tool_calls": [
-    {
-      "id": "call_020",
-      "type": "function",
-      "function": {
-        "name": "known",
-        "arguments": "{\"entries\":[{\"key\":\"_known_refactor_target\",\"value\":\"src/middleware/auth.js — sync to async\"}]}"
-      }
-    },
-    {
-      "id": "call_021",
-      "type": "function",
-      "function": {
-        "name": "edit",
-        "arguments": "{\"file\":\"src/middleware/auth.js\",\"search\":\"function verify(token) {\",\"replace\":\"async function verify(token) {\"}"
-      }
-    },
-    {
-      "id": "call_022",
-      "type": "function",
-      "function": {
-        "name": "summary",
-        "arguments": "{\"text\":\"Refactoring auth middleware to async.\"}"
-      }
-    }
-  ]
-}
+{"role": "tool", "tool_call_id": "call_021", "content": "warn: src/middleware/auth.js # edits rejected by user [/:edit/5]"}
 ```
 
-**Server presents diff to user. User rejects. Server sends results:**
+The model sees `warn` in the summary log and can `read(/:edit/5)` to recall the full rejection details.
+
+### Example 4: Ask mode — nothing unknown
+
+Model calls only `known` and `summary`. No `unknown` tool call. Valid — `unknown` is optional.
 
 ```json
-{ "role": "tool", "tool_call_id": "call_020", "content": "[{\"key\":\"_known_refactor_target\",\"state\":\"full\",\"value\":\"src/middleware/auth.js — sync to async\"},{\"key\":\"_tool_j8v3c\",\"state\":\"stored\",\"value\":\"\"}]" }
+{"role": "tool", "tool_call_id": "call_030", "content": "[{\"key\":\"/:known/db\",\"state\":\"full\",\"value\":\"SQLite via @possumtech/sqlrite\"}]"}
 ```
 
 ```json
-{ "role": "tool", "tool_call_id": "call_021", "content": "warn: src/middleware/auth.js # edits rejected by user [_tool_j8v3c]" }
+{"role": "tool", "tool_call_id": "call_031", "content": "[{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"The project uses SQLite via @possumtech/sqlrite.\"}]"}
 ```
-
-```json
-{ "role": "tool", "tool_call_id": "call_022", "content": "[{\"tool\":\"edit\",\"target\":\"src/middleware/auth.js\",\"status\":\"warn\",\"key\":\"_tool_j8v3c\",\"value\":\"\"},{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"Refactoring auth middleware to async.\"}]" }
-```
-
-The model sees `warn` on the edit and the summary log confirms the rejection. It can `read(_tool_j8v3c)` on the next turn to see the full rejection details if needed.
-
-### Example 4: Ask mode — model has nothing unknown
-
-**Model response (no `unknown` tool call):**
-
-```json
-{
-  "role": "assistant",
-  "content": null,
-  "tool_calls": [
-    {
-      "id": "call_030",
-      "type": "function",
-      "function": {
-        "name": "known",
-        "arguments": "{\"entries\":[{\"key\":\"_known_db\",\"value\":\"SQLite via @possumtech/sqlrite, node:sqlite under the hood\"}]}"
-      }
-    },
-    {
-      "id": "call_031",
-      "type": "function",
-      "function": {
-        "name": "summary",
-        "arguments": "{\"text\":\"The project uses SQLite via @possumtech/sqlrite.\"}"
-      }
-    }
-  ]
-}
-```
-
-**Server sends results:**
-
-```json
-{ "role": "tool", "tool_call_id": "call_030", "content": "[{\"key\":\"_known_db\",\"state\":\"full\",\"value\":\"SQLite via @possumtech/sqlrite, node:sqlite under the hood\"}]" }
-```
-
-```json
-{ "role": "tool", "tool_call_id": "call_031", "content": "[{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"The project uses SQLite via @possumtech/sqlrite.\"}]" }
-```
-
-No `unknown` tool call, no `unknown` result. Valid response — `unknown` is optional.
-
-### Example 5: Multi-turn continuation (turn 2 after Example 1)
-
-After receiving tool results from Example 1, the server calls the API again. The model now has file contents in context and continues:
-
-**Model response (turn 2):**
-
-```json
-{
-  "role": "assistant",
-  "content": null,
-  "tool_calls": [
-    {
-      "id": "call_040",
-      "type": "function",
-      "function": {
-        "name": "known",
-        "arguments": "{\"entries\":[{\"key\":\"_known_framework\",\"value\":\"Express with passport-local strategy\"},{\"key\":\"_known_session_store\",\"value\":\"Redis via connect-redis\"},{\"key\":\"_known_token_rotation\",\"value\":\"No rotation — tokens are static JWTs\"}]}"
-      }
-    },
-    {
-      "id": "call_041",
-      "type": "function",
-      "function": {
-        "name": "summary",
-        "arguments": "{\"text\":\"Auth uses passport-local with Redis session store.\"}"
-      }
-    }
-  ]
-}
-```
-
-**Server sends results. Known result now reflects updated entries. Summary log spans both turns:**
-
-```json
-{ "role": "tool", "tool_call_id": "call_040", "content": "[{\"key\":\"_known_framework\",\"state\":\"full\",\"value\":\"Express with passport-local strategy\"},{\"key\":\"_known_session_store\",\"state\":\"full\",\"value\":\"Redis via connect-redis\"},{\"key\":\"_known_token_rotation\",\"state\":\"full\",\"value\":\"No rotation — tokens are static JWTs\"},{\"key\":\"_tool_a3f8x\",\"state\":\"stored\",\"value\":\"\"},{\"key\":\"_tool_b7k2m\",\"state\":\"stored\",\"value\":\"\"}]" }
-```
-
-```json
-{ "role": "tool", "tool_call_id": "call_041", "content": "[{\"tool\":\"read\",\"target\":\"src/config.js\",\"status\":\"pass\",\"key\":\"_tool_a3f8x\",\"value\":\"\"},{\"tool\":\"read\",\"target\":\"src/routes/auth.js\",\"status\":\"pass\",\"key\":\"_tool_b7k2m\",\"value\":\"\"},{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"Reading config and routes to understand the auth flow.\"},{\"tool\":\"summary\",\"target\":\"\",\"status\":\"summary\",\"key\":\"\",\"value\":\"Auth uses passport-local with Redis session store.\"}]" }
-```
-
-Note: at Phase 1 (no persistence), the server tracks known entries and the log in-memory for the duration of the run. The known result reflects all entries emitted so far. The summary log reflects all tool calls and summaries across all turns in the run.
