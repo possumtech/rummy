@@ -36,6 +36,6 @@ npm start   # Production mode (port 3044)
 npm run dev # Watch mode with dev database (port 3045)
 ```
 
-See `ARCHITECTURE.md` for the full specification and `system.ask.md`/`system.act.md`
-for the model-facing prompts. The `discover` RPC method returns the live protocol
-reference at runtime.
+See `ARCHITECTURE.md` for the full specification and `AGENTS.md` for planning
+and progress. The `discover` RPC method returns the live protocol reference
+at runtime.
