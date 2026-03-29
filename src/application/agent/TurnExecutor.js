@@ -248,17 +248,13 @@ export default class TurnExecutor {
 		// Step 3: UPSERT model's known entries
 		for (const entry of knownCall.args.entries || []) {
 			if (!entry.key) continue;
-			if (entry.value === "") {
-				await this.#knownStore.remove(currentRunId, entry.key);
-			} else {
-				await this.#knownStore.upsert(
-					currentRunId,
-					turnId,
-					entry.key,
-					entry.value,
-					"full",
-				);
-			}
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				entry.key,
+				entry.value,
+				"full",
+			);
 		}
 
 		// Step 4: Store summary as a result entry

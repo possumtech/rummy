@@ -1,7 +1,6 @@
 -- PREP: purge_old_runs
 -- Delete completed/aborted runs older than :retention_days.
--- Cascades handle turns, turn_elements, findings_*,
--- pending_context, agent promotions.
+-- Cascades handle turns and known_entries.
 DELETE FROM runs
 WHERE
 	status IN ('completed', 'aborted')
