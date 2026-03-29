@@ -188,7 +188,7 @@ export default class CoreRpcPlugin {
 				});
 				return { status: "ok" };
 			},
-			description: "Abandon run. Unresolved findings discarded.",
+			description: "Abandon run. Unresolved entries discarded.",
 			params: { run: "string — run name" },
 			requiresInit: true,
 		});
@@ -334,7 +334,7 @@ export default class CoreRpcPlugin {
 		);
 		r.registerNotification(
 			"editor/diff",
-			"Proposed edit. Payload: { run, key, type, file, search, replace }.",
+			"Proposed edit. Payload: { run, key, type, file, patch, warning?, error? }.",
 		);
 		r.registerNotification(
 			"run/command",

@@ -418,7 +418,7 @@ defined via `RUMMY_MODEL_{alias}` env vars.
 |---|---|---|
 | `run/step/completed` | `run`, `turn`, `files`, `cumulative` | Turn finished. `cumulative` has `{ prompt_tokens, completion_tokens, total_tokens, cost }`. |
 | `run/progress` | `run`, `turn`, `status` | Turn progress: `thinking`, `processing` |
-| `editor/diff` | `run`, `key`, `type`, `file`, `search`, `replace` | Proposed edit (raw tool args) |
+| `editor/diff` | `run`, `key`, `type`, `file`, `patch`, `warning?`, `error?` | Proposed edit (unified diff) |
 | `run/command` | `run`, `key`, `type`, `command` | Proposed command |
 | `ui/ask_user` | `run`, `key`, `question`, `options` | Model question |
 | `ui/render` | `text`, `append` | Streaming output |

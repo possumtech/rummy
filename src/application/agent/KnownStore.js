@@ -170,6 +170,11 @@ export default class KnownStore {
 		return new Set(rows.map((r) => r.value));
 	}
 
+	async getValue(runId, key) {
+		const row = await this.#db.get_entry_value.get({ run_id: runId, key });
+		return row?.value ?? null;
+	}
+
 	static toolFromKey(key) {
 		const match = key.match(/^\/:([a-z_]+)\//);
 		return match ? match[1] : null;

@@ -5,6 +5,7 @@ import ToolSchema from "../../domain/schema/ToolSchema.js";
 import PromptManager from "../../domain/prompt/PromptManager.js";
 import ProjectContext from "../../domain/project/ProjectContext.js";
 import RummyContext from "../../domain/hooks/RummyContext.js";
+import HeuristicMatcher, { generateUnifiedDiff } from "../../extraction/HeuristicMatcher.js";
 
 export default class TurnExecutor {
 	#db;
@@ -129,13 +130,20 @@ export default class TurnExecutor {
 		const validationError = ToolExtractor.validate({ summaryCall });
 		if (validationError) throw new Error(validationError);
 
-		// Validate tool arguments via AJV
+		// Validate tool arguments via AJV — warn and heal, don't reject
 		for (const tc of responseMessage.tool_calls || []) {
+			const name = tc.function?.name;
 			const args = JSON.parse(tc.function?.arguments || "{}");
-			const { valid, errors } = ToolSchema.validate(tc.function?.name, args);
+			const { valid, errors } = ToolSchema.validate(name, args);
 			if (!valid) {
-				throw new Error(`Invalid ${tc.function?.name} args: ${errors.map((e) => e.message).join(", ")}`);
+				console.warn(`[RUMMY] Healing ${name}: ${errors.map((e) => e.message).join(", ")}`);
 			}
+		}
+
+		// Heal summary length — truncate, don't retry
+		if (summaryCall?.args?.text?.length > 80) {
+			console.warn(`[RUMMY] Summary truncated from ${summaryCall.args.text.length} to 80 chars`);
+			summaryCall.args.text = summaryCall.args.text.slice(0, 80);
 		}
 
 		// Validate tool names for mode
@@ -186,18 +194,49 @@ export default class TurnExecutor {
 				continue;
 			}
 
-			// env, run, edit, delete — generate result keys
 			const resultKey = await this.#knownStore.nextResultKey(currentRunId, call.name);
 			call.resultKey = resultKey;
 
-			const isProposed = call.name === "edit" || call.name === "run" || call.name === "delete";
+			if (call.name === "edit") {
+				// Compute patch from file content in known store
+				const fileContent = await this.#knownStore.getValue(currentRunId, call.args.file);
+				let patch = null;
+				let warning = null;
+				let error = null;
 
-			await this.#knownStore.upsert(
-				currentRunId, turn, resultKey,
-				"",
-				isProposed ? "proposed" : "pass",
-				{ meta: { ...call.args } },
-			);
+				if (call.args.search === null) {
+					// New file or full overwrite
+					patch = call.args.search === null && fileContent
+						? generateUnifiedDiff(call.args.file, fileContent, call.args.replace)
+						: null;
+				} else if (fileContent !== null) {
+					const result = HeuristicMatcher.matchAndPatch(
+						call.args.file, fileContent, call.args.search, call.args.replace,
+					);
+					patch = result.patch;
+					warning = result.warning;
+					error = result.error;
+				}
+
+				await this.#knownStore.upsert(
+					currentRunId, turn, resultKey,
+					patch || "",
+					error ? "error" : "proposed",
+					{ meta: { ...call.args, patch, warning, error } },
+				);
+				call.patch = patch;
+				call.warning = warning;
+				call.error = error;
+			} else {
+				// env, run, delete
+				const isProposed = call.name === "run" || call.name === "delete";
+				await this.#knownStore.upsert(
+					currentRunId, turn, resultKey,
+					"",
+					isProposed ? "proposed" : "pass",
+					{ meta: { ...call.args } },
+				);
+			}
 		}
 
 		// Step 1b: ask_user (also proposed)

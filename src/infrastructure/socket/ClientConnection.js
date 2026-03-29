@@ -58,7 +58,7 @@ export default class ClientConnection {
 
 		this.#hooks.ui.prompt.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
-				this.#sendNotification("ui/prompt", {
+				this.#sendNotification("ui/ask_user", {
 					run: payload.run,
 					key: payload.key,
 					question: payload.question,
@@ -96,8 +96,9 @@ export default class ClientConnection {
 					key: payload.key,
 					type: payload.type,
 					file: payload.file,
-					search: payload.search,
-					replace: payload.replace,
+					patch: payload.patch,
+					warning: payload.warning,
+					error: payload.error,
 				});
 			}
 		});

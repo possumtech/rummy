@@ -178,8 +178,9 @@ export default class AgentLoop {
 							key: call.resultKey,
 							type: call.args.search ? "edit" : "create",
 							file: call.args.file,
-							search: call.args.search,
-							replace: call.args.replace,
+							patch: call.patch,
+							warning: call.warning || null,
+							error: call.error || null,
 						});
 					} else if (call.name === "run" || call.name === "delete") {
 						await this.#hooks.run.command.emit({
