@@ -416,15 +416,47 @@ defined via `RUMMY_MODEL_{alias}` env vars.
 
 | Notification | Payload | Description |
 |---|---|---|
-| `run/step/completed` | `run`, `turn`, `files`, `cumulative` | Turn finished. `cumulative` has `{ prompt_tokens, completion_tokens, total_tokens, cost }`. |
-| `run/progress` | `run`, `turn`, `status` | Turn progress: `thinking`, `processing` |
-| `editor/diff` | `run`, `key`, `type`, `file`, `patch`, `warning?`, `error?` | Proposed edit (unified diff) |
-| `run/command` | `run`, `key`, `type`, `command` | Proposed command |
-| `ui/ask_user` | `run`, `key`, `question`, `options` | Model question |
+| `run/state` | See below | Primary turn update — sent after each turn |
+| `run/progress` | `run`, `turn`, `status` | Turn status: `thinking`, `processing` |
 | `ui/render` | `text`, `append` | Streaming output |
-| `ui/notify` | `text`, `level` | Notification |
+| `ui/notify` | `text`, `level` | Toast notification |
 
-Notifications reference entries by `key` (e.g., `/:edit/3`), not by finding ID.
+**`run/state` payload:**
+
+```json
+{
+  "run": "kimi_1",
+  "turn": 3,
+  "status": "running",
+  "summary": "Latest one-liner status.",
+  "history": [
+    {"key": "/:read/1", "tool": "read", "target": "src/auth.js", "status": "pass"},
+    {"key": "/:summary/1", "tool": "summary", "status": "summary", "value": "Previous summary."},
+    {"key": "/:edit/3", "tool": "edit", "target": "src/config.js", "status": "proposed"}
+  ],
+  "unknowns": [
+    {"key": "/:unknown/1", "value": "Which session store is configured"}
+  ],
+  "proposed": [
+    {"key": "/:edit/3", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
+  ],
+  "telemetry": {
+    "modelAlias": "kimi",
+    "model": "moonshotai/kimi-k2.5",
+    "temperature": 0.7,
+    "context_size": 131072,
+    "prompt_tokens": 3400,
+    "completion_tokens": 280,
+    "total_tokens": 3680,
+    "cost": 0.0024
+  }
+}
+```
+
+The client receives one notification per turn. `proposed` entries include `meta`
+with the patch/command/question. The client routes by key prefix: `/:edit/*` →
+diff approval, `/:run/*` → command approval, `/:ask_user/*` → question UI.
+Resolution via `run/resolve` with `{ key, action, output }`.
 
 ### 5.3 Run Lifecycle
 

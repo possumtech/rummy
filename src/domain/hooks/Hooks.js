@@ -41,6 +41,7 @@ export default function createHooks(debug = false) {
 		run: {
 			started: createEvent("run.started"),
 			progress: createEvent("run.progress"),
+			state: createEvent("run.state"),
 			command: createEvent("run.command"),
 			config: createFilter("run.config"),
 			turn: {

@@ -56,49 +56,17 @@ export default class ClientConnection {
 			}
 		});
 
-		this.#hooks.ui.prompt.on((payload) => {
+		this.#hooks.run.state.on((payload) => {
 			if (payload.sessionId === this.#context.sessionId) {
-				this.#sendNotification("ui/ask_user", {
-					run: payload.run,
-					key: payload.key,
-					question: payload.question,
-					options: payload.options,
-				});
-			}
-		});
-
-		this.#hooks.run.command.on((payload) => {
-			if (payload.sessionId === this.#context.sessionId) {
-				this.#sendNotification("run/command", {
-					run: payload.run,
-					key: payload.key,
-					type: payload.type,
-					command: payload.command,
-				});
-			}
-		});
-
-		this.#hooks.run.step.completed.on((payload) => {
-			if (payload.sessionId === this.#context.sessionId) {
-				this.#sendNotification("run/step/completed", {
+				this.#sendNotification("run/state", {
 					run: payload.run,
 					turn: payload.turn,
-					files: payload.projectFiles,
-					cumulative: payload.cumulative,
-				});
-			}
-		});
-
-		this.#hooks.editor.diff.on((payload) => {
-			if (payload.sessionId === this.#context.sessionId) {
-				this.#sendNotification("editor/diff", {
-					run: payload.run,
-					key: payload.key,
-					type: payload.type,
-					file: payload.file,
-					patch: payload.patch,
-					warning: payload.warning,
-					error: payload.error,
+					status: payload.status,
+					summary: payload.summary,
+					history: payload.history,
+					unknowns: payload.unknowns,
+					proposed: payload.proposed,
+					telemetry: payload.telemetry,
 				});
 			}
 		});

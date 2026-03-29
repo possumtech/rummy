@@ -325,24 +325,12 @@ export default class CoreRpcPlugin {
 
 		// Notifications
 		r.registerNotification(
-			"run/step/completed",
-			"Turn finished. Payload: { run, turn, files[], cumulative: { prompt_tokens, completion_tokens, total_tokens, cost } }.",
+			"run/state",
+			"Turn state update. Payload: { run, turn, status, summary, history[], unknowns[], proposed[], telemetry: { modelAlias, model, temperature, context_size, prompt_tokens, completion_tokens, total_tokens, cost } }.",
 		);
 		r.registerNotification(
 			"run/progress",
 			"Turn status. Payload: { run, turn, status: 'thinking'|'processing' }.",
-		);
-		r.registerNotification(
-			"editor/diff",
-			"Proposed edit. Payload: { run, key, type, file, patch, warning?, error? }.",
-		);
-		r.registerNotification(
-			"run/command",
-			"Proposed command. Payload: { run, key, type, command }.",
-		);
-		r.registerNotification(
-			"ui/ask_user",
-			"Model question. Payload: { run, key, question, options[] }.",
 		);
 		r.registerNotification(
 			"ui/render",

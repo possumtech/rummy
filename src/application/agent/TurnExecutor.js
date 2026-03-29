@@ -288,6 +288,11 @@ export default class TurnExecutor {
 			summaryCall,
 			askUserCall,
 			flags,
+			model: result.model || requestedModel,
+			modelAlias: requestedModel,
+			temperature: options?.temperature ?? Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
+			contextSize,
+			usage,
 		};
 	}
 }

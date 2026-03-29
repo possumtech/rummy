@@ -154,56 +154,37 @@ export default class AgentLoop {
 					throw err;
 				}
 
-				// Emit usage
+				// Build and emit run/state notification
 				const runUsage = await this.#db.get_run_usage.get({ run_id: currentRunId });
-				await this.#hooks.run.step.completed.emit({
-					run: currentAlias,
+				const history = await this.#knownStore.getLog(currentRunId);
+				const unknowns = await this.#db.get_unknowns.all({ run_id: currentRunId });
+				const unresolved = await this.#knownStore.getUnresolved(currentRunId);
+
+				const latestSummary = history.filter((e) => e.status === "summary").at(-1);
+
+				await this.#hooks.run.state.emit({
 					sessionId,
+					run: currentAlias,
 					turn: result.turn,
-					projectFiles: await this.#sessionManager.getFiles(project.path),
-					cumulative: {
+					status: unresolved.length > 0 ? "proposed" : "running",
+					summary: latestSummary?.value || "",
+					history,
+					unknowns: unknowns.map((u) => ({ key: u.key, value: u.value })),
+					proposed: unresolved.map((p) => ({
+						key: p.key,
+						meta: p.meta ? JSON.parse(p.meta) : null,
+					})),
+					telemetry: {
+						modelAlias: result.modelAlias,
+						model: result.model,
+						temperature: result.temperature,
+						context_size: result.contextSize,
 						prompt_tokens: runUsage.prompt_tokens,
 						completion_tokens: runUsage.completion_tokens,
 						total_tokens: runUsage.total_tokens,
 						cost: runUsage.cost,
 					},
 				});
-
-				// Emit proposed entries to client
-				for (const call of result.actionCalls) {
-					if (call.name === "edit") {
-						await this.#hooks.editor.diff.emit({
-							sessionId,
-							run: currentAlias,
-							key: call.resultKey,
-							type: call.args.search ? "edit" : "create",
-							file: call.args.file,
-							patch: call.patch,
-							warning: call.warning || null,
-							error: call.error || null,
-						});
-					} else if (call.name === "run" || call.name === "delete") {
-						await this.#hooks.run.command.emit({
-							sessionId,
-							run: currentAlias,
-							key: call.resultKey,
-							type: call.name,
-							command: call.args.command || call.args.key,
-						});
-					}
-				}
-				if (result.askUserCall) {
-					await this.#hooks.ui.prompt.emit({
-						sessionId,
-						run: currentAlias,
-						key: result.askUserCall.resultKey,
-						question: result.askUserCall.args.question,
-						options: result.askUserCall.args.options,
-					});
-				}
-
-				// Check for proposed entries
-				const unresolved = await this.#knownStore.getUnresolved(currentRunId);
 				if (unresolved.length > 0) {
 					await this.#db.update_run_status.run({ id: currentRunId, status: "proposed" });
 					return {
