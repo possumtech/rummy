@@ -17,16 +17,19 @@ test("Plugin Registry", async (t) => {
 		await fs.rm(pluginsDir, { recursive: true, force: true });
 	});
 
-	await t.test("registerPlugins should load plugins from directory", async () => {
-		await fs.writeFile(
-			join(pluginsDir, "mock_plugin.js"),
-			"export default class Mock { static register(hooks) { hooks.mocked = true; } }",
-		);
-		const hooks = createHooks();
-		hooks.mocked = false;
-		await registerPlugins([pluginsDir], hooks);
-		assert.ok(hooks.mocked, "Mock plugin should have been registered");
-	});
+	await t.test(
+		"registerPlugins should load plugins from directory",
+		async () => {
+			await fs.writeFile(
+				join(pluginsDir, "mock_plugin.js"),
+				"export default class Mock { static register(hooks) { hooks.mocked = true; } }",
+			);
+			const hooks = createHooks();
+			hooks.mocked = false;
+			await registerPlugins([pluginsDir], hooks);
+			assert.ok(hooks.mocked, "Mock plugin should have been registered");
+		},
+	);
 
 	await t.test("should skip non-existent directory", async () => {
 		const hooks = createHooks();
@@ -34,18 +37,24 @@ test("Plugin Registry", async (t) => {
 		assert.ok(true, "No error thrown");
 	});
 
-	await t.test("should load plugin from subdirectory by convention", async () => {
-		const subDir = join(pluginsDir, "myplugin");
-		await fs.mkdir(subDir, { recursive: true });
-		await fs.writeFile(
-			join(subDir, "myplugin.js"),
-			"export default class P { static register(hooks) { hooks.subLoaded = true; } }",
-		);
-		const hooks = createHooks();
-		hooks.subLoaded = false;
-		await registerPlugins([pluginsDir], hooks);
-		assert.ok(hooks.subLoaded, "Subdirectory plugin loaded by basename convention");
-	});
+	await t.test(
+		"should load plugin from subdirectory by convention",
+		async () => {
+			const subDir = join(pluginsDir, "myplugin");
+			await fs.mkdir(subDir, { recursive: true });
+			await fs.writeFile(
+				join(subDir, "myplugin.js"),
+				"export default class P { static register(hooks) { hooks.subLoaded = true; } }",
+			);
+			const hooks = createHooks();
+			hooks.subLoaded = false;
+			await registerPlugins([pluginsDir], hooks);
+			assert.ok(
+				hooks.subLoaded,
+				"Subdirectory plugin loaded by basename convention",
+			);
+		},
+	);
 
 	await t.test("should skip .test.js files", async () => {
 		await fs.writeFile(

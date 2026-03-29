@@ -28,8 +28,8 @@ describe("CtagsExtractor integration — real project files", () => {
 		ok(resolve, 'Expected to find "resolve" method');
 		ok(resolve.params, "Expected resolve to have params");
 		ok(
-			resolve.params.includes("runId"),
-			'Expected resolve params to contain "runId"',
+			resolve.params.includes("runAlias"),
+			'Expected resolve params to contain "runAlias"',
 		);
 		ok(
 			resolve.params.includes("resolution"),

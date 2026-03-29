@@ -1,3 +1,6 @@
+-- INIT: enable_mmap
+PRAGMA mmap_size = 274877906944;
+
 -- INIT: initial_schema
 CREATE TABLE IF NOT EXISTS projects (
 	id TEXT PRIMARY KEY
@@ -39,7 +42,8 @@ CREATE TABLE IF NOT EXISTS runs (
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_runs_alias ON runs (alias) WHERE alias IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_runs_alias
+ON runs (alias) WHERE alias IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -176,7 +180,9 @@ CREATE TABLE IF NOT EXISTS pending_context (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, source_turn_id INTEGER REFERENCES turns (id) ON DELETE CASCADE
-	, type TEXT NOT NULL CHECK (type IN ('command', 'env', 'diff', 'notification', 'inject'))
+	, type TEXT NOT NULL CHECK (
+		type IN ('command', 'env', 'diff', 'notification', 'inject')
+	)
 	, request TEXT NOT NULL
 	, result TEXT NOT NULL
 	, is_error BOOLEAN DEFAULT 0
@@ -311,3 +317,28 @@ CREATE INDEX IF NOT EXISTS idx_findings_cmds_run_status ON findings_commands (
 );
 CREATE INDEX IF NOT EXISTS idx_findings_notifs_run
 ON findings_notifications (run_id, status);
+
+-- Provider model catalog (cached from OpenRouter /models, etc.)
+CREATE TABLE IF NOT EXISTS provider_models (
+	id TEXT PRIMARY KEY
+	, canonical_slug TEXT
+	, name TEXT
+	, description TEXT
+	, context_length INTEGER
+	, modality TEXT
+	, tokenizer TEXT
+	, instruct_type TEXT
+	, input_modalities JSON
+	, output_modalities JSON
+	, pricing_prompt REAL
+	, pricing_completion REAL
+	, pricing_input_cache_read REAL
+	, max_completion_tokens INTEGER
+	, is_moderated BOOLEAN
+	, supported_parameters JSON
+	, default_parameters JSON
+	, knowledge_cutoff TEXT
+	, expiration_date TEXT
+	, created INTEGER
+	, fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

@@ -79,7 +79,9 @@ export default class AgentLoop {
 
 		// Resolve temperature: explicit option > session > env default
 		if (options?.temperature === undefined) {
-			const tempRow = await this.#db.get_session_temperature.get({ id: String(sessionId || "") });
+			const tempRow = await this.#db.get_session_temperature.get({
+				id: String(sessionId || ""),
+			});
 			if (tempRow?.temperature !== null && tempRow?.temperature !== undefined) {
 				options = { ...options, temperature: tempRow.temperature };
 			}
@@ -90,7 +92,8 @@ export default class AgentLoop {
 
 		if (run && isFork) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
-			if (!existingRun) throw new Error(msg("error.run_not_found", { runId: run }));
+			if (!existingRun)
+				throw new Error(msg("error.run_not_found", { runId: run }));
 			parentRunId = existingRun.id;
 			currentRunId = crypto.randomUUID();
 			currentAlias = await this.#generateAlias(requestedModel);
@@ -104,7 +107,8 @@ export default class AgentLoop {
 			});
 		} else if (run) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
-			if (!existingRun) throw new Error(msg("error.run_not_found", { runId: run }));
+			if (!existingRun)
+				throw new Error(msg("error.run_not_found", { runId: run }));
 			currentRunId = existingRun.id;
 			currentAlias = existingRun.alias;
 
@@ -146,104 +150,106 @@ export default class AgentLoop {
 
 		// --- THE ATOMIC TURN LOOP ---
 		try {
-		while (loopIteration < MAX_LOOP_ITERATIONS) {
-			loopIteration++;
+			while (loopIteration < MAX_LOOP_ITERATIONS) {
+				loopIteration++;
 
-			const turn = await this.#turnExecutor.execute({
-				type,
-				project,
-				sessionId,
-				currentRunId,
-				currentAlias,
-				parentRunId,
-				requestedModel,
-				loopPrompt: prompt,
-				noContext,
-				contextSize,
-				options,
-			});
+				const turn = await this.#turnExecutor.execute({
+					type,
+					project,
+					sessionId,
+					currentRunId,
+					currentAlias,
+					parentRunId,
+					requestedModel,
+					loopPrompt: prompt,
+					noContext,
+					contextSize,
+					options,
+				});
 
-			// Process findings
-			const findingsResult = await this.#findingsProcessor.process({
-				projectPath: project.path,
-				projectId,
-				runId: currentRunId,
-				runAlias: currentAlias,
-				turnId: turn.turnId,
-				turnSequence: turn.turnSequence,
-				tools: turn.tools,
-				structural: turn.structural,
-				elements: turn.elements,
-				turnObj: turn.turnObj,
-				sessionId,
-			});
+				// Process findings
+				const findingsResult = await this.#findingsProcessor.process({
+					projectPath: project.path,
+					projectId,
+					runId: currentRunId,
+					runAlias: currentAlias,
+					turnId: turn.turnId,
+					turnSequence: turn.turnSequence,
+					tools: turn.tools,
+					structural: turn.structural,
+					elements: turn.elements,
+					turnObj: turn.turnObj,
+					sessionId,
+				});
 
-			await turn.turnObj.hydrate();
-			const runUsage = await this.#db.get_run_usage.get({ run_id: currentRunId });
-			await this.#hooks.run.step.completed.emit({
-				run: currentAlias,
-				sessionId,
-				turn: turn.turnObj,
-				projectFiles: await this.#sessionManager.getFiles(project.path),
-				cumulative: {
-					prompt_tokens: runUsage.prompt_tokens,
-					completion_tokens: runUsage.completion_tokens,
-					total_tokens: runUsage.total_tokens,
-					cost: runUsage.cost,
-				},
-			});
+				await turn.turnObj.hydrate();
+				const runUsage = await this.#db.get_run_usage.get({
+					run_id: currentRunId,
+				});
+				await this.#hooks.run.step.completed.emit({
+					run: currentAlias,
+					sessionId,
+					turn: turn.turnObj,
+					projectFiles: await this.#sessionManager.getFiles(project.path),
+					cumulative: {
+						prompt_tokens: runUsage.prompt_tokens,
+						completion_tokens: runUsage.completion_tokens,
+						total_tokens: runUsage.total_tokens,
+						cost: runUsage.cost,
+					},
+				});
 
-			// Evaluate state
-			const state = await this.#stateEvaluator.evaluate({
-				flags: { ...turn.flags, newReads: findingsResult.newReads },
-				tools: turn.tools,
-				turnJson: turn.turnJson,
-				finalResponse: turn.finalResponse,
-				runId: currentRunId,
-				turnId: turn.turnId,
-				elements: turn.elements,
-				inconsistencyRetries,
-				maxInconsistencyRetries: MAX_INCONSISTENCY_RETRIES,
-				parsedTodo: turn.parsedTodo,
-			});
+				// Evaluate state
+				const state = await this.#stateEvaluator.evaluate({
+					flags: { ...turn.flags, newReads: findingsResult.newReads },
+					tools: turn.tools,
+					turnJson: turn.turnJson,
+					finalResponse: turn.finalResponse,
+					runId: currentRunId,
+					turnId: turn.turnId,
+					elements: turn.elements,
+					inconsistencyRetries,
+					maxInconsistencyRetries: MAX_INCONSISTENCY_RETRIES,
+					parsedTodo: turn.parsedTodo,
+				});
 
-			if (state.action === "proposed") {
+				if (state.action === "proposed") {
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: "proposed",
+					});
+					return {
+						run: currentAlias,
+						status: "proposed",
+						turn: turn.turnSequence,
+						proposed: state.proposed,
+					};
+				}
+				if (state.action === "retry") {
+					inconsistencyRetries++;
+					continue;
+				}
+				if (state.action === "continue") {
+					continue;
+				}
+
+				// Completed
 				await this.#db.update_run_status.run({
 					id: currentRunId,
-					status: "proposed",
+					status: "completed",
 				});
 				return {
 					run: currentAlias,
-					status: "proposed",
+					status: "completed",
 					turn: turn.turnSequence,
-					proposed: state.proposed,
 				};
 			}
-			if (state.action === "retry") {
-				inconsistencyRetries++;
-				continue;
-			}
-			if (state.action === "continue") {
-				continue;
-			}
 
-			// Completed
-			await this.#db.update_run_status.run({
-				id: currentRunId,
-				status: "completed",
-			});
 			return {
 				run: currentAlias,
-				status: "completed",
-				turn: turn.turnSequence,
+				status: "running",
+				turn: 0,
 			};
-		}
-
-		return {
-			run: currentAlias,
-			status: "running",
-			turn: 0,
-		};
 		} catch (err) {
 			await this.#db.update_run_status.run({
 				id: currentRunId,
@@ -255,7 +261,8 @@ export default class AgentLoop {
 
 	async resolve(runAlias, resolution) {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
-		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		if (!runRow)
+			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 		const resolvedRunId = runRow.id;
 
 		const { category, action } = resolution;
@@ -268,7 +275,9 @@ export default class AgentLoop {
 			(f) => f.category === category && f.id === id,
 		);
 		if (!finding)
-			throw new Error(msg("error.finding_not_found", { category, id, runId: resolvedRunId }));
+			throw new Error(
+				msg("error.finding_not_found", { category, id, runId: resolvedRunId }),
+			);
 
 		if (category === "diff") {
 			await this.#db.update_finding_diff_status.run({ id, status: action });
@@ -359,12 +368,15 @@ export default class AgentLoop {
 
 	async inject(runAlias, message) {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
-		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		if (!runRow)
+			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 
 		const isActive = runRow.status === "running" || runRow.status === "queued";
 
 		// Get the latest turn to use as source_turn_id
-		const lastSeq = await this.#db.get_last_turn_sequence.get({ run_id: runRow.id });
+		const lastSeq = await this.#db.get_last_turn_sequence.get({
+			run_id: runRow.id,
+		});
 		const sourceTurnId = lastSeq?.last_turn_id || null;
 
 		await this.#db.insert_pending_context.run({
@@ -386,8 +398,11 @@ export default class AgentLoop {
 
 	async getRunHistory(runAlias) {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
-		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
-		const historyRows = await this.#db.get_turn_history.all({ run_id: runRow.id });
+		if (!runRow)
+			throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		const historyRows = await this.#db.get_turn_history.all({
+			run_id: runRow.id,
+		});
 		return historyRows.map((r) => ({ role: r.role, content: r.content }));
 	}
 }

@@ -1,14 +1,16 @@
 import assert from "node:assert";
 import test from "node:test";
-import TestDb from "../helpers/TestDb.js";
-import createHooks from "../../src/domain/hooks/Hooks.js";
 import AgentLoop from "../../src/application/agent/AgentLoop.js";
+import createHooks from "../../src/domain/hooks/Hooks.js";
+import TestDb from "../helpers/TestDb.js";
 
 const mockTurnExecutor = () => ({
 	execute: async () => ({
 		turnObj: {
 			hydrate: async () => {},
-			toJson: () => ({ assistant: { content: "", reasoning_content: "", known: "" } }),
+			toJson: () => ({
+				assistant: { content: "", reasoning_content: "", known: "" },
+			}),
 		},
 		turnId: "t1",
 		turnSequence: 0,
@@ -27,7 +29,12 @@ const mockFindingsProcessor = () => ({
 });
 
 const mockStateEvaluator = () => ({
-	evaluate: async () => ({ action: "completed", warnings: [], proposed: [], hasSummary: true }),
+	evaluate: async () => ({
+		action: "completed",
+		warnings: [],
+		proposed: [],
+		hasSummary: true,
+	}),
 });
 
 const mockSessionManager = () => ({
@@ -39,12 +46,22 @@ test("§4 Run Naming — alias generation and uniqueness", async (t) => {
 
 	t.before(async () => {
 		tdb = await TestDb.create();
-		await tdb.db.upsert_project.run({ id: "p1", path: "/tmp/rn-test", name: "RN" });
-		await tdb.db.create_session.run({ id: "s1", project_id: "p1", client_id: "c1" });
+		await tdb.db.upsert_project.run({
+			id: "p1",
+			path: "/tmp/rn-test",
+			name: "RN",
+		});
+		await tdb.db.create_session.run({
+			id: "s1",
+			project_id: "p1",
+			client_id: "c1",
+		});
 
 		const hooks = createHooks();
 		loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
+			tdb.db,
+			{ getContextSize: async () => 8192 },
+			hooks,
 			mockTurnExecutor(),
 			mockFindingsProcessor(),
 			mockStateEvaluator(),
@@ -69,8 +86,24 @@ test("§4 Run Naming — alias generation and uniqueness", async (t) => {
 	});
 
 	await t.test("fork generates a new alias", async () => {
-		const original = await loop.run("ask", "s1", null, "origin", null, null, {});
-		const forked = await loop.run("ask", "s1", null, "fork", null, original.run, { fork: true });
+		const original = await loop.run(
+			"ask",
+			"s1",
+			null,
+			"origin",
+			null,
+			null,
+			{},
+		);
+		const forked = await loop.run(
+			"ask",
+			"s1",
+			null,
+			"fork",
+			null,
+			original.run,
+			{ fork: true },
+		);
 		assert.notStrictEqual(forked.run, original.run);
 		assert.ok(forked.run.includes("_"), "forked run has alias format");
 	});
@@ -79,7 +112,11 @@ test("§4 Run Naming — alias generation and uniqueness", async (t) => {
 		const r = await loop.run("ask", "s1", null, "rename test", null, null, {});
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 
-		await tdb.db.rename_run.run({ id: runRow.id, old_alias: r.run, new_alias: "my_custom" });
+		await tdb.db.rename_run.run({
+			id: runRow.id,
+			old_alias: r.run,
+			new_alias: "my_custom",
+		});
 		const renamed = await tdb.db.get_run_by_alias.get({ alias: "my_custom" });
 		assert.ok(renamed, "renamed alias should exist");
 		assert.strictEqual(renamed.id, runRow.id);

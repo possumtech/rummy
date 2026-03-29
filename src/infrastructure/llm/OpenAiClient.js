@@ -6,11 +6,15 @@ import schemaToGbnf from "./gbnf.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const grammars = {
 	ask: schemaToGbnf(
-		JSON.parse(readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8")),
+		JSON.parse(
+			readFileSync(join(__dirname, "../../domain/schema/ask.json"), "utf8"),
+		),
 		{ thinking: true },
 	),
 	act: schemaToGbnf(
-		JSON.parse(readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8")),
+		JSON.parse(
+			readFileSync(join(__dirname, "../../domain/schema/act.json"), "utf8"),
+		),
 		{ thinking: true },
 	),
 };
@@ -54,7 +58,9 @@ export default class OpenAiClient {
 
 		if (!response.ok) {
 			const error = await response.text();
-			throw new Error(`OpenAI-compatible API error: ${response.status} - ${error}`);
+			throw new Error(
+				`OpenAI-compatible API error: ${response.status} - ${error}`,
+			);
 		}
 
 		const data = await response.json();
@@ -91,13 +97,17 @@ export default class OpenAiClient {
 			signal: AbortSignal.timeout(timeout),
 		});
 		if (!response.ok) {
-			throw new Error(`OpenAI-compatible /v1/models failed: ${response.status}. Is the server running at ${this.#baseUrl}?`);
+			throw new Error(
+				`OpenAI-compatible /v1/models failed: ${response.status}. Is the server running at ${this.#baseUrl}?`,
+			);
 		}
 		const data = await response.json();
 		const model = data.data?.[0];
 		const ctx = model?.meta?.n_ctx_train || model?.context_length;
 		if (!ctx) {
-			throw new Error(`OpenAI-compatible /v1/models returned no context size. Response: ${JSON.stringify(model)}`);
+			throw new Error(
+				`OpenAI-compatible /v1/models returned no context size. Response: ${JSON.stringify(model)}`,
+			);
 		}
 		return ctx;
 	}

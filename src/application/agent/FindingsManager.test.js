@@ -116,7 +116,10 @@ test("FindingsManager", async (t) => {
 		assert.strictEqual(diffs[0].type, "create");
 		assert.strictEqual(diffs[0].file, "new.js");
 		assert.ok(diffs[0].patch.includes("---"), "Should be unified diff");
-		assert.ok(diffs[0].patch.includes("console.log"), "Should contain file content");
+		assert.ok(
+			diffs[0].patch.includes("console.log"),
+			"Should contain file content",
+		);
 	});
 
 	await t.test("run tool should produce command", async () => {

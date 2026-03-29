@@ -27,7 +27,7 @@ export default class ToolExtractor {
 		// Edits from the structured edits array
 		for (const edit of parsed.edits ?? []) {
 			if (!edit.file) continue;
-			if (edit.search === "") {
+			if (!edit.search) {
 				tools.push({
 					tool: "create",
 					path: edit.file,
@@ -37,7 +37,7 @@ export default class ToolExtractor {
 				tools.push({
 					tool: "edit",
 					path: edit.file,
-					search: edit.search ?? "",
+					search: edit.search,
 					replace: edit.replace ?? "",
 				});
 			}

@@ -33,10 +33,30 @@ export default class TurnBuilder {
 
 		const systemMd = await PromptManager.getSystemPrompt(type, null);
 		const identity = PromptManager.formatIdentity(model) + systemMd;
-		root.children.push({ tag: "system", attrs: {}, content: identity, children: [] });
-		root.children.push({ tag: "context", attrs: {}, content: null, children: [] });
-		root.children.push({ tag: "user", attrs: {}, content: prompt, children: [] });
-		root.children.push({ tag: "assistant", attrs: {}, content: null, children: [] });
+		root.children.push({
+			tag: "system",
+			attrs: {},
+			content: identity,
+			children: [],
+		});
+		root.children.push({
+			tag: "context",
+			attrs: {},
+			content: null,
+			children: [],
+		});
+		root.children.push({
+			tag: "user",
+			attrs: {},
+			content: prompt,
+			children: [],
+		});
+		root.children.push({
+			tag: "assistant",
+			attrs: {},
+			content: null,
+			children: [],
+		});
 
 		const rummy = new RummyContext(root, {
 			db,

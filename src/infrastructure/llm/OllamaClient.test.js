@@ -35,7 +35,10 @@ test("OllamaClient", async (t) => {
 			);
 		};
 		await client.completion(
-			[{ role: "user", content: "hi" }, { role: "assistant", content: "pre" }],
+			[
+				{ role: "user", content: "hi" },
+				{ role: "assistant", content: "pre" },
+			],
 			"m1",
 		);
 		assert.strictEqual(capturedBody.messages.length, 1);
@@ -69,9 +72,12 @@ test("OllamaClient", async (t) => {
 		await assert.rejects(client.getContextSize("m1"), /Ollama/);
 	});
 
-	await t.test("getContextSize should throw when no context_length key", async () => {
-		globalThis.fetch = async () =>
-			new Response(JSON.stringify({ model_info: { other_key: 42 } }));
-		await assert.rejects(client.getContextSize("m1"), /no context_length/);
-	});
+	await t.test(
+		"getContextSize should throw when no context_length key",
+		async () => {
+			globalThis.fetch = async () =>
+				new Response(JSON.stringify({ model_info: { other_key: 42 } }));
+			await assert.rejects(client.getContextSize("m1"), /no context_length/);
+		},
+	);
 });

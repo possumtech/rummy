@@ -320,13 +320,18 @@ export default class SessionManager {
 	}
 
 	async getSkills(sessionId) {
-		const rows = await this.#db.get_session_skills.all({ session_id: sessionId });
+		const rows = await this.#db.get_session_skills.all({
+			session_id: sessionId,
+		});
 		return rows.map((r) => r.name);
 	}
 
 	async setTemperature(sessionId, temperature) {
 		const clamped = Math.max(0, Math.min(2, temperature));
-		await this.#db.update_session_temperature.run({ id: sessionId, temperature: clamped });
+		await this.#db.update_session_temperature.run({
+			id: sessionId,
+			temperature: clamped,
+		});
 		return clamped;
 	}
 

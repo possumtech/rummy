@@ -16,7 +16,11 @@ test("FindingsProcessor", async (t) => {
 	t.before(async () => {
 		projectPath = join(tmpdir(), `rummy-fp-test-${Date.now()}`);
 		await fs.mkdir(projectPath, { recursive: true });
-		await fs.writeFile(join(projectPath, "src/a.js"), "old code\n", { recursive: true }).catch(() => {});
+		await fs
+			.writeFile(join(projectPath, "src/a.js"), "old code\n", {
+				recursive: true,
+			})
+			.catch(() => {});
 		await fs.mkdir(join(projectPath, "src"), { recursive: true });
 		await fs.writeFile(join(projectPath, "src/a.js"), "old code\n");
 
@@ -25,8 +29,16 @@ test("FindingsProcessor", async (t) => {
 		const fm = new FindingsManager(tdb.db);
 		processor = new FindingsProcessor(tdb.db, fm, hooks);
 
-		await tdb.db.upsert_project.run({ id: projectId, path: projectPath, name: "FPTest" });
-		await tdb.db.create_session.run({ id: "s1", project_id: projectId, client_id: "c1" });
+		await tdb.db.upsert_project.run({
+			id: projectId,
+			path: projectPath,
+			name: "FPTest",
+		});
+		await tdb.db.create_session.run({
+			id: "s1",
+			project_id: projectId,
+			client_id: "c1",
+		});
 		await tdb.db.create_run.run({
 			id: runId,
 			session_id: "s1",
@@ -35,7 +47,10 @@ test("FindingsProcessor", async (t) => {
 			config: "{}",
 			alias: "test_1",
 		});
-		const turnRow = await tdb.db.create_empty_turn.get({ run_id: runId, sequence: 0 });
+		const turnRow = await tdb.db.create_empty_turn.get({
+			run_id: runId,
+			sequence: 0,
+		});
 		turnId = turnRow.id;
 
 		// Insert turn structure for elements lookup
@@ -86,7 +101,12 @@ test("FindingsProcessor", async (t) => {
 			turnId,
 			turnSequence: 0,
 			tools: [
-				{ tool: "edit", path: "src/a.js", search: "old code", replace: "new code" },
+				{
+					tool: "edit",
+					path: "src/a.js",
+					search: "old code",
+					replace: "new code",
+				},
 			],
 			structural: [],
 			elements,
@@ -95,7 +115,9 @@ test("FindingsProcessor", async (t) => {
 		});
 
 		assert.strictEqual(result.newReads, 0);
-		const findings = await tdb.db.get_unresolved_findings.all({ run_id: runId });
+		const findings = await tdb.db.get_unresolved_findings.all({
+			run_id: runId,
+		});
 		assert.ok(findings.length > 0, "Should have unresolved diff finding");
 		assert.strictEqual(findings[0].category, "diff");
 	});
@@ -116,7 +138,9 @@ test("FindingsProcessor", async (t) => {
 			sessionId: "s1",
 		});
 
-		const findings = await tdb.db.get_unresolved_findings.all({ run_id: runId });
+		const findings = await tdb.db.get_unresolved_findings.all({
+			run_id: runId,
+		});
 		const cmd = findings.find((f) => f.category === "command");
 		assert.ok(cmd, "Should have unresolved command finding");
 	});
@@ -130,18 +154,25 @@ test("FindingsProcessor", async (t) => {
 			runAlias: "test_1",
 			turnId,
 			turnSequence: 2,
-			tools: [{
-				tool: "prompt_user",
-				text: "Which option?",
-				config: { question: "Which option?", options: [{ label: "A" }, { label: "B" }] },
-			}],
+			tools: [
+				{
+					tool: "prompt_user",
+					text: "Which option?",
+					config: {
+						question: "Which option?",
+						options: [{ label: "A" }, { label: "B" }],
+					},
+				},
+			],
 			structural: [],
 			elements,
 			turnObj: mockTurnObj(),
 			sessionId: "s1",
 		});
 
-		const findings = await tdb.db.get_unresolved_findings.all({ run_id: runId });
+		const findings = await tdb.db.get_unresolved_findings.all({
+			run_id: runId,
+		});
 		const notif = findings.find((f) => f.category === "notification");
 		assert.ok(notif, "Should have notification finding");
 	});

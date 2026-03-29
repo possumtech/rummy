@@ -147,6 +147,24 @@ export default class TurnExecutor {
 
 		const parsed = JSON.parse(jsonContent);
 
+		// Heal missing/malformed fields when provider doesn't enforce schema
+		if (!Array.isArray(parsed.todo)) {
+			console.warn(`[RUMMY] Healing todo: ${typeof parsed.todo} → []`);
+			parsed.todo = [];
+		}
+		if (!Array.isArray(parsed.known)) {
+			console.warn(`[RUMMY] Healing known: ${typeof parsed.known} → []`);
+			parsed.known = [];
+		}
+		if (!Array.isArray(parsed.unknown)) {
+			console.warn(`[RUMMY] Healing unknown: ${typeof parsed.unknown} → []`);
+			parsed.unknown = [];
+		}
+		if (typeof parsed.summary !== "string") {
+			console.warn(`[RUMMY] Healing summary: ${typeof parsed.summary} → ""`);
+			parsed.summary = "";
+		}
+
 		// Commit usage stats
 		const usage = result.usage || {
 			prompt_tokens: 0,

@@ -1,6 +1,6 @@
 {
 	"type": "object",
-	"required": ["todo", "known", "unknown", "summary"],
+	"required": ["summary"],
 	"additionalProperties": false,
 	"description": "Structured response for ask mode. Gather information, analyze codebases, answer questions. Cannot modify anything.",
 	"properties": {

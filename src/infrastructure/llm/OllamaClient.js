@@ -77,21 +77,28 @@ export default class OllamaClient {
 					),
 				});
 				if (!response.ok) {
-					throw new Error(`Ollama /api/show failed: ${response.status}. Is Ollama running at ${this.#baseUrl}?`);
+					throw new Error(
+						`Ollama /api/show failed: ${response.status}. Is Ollama running at ${this.#baseUrl}?`,
+					);
 				}
 				const data = await response.json();
 				const info = data.model_info || {};
 				for (const [key, value] of Object.entries(info)) {
 					if (key.endsWith(".context_length")) return value;
 				}
-				throw new Error(`Ollama /api/show returned no context_length for model '${model}'.`);
+				throw new Error(
+					`Ollama /api/show returned no context_length for model '${model}'.`,
+				);
 			} catch (err) {
 				if (err.message.includes("Ollama")) throw err;
 				if (attempt < 2) {
 					await new Promise((r) => setTimeout(r, (attempt + 1) * 2000));
 					continue;
 				}
-				throw new Error(`Ollama /api/show unreachable after 3 attempts. Is Ollama running at ${this.#baseUrl}?`, { cause: err });
+				throw new Error(
+					`Ollama /api/show unreachable after 3 attempts. Is Ollama running at ${this.#baseUrl}?`,
+					{ cause: err },
+				);
 			}
 		}
 	}

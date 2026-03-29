@@ -185,9 +185,7 @@ describe("E2E: Run Modes", () => {
 					"Forked run should have a DIFFERENT run than the parent",
 				);
 
-				const forkTurn = notifications.find(
-					(n) => n.run === forkResult.run,
-				);
+				const forkTurn = notifications.find((n) => n.run === forkResult.run);
 				if (forkTurn) {
 					const text = [
 						forkTurn.turn.assistant.content,

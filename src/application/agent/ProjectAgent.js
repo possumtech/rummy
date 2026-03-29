@@ -23,7 +23,7 @@ export default class ProjectAgent {
 		this.#hooks = hooks;
 		this.#sessionManager = new SessionManager(db, hooks);
 
-		const llm = new LlmProvider(hooks);
+		const llm = new LlmProvider(hooks, db);
 		hooks.models = llm.capabilities;
 		const turnBuilder = new TurnBuilder(hooks);
 		this.#findingsManager = new FindingsManager(db);

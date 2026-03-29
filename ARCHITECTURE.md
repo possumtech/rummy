@@ -269,9 +269,28 @@ Defined in `.env`. No magic numbers in code.
 
 ```env
 RUMMY_MAP_MAX_PERCENT=10        # Primary: percent of model context window
-RUMMY_MAP_TOKEN_BUDGET=         # Optional: hard cap in tokens
+RUMMY_MAP_TOKEN_BUDGET=4000     # Hard cap in tokens (fallback when context size unavailable)
 RUMMY_DECAY_THRESHOLD=12        # Turns before agent promotion decays
 RUMMY_RETENTION_DAYS=31         # Days to keep completed/aborted runs
+RUMMY_FETCH_TIMEOUT=30000       # LLM fetch timeout (ms)
+RUMMY_RPC_TIMEOUT=10000         # Non-long-running RPC timeout (ms)
+```
+
+### 3.4 Provider Configuration
+
+Model aliases map to providers via prefix convention:
+
+| Prefix | Provider | Env vars |
+|---|---|---|
+| *(none)* | OpenRouter | `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` |
+| `ollama/` | Ollama | `OLLAMA_BASE_URL` |
+| `openai/` | OpenAI-compatible (llama.cpp, vllm) | `OPENAI_BASE_URL` or `OPENAI_API_BASE`, `OPENAI_API_KEY` |
+
+```env
+RUMMY_MODEL_ccp=deepseek/deepseek-chat        # OpenRouter
+RUMMY_MODEL_local=ollama/qwen3:latest          # Ollama
+RUMMY_MODEL_turbo=openai/Qwen3-14B-custom      # llama-server
+RUMMY_MODEL_DEFAULT=ccp
 ```
 
 ---
@@ -543,9 +562,16 @@ Tools are registered in the `ToolRegistry` and are mode-dependent — the schema
 
 ### 6.6 Protocol Validation
 
-Validation is enforced by the provider's JSON schema (`ask.json` / `act.json`).
-Tool names are constrained via `enum` in the schema. `edits` is only present
-in the act schema. Invalid responses fail JSON parsing and surface as errors.
+Schema enforcement is provider-native. No application-level validation.
+
+| Provider | Mechanism | Thinking |
+|---|---|---|
+| **OpenRouter** | `response_format` with `json_schema` | Via `reasoning_content` field |
+| **Ollama** | `format` with schema object | Via `reasoning` field (normalized to `reasoning_content`) |
+| **OpenAI-compatible** (llama.cpp) | GBNF grammar with required `<think>` preamble | Grammar forces thinking, llama-server separates into `reasoning_content` |
+
+The GBNF grammar is generated from the JSON schema by `gbnf.js`. Tool names
+are constrained via `enum`. `edits` is only present in the act schema.
 
 ---
 

@@ -63,10 +63,10 @@ describe("ToolExtractor", () => {
 		});
 	});
 
-	it("should extract create when search is empty string", () => {
+	it("should extract create when search is omitted", () => {
 		const { tools } = extractor.extract({
 			...base,
-			edits: [{ file: "new.js", search: "", replace: "content" }],
+			edits: [{ file: "new.js", replace: "content" }],
 		});
 		strictEqual(tools.length, 1);
 		deepStrictEqual(tools[0], {

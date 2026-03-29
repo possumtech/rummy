@@ -7,7 +7,9 @@ import RummyContext from "../../../domain/turn/RummyContext.js";
 import ContextPlugin from "./context.js";
 
 function getFeedbackText(rummy) {
-	const feedbackNode = rummy.contextEl.children.find((c) => c.tag === "feedback");
+	const feedbackNode = rummy.contextEl.children.find(
+		(c) => c.tag === "feedback",
+	);
 	return feedbackNode?.content || "";
 }
 
@@ -48,9 +50,7 @@ function makeRummy(db, runId, turnId) {
 		tag: "turn",
 		attrs: {},
 		content: null,
-		children: [
-			{ tag: "context", attrs: {}, content: null, children: [] },
-		],
+		children: [{ tag: "context", attrs: {}, content: null, children: [] }],
 	};
 	return new RummyContext(root, {
 		db,

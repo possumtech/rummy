@@ -42,7 +42,7 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 		client.on("run/step/completed", (payload) => {
 			const seq = Number(payload.turn.sequence);
 			console.log(
-				`  [TEST] Turn ${seq}. System has <document_content>: ${payload.turn.system?.includes("<document_content>")}`,
+				`  [TEST] Turn ${seq}. System has file content: ${payload.turn.system?.includes("My robe is purple")}`,
 			);
 			turnMap.set(seq, payload.turn);
 		});
@@ -103,7 +103,7 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 		const warmTurn = turnMap.get(warmSeq);
 		assert.ok(warmTurn, `Warm turn ${warmSeq} missing`);
 		assert.ok(
-			warmTurn.system.includes("<document_content>"),
+			warmTurn.system.includes("My robe is purple"),
 			`Wizard file should be warm (full content in system) in turn ${warmSeq}`,
 		);
 
@@ -128,8 +128,8 @@ describe("E2E: Context Fidelity Decay (The Wizard Test)", () => {
 			`  [TEST] Last warm: ${lastWarmSeq}, Final: ${finalSeq}, Gap: ${finalSeq - lastWarmSeq}`,
 		);
 		assert.ok(
-			!finalTurn.system.includes("<document_content>"),
-			`Turn ${finalSeq} should have decayed — document content should be gone from system (gap: ${finalSeq - lastWarmSeq}, threshold: 4)`,
+			!finalTurn.system.includes("My robe is purple"),
+			`Turn ${finalSeq} should have decayed — file content should be gone from system (gap: ${finalSeq - lastWarmSeq}, threshold: 4)`,
 		);
 	});
 });

@@ -5,7 +5,12 @@ import createHooks from "../../domain/hooks/Hooks.js";
 import AgentLoop from "./AgentLoop.js";
 
 const mockTurnResult = (overrides = {}) => ({
-	turnObj: { hydrate: async () => {}, toJson: () => ({ assistant: { content: "", reasoning_content: "", known: "" } }) },
+	turnObj: {
+		hydrate: async () => {},
+		toJson: () => ({
+			assistant: { content: "", reasoning_content: "", known: "" },
+		}),
+	},
 	turnId: "t1",
 	turnSequence: 0,
 	tools: [],
@@ -27,7 +32,12 @@ const mockFindingsProcessor = () => ({
 });
 
 const mockStateEvaluator = (action = "completed") => ({
-	evaluate: async () => ({ action, warnings: [], proposed: [], hasSummary: true }),
+	evaluate: async () => ({
+		action,
+		warnings: [],
+		proposed: [],
+		hasSummary: true,
+	}),
 });
 
 const mockSessionManager = () => ({
@@ -39,35 +49,50 @@ test("AgentLoop", async (t) => {
 
 	t.before(async () => {
 		tdb = await TestDb.create();
-		await tdb.db.upsert_project.run({ id: "p1", path: "/tmp/al-test", name: "ALTest" });
-		await tdb.db.create_session.run({ id: "s1", project_id: "p1", client_id: "c1" });
+		await tdb.db.upsert_project.run({
+			id: "p1",
+			path: "/tmp/al-test",
+			name: "ALTest",
+		});
+		await tdb.db.create_session.run({
+			id: "s1",
+			project_id: "p1",
+			client_id: "c1",
+		});
 	});
 
 	t.after(async () => {
 		await tdb.cleanup();
 	});
 
-	await t.test("run should create new run with alias and return completed", async () => {
-		const hooks = createHooks();
-		const loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
-			mockTurnExecutor(mockTurnResult()),
-			mockFindingsProcessor(),
-			mockStateEvaluator("completed"),
-			mockSessionManager(),
-		);
+	await t.test(
+		"run should create new run with alias and return completed",
+		async () => {
+			const hooks = createHooks();
+			const loop = new AgentLoop(
+				tdb.db,
+				{ getContextSize: async () => 8192 },
+				hooks,
+				mockTurnExecutor(mockTurnResult()),
+				mockFindingsProcessor(),
+				mockStateEvaluator("completed"),
+				mockSessionManager(),
+			);
 
-		const result = await loop.run("ask", "s1", null, "hello", null, null, {});
-		assert.strictEqual(result.status, "completed");
-		assert.ok(result.run, "should have run alias");
-		assert.ok(result.run.includes("_"), "alias should be model_N format");
-	});
+			const result = await loop.run("ask", "s1", null, "hello", null, null, {});
+			assert.strictEqual(result.status, "completed");
+			assert.ok(result.run, "should have run alias");
+			assert.ok(result.run.includes("_"), "alias should be model_N format");
+		},
+	);
 
 	await t.test("run should continue existing run by alias", async () => {
 		const hooks = createHooks();
 		// First create a run
 		const loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
+			tdb.db,
+			{ getContextSize: async () => 8192 },
+			hooks,
 			mockTurnExecutor(mockTurnResult()),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),
@@ -76,7 +101,15 @@ test("AgentLoop", async (t) => {
 
 		const first = await loop.run("ask", "s1", null, "first", null, null, {});
 		// Now continue it
-		const second = await loop.run("ask", "s1", null, "second", null, first.run, {});
+		const second = await loop.run(
+			"ask",
+			"s1",
+			null,
+			"second",
+			null,
+			first.run,
+			{},
+		);
 		assert.strictEqual(second.status, "completed");
 		assert.strictEqual(second.run, first.run);
 	});
@@ -84,51 +117,89 @@ test("AgentLoop", async (t) => {
 	await t.test("run should fork from existing run", async () => {
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
+			tdb.db,
+			{ getContextSize: async () => 8192 },
+			hooks,
 			mockTurnExecutor(mockTurnResult()),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),
 			mockSessionManager(),
 		);
 
-		const original = await loop.run("ask", "s1", null, "original", null, null, {});
-		const forked = await loop.run("ask", "s1", null, "forked", null, original.run, { fork: true });
+		const original = await loop.run(
+			"ask",
+			"s1",
+			null,
+			"original",
+			null,
+			null,
+			{},
+		);
+		const forked = await loop.run(
+			"ask",
+			"s1",
+			null,
+			"forked",
+			null,
+			original.run,
+			{ fork: true },
+		);
 		assert.strictEqual(forked.status, "completed");
-		assert.notStrictEqual(forked.run, original.run, "fork should have new alias");
+		assert.notStrictEqual(
+			forked.run,
+			original.run,
+			"fork should have new alias",
+		);
 	});
 
 	await t.test("run should return proposed when findings exist", async () => {
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
+			tdb.db,
+			{ getContextSize: async () => 8192 },
+			hooks,
 			mockTurnExecutor(mockTurnResult()),
 			mockFindingsProcessor(),
 			mockStateEvaluator("proposed"),
 			mockSessionManager(),
 		);
 
-		const result = await loop.run("act", "s1", null, "edit something", null, null, {});
+		const result = await loop.run(
+			"act",
+			"s1",
+			null,
+			"edit something",
+			null,
+			null,
+			{},
+		);
 		assert.strictEqual(result.status, "proposed");
 	});
 
 	await t.test("run should handle noContext option", async () => {
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
+			tdb.db,
+			{ getContextSize: async () => 8192 },
+			hooks,
 			mockTurnExecutor(mockTurnResult()),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),
 			mockSessionManager(),
 		);
 
-		const result = await loop.run("ask", "s1", null, "quick", null, null, { noContext: true });
+		const result = await loop.run("ask", "s1", null, "quick", null, null, {
+			noContext: true,
+		});
 		assert.strictEqual(result.status, "completed");
 	});
 
 	await t.test("inject on idle run should resume", async () => {
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
+			tdb.db,
+			{ getContextSize: async () => 8192 },
+			hooks,
 			mockTurnExecutor(mockTurnResult()),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),
@@ -145,7 +216,9 @@ test("AgentLoop", async (t) => {
 		const hooks = createHooks();
 		// Create a run and set it to running status
 		const loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
+			tdb.db,
+			{ getContextSize: async () => 8192 },
+			hooks,
 			mockTurnExecutor(mockTurnResult()),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),
@@ -164,7 +237,9 @@ test("AgentLoop", async (t) => {
 	await t.test("run should throw for non-existent alias", async () => {
 		const hooks = createHooks();
 		const loop = new AgentLoop(
-			tdb.db, { getContextSize: async () => 8192 }, hooks,
+			tdb.db,
+			{ getContextSize: async () => 8192 },
+			hooks,
 			mockTurnExecutor(mockTurnResult()),
 			mockFindingsProcessor(),
 			mockStateEvaluator("completed"),

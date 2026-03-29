@@ -1,6 +1,6 @@
 {
 	"type": "object",
-	"required": ["todo", "known", "unknown", "summary"],
+	"required": ["summary"],
 	"additionalProperties": false,
 	"description": "Structured response for act mode. Gather information, run code, modify the project.",
 	"properties": {
@@ -50,7 +50,7 @@
 			"description": "File modifications. Use edits to create, edit, or modify files. Do not describe changes in known/summary — put them here.",
 			"items": {
 				"type": "object",
-				"required": ["file", "search", "replace"],
+				"required": ["file", "replace"],
 				"additionalProperties": false,
 				"properties": {
 					"file": {
@@ -60,7 +60,7 @@
 					},
 					"search": {
 						"type": "string",
-						"description": "Exact text to find in the file. Empty string to create a new file or append to end."
+						"description": "Exact text to find and replace. Omit when creating a new file or overwriting entirely."
 					},
 					"replace": {
 						"type": "string",

@@ -3,9 +3,10 @@
  * Supports: object, array, string (with enum/minLength), boolean, number, integer.
  */
 
-const WS = 'ws ::= [ \\t\\n\\r]*\n';
+const WS = "ws ::= [ \\t\\n\\r]*\n";
 const JSON_STRING = `json-string ::= "\\"" json-chars "\\""\njson-chars ::= "" | json-char json-chars\njson-char ::= [^"\\\\\\x00-\\x1f] | "\\\\" ["\\\\/bfnrt] | "\\\\u" [0-9a-fA-F]{4}\n`;
-const JSON_NUMBER = 'json-number ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [+-]? [0-9]+)?\n';
+const JSON_NUMBER =
+	'json-number ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [+-]? [0-9]+)?\n';
 const JSON_BOOL = 'json-bool ::= "true" | "false"\n';
 
 export default function schemaToGbnf(schema, { thinking = false } = {}) {
@@ -37,7 +38,9 @@ export default function schemaToGbnf(schema, { thinking = false } = {}) {
 		}
 
 		if (s.type === "array") {
-			const itemRule = s.items ? compileSchema(s.items, `${prefix}-item`) : "json-string";
+			const itemRule = s.items
+				? compileSchema(s.items, `${prefix}-item`)
+				: "json-string";
 			const arrName = name(prefix);
 			emitRule(arrName, `"[" ws (${itemRule} ("," ws ${itemRule})*)? ws "]"`);
 			return arrName;
@@ -82,12 +85,13 @@ export default function schemaToGbnf(schema, { thinking = false } = {}) {
 
 	let grammar = "";
 	if (thinking) {
-		grammar += 'root ::= think ws ' + rootJsonRule + '\n';
+		grammar += `root ::= think ws ${rootJsonRule}\n`;
 		grammar += 'think ::= "<think>" think-body "</think>"\n';
-		grammar += 'think-body ::= think-char*\n';
-		grammar += 'think-char ::= [^<] | "<" [^/] | "</" [^t] | "</t" [^h] | "</th" [^i] | "</thi" [^n] | "</thin" [^k] | "</think" [^>]\n';
+		grammar += "think-body ::= think-char*\n";
+		grammar +=
+			'think-char ::= [^<] | "<" [^/] | "</" [^t] | "</t" [^h] | "</th" [^i] | "</thi" [^n] | "</thin" [^k] | "</think" [^>]\n';
 	} else {
-		grammar += 'root ::= ' + rootJsonRule + '\n';
+		grammar += `root ::= ${rootJsonRule}\n`;
 	}
 
 	grammar += WS;

@@ -1,8 +1,8 @@
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import ToolExtractor from "../../src/application/agent/ToolExtractor.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -14,15 +14,12 @@ const actSchema = JSON.parse(
 );
 
 test("§6 Rumsfeld Loop — schema and tool extraction", async (t) => {
-	await t.test("ask schema requires todo, known, unknown, summary", () => {
-		assert.deepStrictEqual(askSchema.required.sort(), ["known", "summary", "todo", "unknown"]);
+	await t.test("ask schema requires only summary", () => {
+		assert.deepStrictEqual(askSchema.required, ["summary"]);
 	});
 
-	await t.test("act schema requires todo, known, unknown, summary", () => {
-		assert.ok(actSchema.required.includes("todo"));
-		assert.ok(actSchema.required.includes("known"));
-		assert.ok(actSchema.required.includes("unknown"));
-		assert.ok(actSchema.required.includes("summary"));
+	await t.test("act schema requires only summary", () => {
+		assert.deepStrictEqual(actSchema.required, ["summary"]);
 	});
 
 	await t.test("ask tool enum is read, drop, env", () => {
@@ -49,13 +46,20 @@ test("§6 Rumsfeld Loop — schema and tool extraction", async (t) => {
 
 	await t.test("ask schema does NOT have edits", () => {
 		assert.strictEqual(actSchema.properties.edits !== undefined, true);
-		assert.strictEqual(askSchema.properties.edits, undefined, "ask should not have edits");
+		assert.strictEqual(
+			askSchema.properties.edits,
+			undefined,
+			"ask should not have edits",
+		);
 	});
 
 	await t.test("ToolExtractor routes empty search to create", () => {
 		const extractor = new ToolExtractor();
 		const { tools } = extractor.extract({
-			todo: [], known: [], unknown: [], summary: "",
+			todo: [],
+			known: [],
+			unknown: [],
+			summary: "",
 			edits: [{ file: "new.md", search: "", replace: "# Hello" }],
 		});
 		assert.strictEqual(tools[0].tool, "create");

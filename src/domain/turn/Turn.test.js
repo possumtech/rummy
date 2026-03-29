@@ -256,13 +256,19 @@ test("Turn", async (t) => {
 			const json = turn.toJson();
 
 			assert.strictEqual(json.sequence, 1);
-			assert.ok(json.system.includes("helpful assistant"), "system has identity");
+			assert.ok(
+				json.system.includes("helpful assistant"),
+				"system has identity",
+			);
 			assert.ok(json.system.includes("src/a.js"), "system has file path");
 			assert.ok(json.system.includes("const a = 1"), "system has file content");
 			assert.strictEqual(json.user, "Fix the bug");
 
 			// Context rendered as Markdown
-			assert.ok(json.context.includes("src/a.js"), "context includes file path");
+			assert.ok(
+				json.context.includes("src/a.js"),
+				"context includes file path",
+			);
 			assert.ok(json.context.includes("retained"), "context includes feedback");
 
 			// Diagnostics
@@ -286,7 +292,9 @@ test("Turn", async (t) => {
 			assert.ok(json.assistant.content.includes("read"));
 			assert.strictEqual(json.assistant.reasoning_content, "Let me think...");
 			assert.deepStrictEqual(json.assistant.known, ["The file has a bug"]);
-			assert.deepStrictEqual(json.assistant.unknown, ["Why it was written this way"]);
+			assert.deepStrictEqual(json.assistant.unknown, [
+				"Why it was written this way",
+			]);
 			assert.strictEqual(json.assistant.summary, "Fixed a bug in src/a.js");
 
 			// Usage
@@ -301,20 +309,17 @@ test("Turn", async (t) => {
 		},
 	);
 
-	await t.test(
-		"toJson() todo is parsed with verb support",
-		async () => {
-			const turn = new Turn(db, turnId);
-			await turn.hydrate();
-			const json = turn.toJson();
+	await t.test("toJson() todo is parsed with verb support", async () => {
+		const turn = new Turn(db, turnId);
+		await turn.hydrate();
+		const json = turn.toJson();
 
-			assert.strictEqual(json.assistant.todo.length, 2);
-			assert.strictEqual(json.assistant.todo[0].tool, "read");
-			assert.strictEqual(json.assistant.todo[0].argument, "src/a.js");
-			assert.strictEqual(json.assistant.todo[1].tool, "edit");
-			assert.strictEqual(json.assistant.next_todo, json.assistant.todo[0]);
-		},
-	);
+		assert.strictEqual(json.assistant.todo.length, 2);
+		assert.strictEqual(json.assistant.todo[0].tool, "read");
+		assert.strictEqual(json.assistant.todo[0].argument, "src/a.js");
+		assert.strictEqual(json.assistant.todo[1].tool, "edit");
+		assert.strictEqual(json.assistant.next_todo, json.assistant.todo[0]);
+	});
 
 	await t.test(
 		"serialize() returns system, user (with context), assistant messages",
@@ -327,13 +332,25 @@ test("Turn", async (t) => {
 
 			assert.strictEqual(messages[0].role, "system");
 			assert.ok(messages[0].content.includes("helpful assistant"));
-			assert.ok(messages[0].content.includes("Project Files"), "system has documents heading");
-			assert.ok(messages[0].content.includes("```javascript"), "system has code fence");
-			assert.ok(messages[0].content.includes("const a = 1"), "system has file content");
+			assert.ok(
+				messages[0].content.includes("Project Files"),
+				"system has documents heading",
+			);
+			assert.ok(
+				messages[0].content.includes("```javascript"),
+				"system has code fence",
+			);
+			assert.ok(
+				messages[0].content.includes("const a = 1"),
+				"system has file content",
+			);
 
 			assert.strictEqual(messages[1].role, "user");
 			assert.ok(messages[1].content.includes("Fix the bug"));
-			assert.ok(messages[1].content.includes("retained"), "user has feedback context");
+			assert.ok(
+				messages[1].content.includes("retained"),
+				"user has feedback context",
+			);
 
 			assert.strictEqual(messages[2].role, "assistant");
 		},
@@ -359,137 +376,245 @@ test("Turn", async (t) => {
 		},
 	);
 
-	await t.test("renders modified_files and error nodes in context", async () => {
-		const runId2 = crypto.randomUUID();
-		await db.create_run.get({
-			id: runId2,
-			session_id: sessionId,
-			parent_run_id: null,
-			type: "ask",
-			config: "{}",
-			alias: "test_2",
-		});
-		const turn2Row = await db.create_empty_turn.get({ run_id: runId2, sequence: 0 });
-		const ins = (params) => db.insert_turn_element.get(params);
+	await t.test(
+		"renders modified_files and error nodes in context",
+		async () => {
+			const runId2 = crypto.randomUUID();
+			await db.create_run.get({
+				id: runId2,
+				session_id: sessionId,
+				parent_run_id: null,
+				type: "ask",
+				config: "{}",
+				alias: "test_2",
+			});
+			const turn2Row = await db.create_empty_turn.get({
+				run_id: runId2,
+				sequence: 0,
+			});
+			const ins = (params) => db.insert_turn_element.get(params);
 
-		const root2 = await ins({
-			turn_id: turn2Row.id, parent_id: null, tag_name: "turn",
-			content: null, attributes: JSON.stringify({ sequence: 0 }), sequence: 0,
-		});
-		const sys2 = await ins({
-			turn_id: turn2Row.id, parent_id: root2.id, tag_name: "system",
-			content: "Identity.\n", attributes: "{}", sequence: 1,
-		});
-		// Document with symbols visibility
-		const docs2 = await ins({
-			turn_id: turn2Row.id, parent_id: sys2.id, tag_name: "documents",
-			content: null, attributes: "{}", sequence: 2,
-		});
-		const symDoc = await ins({
-			turn_id: turn2Row.id, parent_id: docs2.id, tag_name: "document",
-			content: null, attributes: JSON.stringify({ index: "1", visibility: "symbols" }), sequence: 3,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: symDoc.id, tag_name: "source",
-			content: "lib/utils.py", attributes: "{}", sequence: 4,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: symDoc.id, tag_name: "document_content",
-			content: "parse(data), format(out)", attributes: "{}", sequence: 5,
-		});
-		// Path-only document
-		const pathDoc = await ins({
-			turn_id: turn2Row.id, parent_id: docs2.id, tag_name: "document",
-			content: null, attributes: JSON.stringify({ index: "2", visibility: "path" }), sequence: 6,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: pathDoc.id, tag_name: "source",
-			content: "README.md", attributes: "{}", sequence: 7,
-		});
+			const root2 = await ins({
+				turn_id: turn2Row.id,
+				parent_id: null,
+				tag_name: "turn",
+				content: null,
+				attributes: JSON.stringify({ sequence: 0 }),
+				sequence: 0,
+			});
+			const sys2 = await ins({
+				turn_id: turn2Row.id,
+				parent_id: root2.id,
+				tag_name: "system",
+				content: "Identity.\n",
+				attributes: "{}",
+				sequence: 1,
+			});
+			// Document with symbols visibility
+			const docs2 = await ins({
+				turn_id: turn2Row.id,
+				parent_id: sys2.id,
+				tag_name: "documents",
+				content: null,
+				attributes: "{}",
+				sequence: 2,
+			});
+			const symDoc = await ins({
+				turn_id: turn2Row.id,
+				parent_id: docs2.id,
+				tag_name: "document",
+				content: null,
+				attributes: JSON.stringify({ index: "1", visibility: "symbols" }),
+				sequence: 3,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: symDoc.id,
+				tag_name: "source",
+				content: "lib/utils.py",
+				attributes: "{}",
+				sequence: 4,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: symDoc.id,
+				tag_name: "document_content",
+				content: "parse(data), format(out)",
+				attributes: "{}",
+				sequence: 5,
+			});
+			// Path-only document
+			const pathDoc = await ins({
+				turn_id: turn2Row.id,
+				parent_id: docs2.id,
+				tag_name: "document",
+				content: null,
+				attributes: JSON.stringify({ index: "2", visibility: "path" }),
+				sequence: 6,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: pathDoc.id,
+				tag_name: "source",
+				content: "README.md",
+				attributes: "{}",
+				sequence: 7,
+			});
 
-		// Context with modified_files, error, and unstructured feedback
-		const ctx2 = await ins({
-			turn_id: turn2Row.id, parent_id: root2.id, tag_name: "context",
-			content: null, attributes: "{}", sequence: 8,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: ctx2.id, tag_name: "modified_files",
-			content: "Modified: lib/utils.py", attributes: "{}", sequence: 9,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: ctx2.id, tag_name: "error",
-			content: "Lint failed on utils.py", attributes: "{}", sequence: 10,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: ctx2.id, tag_name: "feedback",
-			content: "unstructured line without level prefix", attributes: "{}", sequence: 10,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: root2.id, tag_name: "user",
-			content: "hello", attributes: "{}", sequence: 11,
-		});
-		// Assistant with code-fenced JSON
-		const asst2 = await ins({
-			turn_id: turn2Row.id, parent_id: root2.id, tag_name: "assistant",
-			content: null, attributes: "{}", sequence: 12,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: asst2.id, tag_name: "content",
-			content: "```json\n{\"todo\":[],\"known\":[],\"unknown\":[],\"summary\":\"ok\"}\n```",
-			attributes: "{}", sequence: 13,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: asst2.id, tag_name: "meta",
-			content: "{}", attributes: "{}", sequence: 14,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: asst2.id, tag_name: "known",
-			content: "[]", attributes: "{}", sequence: 15,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: asst2.id, tag_name: "unknown",
-			content: "[]", attributes: "{}", sequence: 16,
-		});
-		await ins({
-			turn_id: turn2Row.id, parent_id: asst2.id, tag_name: "summary",
-			content: "ok", attributes: "{}", sequence: 17,
-		});
+			// Context with modified_files, error, and unstructured feedback
+			const ctx2 = await ins({
+				turn_id: turn2Row.id,
+				parent_id: root2.id,
+				tag_name: "context",
+				content: null,
+				attributes: "{}",
+				sequence: 8,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: ctx2.id,
+				tag_name: "modified_files",
+				content: "Modified: lib/utils.py",
+				attributes: "{}",
+				sequence: 9,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: ctx2.id,
+				tag_name: "error",
+				content: "Lint failed on utils.py",
+				attributes: "{}",
+				sequence: 10,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: ctx2.id,
+				tag_name: "feedback",
+				content: "unstructured line without level prefix",
+				attributes: "{}",
+				sequence: 10,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: root2.id,
+				tag_name: "user",
+				content: "hello",
+				attributes: "{}",
+				sequence: 11,
+			});
+			// Assistant with code-fenced JSON
+			const asst2 = await ins({
+				turn_id: turn2Row.id,
+				parent_id: root2.id,
+				tag_name: "assistant",
+				content: null,
+				attributes: "{}",
+				sequence: 12,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: asst2.id,
+				tag_name: "content",
+				content:
+					'```json\n{"todo":[],"known":[],"unknown":[],"summary":"ok"}\n```',
+				attributes: "{}",
+				sequence: 13,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: asst2.id,
+				tag_name: "meta",
+				content: "{}",
+				attributes: "{}",
+				sequence: 14,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: asst2.id,
+				tag_name: "known",
+				content: "[]",
+				attributes: "{}",
+				sequence: 15,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: asst2.id,
+				tag_name: "unknown",
+				content: "[]",
+				attributes: "{}",
+				sequence: 16,
+			});
+			await ins({
+				turn_id: turn2Row.id,
+				parent_id: asst2.id,
+				tag_name: "summary",
+				content: "ok",
+				attributes: "{}",
+				sequence: 17,
+			});
 
-		const turn2 = new Turn(db, turn2Row.id);
-		await turn2.hydrate();
-		const json2 = turn2.toJson();
+			const turn2 = new Turn(db, turn2Row.id);
+			await turn2.hydrate();
+			const json2 = turn2.toJson();
 
-		// Symbols document
-		assert.strictEqual(json2.files[0].path, "lib/utils.py");
-		assert.strictEqual(json2.files[0].visibility, "symbols");
-		// Path-only document
-		assert.strictEqual(json2.files[1].path, "README.md");
-		assert.strictEqual(json2.files[1].visibility, "path");
+			// Symbols document
+			assert.strictEqual(json2.files[0].path, "lib/utils.py");
+			assert.strictEqual(json2.files[0].visibility, "symbols");
+			// Path-only document
+			assert.strictEqual(json2.files[1].path, "README.md");
+			assert.strictEqual(json2.files[1].visibility, "path");
 
-		// Context rendering
-		assert.ok(json2.context.includes("Modified Files"), "renders modified_files heading");
-		assert.ok(json2.context.includes("lib/utils.py"), "renders modified path");
+			// Context rendering
+			assert.ok(
+				json2.context.includes("Modified Files"),
+				"renders modified_files heading",
+			);
+			assert.ok(
+				json2.context.includes("lib/utils.py"),
+				"renders modified path",
+			);
 
-		// Unstructured feedback falls back to info with empty target
-		const unstructured = json2.feedback.find((f) => f.message.includes("unstructured"));
-		assert.ok(unstructured, "unstructured feedback parsed");
-		assert.strictEqual(unstructured.level, "info");
-		assert.strictEqual(unstructured.target, "");
+			// Unstructured feedback falls back to info with empty target
+			const unstructured = json2.feedback.find((f) =>
+				f.message.includes("unstructured"),
+			);
+			assert.ok(unstructured, "unstructured feedback parsed");
+			assert.strictEqual(unstructured.level, "info");
+			assert.strictEqual(unstructured.target, "");
 
-		// Code-fence stripping in assistant content
-		assert.strictEqual(json2.assistant.summary, "ok");
+			// Code-fence stripping in assistant content
+			assert.strictEqual(json2.assistant.summary, "ok");
 
-		// Serialize includes modified_files in context
-		const msgs = await turn2.serialize();
-		const systemMsg = msgs.find((m) => m.role === "system");
-		assert.ok(systemMsg.content.includes("symbols"), "system has symbols doc");
-		assert.ok(systemMsg.content.includes("parse(data)"), "system has symbol content");
-		assert.ok(systemMsg.content.includes("`README.md`"), "system has path-only doc");
-		const userMsg = msgs.find((m) => m.role === "user");
-		assert.ok(userMsg.content.includes("Modified Files"), "user has modified files in context");
-		assert.ok(userMsg.content.includes("**Error**"), "user has error node rendered");
-		assert.ok(userMsg.content.includes("Lint failed"), "error content present");
-	});
+			// Serialize includes modified_files in context
+			const msgs = await turn2.serialize();
+			const systemMsg = msgs.find((m) => m.role === "system");
+			assert.ok(
+				systemMsg.content.includes("symbols"),
+				"system has symbols doc",
+			);
+			assert.ok(
+				systemMsg.content.includes("parse(data)"),
+				"system has symbol content",
+			);
+			assert.ok(
+				systemMsg.content.includes("`README.md`"),
+				"system has path-only doc",
+			);
+			const userMsg = msgs.find((m) => m.role === "user");
+			assert.ok(
+				userMsg.content.includes("Modified Files"),
+				"user has modified files in context",
+			);
+			assert.ok(
+				userMsg.content.includes("**Error**"),
+				"user has error node rendered",
+			);
+			assert.ok(
+				userMsg.content.includes("Lint failed"),
+				"error content present",
+			);
+		},
+	);
 
 	await t.test("feedback is parsed into structured entries", async () => {
 		const turn = new Turn(db, turnId);

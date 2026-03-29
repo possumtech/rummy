@@ -9,12 +9,13 @@ export default class LlmProvider {
 	#openAi;
 	#capabilities;
 
-	constructor(hooks) {
+	constructor(hooks, db) {
 		this.#capabilities = new ModelCapabilities();
 		this.#openRouter = new OpenRouterClient(
 			process.env.OPENROUTER_API_KEY,
 			hooks,
 			this.#capabilities,
+			db,
 		);
 
 		this.#ollama = new OllamaClient(process.env.OLLAMA_BASE_URL, hooks);
@@ -30,7 +31,10 @@ export default class LlmProvider {
 
 	static resolve(alias) {
 		const actual = process.env[`RUMMY_MODEL_${alias}`];
-		if (!actual) throw new Error(`Unknown model alias '${alias}'. Define RUMMY_MODEL_${alias} in your environment.`);
+		if (!actual)
+			throw new Error(
+				`Unknown model alias '${alias}'. Define RUMMY_MODEL_${alias} in your environment.`,
+			);
 		return actual;
 	}
 

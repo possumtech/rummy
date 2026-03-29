@@ -1,14 +1,37 @@
 import { extname } from "node:path";
 
 const EXT_LANG = {
-	".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
-	".ts": "typescript", ".tsx": "typescript", ".jsx": "javascript",
-	".py": "python", ".rb": "ruby", ".go": "go", ".rs": "rust",
-	".java": "java", ".kt": "kotlin", ".cs": "csharp", ".cpp": "cpp",
-	".c": "c", ".h": "c", ".hpp": "cpp", ".lua": "lua", ".sh": "bash",
-	".sql": "sql", ".json": "json", ".yaml": "yaml", ".yml": "yaml",
-	".toml": "toml", ".xml": "xml", ".html": "html", ".css": "css",
-	".md": "markdown", ".swift": "swift", ".php": "php", ".r": "r",
+	".js": "javascript",
+	".mjs": "javascript",
+	".cjs": "javascript",
+	".ts": "typescript",
+	".tsx": "typescript",
+	".jsx": "javascript",
+	".py": "python",
+	".rb": "ruby",
+	".go": "go",
+	".rs": "rust",
+	".java": "java",
+	".kt": "kotlin",
+	".cs": "csharp",
+	".cpp": "cpp",
+	".c": "c",
+	".h": "c",
+	".hpp": "cpp",
+	".lua": "lua",
+	".sh": "bash",
+	".sql": "sql",
+	".json": "json",
+	".yaml": "yaml",
+	".yml": "yaml",
+	".toml": "toml",
+	".xml": "xml",
+	".html": "html",
+	".css": "css",
+	".md": "markdown",
+	".swift": "swift",
+	".php": "php",
+	".r": "r",
 };
 
 /**
@@ -160,7 +183,9 @@ export default class Turn {
 			})),
 			files: getTags("document").map((d) => {
 				const source = d.children.find((c) => c.tag_name === "source");
-				const docContent = d.children.find((c) => c.tag_name === "document_content");
+				const docContent = d.children.find(
+					(c) => c.tag_name === "document_content",
+				);
 				return {
 					path: source?.content || d.attributes.path,
 					visibility: d.attributes.visibility,
@@ -252,13 +277,17 @@ export default class Turn {
 		const tag = node.tag_name;
 
 		if (tag === "documents") {
-			return "\n# Project Files\n\n" +
-				node.children.map((c) => this.#renderNode(c)).join("\n");
+			return (
+				"\n# Project Files\n\n" +
+				node.children.map((c) => this.#renderNode(c)).join("\n")
+			);
 		}
 
 		if (tag === "document") {
 			const source = node.children.find((c) => c.tag_name === "source");
-			const docContent = node.children.find((c) => c.tag_name === "document_content");
+			const docContent = node.children.find(
+				(c) => c.tag_name === "document_content",
+			);
 			const path = source?.content || "";
 			const visibility = node.attributes.visibility || "path";
 
@@ -276,11 +305,11 @@ export default class Turn {
 		}
 
 		if (tag === "feedback") {
-			return (node.content || "")
+			return `${(node.content || "")
 				.split("\n")
 				.filter(Boolean)
 				.map((line) => `> ${line}`)
-				.join("\n") + "\n\n";
+				.join("\n")}\n\n`;
 		}
 
 		if (tag === "modified_files" || tag === "git_changes") {

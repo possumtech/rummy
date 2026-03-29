@@ -122,8 +122,7 @@ export default class CoreRpcPlugin {
 					},
 				);
 			},
-			description:
-				"Non-mutating query. Returns { run, status, turn }.",
+			description: "Non-mutating query. Returns { run, status, turn }.",
 			longRunning: true,
 			params: {
 				prompt: "string — user message",
@@ -171,8 +170,7 @@ export default class CoreRpcPlugin {
 		r.register("run/resolve", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.resolve(params.run, params.resolution),
-			description:
-				"Resolve a finding. Returns { run, status }.",
+			description: "Resolve a finding. Returns { run, status }.",
 			longRunning: true,
 			params: {
 				run: "string — run name",
@@ -311,7 +309,8 @@ export default class CoreRpcPlugin {
 				);
 				return { temperature: value };
 			},
-			description: "Set session temperature (clamped 0-2). Returns { temperature }.",
+			description:
+				"Set session temperature (clamped 0-2). Returns { temperature }.",
 			params: { temperature: "number — 0 to 2" },
 			requiresInit: true,
 		});
@@ -321,7 +320,8 @@ export default class CoreRpcPlugin {
 				const value = await ctx.projectAgent.getTemperature(ctx.sessionId);
 				return { temperature: value };
 			},
-			description: "Get session temperature. Returns { temperature } (null = env default).",
+			description:
+				"Get session temperature. Returns { temperature } (null = env default).",
 			requiresInit: true,
 		});
 

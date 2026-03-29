@@ -85,9 +85,7 @@ function notificationCollector(client) {
 				timeoutMs,
 			);
 			const interval = setInterval(() => {
-				const found = steps.find(
-					(s) => s.turn.sequence > seq && s.run === run,
-				);
+				const found = steps.find((s) => s.turn.sequence > seq && s.run === run);
 				if (found) {
 					clearTimeout(timer);
 					clearInterval(interval);
