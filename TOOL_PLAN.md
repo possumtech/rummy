@@ -65,12 +65,18 @@ The server reads exclusively from `tool_calls`. The `content` field is dead.
 
 ### Known entry states
 
+**Model-facing states** (what the model sees in tool results):
+
 | State | Namespace | Meaning | Value contains |
 |-------|-----------|---------|---------------|
 | `file` | File | Full file content loaded | Complete file contents |
 | `symbols` | File | Signature-level summary | `name(params)` per line |
 | `stored` | Any | Key exists, value not in context | Empty string |
 | `full` | Knowledge | Knowledge value loaded | The knowledge value |
+
+**Database states** (superset — not all exposed to the model):
+
+The `known_entries.state` column needs additional states to track backend concerns the model doesn't need to know about: read-only files, excluded/ignored files, client-promoted files, mappable-but-not-loaded files, etc. The model receives a simplified projection — the four states above. The server maps internal states to model-facing states at query time. This keeps the model's mental model simple (four states, one meaning each) while preserving the full fidelity of the file management system in the database.
 
 Example entries:
 

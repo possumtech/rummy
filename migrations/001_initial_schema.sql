@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS runs (
 	)
 	, config JSON
 	, alias TEXT NOT NULL UNIQUE
+	, next_result_seq INTEGER NOT NULL DEFAULT 1
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -75,6 +76,7 @@ CREATE TABLE IF NOT EXISTS findings_diffs (
 	, status TEXT NOT NULL DEFAULT 'proposed' CHECK (
 		status IN ('proposed', 'accepted', 'rejected', 'modified')
 	)
+	, tool_call_id TEXT
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -87,6 +89,7 @@ CREATE TABLE IF NOT EXISTS findings_commands (
 	, status TEXT NOT NULL DEFAULT 'proposed' CHECK (
 		status IN ('proposed', 'accepted', 'rejected')
 	)
+	, tool_call_id TEXT
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -102,6 +105,7 @@ CREATE TABLE IF NOT EXISTS findings_notifications (
 	)
 	, config JSON
 	, append BOOLEAN
+	, tool_call_id TEXT
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -185,6 +189,7 @@ CREATE TABLE IF NOT EXISTS pending_context (
 	, request TEXT NOT NULL
 	, result TEXT NOT NULL
 	, is_error BOOLEAN DEFAULT 0
+	, tool_call_id TEXT
 	, consumed_by_turn_id INTEGER REFERENCES turns (id) ON DELETE SET NULL
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -316,6 +321,37 @@ CREATE INDEX IF NOT EXISTS idx_findings_cmds_run_status ON findings_commands (
 );
 CREATE INDEX IF NOT EXISTS idx_findings_notifs_run
 ON findings_notifications (run_id, status);
+
+-- Known K/V Store: run-scoped entries for files, knowledge, and tool results
+CREATE TABLE IF NOT EXISTS known_entries (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, key TEXT NOT NULL
+	, value TEXT NOT NULL DEFAULT ''
+	, state TEXT NOT NULL DEFAULT 'full'
+		CHECK (state IN ('file', 'file:readonly', 'symbols', 'stored', 'full', 'excluded'))
+	, write_count INTEGER NOT NULL DEFAULT 1
+	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_key
+ON known_entries (run_id, key);
+CREATE INDEX IF NOT EXISTS idx_known_entries_state
+ON known_entries (run_id, state);
+
+-- Run Log: chronological record of tool calls and summaries
+CREATE TABLE IF NOT EXISTS run_log (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, turn_id INTEGER NOT NULL REFERENCES turns (id) ON DELETE CASCADE
+	, tool TEXT NOT NULL
+	, target TEXT NOT NULL DEFAULT ''
+	, status TEXT NOT NULL CHECK (status IN ('pass', 'info', 'warn', 'error', 'summary'))
+	, key TEXT NOT NULL DEFAULT ''
+	, sequence INTEGER NOT NULL
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_run_log_run
+ON run_log (run_id, sequence);
 
 -- Provider model catalog (cached from OpenRouter /models, etc.)
 CREATE TABLE IF NOT EXISTS provider_models (
