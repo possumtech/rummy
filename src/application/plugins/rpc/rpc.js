@@ -173,7 +173,7 @@ export default class CoreRpcPlugin {
 			params: {
 				run: "string — run name",
 				resolution:
-					"{ key: string, action: 'accepted'|'rejected'|'responded', output?: string, answer?: string }",
+					"{ key: string, action: 'accept'|'reject', output?: string }",
 			},
 			requiresInit: true,
 		});
@@ -330,7 +330,7 @@ export default class CoreRpcPlugin {
 		);
 		r.registerNotification(
 			"run/progress",
-			"Turn status. Payload: { run, turn, status: 'thinking'|'processing' }.",
+			"Turn status. Payload: { run, turn, status: 'thinking'|'processing'|'retrying' }.",
 		);
 		r.registerNotification(
 			"ui/render",

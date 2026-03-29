@@ -391,7 +391,7 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 |--------|--------|-------------|
 | `ask` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Non-mutating query |
 | `act` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Mutating directive |
-| `run/resolve` | `run`, `resolution: {key, action, output?, answer?}` | Resolve a proposed entry by its key |
+| `run/resolve` | `run`, `resolution: {key, action: 'accept'\|'reject', output?}` | Resolve a proposed entry by its key |
 | `run/abort` | `run` | Abandon run |
 | `run/rename` | `run`, `name` | Rename a run. `[a-z_]{1,20}`, must be unique. |
 | `run/inject` | `run`, `message` | Inject context (creates `/:inject/N` info entry) |
@@ -438,7 +438,7 @@ defined via `RUMMY_MODEL_{alias}` env vars.
     {"key": "/:unknown/1", "value": "Which session store is configured"}
   ],
   "proposed": [
-    {"key": "/:edit/3", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
+    {"key": "/:edit/3", "type": "edit", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
   ],
   "telemetry": {
     "modelAlias": "kimi",
@@ -453,10 +453,10 @@ defined via `RUMMY_MODEL_{alias}` env vars.
 }
 ```
 
-The client receives one notification per turn. `proposed` entries include `meta`
-with the patch/command/question. The client routes by key prefix: `/:edit/*` →
-diff approval, `/:run/*` → command approval, `/:ask_user/*` → question UI.
-Resolution via `run/resolve` with `{ key, action, output }`.
+The client receives one notification per turn. `proposed` entries include `type`
+(e.g., `"edit"`, `"run"`, `"ask_user"`) and `meta` with the patch/command/question.
+The client routes by `type`, not by parsing key prefixes.
+Resolution via `run/resolve` with `{ key, action: "accept"|"reject", output? }`.
 
 ### 5.3 Run Lifecycle
 

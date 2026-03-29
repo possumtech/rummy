@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import msg from "../../domain/i18n/messages.js";
+import KnownStore from "./KnownStore.js";
 
 export default class AgentLoop {
 	#db;
@@ -149,6 +150,9 @@ export default class AgentLoop {
 				} catch (err) {
 					if (err.message.includes("missing required") && loopIteration < MAX_LOOP_ITERATIONS) {
 						console.warn(`[RUMMY] Validation retry: ${err.message}`);
+						await this.#hooks.run.progress.emit({
+							sessionId, run: currentAlias, turn: loopIteration, status: "retrying",
+						});
 						continue;
 					}
 					throw err;
@@ -172,6 +176,7 @@ export default class AgentLoop {
 					unknowns: unknowns.map((u) => ({ key: u.key, value: u.value })),
 					proposed: unresolved.map((p) => ({
 						key: p.key,
+						type: KnownStore.toolFromKey(p.key) || "unknown",
 						meta: p.meta ? JSON.parse(p.meta) : null,
 					})),
 					telemetry: {
@@ -206,6 +211,9 @@ export default class AgentLoop {
 				if (openUnknowns > 0 && unknownWarnings < MAX_UNKNOWN_WARNINGS) {
 					unknownWarnings++;
 					console.warn(`[RUMMY] Unknown warning ${unknownWarnings}/${MAX_UNKNOWN_WARNINGS}: ${openUnknowns} unresolved`);
+					await this.#hooks.run.progress.emit({
+						sessionId, run: currentAlias, turn: result.turn, status: "retrying",
+					});
 					continue;
 				}
 
@@ -226,14 +234,14 @@ export default class AgentLoop {
 		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
 		const runId = runRow.id;
 
-		const { key, action, output, answer, isError } = resolution;
+		const { key, action, output } = resolution;
 
-		if (action === "accepted" || action === "pass") {
+		if (action === "accept") {
 			await this.#knownStore.resolve(runId, key, "pass", output || "");
-		} else if (action === "rejected") {
+		} else if (action === "reject") {
 			await this.#knownStore.resolve(runId, key, "warn", output || "rejected");
-		} else if (action === "responded") {
-			await this.#knownStore.resolve(runId, key, isError ? "error" : "pass", answer || output || "");
+		} else {
+			throw new Error(`Invalid resolution action: ${action}. Use 'accept' or 'reject'.`);
 		}
 
 		const unresolved = await this.#knownStore.getUnresolved(runId);
