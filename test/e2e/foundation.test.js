@@ -152,7 +152,7 @@ describe("E2E: Foundation — Happy Path Contract", () => {
 		const result = await client.call("act", {
 			model,
 			prompt:
-				'Create a new file called "HELLO.md" with the content "# Hello World".',
+				'Create a new file called "HELLO.md" with the content "# Hello World". Put it in the edits array.',
 		});
 
 		assert.strictEqual(
@@ -182,12 +182,15 @@ describe("E2E: Foundation — Happy Path Contract", () => {
 	it("ask with read should retain file and not loop on redundant reads", {
 		timeout: TIMEOUT,
 	}, async () => {
+		// Drop prior activation so the model must use read tool
+		await client.call("drop", { pattern: "hello.js" });
+
 		const turns = [];
 		client.on("run/step/completed", (p) => turns.push(p));
 
 		const result = await client.call("ask", {
 			model,
-			prompt: "Read hello.js and tell me what the greet function returns.",
+			prompt: "Use the read tool on hello.js, then tell me what the greet function returns.",
 		});
 
 		assert.ok(

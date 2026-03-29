@@ -2,46 +2,75 @@
 
 ## Remaining
 
-Nothing pending. Stabilizing for next phase.
+### Tool Calling Migration
+
+Replace self-formatted JSON with native tool calling protocol. The model writes
+natural text (with known/unknown as structured JSON in content) and calls tools
+explicitly when it needs to act.
+
+**Tools (function calls):**
+- `read(path)` — retain file in context
+- `drop(path)` — remove file from context
+- `env(command)` — read-only shell command
+- `run(command)` — mutating shell command
+- `delete(path)` — delete file
+- `edit(file, search, replace)` — modify existing file
+- `create(file, content)` — create new file
+- `summary(text)` — deliver answer/status to user
+- `prompt(question, options[])` — ask user a question
+
+**Content (model's natural response):**
+- `known` — facts, analysis, plans (structured JSON in content)
+- `unknown` — what remains to find out (structured JSON in content)
+- Free-form reasoning visible to the user
+
+**Why this fixes flakiness:**
+- Model doesn't choose between "summarize" and "edit" — it calls the edit tool
+- Tool schemas are enforced by the provider at the API level
+- No healing, no fallbacks, no "put it in the edits array" prompting
+- Same protocol across OpenRouter, Ollama, and llama-server
+
+**Migration scope:**
+- [ ] Define tool schemas (OpenAI function calling format)
+- [ ] Update LLM clients to send `tools` parameter
+- [ ] New response parser: extract `tool_calls` + content
+- [ ] Map tool calls to existing FindingsManager pipeline
+- [ ] Update system prompts (simpler — no JSON format instructions)
+- [ ] Update GBNF grammar for llama-server tool calling template
+- [ ] Update e2e tests — assertions on tool calls, not JSON structure
+- [ ] Update ARCHITECTURE.md and PLUGINS.md
 
 ## Done
 
-### Provider Hardening (2026-03-28)
-- [x] **OpenAI-compatible provider** — `openai/` prefix, OpenAiClient with GBNF grammar enforcement
-- [x] **GBNF grammar generator** — `gbnf.js` converts JSON schema to GBNF with required `<think>` preamble. Token-level enforcement + thinking preserved.
-- [x] **reasoning_content normalization** — all three providers (OpenRouter, Ollama, OpenAI-compat) normalize to `reasoning_content`
-- [x] **getContextSize fails hard** — no silent nulls. OpenRouter, Ollama, OpenAI-compat all throw on failure.
-- [x] **Run status `failed`** — uncaught errors in turn loop mark run as failed, not stuck at queued
-- [x] **Removed `hasSummary`** — stale rule caused 3 wasted retry turns. Summary is always present (schema-required).
-- [x] **Removed ajv** — contract enforced by providers (response_format, format, GBNF grammar). No validation layers.
-- [x] **Removed `|| []` fallbacks** — trust the contract. `parsed.todo` is an array or it crashes.
-- [x] **Schema descriptions carry behavior** — "only read files that exist in project", "never edit before reading". System prompt is one line.
-- [x] **mmap_size 256GB** — memory-mapped reads for DB performance
+### Provider Hardening (2026-03-29)
+- [x] **OpenAI-compatible provider** — `openai/` prefix, GBNF grammar enforcement
+- [x] **GBNF grammar generator** — required `<think>` preamble, token-level enforcement
+- [x] **reasoning_content normalization** — all providers: `reasoning`, `thinking`, `reasoning_details` merged
+- [x] **getContextSize fails hard** — no silent nulls, all providers
+- [x] **Run status `failed`** — uncaught errors mark run failed
+- [x] **Removed `hasSummary`** — stale rule causing wasted retries
+- [x] **Schema in system prompt** — always injected, all providers
+- [x] **Healing layer** — missing todo/known/unknown/summary healed with warning
+- [x] **Control character sanitization** — bare control chars escaped before JSON.parse
+- [x] **Provider model catalog** — `provider_models` table, 24h cache, startup prefetch
+- [x] **Startup alias validation** — warns about missing strict schema or reasoning
+- [x] **mmap_size 256GB** — memory-mapped reads
 
 ### Quality & Docs (2026-03-28)
-- [x] **80/80/80 coverage** — 90% lines / 81% branches / 89% functions
-- [x] **Doc-driven integration tests** — 9 files, slug convention `{section}_{topic}.test.js`, 47 tests defending §1-§8
-- [x] **12 e2e tests** — all migrated to `run` API, zero `runId` references
-- [x] **ARCHITECTURE.md** — JSON structured output, run aliases, model enforcement, new RPCs, cumulative usage, Markdown context
-- [x] **PLUGINS.md** — plain-object node API, `run` in events
+- [x] **Coverage 90/79/87** — unit + integration
+- [x] **Doc-driven integration tests** — 9 files, 55 tests defending §1-§8
+- [x] **12 e2e tests** — migrated to `run` API, spec reporter
+- [x] **Test split** — `npm test` (fast), `npm run test:e2e` (live model)
+- [x] **ARCHITECTURE.md + PLUGINS.md** — fully aligned with implementation
 
 ### Client to Server (2026-03-28)
-- [x] **Cumulative usage** — `run/step/completed` includes `cumulative`
-- [x] **Temperature state** — `setTemperature` / `getTemperature` RPCs
-- [x] **Skill query** — `getSkills` RPC
-- [x] **normalize()** — won't fix server-side
+- [x] **Cumulative usage, temperature, getSkills, normalize()** — all resolved
 
 ### Run Naming + Model Enforcement (2026-03-28)
-- [x] **Model alias enforcement** — `LlmProvider.resolve()` requires defined alias
-- [x] **Run aliases** — `alias TEXT NOT NULL UNIQUE`, auto-generated `{model}_{N}`
-- [x] **RPC contract** — `runId` → `run` everywhere
-- [x] **New RPCs** — `getRuns`, `run/rename`, `run/inject`, `getSkills`, `setTemperature`, `getTemperature`
-- [x] **FileChangePlugin** — VCS-agnostic
+- [x] **Model alias enforcement, run aliases, RPC contract, new RPCs, FileChangePlugin**
 
 ### XML Elimination (2026-03-28)
-- [x] **@xmldom/xmldom removed** — plain objects, Markdown rendering, all plugins updated
+- [x] **@xmldom/xmldom removed** — plain objects, Markdown rendering
 
 ### Bug Fixes (2026-03-28)
-- [x] **Act file creation hang** — ToolExtractor routes `search: ""` to create
-- [x] **Timeout wiring** — `RUMMY_FETCH_TIMEOUT` + `RUMMY_RPC_TIMEOUT`
-- [x] **Dead code sweep** — allForMode, unused vars, unreachable blocks
+- [x] **Act file creation hang, timeout wiring, dead code sweep**
