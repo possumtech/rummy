@@ -7,10 +7,9 @@ export default class KnownStore {
 
 	/**
 	 * Determine domain from key prefix.
-	 * /: prefix = system key. Bare path = file.
 	 */
 	static domain(key) {
-		if (key.startsWith("/:known/")) return "known";
+		if (key.startsWith("/:known/") || key === "/:unknown") return "known";
 		if (key.startsWith("/:")) return "result";
 		return "file";
 	}
@@ -25,7 +24,6 @@ export default class KnownStore {
 
 	/**
 	 * Generate the next result key for a tool call.
-	 * Returns e.g. "/:read/4", "/:edit/7".
 	 */
 	async nextResultKey(runId, toolName) {
 		const row = await this.#db.next_result_key.get({ run_id: runId });
@@ -34,14 +32,8 @@ export default class KnownStore {
 
 	/**
 	 * UPSERT an entry. Domain is derived from the key.
-	 * @param {string} runId
-	 * @param {number} turn
-	 * @param {string} key
-	 * @param {string} value
-	 * @param {string} state
-	 * @param {object|null} meta - JSON-serializable metadata (symbols, tool args, etc.)
 	 */
-	async upsert(runId, turn, key, value, state, meta = null) {
+	async upsert(runId, turn, key, value, state, { meta = null, hash = null } = {}) {
 		const domain = KnownStore.domain(key);
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
@@ -50,8 +42,25 @@ export default class KnownStore {
 			value,
 			domain,
 			state,
+			hash,
 			meta: meta ? JSON.stringify(meta) : null,
 		});
+	}
+
+	/**
+	 * Promote a key — set turn to current turn.
+	 * read() calls this. The value is already in the store.
+	 */
+	async promote(runId, key, turn) {
+		await this.#db.promote_key.run({ run_id: runId, key, turn });
+	}
+
+	/**
+	 * Demote a key — set turn to 0 (purgatory).
+	 * drop() calls this. Value stays in the store but hidden from model.
+	 */
+	async demote(runId, key) {
+		await this.#db.demote_key.run({ run_id: runId, key });
 	}
 
 	/**
@@ -74,32 +83,55 @@ export default class KnownStore {
 	}
 
 	/**
-	 * Get all entries for a run.
-	 * Returns raw rows: [{key, domain, state, value, meta}]
+	 * Get all entries for a run (raw rows).
 	 */
 	async getAll(runId) {
 		return this.#db.get_known_entries.all({ run_id: runId });
 	}
 
 	/**
-	 * Get the model-facing known result.
-	 * Projects domain:state into the model's simplified state string.
-	 * Hides file:ignore and proposed entries.
+	 * Get the model-facing known entries.
+	 *
+	 * Expansion rule:
+	 *   turn == currentTurn → expanded (value included)
+	 *   turn == 0 → collapsed (key only, no value)
+	 *   other → collapsed
+	 *
+	 * Hidden entries (not shown to model):
+	 *   file:ignore, result:proposed, internal keys (/:unknown, /:system/*, etc.)
 	 */
-	async getModelEntries(runId) {
+	async getModelEntries(runId, currentTurn = 0) {
 		const rows = await this.getAll(runId);
 		const entries = [];
+
 		for (const row of rows) {
-			const modelState = KnownStore.modelState(row.domain, row.state);
-			if (!modelState) continue;
-			entries.push({ key: row.key, state: modelState, value: row.value });
+			// Hide internal entries
+			if (row.key === "/:unknown") continue;
+			if (row.key.startsWith("/:system/")) continue;
+			if (row.key.startsWith("/:user/")) continue;
+			if (row.key.startsWith("/:reasoning/")) continue;
+
+			// Hide ignored files
+			if (row.domain === "file" && row.state === "ignore") continue;
+
+			// Hide proposed results
+			if (row.domain === "result" && row.state === "proposed") continue;
+
+			const expanded = row.turn === currentTurn && currentTurn > 0;
+			const modelState = KnownStore.#modelState(row.domain, row.state, expanded);
+
+			entries.push({
+				key: row.key,
+				state: modelState,
+				value: expanded ? row.value : "",
+			});
 		}
+
 		return entries;
 	}
 
 	/**
 	 * Get the chronological log (summary tool result).
-	 * Returns all result-domain entries ordered by id.
 	 */
 	async getLog(runId) {
 		const rows = await this.#db.get_run_log.all({ run_id: runId });
@@ -125,28 +157,28 @@ export default class KnownStore {
 	}
 
 	/**
-	 * Map internal domain:state to model-facing state string.
-	 * Returns null for entries that should be hidden from the model.
+	 * Map domain:state + expansion to model-facing state string.
 	 */
-	static modelState(domain, state) {
+	static #modelState(domain, state, expanded) {
 		if (domain === "file") {
-			if (state === "ignore") return null;
-			if (state === "symbols") return "file:symbols";
-			if (state === "readonly") return "file:readonly";
-			if (state === "active") return "file:active";
-			return "file";
+			if (expanded) {
+				if (state === "readonly") return "file:readonly";
+				if (state === "active") return "file:active";
+				return "file";
+			}
+			return "file:path";
 		}
-		if (domain === "known") return state;
+		if (domain === "known") {
+			return expanded ? "full" : "stored";
+		}
 		if (domain === "result") {
-			if (state === "proposed") return null;
 			return "stored";
 		}
-		return null;
+		return "stored";
 	}
 
 	/**
 	 * Extract tool name from a result key.
-	 * "/:read/4" -> "read", "/:edit/7" -> "edit"
 	 */
 	static toolFromKey(key) {
 		const match = key.match(/^\/:([a-z]+)\//);

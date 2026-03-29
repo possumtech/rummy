@@ -1,7 +1,9 @@
 import ToolExtractor from "./ToolExtractor.js";
 import ContextAssembler from "./ContextAssembler.js";
+import FileScanner from "./FileScanner.js";
 import ToolSchema from "../../domain/schema/ToolSchema.js";
 import PromptManager from "../../domain/prompt/PromptManager.js";
+import ProjectContext from "../../domain/project/ProjectContext.js";
 import RummyContext from "../../domain/hooks/RummyContext.js";
 
 export default class TurnExecutor {
@@ -9,12 +11,14 @@ export default class TurnExecutor {
 	#llmProvider;
 	#hooks;
 	#knownStore;
+	#fileScanner;
 
 	constructor(db, llmProvider, hooks, knownStore) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
+		this.#fileScanner = new FileScanner(knownStore, db);
 	}
 
 	async execute({
@@ -44,7 +48,14 @@ export default class TurnExecutor {
 			throw new Error(`Blocked: run has ${unresolved.length} unresolved proposed entries.`);
 		}
 
-		// Run onTurn hooks for side effects (reindex, modified file detection)
+		// Scan project files and sync to known store
+		if (!noContext && project?.path) {
+			const ctx = await ProjectContext.open(project.path);
+			const files = await ctx.getMappableFiles();
+			await this.#fileScanner.scan(project.path, project.id, files, turn);
+		}
+
+		// Run onTurn hooks
 		const hookRoot = {
 			tag: "turn", attrs: {}, content: null,
 			children: [
@@ -69,7 +80,7 @@ export default class TurnExecutor {
 
 		// Assemble context from known store
 		const systemPrompt = await PromptManager.getSystemPrompt(type);
-		const knownEntries = await this.#knownStore.getModelEntries(currentRunId);
+		const knownEntries = await this.#knownStore.getModelEntries(currentRunId, turn);
 		const summaryLog = await this.#knownStore.getLog(currentRunId);
 		const unknownEntry = (await this.#knownStore.getAll(currentRunId))
 			.find((r) => r.key === "/:unknown");
@@ -153,19 +164,28 @@ export default class TurnExecutor {
 
 		// --- SERVER EXECUTION ORDER ---
 
-		// Step 1: Execute action tools, generate result keys
+		// Step 1: Execute action tools
 		for (const call of actionCalls) {
+			if (call.name === "read") {
+				await this.#knownStore.promote(currentRunId, call.args.key, turn);
+				continue;
+			}
+			if (call.name === "drop") {
+				await this.#knownStore.demote(currentRunId, call.args.key);
+				continue;
+			}
+
+			// env, run, edit, delete — generate result keys
 			const resultKey = await this.#knownStore.nextResultKey(currentRunId, call.name);
 			call.resultKey = resultKey;
 
 			const isProposed = call.name === "edit" || call.name === "run" || call.name === "delete";
-			const meta = { ...call.args };
 
 			await this.#knownStore.upsert(
 				currentRunId, turn, resultKey,
 				"",
 				isProposed ? "proposed" : "pass",
-				meta,
+				{ meta: { ...call.args } },
 			);
 		}
 
@@ -177,7 +197,7 @@ export default class TurnExecutor {
 				currentRunId, turn, resultKey,
 				"",
 				"proposed",
-				{ ...promptCall.args },
+				{ meta: { ...promptCall.args } },
 			);
 		}
 

@@ -1,13 +1,16 @@
-/**
- * FileScanPlugin: Scans disk for file changes and updates known_entries.
- * TODO: Implement disk scan with hash comparison and symbol extraction.
- */
+import ProjectContext from "../../../domain/project/ProjectContext.js";
+
 export default class FileScanPlugin {
 	static register(hooks) {
 		hooks.onTurn(async (rummy) => {
 			if (!rummy.project?.path || rummy.noContext) return;
-			// File scanning happens here once FileScanner is built.
-			// For now, files must be bootstrapped manually or via client RPCs.
+			// File scanning is triggered by TurnExecutor before context assembly.
+			// This hook is reserved for future per-turn file operations.
+		});
+
+		hooks.project.init.completed.on(async (payload) => {
+			// Initial file scan happens on first run creation, not on init.
+			// Init just sets up the project record.
 		});
 	}
 }

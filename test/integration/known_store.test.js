@@ -47,7 +47,10 @@ describe("KnownStore integration", () => {
 			assert.strictEqual(KnownStore.domain("/:read/4"), "result");
 			assert.strictEqual(KnownStore.domain("/:edit/7"), "result");
 			assert.strictEqual(KnownStore.domain("/:summary/1"), "result");
-			assert.strictEqual(KnownStore.domain("/:unknown"), "result");
+		});
+
+		it("/:unknown is known domain (special case)", () => {
+			assert.strictEqual(KnownStore.domain("/:unknown"), "known");
 		});
 	});
 
@@ -96,7 +99,7 @@ describe("KnownStore integration", () => {
 		});
 
 		it("inserts a result entry", async () => {
-			await store.upsert(RUN_ID, 1, "/:read/1", "file contents", "pass", { command: "read src/app.js" });
+			await store.upsert(RUN_ID, 1, "/:read/1", "file contents", "pass", { meta: { command: "read src/app.js" } });
 			const all = await store.getAll(RUN_ID);
 			const entry = all.find((e) => e.key === "/:read/1");
 			assert.ok(entry);
@@ -136,7 +139,7 @@ describe("KnownStore integration", () => {
 
 	describe("resolve", () => {
 		it("changes proposed to pass with output", async () => {
-			await store.upsert(RUN_ID, 1, "/:edit/1", "", "proposed", { file: "src/app.js", search: "old", replace: "new" });
+			await store.upsert(RUN_ID, 1, "/:edit/1", "", "proposed", { meta: { file: "src/app.js", search: "old", replace: "new" } });
 			const unresolved = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(unresolved.length, 1);
 			assert.strictEqual(unresolved[0].key, "/:edit/1");
@@ -152,7 +155,7 @@ describe("KnownStore integration", () => {
 		});
 
 		it("changes proposed to warn on rejection", async () => {
-			await store.upsert(RUN_ID, 1, "/:run/1", "", "proposed", { command: "npm test" });
+			await store.upsert(RUN_ID, 1, "/:run/1", "", "proposed", { meta: { command: "npm test" } });
 			await store.resolve(RUN_ID, "/:run/1", "warn", "rejected by user");
 
 			const all = await store.getAll(RUN_ID);
@@ -162,51 +165,112 @@ describe("KnownStore integration", () => {
 	});
 
 	describe("model projection", () => {
+		const CURRENT_TURN = 5;
+
 		it("hides file:ignore entries", async () => {
-			await store.upsert(RUN_ID, 0, "node_modules/x.js", "", "ignore");
-			const model = await store.getModelEntries(RUN_ID);
+			await store.upsert(RUN_ID, CURRENT_TURN, "node_modules/x.js", "", "ignore");
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
 			assert.ok(!model.find((e) => e.key === "node_modules/x.js"));
 		});
 
 		it("hides proposed entries", async () => {
-			await store.upsert(RUN_ID, 2, "/:edit/99", "", "proposed", { file: "x.js" });
-			const model = await store.getModelEntries(RUN_ID);
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:edit/99", "", "proposed", { meta: { file: "x.js" } });
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
 			assert.ok(!model.find((e) => e.key === "/:edit/99"));
-			// Clean up
 			await store.resolve(RUN_ID, "/:edit/99", "pass", "done");
 		});
 
-		it("maps file states correctly", async () => {
-			await store.upsert(RUN_ID, 0, "readme.md", "# Hi", "readonly");
-			await store.upsert(RUN_ID, 0, "main.js", "export default {}", "active");
-			await store.upsert(RUN_ID, 0, "utils.js", "add(a,b)", "symbols");
+		it("expanded files (turn == currentTurn) show full value", async () => {
+			await store.upsert(RUN_ID, CURRENT_TURN, "readme.md", "# Hi", "readonly");
+			await store.upsert(RUN_ID, CURRENT_TURN, "main.js", "export default {}", "active");
 
-			const model = await store.getModelEntries(RUN_ID);
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
 			const readme = model.find((e) => e.key === "readme.md");
 			const main = model.find((e) => e.key === "main.js");
-			const utils = model.find((e) => e.key === "utils.js");
 
 			assert.strictEqual(readme.state, "file:readonly");
+			assert.strictEqual(readme.value, "# Hi");
 			assert.strictEqual(main.state, "file:active");
-			assert.strictEqual(utils.state, "file:symbols");
+			assert.strictEqual(main.value, "export default {}");
 		});
 
-		it("maps file:full to 'file'", async () => {
-			const model = await store.getModelEntries(RUN_ID);
+		it("collapsed files (turn == 0) show as file:path with empty value", async () => {
+			await store.upsert(RUN_ID, 0, "utils.js", "const add = (a,b) => a+b;", "full");
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const utils = model.find((e) => e.key === "utils.js");
+
+			assert.strictEqual(utils.state, "file:path");
+			assert.strictEqual(utils.value, "");
+		});
+
+		it("expanded file:full shows as 'file'", async () => {
+			await store.upsert(RUN_ID, CURRENT_TURN, "src/app.js", "const x = 1;", "full");
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
 			const app = model.find((e) => e.key === "src/app.js");
 			assert.strictEqual(app.state, "file");
+			assert.strictEqual(app.value, "const x = 1;");
 		});
 
-		it("maps result states to 'stored'", async () => {
-			const model = await store.getModelEntries(RUN_ID);
+		it("result entries always show as stored with empty value", async () => {
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:read/1", "file contents", "pass");
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
 			const read = model.find((e) => e.key === "/:read/1");
 			assert.strictEqual(read.state, "stored");
 		});
 
-		it("maps known:full to 'full'", async () => {
-			const model = await store.getModelEntries(RUN_ID);
+		it("expanded known shows as full with value", async () => {
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:known/db_type", "PostgreSQL", "full");
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
 			const known = model.find((e) => e.key === "/:known/db_type");
 			assert.strictEqual(known.state, "full");
+			assert.strictEqual(known.value, "PostgreSQL");
+		});
+
+		it("collapsed known shows as stored with empty value", async () => {
+			await store.upsert(RUN_ID, 0, "/:known/old_fact", "stale info", "full");
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			const old = model.find((e) => e.key === "/:known/old_fact");
+			assert.strictEqual(old.state, "stored");
+			assert.strictEqual(old.value, "");
+		});
+
+		it("hides internal keys (/:unknown, /:system/*, /:user/*, /:reasoning/*)", async () => {
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:unknown", "[\"test\"]", "full");
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:system/5", "prompt text", "info");
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:user/5", "user text", "info");
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:reasoning/5", "thinking...", "info");
+
+			const model = await store.getModelEntries(RUN_ID, CURRENT_TURN);
+			assert.ok(!model.find((e) => e.key === "/:unknown"));
+			assert.ok(!model.find((e) => e.key === "/:system/5"));
+			assert.ok(!model.find((e) => e.key === "/:user/5"));
+			assert.ok(!model.find((e) => e.key === "/:reasoning/5"));
+		});
+	});
+
+	describe("promote and demote", () => {
+		it("promote sets turn to current", async () => {
+			await store.upsert(RUN_ID, 0, "src/promoted.js", "content", "full");
+			let model = await store.getModelEntries(RUN_ID, 10);
+			let entry = model.find((e) => e.key === "src/promoted.js");
+			assert.strictEqual(entry.state, "file:path");
+			assert.strictEqual(entry.value, "");
+
+			await store.promote(RUN_ID, "src/promoted.js", 10);
+			model = await store.getModelEntries(RUN_ID, 10);
+			entry = model.find((e) => e.key === "src/promoted.js");
+			assert.strictEqual(entry.state, "file");
+			assert.strictEqual(entry.value, "content");
+		});
+
+		it("demote sets turn to 0", async () => {
+			await store.upsert(RUN_ID, 10, "src/demoted.js", "content", "full");
+			await store.demote(RUN_ID, "src/demoted.js");
+
+			const model = await store.getModelEntries(RUN_ID, 10);
+			const entry = model.find((e) => e.key === "src/demoted.js");
+			assert.strictEqual(entry.state, "file:path");
+			assert.strictEqual(entry.value, "");
 		});
 	});
 

@@ -261,7 +261,7 @@ export default class AgentLoop {
 
 		const isActive = runRow.status === "running" || runRow.status === "queued";
 		const resultKey = await this.#knownStore.nextResultKey(runRow.id, "inject");
-		await this.#knownStore.upsert(runRow.id, 0, resultKey, message, "info", { source: "user" });
+		await this.#knownStore.upsert(runRow.id, 0, resultKey, message, "info", { meta: { source: "user" } });
 
 		if (isActive) {
 			return { run: runAlias, status: runRow.status, injected: "queued" };
