@@ -1,31 +1,13 @@
-import ProjectContext from "../../../domain/project/ProjectContext.js";
-import RepoMap from "../../../domain/repomap/RepoMap.js";
-
-export default class RepoMapPlugin {
+/**
+ * FileScanPlugin: Scans disk for file changes and updates known_entries.
+ * TODO: Implement disk scan with hash comparison and symbol extraction.
+ */
+export default class FileScanPlugin {
 	static register(hooks) {
-		// Re-index on each turn (picks up file changes since last turn)
 		hooks.onTurn(async (rummy) => {
-			const { project, db } = rummy;
-			if (!project?.path) return;
-			if (rummy.noContext) return;
-
-			const ctx = await ProjectContext.open(project.path);
-			const repoMap = new RepoMap(ctx, db, project.id);
-			await repoMap.updateIndex();
-		});
-
-		hooks.project.init.completed.on(async (payload) => {
-			const { projectId, projectPath, db } = payload;
-			const ctx = await ProjectContext.open(projectPath);
-			const repoMap = new RepoMap(ctx, db, projectId);
-			await repoMap.updateIndex();
-		});
-
-		hooks.project.files.update.completed.on(async (payload) => {
-			const { projectId, projectPath, db } = payload;
-			const ctx = await ProjectContext.open(projectPath);
-			const repoMap = new RepoMap(ctx, db, projectId);
-			await repoMap.updateIndex();
+			if (!rummy.project?.path || rummy.noContext) return;
+			// File scanning happens here once FileScanner is built.
+			// For now, files must be bootstrapped manually or via client RPCs.
 		});
 	}
 }

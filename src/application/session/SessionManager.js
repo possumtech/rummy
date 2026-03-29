@@ -1,31 +1,17 @@
 import crypto from "node:crypto";
 import { isAbsolute, relative } from "node:path";
 import ProjectContext from "../../domain/project/ProjectContext.js";
+import KnownStore from "../agent/KnownStore.js";
 
 export default class SessionManager {
 	#db;
 	#hooks;
+	#knownStore;
 
 	constructor(db, hooks) {
 		this.#db = db;
 		this.#hooks = hooks;
-	}
-
-	async #getPromotionMap(projectId) {
-		const files = await this.#db.get_project_repo_map.all({
-			project_id: projectId,
-		});
-		const map = new Map();
-		for (const f of files) {
-			if (!map.has(f.path)) {
-				map.set(f.path, {
-					client_constraint: f.client_constraint,
-					has_agent_promotion: f.has_agent_promotion,
-					has_editor_promotion: f.has_editor_promotion,
-				});
-			}
-		}
-		return map;
+		this.#knownStore = new KnownStore(db);
 	}
 
 	async init(projectPath, projectName, clientId, projectBufferFiles = []) {
@@ -55,8 +41,6 @@ export default class SessionManager {
 			client_id: clientId,
 		});
 
-		await this.syncBuffered(projectId, projectBufferFiles);
-
 		const { default: GitProvider } = await import(
 			"../../infrastructure/filesystem/GitProvider.js"
 		);
@@ -78,71 +62,28 @@ export default class SessionManager {
 	}
 
 	async syncBuffered(projectId, files) {
-		await this.#db.reset_editor_promotions.run({ project_id: projectId });
-		for (const path of files) {
-			await this.#db.upsert_editor_promotion.run({
-				project_id: projectId,
-				path,
-			});
+		// Buffer sync: mark client-active files across all active runs
+		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
+		for (const run of runs) {
+			for (const path of files) {
+				await this.#knownStore.upsert(run.id, 0, path, "", "active");
+			}
 		}
 	}
 
 	async getFiles(projectPath) {
-		const projects = await this.#db.get_project_by_path.all({
-			path: projectPath,
-		});
+		const projects = await this.#db.get_project_by_path.all({ path: projectPath });
 		if (projects.length === 0) return [];
 		const projectId = projects[0].id;
 
 		const ctx = await ProjectContext.open(projectPath);
 		const mappable = await ctx.getMappableFiles();
 
-		// Also include files with client promotions that aren't in git
-		const clientPromos = await this.#db.get_client_promotions.all({
-			project_id: projectId,
-		});
-		const allPaths = new Set(mappable);
-		for (const p of clientPromos) allPaths.add(p.path);
-
-		const results = [];
-		for (const relPath of allPaths) {
-			results.push(await this.fileStatus(projectId, relPath));
-		}
-		return results;
+		return mappable.map((path) => ({ path, fidelity: "path" }));
 	}
 
 	async fileStatus(projectId, path) {
-		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		if (!project) throw new Error("Project not found");
-
-		const dbFile = await this.#db.get_repo_map_file.get({
-			project_id: projectId,
-			path,
-		});
-
-		// Check client promotion directly (works even for unindexed files)
-		const clientPromos = await this.#db.get_client_promotions.all({
-			project_id: projectId,
-		});
-		const clientPromo = clientPromos.find((p) => p.path === path);
-
-		let fidelity = "path";
-		if (clientPromo?.constraint_type === "excluded") fidelity = "excluded";
-		else if (clientPromo?.constraint_type === "full:readonly")
-			fidelity = "full:readonly";
-		else if (clientPromo?.constraint_type === "full") fidelity = "full";
-		else if (dbFile?.has_agent_promotion) fidelity = "full";
-		else if (dbFile?.has_editor_promotion) fidelity = "full:readonly";
-
-		return {
-			path,
-			fidelity,
-			client_constraint: clientPromo?.constraint_type || null,
-			has_agent_promotion: !!dbFile?.has_agent_promotion,
-			has_editor_promotion: !!dbFile?.has_editor_promotion,
-			size: dbFile?.size || 0,
-			last_indexed_at: dbFile?.last_indexed_at || null,
-		};
+		return { path, fidelity: "path" };
 	}
 
 	async #normalizePath(projectId, path) {
@@ -152,111 +93,57 @@ export default class SessionManager {
 		return relative(project.path, path);
 	}
 
-	async activate(projectId, pattern) {
+	async #setFileState(projectId, pattern, state) {
 		const path = await this.#normalizePath(projectId, pattern);
 		if (!path) return { status: "ok" };
+
 		await this.#hooks.project.files.update.started.emit({
-			projectId,
-			pattern: path,
-			constraint: "full",
+			projectId, pattern: path, constraint: state,
 		});
 
-		await this.#db.upsert_client_promotion.run({
-			project_id: projectId,
-			path,
-			constraint_type: "full",
-		});
-		await this.#db.upsert_repo_map_file.get({
-			project_id: projectId,
-			path,
-			hash: null,
-			size: null,
-			symbol_tokens: 0,
-		});
+		// Update across all active runs
+		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
+		for (const run of runs) {
+			await this.#knownStore.upsert(run.id, 0, path, "", state);
+		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
 			pattern,
-			constraint: "full",
+			constraint: state,
 			db: this.#db,
 		});
 
 		return { status: "ok" };
+	}
+
+	async activate(projectId, pattern) {
+		return this.#setFileState(projectId, pattern, "active");
 	}
 
 	async readOnly(projectId, pattern) {
-		const path = await this.#normalizePath(projectId, pattern);
-		await this.#hooks.project.files.update.started.emit({
-			projectId,
-			pattern: path,
-			constraint: "full:readonly",
-		});
-
-		await this.#db.upsert_client_promotion.run({
-			project_id: projectId,
-			path,
-			constraint_type: "full:readonly",
-		});
-		await this.#db.upsert_repo_map_file.get({
-			project_id: projectId,
-			path,
-			hash: null,
-			size: null,
-			symbol_tokens: 0,
-		});
-
-		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		await this.#hooks.project.files.update.completed.emit({
-			projectId,
-			projectPath: project.path,
-			pattern,
-			constraint: "full:readonly",
-			db: this.#db,
-		});
-
-		return { status: "ok" };
+		return this.#setFileState(projectId, pattern, "readonly");
 	}
 
 	async ignore(projectId, pattern) {
-		const path = await this.#normalizePath(projectId, pattern);
-		await this.#hooks.project.files.update.started.emit({
-			projectId,
-			pattern: path,
-			constraint: "excluded",
-		});
-
-		await this.#db.upsert_client_promotion.run({
-			project_id: projectId,
-			path,
-			constraint_type: "excluded",
-		});
-
-		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		await this.#hooks.project.files.update.completed.emit({
-			projectId,
-			projectPath: project.path,
-			pattern,
-			constraint: "excluded",
-			db: this.#db,
-		});
-
-		return { status: "ok" };
+		return this.#setFileState(projectId, pattern, "ignore");
 	}
 
 	async drop(projectId, pattern) {
 		const path = await this.#normalizePath(projectId, pattern);
+		if (!path) return { status: "ok" };
+
 		await this.#hooks.project.files.update.started.emit({
-			projectId,
-			pattern: path,
-			constraint: null,
+			projectId, pattern: path, constraint: null,
 		});
 
-		await this.#db.delete_client_promotion.run({
-			project_id: projectId,
-			pattern: path,
-		});
+		// Remove file entry from all active runs
+		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
+		for (const run of runs) {
+			await this.#knownStore.remove(run.id, path);
+		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
@@ -272,10 +159,7 @@ export default class SessionManager {
 
 	async startRun(sessionId, runConfig) {
 		const runId = crypto.randomUUID();
-
-		const config = await this.#hooks.run.config.filter(runConfig, {
-			sessionId,
-		});
+		const config = await this.#hooks.run.config.filter(runConfig, { sessionId });
 
 		const modelAlias = config.model || process.env.RUMMY_MODEL_DEFAULT;
 		const prefix = `${modelAlias}_`;
@@ -292,10 +176,7 @@ export default class SessionManager {
 		});
 
 		await this.#hooks.run.started.emit({
-			runId,
-			alias,
-			sessionId,
-			type: config.type,
+			runId, alias, sessionId, type: config.type,
 		});
 		return { runId, alias };
 	}
@@ -320,17 +201,14 @@ export default class SessionManager {
 	}
 
 	async getSkills(sessionId) {
-		const rows = await this.#db.get_session_skills.all({
-			session_id: sessionId,
-		});
+		const rows = await this.#db.get_session_skills.all({ session_id: sessionId });
 		return rows.map((r) => r.name);
 	}
 
 	async setTemperature(sessionId, temperature) {
 		const clamped = Math.max(0, Math.min(2, temperature));
 		await this.#db.update_session_temperature.run({
-			id: sessionId,
-			temperature: clamped,
+			id: sessionId, temperature: clamped,
 		});
 		return clamped;
 	}

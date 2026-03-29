@@ -50,8 +50,7 @@ export default class CoreRpcPlugin {
 		r.register("fileStatus", {
 			handler: async (params, ctx) =>
 				ctx.projectAgent.fileStatus(ctx.projectId, params.path),
-			description:
-				"File promotion state. Returns { path, fidelity, client_constraint, has_agent_promotion, has_editor_promotion }.",
+			description: "File state in the known store. Returns { path, fidelity }.",
 			params: { path: "string — relative file path" },
 			requiresInit: true,
 		});

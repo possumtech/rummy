@@ -59,39 +59,9 @@ CREATE TABLE IF NOT EXISTS turns (
 );
 CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
 
--- Repo Map: File Metadata (indexing infrastructure — bootstrap reads from this)
-CREATE TABLE IF NOT EXISTS repo_map_files (
-	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE
-	, path TEXT NOT NULL
-	, hash TEXT
-	, size INTEGER DEFAULT 0
-	, symbol_tokens INTEGER DEFAULT 0
-	, is_root BOOLEAN GENERATED ALWAYS AS (path NOT LIKE '%/%') VIRTUAL
-	, last_indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	, UNIQUE (project_id, path)
-);
-
-CREATE TABLE IF NOT EXISTS repo_map_tags (
-	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, file_id INTEGER NOT NULL REFERENCES repo_map_files (id) ON DELETE CASCADE
-	, name TEXT NOT NULL
-	, type TEXT NOT NULL
-	, params TEXT
-	, line INTEGER
-	, source TEXT DEFAULT 'hd'
-);
-
 -- INDEXES
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
-CREATE INDEX IF NOT EXISTS idx_repo_map_files_project ON repo_map_files (
-	project_id
-);
-CREATE INDEX IF NOT EXISTS idx_repo_map_tags_file_name ON repo_map_tags (
-	file_id, name
-);
-CREATE INDEX IF NOT EXISTS idx_repo_map_tags_name ON repo_map_tags (name);
 
 -- Known K/V Store: the unified state machine
 -- Files, knowledge, tool results, audit — everything is a keyed entry.
@@ -104,6 +74,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, value TEXT NOT NULL DEFAULT ''
 	, domain TEXT NOT NULL CHECK (domain IN ('file', 'known', 'result'))
 	, state TEXT NOT NULL
+	, hash TEXT
 	, meta JSON
 	, relevance INTEGER NOT NULL DEFAULT 0
 	, write_count INTEGER NOT NULL DEFAULT 1
