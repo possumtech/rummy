@@ -2,7 +2,7 @@
 
 This document is the authoritative reference for Rummy's design. The system prompt
 files (`system.ask.md`, `system.act.md`) define model-facing behavior. This document
-defines everything else: data model, protocol, context management, and testing.
+defines everything else: data model, protocol, context management, plugins, and testing.
 
 ---
 
@@ -35,6 +35,8 @@ CREATE TABLE known_entries (
         OR (domain = 'result' AND state IN ('proposed', 'pass', 'info', 'warn', 'error', 'summary'))
     )
 );
+CREATE UNIQUE INDEX idx_known_entries_run_key ON known_entries (run_id, key);
+CREATE INDEX idx_known_entries_domain_state ON known_entries (run_id, domain, state);
 ```
 
 ### 1.2 Domains & States
@@ -49,14 +51,18 @@ CREATE TABLE known_entries (
 | `ignore` | Excluded from context | *(hidden)* |
 | `symbols` | Signature summaries only | `file:symbols` |
 
-**Known domain** — model-emitted knowledge (`/:known/*` keys):
+**Known domain** — model-emitted knowledge (`/:known/*` keys) and internal state:
 
 | State | Meaning | Model sees |
 |-------|---------|------------|
 | `full` | Value loaded | `full` |
 | `stored` | Key exists, value not in context | `stored` |
 
-**Result domain** — tool call results (`/:[tool]/*` keys):
+The special key `/:unknown` uses domain `known`, state `full`. It stores the
+previous turn's unknown list as a JSON array. Not a `/:known/*` key — it's an
+internal mechanism for persisting unknowns between turns.
+
+**Result domain** — tool call results, summaries, and notifications (`/:[tool]/*` keys):
 
 | State | Meaning | Model sees |
 |-------|---------|------------|
@@ -69,7 +75,8 @@ CREATE TABLE known_entries (
 
 The model sees a simplified projection. The server maps `{domain, state}` to a
 model-facing state string at query time. `file:ignore` and `proposed` entries
-are hidden from the model entirely.
+are hidden from the model entirely. All resolved result entries appear as `stored`
+— the model can `read` them to recall the full value.
 
 ### 1.3 Key Namespaces
 
@@ -83,15 +90,20 @@ relative file path starts with `/:`, so the prefix is unambiguous. Regex: `/^\/:
 | `/:[tool]/` | Tool result keys | `/:read/4`, `/:edit/7`, `/:run/12`, `/:summary/3` |
 
 Result keys use the tool name as prefix and a sequential integer per run.
-Tracked by `runs.next_result_seq`.
+Tracked by `runs.next_result_seq`. Self-documenting: `/:read/4` tells you
+it was the 4th result key generated, produced by the `read` tool.
 
 Knowledge key constraint: `^/:known/[a-z0-9_]+$`. Short lowercase slugs.
-Prefer descriptive names over abbreviations.
+Prefer descriptive names over abbreviations — `/:known/oauth2_token_rotation`
+over `/:known/auth_rot`.
 
 ### 1.4 UPSERT Semantics
 
 The known store uses INSERT OR REPLACE keyed on `(run_id, key)`. Each write
-increments `write_count`. Empty value on a `/:known/*` key = delete signal.
+increments `write_count` (useful for detecting oscillation in future diagnostics).
+
+Delete convention: model sends `{key: "/:known/stale_thing", value: ""}`.
+Empty value = delete the entry. Only applies to `/:known/*` keys.
 
 ### 1.5 State Lock
 
@@ -110,12 +122,28 @@ BEGIN
 END;
 ```
 
+### 1.6 Resolution
+
+When the client resolves a proposed entry via `run/resolve`:
+
+- **Accept** → state changes from `proposed` to `pass`. Value updated with output.
+- **Reject** → state changes from `proposed` to `warn`. Value updated with rejection reason.
+- **Error** → state changes from `proposed` to `error`. Value updated with error details.
+
+The model sees the resolved entry as `stored` next turn. It can `read` the key
+to see the full resolution output.
+
+After all proposed entries are resolved:
+- Any `warn` (rejection) → server returns `{ status: "resolved" }`, client decides next step.
+- All `pass` → server auto-resumes the run (model needs a continuation turn).
+- No actionable results → run completes.
+
 ---
 
 ## 2. Native Tool Calling
 
 The model communicates exclusively through tool calls. No structured JSON in the
-content body. No message history.
+content body. No message history. Content is suppressed.
 
 ### 2.1 Tools
 
@@ -142,17 +170,44 @@ content body. No message history.
 Tool definitions live in `src/domain/schema/tools.ask.json` and `tools.act.json`.
 All tools use `strict: true` for constrained decoding on supporting providers.
 
-### 2.2 Tool Results
+### 2.2 How Tools Become Known Entries
 
-**Known tool result:** `[{key, state, value}]` — the full known index.
+There are no separate "tool result" objects. Every tool call writes to the known
+store. The model sees results as entries in the known array next turn.
 
-**Summary tool result:** `[{tool, target, status, key, value}]` — chronological
-log of all tool calls and summaries across the entire run. Built from
-`known_entries WHERE domain = 'result' ORDER BY id`.
+**`known`** — each `{key, value}` entry is UPSERTed into the store with domain
+`known`, state `full`. Empty value deletes the entry.
 
-**Unknown tool result:** The array as received.
+**`summary`** — creates a `/:summary/N` entry with domain `result`, state `summary`,
+and the text as value.
 
-**Action tool results:** `{level}: {target} # {result} [/:tool/N]` template.
+**`unknown`** — stores the items array as `/:unknown` (domain `known`, state `full`).
+If not called, `/:unknown` is deleted.
+
+**`read`** — for file keys: reads file from disk, updates the known entry value with
+file contents, sets state to `full`. For `/:known/*` or `/:[tool]/*` keys: promotes
+state to `full` (value already stored, just making it visible). Creates a
+`/:read/N` result entry for the log.
+
+**`drop`** — for file keys: demotes to `symbols` (if symbols available) or removes
+the entry. For system keys: sets state to `stored` (clears value from context but
+key remains discoverable). No result key generated (not a logged action).
+
+**`env`** — creates a `/:env/N` entry with domain `result`, state `pass`, and
+command output as value. Target is the command string.
+
+**`edit`** — creates a `/:edit/N` entry with domain `result`, state `proposed`.
+Value contains the edit args (file, search, replace). Blocks the turn loop until
+the client resolves it.
+
+**`run`** — creates a `/:run/N` entry with domain `result`, state `proposed`.
+Blocks until resolved. On resolution, value is updated with command output.
+
+**`delete`** — creates a `/:delete/N` entry with domain `result`, state `proposed`.
+Blocks until resolved.
+
+**`prompt`** — creates a `/:prompt/N` entry with domain `result`, state `proposed`.
+Blocks until user responds. On resolution, value is the selected answer.
 
 ### 2.3 Namespace Routing
 
@@ -160,58 +215,70 @@ log of all tool calls and summaries across the entire run. Built from
 
 | Tool | File path key | `/:known/*` key | `/:[tool]/*` key |
 |------|---------------|-----------------|------------------|
-| `read` | Read from disk, promote to `file:full` | Promote to `known:full` | Promote to `result:pass` (recall) |
-| `drop` | Demote to `file:symbols` or `file:stored` | Demote to `known:stored` | Demote to `result:stored` |
+| `read` | Read from disk, set to `file:full` | Set to `known:full` | Set to `result:pass` (recall) |
+| `drop` | Demote to `file:symbols` if available, else remove | Set to `known:stored` | Set to `result:stored` |
 | `delete` | Delete from disk, remove entry | Remove entry | Remove entry |
 
 ### 2.4 Enforcement Layers
 
 1. **Tool definitions** — `strict: true` constrained decoding on tool argument schemas.
-2. **Content suppression** — `tool_choice: "required"` + empty-object `response_format` shim.
+2. **Content suppression** — `tool_choice: "required"` + empty-object `response_format` shim. If the model produces content, it's forced to `{}`.
 3. **Prompt instructions + examples** — system prompt describes tool purposes and constraints.
-4. **Server-side validation** — confirms `known` and `summary` present. Rejects and retries.
+4. **Server-side validation** — confirms `known` and `summary` are present. Rejects and retries.
 
 ### 2.5 Server Execution Order
 
 The model emits all tool calls as a parallel batch. The server processes in strict order:
 
-1. **Execute action tools** — `read`, `drop`, `env`, `run`, `delete`, `edit`, `prompt`. Generate result keys (`/:read/1`, `/:edit/2`). Store in known store.
-2. **Process unknown** — store as `/:unknown` entry for next turn.
-3. **Build known result** — UPSERT model's `/:known/*` entries, query full store.
-4. **Build summary result** — store summary entry, query full result-domain log.
-5. **Send tool results** — one per tool call, linked by `tool_call_id`.
+1. **Execute action tools** — `read`, `drop`, `env`, `run`, `delete`, `edit`, `prompt`. Generate result keys (`/:read/1`, `/:edit/2`). Write entries to known store. Non-proposed tools (read, drop, env) resolve immediately. Proposed tools (edit, run, delete, prompt) block the loop.
+2. **Process unknown** — store as `/:unknown` entry for next turn. Delete `/:unknown` if model didn't call `unknown`.
+3. **UPSERT model's known entries** — process each `{key, value}` from the `known` tool call. Empty value = delete.
+4. **Store summary** — create `/:summary/N` entry.
+5. **Done** — results are now in the known store. Next turn's context assembly reads from it.
 
 ---
 
 ## 3. Model Context
 
-No message history. The model's entire context is assembled each turn from:
+No message history. The model's entire context is assembled each turn from the
+known store and system prompt. Two messages: `system` + `user`.
 
-1. **System prompt** — role description + behavioral constraints
-2. **Known entries** — `[{key, state, value}]` embedded in system prompt as JSON
-3. **Unknown list** — previous turn's unknown items
-4. **Summary log** — `[{tool, target, status, key, value}]` full run history
-5. **User message** — current input
+### 3.1 System Message Contents
 
-Two messages total: `system` + `user`. The known store and summary log are the
-model's memory. They are load-bearing from turn 1.
+1. **Role description** — from `system.ask.md` or `system.act.md`
+2. **Summary log** — all result-domain entries ordered by `id`, formatted as `[{tool, target, status, key, value}]`. Summary entries have full text; others have empty value (recallable). The `tool` field is derived from key prefix.
+3. **Unknown list** — previous turn's `/:unknown` value, if present
+4. **Known entries** — `[{key, state, value}]` with model-facing state projection. Includes file keys, `/:known/*` entries, and `/:[tool]/*` result keys. `file:ignore` and `proposed` entries are hidden.
 
-### 3.1 File Bootstrap
+### 3.2 User Message
 
-At run start, the server populates `known_entries` from the repo map:
+The current user input (prompt).
 
-| Source | Domain | State |
-|--------|--------|-------|
-| Files in context (full content) | `file` | `full` |
-| Client-promoted readonly | `file` | `readonly` |
-| Client-promoted active | `file` | `active` |
-| Client-excluded | `file` | `ignore` |
-| Root files or heat-promoted | `file` | `symbols` |
-| Everything else | `file` | `symbols` or hidden |
+### 3.3 File Bootstrap
+
+At run start, the server populates `known_entries` from the repo map. This is how
+files enter the known store — the model never sees a separate file listing.
+
+| Source | Domain | State | Value |
+|--------|--------|-------|-------|
+| Client-promoted `activate` | `file` | `active` | Full file contents |
+| Client-promoted `readOnly` | `file` | `readonly` | Full file contents |
+| Client-excluded `ignore` | `file` | `ignore` | Empty |
+| Agent-read (from `read` tool) | `file` | `full` | Full file contents |
+| Root file or heat-promoted | `file` | `symbols` | `name(params)` per line |
+| Other indexed files | Not bootstrapped — discoverable via `read` if model knows the path |
 
 The repo map tables (`repo_map_files`, `repo_map_tags`, `repo_map_references`)
 serve as indexing infrastructure for the bootstrap. They are read-only from the
-known store's perspective — the known store is what the model sees.
+known store's perspective.
+
+### 3.4 Heat-Based Promotion
+
+Files at `symbols` state are selected based on **heat** — cross-references to
+`full`/`active` files. Heat is computed from `repo_map_references` during bootstrap.
+
+Formula: `heat = (cross_reference_count * 2) + is_root`. Files with `heat >= 2`
+are bootstrapped at `symbols`. Subject to context budget.
 
 ---
 
@@ -221,7 +288,7 @@ known store's perspective — the known store is what the model sees.
 |-------|----------|----------|
 | **Project** | Until deleted or re-indexed | File index, symbols, references |
 | **Run** | Open-ended conversation | `known_entries`, turns, turn elements |
-| **Turn** | Single LLM request/response | Tool calls and their results |
+| **Turn** | Single LLM request/response | Tool calls stored in turn elements |
 
 ### 4.1 Project Scope
 
@@ -229,11 +296,15 @@ known store's perspective — the known store is what the model sees.
 - `repo_map_tags` — symbol definitions extracted by ctags
 - `repo_map_references` — symbol cross-references for heat calculation
 
+These are indexing infrastructure. The model never sees them directly — they
+feed the bootstrap that populates the known store.
+
 ### 4.2 Run Scope
 
 - `known_entries` — the unified state machine. All model-facing state.
 - `turns` — turn metadata (sequence, token usage)
-- `turn_elements` — turn audit trail (tool calls, reasoning)
+- `turn_elements` — audit trail (tool calls, reasoning content, meta)
+- `runs.next_result_seq` — sequential counter for result key generation
 
 ---
 
@@ -261,9 +332,9 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 
 | Method | Params | Description |
 |--------|--------|-------------|
-| `activate` | `pattern` | Set file to `file:active` |
-| `readOnly` | `pattern` | Set file to `file:readonly` |
-| `ignore` | `pattern` | Set file to `file:ignore` |
+| `activate` | `pattern` | Bootstrap file as `file:active` |
+| `readOnly` | `pattern` | Bootstrap file as `file:readonly` |
+| `ignore` | `pattern` | Bootstrap file as `file:ignore` |
 | `drop` | `pattern` | Remove client constraint |
 | `fileStatus` | `path` | Get file's current state |
 | `getFiles` | — | Get project tree with states |
@@ -274,13 +345,14 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 |--------|--------|-------------|
 | `ask` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Non-mutating query |
 | `act` | `prompt`, `model?`, `run?`, `projectBufferFiles?`, `noContext?`, `fork?` | Mutating directive |
-| `run/resolve` | `run`, `resolution` | Resolve a proposed entry |
+| `run/resolve` | `run`, `resolution: {key, action, output?, answer?}` | Resolve a proposed entry by its key |
 | `run/abort` | `run` | Abandon run |
-| `run/rename` | `run`, `name` | Rename a run |
-| `run/inject` | `run`, `message` | Inject context |
+| `run/rename` | `run`, `name` | Rename a run. `[a-z_]{1,20}`, must be unique. |
+| `run/inject` | `run`, `message` | Inject context (creates `/:inject/N` info entry) |
 | `getRuns` | — | List runs for session |
 
-Resolution uses the entry's `key` (e.g., `/:edit/3`), not a finding ID.
+All run params accept the **run name** (e.g. `ccp_1`), not a UUID. Model aliases
+defined via `RUMMY_MODEL_{alias}` env vars.
 
 #### Session Configuration
 
@@ -298,35 +370,39 @@ Resolution uses the entry's `key` (e.g., `/:edit/3`), not a finding ID.
 
 | Notification | Payload | Description |
 |---|---|---|
-| `run/step/completed` | `run`, `turn`, `files`, `cumulative` | Turn finished |
-| `run/progress` | `run`, `turn`, `status` | Turn progress |
-| `editor/diff` | `run`, `key`, `type`, `file`, `search`, `replace` | Proposed edit |
+| `run/step/completed` | `run`, `turn`, `files`, `cumulative` | Turn finished. `cumulative` has `{ prompt_tokens, completion_tokens, total_tokens, cost }`. |
+| `run/progress` | `run`, `turn`, `status` | Turn progress: `thinking`, `processing` |
+| `editor/diff` | `run`, `key`, `type`, `file`, `search`, `replace` | Proposed edit (raw tool args) |
 | `run/command` | `run`, `key`, `type`, `command` | Proposed command |
 | `ui/prompt` | `run`, `key`, `question`, `options` | Model question |
 | `ui/render` | `text`, `append` | Streaming output |
 | `ui/notify` | `text`, `level` | Notification |
 
-Notifications reference entries by `key`, not by finding ID.
+Notifications reference entries by `key` (e.g., `/:edit/3`), not by finding ID.
 
 ### 5.3 Run Lifecycle
 
 ```
 ask / act  →  turns  →  tool calls  →  known entries
                                             │
-                              run/resolve ──┘ (per entry: accept/reject)
+                              run/resolve ──┘ (per entry key: accept/reject)
                                             │
-         ◄─────────────────────────────────┘ (auto-resume if accepted)
+         ◄─────────────────────────────────┘ (auto-resume if all accepted)
 ```
 
-Findings gate: the state lock trigger blocks new turns while `proposed` entries
-exist. The client resolves each entry by its key.
+Findings gate: the state lock trigger (§1.5) blocks new turns while `proposed`
+entries exist. The client resolves each entry by its key (§1.6).
+
+**Who applies edits to disk?** The client. The server proposes edits as known
+entries. The client resolves them (accept/reject) and writes accepted changes
+to its own filesystem. The server never touches the working tree.
 
 ### 5.4 Run Modes
 
 | Mode | Params | Behavior |
 |------|--------|----------|
 | **Continue** | `run = <name>` | Same run, same known store |
-| **New** | `run` omitted | Fresh run, fresh known store |
+| **New** | `run` omitted | Fresh run, fresh known store, file bootstrap |
 | **Lite** | `noContext = true` | No file bootstrap |
 | **Fork** | `fork = true` | New run, inherits parent's known store |
 
@@ -362,15 +438,231 @@ RUMMY_MODEL_DEFAULT=ccp
 
 ## 7. Plugin System
 
-Plugins extend the server through hooks. Core functionality uses the same pattern.
-See `PLUGINS.md` for the full plugin guide (to be updated).
+Plugins extend the server through a registration pattern. Core functionality
+uses the same pattern — there is no distinction between "built-in" and
+"third-party" at the registration level.
 
-Plugin contract: `export default class` with `static register(hooks)`.
+### 7.1 Plugin Contract
+
+A plugin is a `.js` file that exports a default class with a static `register` method:
+
+```js
+export default class MyPlugin {
+    static register(hooks) {
+        // Register tools, RPC methods, turn processors, event listeners, filters
+    }
+}
+```
 
 Plugin directories (loaded in order):
 1. `src/application/plugins/` — internal core
 2. `src/plugins/` — bundled
 3. `~/.rummy/plugins/` — user-installed
+
+Within each directory, the loader scans subdirectories for files named `index.js`
+or matching the directory name (e.g., `tools/tools.js`). Test files are skipped.
+
+### 7.2 Registries
+
+#### Tool Registry (`hooks.tools`)
+
+Register tools the model can invoke:
+
+```js
+hooks.tools.register("mytool", {
+    modes: new Set(["ask", "act"]),
+    category: "act",
+});
+```
+
+- `modes` — which run types this tool is available in.
+- `category` — `"ask"` (direct execution), `"act"` (proposed for client), `"structural"` (metadata).
+
+**Methods**: `get(name)`, `has(name)`, `actTools` (getter), `names` (getter), `entries()`.
+
+#### RPC Registry (`hooks.rpc.registry`)
+
+Register JSON-RPC methods:
+
+```js
+hooks.rpc.registry.register("myMethod", {
+    handler: async (params, ctx) => {
+        // ctx.projectAgent, ctx.modelAgent, ctx.db
+        // ctx.projectId, ctx.sessionId, ctx.projectPath
+        // ctx.setContext(projectId, sessionId, projectPath)
+        // ctx.rpcRegistry (for discover)
+        return { result: "value" };
+    },
+    description: "What this method does",
+    params: { arg1: "description" },
+    requiresInit: true,
+});
+```
+
+Register notification metadata (for `discover` output):
+
+```js
+hooks.rpc.registry.registerNotification("my/notification", "Description.");
+```
+
+`discover` auto-generates from the registry. No manual catalog.
+
+**Methods**: `get(name)`, `has(name)`, `discover()`.
+
+### 7.3 Turn Processors (`hooks.onTurn`)
+
+Inject content into the turn context before the LLM sees it:
+
+```js
+hooks.onTurn(async (rummy) => {
+    if (rummy.noContext) return;
+    const node = rummy.tag("mycontent", { source: "myplugin" }, ["data"]);
+    rummy.contextEl.children.push(node);
+}, 10);  // priority: lower = runs first
+```
+
+#### RummyContext API (`rummy`)
+
+| Property | Type | Description |
+|---|---|---|
+| `db` | SqlRite | Database with all prepared queries |
+| `project` | Object | `{ id, path, name }` |
+| `type` | String | `"ask"` or `"act"` |
+| `sessionId` | String | Current session ID |
+| `runId` | String | Current run ID |
+| `turnId` | Number | Current turn ID |
+| `sequence` | Number | Turn sequence number |
+| `noContext` | Boolean | True in Lite mode |
+| `contextSize` | Number | Token budget |
+| `system` | Object | System node `{ tag, attrs, content, children }` |
+| `contextEl` | Object | Context node |
+| `user` | Object | User node |
+| `assistant` | Object | Assistant node |
+| `tag(name, attrs?, children?)` | Function | Create a node |
+
+### 7.4 Events
+
+Fire-and-forget notifications. All handlers run; return values ignored.
+
+```js
+hooks.project.init.completed.on(async (payload) => {
+    console.log(`Project initialized: ${payload.projectPath}`);
+}, 5);
+```
+
+| Hook | Payload | When |
+|---|---|---|
+| `project.init.started` | `{ projectPath, projectName, clientId }` | Before project setup |
+| `project.init.completed` | `{ projectId, sessionId, projectPath, db }` | After project setup |
+| `project.files.update.started` | `{ projectId, pattern, constraint }` | Before file state change |
+| `project.files.update.completed` | `{ projectId, projectPath, pattern, constraint, db }` | After file state change |
+| `run.started` | `{ run, sessionId, type }` | Run created |
+| `run.progress` | `{ sessionId, run, turn, status }` | Turn progress |
+| `run.command` | `{ sessionId, run, key, type, command }` | Command proposed |
+| `run.step.completed` | `{ run, sessionId, turn, projectFiles, cumulative }` | Turn finished |
+| `ask.started` / `ask.completed` | `{ sessionId, model, prompt, ... }` | Ask lifecycle |
+| `act.started` / `act.completed` | `{ sessionId, model, prompt, ... }` | Act lifecycle |
+| `ui.render` | `{ sessionId, text, append }` | Streaming output |
+| `ui.notify` | `{ sessionId, text, level }` | Notification |
+| `ui.prompt` | `{ sessionId, run, key, question, options }` | Model question |
+| `editor.diff` | `{ sessionId, run, key, type, file, ... }` | Proposed edit |
+| `run.turn.audit` | `{ ... }` | Debug audit data |
+| `llm.request.started` | `{ ... }` | LLM call started |
+| `llm.request.completed` | `{ ... }` | LLM call finished |
+| `rpc.started` | `{ method, params, id, sessionId }` | RPC call received |
+| `rpc.completed` | `{ method, id, result }` | RPC call succeeded |
+| `rpc.error` | `{ id, error }` | RPC call failed |
+
+### 7.5 Filters
+
+Transform data through a chain. Each handler returns the (possibly modified) value.
+
+```js
+hooks.llm.messages.addFilter(async (messages, context) => {
+    return [{ role: "system", content: "Extra" }, ...messages];
+}, 5);
+```
+
+| Hook | Value | Context | Purpose |
+|---|---|---|---|
+| `run.config` | Config object | `{ sessionId }` | Modify run configuration |
+| `llm.messages` | Message array | `{ model, sessionId, runId }` | Transform LLM input |
+| `llm.response` | Response object | `{ model, sessionId, runId }` | Transform LLM output |
+| `socket.message.raw` | Raw buffer | — | Transform incoming WebSocket data |
+| `rpc.request` | Parsed request | — | Transform RPC request |
+| `rpc.response.result` | Result object | `{ method, id }` | Transform RPC response |
+| `agent.warn` | Warning rules array | `{ flags, tools, ... }` | Modify warning rules |
+| `agent.action` | Action table array | `{ flags, tools, warnings, ... }` | Modify state table |
+
+#### Agent State Table Hooks
+
+Plugins can modify the warning rules and action table that control the Rumsfeld Loop:
+
+```js
+hooks.agent.warn.addFilter(async (rules, context) => {
+    rules.push({
+        when: context.tools.length > 10,
+        msg: "Too many tools in one turn.",
+    });
+    return rules;
+});
+
+hooks.agent.action.addFilter(async (table, context) => {
+    table.splice(-1, 0, {
+        when: context.someCondition,
+        action: "continue",
+    });
+    return table;
+});
+```
+
+### 7.6 Examples
+
+#### Custom Tool Plugin
+
+```js
+export default class WeatherPlugin {
+    static register(hooks) {
+        hooks.tools.register("weather", {
+            modes: new Set(["ask", "act"]),
+            category: "act",
+        });
+    }
+}
+```
+
+The model can now call the `weather` tool. The server creates a `/:weather/N`
+known entry as `proposed`, and the client resolves it.
+
+#### Custom RPC Method Plugin
+
+```js
+export default class StatsPlugin {
+    static register(hooks) {
+        hooks.rpc.registry.register("getStats", {
+            handler: async (params, ctx) => {
+                const runs = await ctx.db.get_run_by_id.all({});
+                return { totalRuns: runs.length };
+            },
+            description: "Get project statistics",
+            requiresInit: true,
+        });
+    }
+}
+```
+
+#### Context Injection Plugin
+
+```js
+export default class TimestampPlugin {
+    static register(hooks) {
+        hooks.onTurn(async (rummy) => {
+            const node = rummy.tag("timestamp", {}, [new Date().toISOString()]);
+            rummy.contextEl.children.push(node);
+        }, 99);
+    }
+}
+```
 
 ---
 
@@ -387,26 +679,47 @@ the LLM.** Coverage target: 80/80/80.
 
 ### 8.1 Environment Cascade
 
-1. `.env.example` — load-bearing defaults
-2. `.env` — local overrides (API keys, model aliases)
-3. `.env.test` / `.env.dev` — mode-specific
+1. `.env.example` — load-bearing defaults (OPENROUTER_BASE_URL, PORT, etc.)
+2. `.env` — local overrides (API keys, model aliases, DB path)
+3. `.env.test` / `.env.dev` — mode-specific overrides
 
 Always use `npm run test:*`. Never invoke node directly with a single env file.
 
 ---
 
-## 9. Dependencies
+## 9. Database Hygiene
+
+On every startup, the server runs cleanup:
+
+1. **`purge_old_runs`** — delete completed/aborted runs older than `RUMMY_RETENTION_DAYS` (default: 31). Cascades handle turns, elements, known entries.
+2. **`purge_stale_sessions`** — delete sessions with no runs.
+
+### 9.1 Configuration
+
+```env
+RUMMY_MAP_MAX_PERCENT=10        # Percent of model context window for known entries
+RUMMY_MAP_TOKEN_BUDGET=4000     # Hard cap in tokens
+RUMMY_DECAY_THRESHOLD=12        # Turns before attention decay
+RUMMY_RETENTION_DAYS=31         # Days to keep completed runs
+RUMMY_FETCH_TIMEOUT=30000       # LLM fetch timeout (ms)
+RUMMY_RPC_TIMEOUT=10000         # Non-long-running RPC timeout (ms)
+```
+
+---
+
+## 10. Dependencies
 
 | Dependency | Purpose |
 |---|---|
 | `@possumtech/sqlrite` | SQLite (author's own anti-ORM) |
 | `ws` | WebSocket server |
 
-Symbol extraction uses `ctags`. Token counting: `content.length / 4`.
+Symbol extraction uses `ctags` (universal-ctags CLI). Token counting: `content.length / 4`.
+Git operations shell out to `git` CLI. Zero other runtime dependencies.
 
 ---
 
-## 10. Terminology
+## 11. Terminology
 
 | Term | Definition |
 |------|------------|
@@ -414,5 +727,8 @@ Symbol extraction uses `ctags`. Token counting: `content.length / 4`.
 | **Session** | A client connection. Owns config (persona, system prompt, skills). |
 | **Run** | An open-ended conversation. Owns `known_entries` and turns. |
 | **Turn** | A single LLM request/response cycle. |
-| **Known Entry** | A keyed entry in the unified state machine. Files, knowledge, tool results, findings — everything. |
-| **Rumsfeld Loop** | The turn cycle: the model must declare `known`, `unknown`, and `summary` every turn. Forces discovery before modification. |
+| **Known Entry** | A keyed entry in the unified state machine. |
+| **Domain** | The entry's namespace: `file`, `known`, or `result`. |
+| **State** | The entry's status within its domain. Server-internal; the model sees a projection. |
+| **Result Key** | A `/:[tool]/N` key generated for each tool call. Sequential per run. |
+| **Rumsfeld Loop** | The turn cycle: the model must declare `known`, `unknown`, and `summary` every turn. |
