@@ -1,20 +1,15 @@
-/**
- * XmlParser: extracts tool commands from model response content.
- * Regex-based, not a DOM parser. Handles the XML format defined in prompt.*.md.
- */
+import { Parser } from "htmlparser2";
 
-const SELF_CLOSING = /^<(read|drop|delete|run|env|ask_user)\s+([^>]*?)\/>/gm;
-const CONTENT_TAG = /^<(summary|unknown|known|edit)(\s+[^>]*)?>([^]*?)<\/\1>/gm;
-
-function parseAttrs(attrStr) {
-	const attrs = {};
-	const re = /(\w+)="([^"]*)"/g;
-	let m;
-	while ((m = re.exec(attrStr)) !== null) {
-		attrs[m[1]] = m[2];
-	}
-	return attrs;
-}
+const SELF_CLOSING_TOOLS = new Set([
+	"read",
+	"drop",
+	"delete",
+	"run",
+	"env",
+	"ask_user",
+]);
+const CONTENT_TOOLS = new Set(["summary", "unknown", "known", "edit"]);
+const ALL_TOOLS = new Set([...SELF_CLOSING_TOOLS, ...CONTENT_TOOLS]);
 
 function parseEditContent(content) {
 	const blocks = [];
@@ -26,7 +21,6 @@ function parseEditContent(content) {
 		blocks.push({ search: m[1], replace: m[2] });
 	}
 
-	// Check for replace-only blocks (new file)
 	if (blocks.length === 0) {
 		while ((m = replaceOnly.exec(content)) !== null) {
 			blocks.push({ search: null, replace: m[1] });
@@ -38,42 +32,91 @@ function parseEditContent(content) {
 
 export default class XmlParser {
 	/**
-	 * Parse tool commands from model content.
+	 * Parse tool commands from model content using htmlparser2.
+	 * Handles malformed XML gracefully — unclosed tags, missing slashes, etc.
 	 * @param {string} content - Raw model response text
-	 * @returns {{ commands: Array, unparsed: string }}
+	 * @returns {{ commands: Array, warnings: string[], unparsed: string }}
 	 */
 	static parse(content) {
-		if (!content) return { commands: [], unparsed: "" };
+		if (!content) return { commands: [], warnings: [], unparsed: "" };
 
 		const commands = [];
-		let remaining = content;
+		const warnings = [];
+		const textChunks = [];
+		let current = null;
+		let ended = false;
 
-		// Self-closing tags: <read key="..."/>, <drop key="..."/>, etc.
-		remaining = remaining.replace(SELF_CLOSING, (_match, name, attrStr) => {
-			commands.push({ name, ...parseAttrs(attrStr) });
-			return "";
-		});
+		const parser = new Parser(
+			{
+				onopentag(name, attrs) {
+					if (!ALL_TOOLS.has(name)) {
+						if (current) {
+							// Nested unknown tag inside a content tool — treat as text
+							current.body += `<${name}>`;
+						}
+						return;
+					}
 
-		// Content tags: <summary>...</summary>, <known key="...">...</known>, etc.
-		remaining = remaining.replace(
-			CONTENT_TAG,
-			(_match, name, attrStr, body) => {
-				const attrs = attrStr ? parseAttrs(attrStr) : {};
+					if (SELF_CLOSING_TOOLS.has(name)) {
+						commands.push({ name, ...attrs });
+						return;
+					}
 
-				if (name === "edit") {
-					const blocks = parseEditContent(body);
-					commands.push({ name, file: attrs.file, blocks });
-				} else if (name === "known") {
-					commands.push({ name, key: attrs.key, value: body.trim() });
-				} else {
-					commands.push({ name, value: body.trim(), ...attrs });
-				}
+					// Content tool — start collecting body
+					current = { name, attrs, body: "" };
+				},
 
-				return "";
+				ontext(text) {
+					if (current) {
+						current.body += text;
+					} else {
+						textChunks.push(text);
+					}
+				},
+
+				onclosetag(name) {
+					if (current && name === current.name) {
+						if (ended) {
+							warnings.push(`Unclosed <${name}> tag — content captured anyway`);
+						}
+						const { name: toolName, attrs, body } = current;
+
+						if (toolName === "edit") {
+							const blocks = parseEditContent(body);
+							commands.push({ name: toolName, file: attrs.file, blocks });
+						} else if (toolName === "known") {
+							commands.push({
+								name: toolName,
+								key: attrs.key,
+								value: body.trim(),
+							});
+						} else {
+							commands.push({ name: toolName, value: body.trim(), ...attrs });
+						}
+
+						current = null;
+					} else if (current) {
+						// Closing tag for something else while inside a content tool — treat as text
+						current.body += `</${name}>`;
+					}
+				},
+
+				onerror(err) {
+					warnings.push(`Parse error: ${err.message}`);
+				},
+			},
+			{
+				recognizeSelfClosing: true,
+				lowerCaseTags: true,
+				lowerCaseAttributeNames: true,
 			},
 		);
 
-		const unparsed = remaining.trim();
-		return { commands, unparsed };
+		parser.write(content);
+		ended = true;
+		parser.end();
+
+		const unparsed = textChunks.join("").trim();
+		return { commands, warnings, unparsed };
 	}
 }
