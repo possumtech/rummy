@@ -33,6 +33,9 @@ export default class FileScanner {
 
 	/**
 	 * Scan the project and sync file entries across all active runs.
+	 * - value = always full file content
+	 * - meta.symbols = always extracted symbols (when available)
+	 * - Root files promoted to currentTurn (visible to model on turn 1)
 	 */
 	async scan(projectPath, projectId, mappableFiles, currentTurn = 0) {
 		const activeRuns = await this.#db.get_active_runs.all({
@@ -53,14 +56,18 @@ export default class FileScanner {
 			}
 		}
 
-		// Extract symbols for files that need it
+		// Extract symbols for all files
 		const symbolMap = await this.#extractAllSymbols(projectPath, [
 			...diskFiles.keys(),
 		]);
 
-		// Sync each active run
 		for (const run of activeRuns) {
-			await this.#syncRun(run.id, diskFiles, symbolMap, currentTurn);
+			await this.#syncRun(
+				run.id,
+				diskFiles,
+				symbolMap,
+				currentTurn,
+			);
 		}
 	}
 
@@ -75,24 +82,24 @@ export default class FileScanner {
 			const entry = fileKeys.get(relPath);
 			fileKeys.delete(relPath);
 
+			// Skip unchanged files
 			if (entry?.hash === hash) continue;
 
-			// New or modified file
+			// Determine turn: root files get promoted, others start at 0
+			const isRoot = !relPath.includes("/");
+			const turn = isRoot ? currentTurn : (entry?.turn || 0);
+
+			// Symbols go in meta, full content always goes in value
 			const symbols = symbolMap.get(relPath);
 			const symbolText = symbols ? formatSymbols(symbols) : "";
 			const meta = symbolText ? { symbols: symbolText } : null;
-			const isLoaded =
-				entry &&
-				(entry.state === "full" ||
-					entry.state === "active" ||
-					entry.state === "readonly");
 
 			await this.#knownStore.upsert(
 				runId,
-				currentTurn,
+				turn,
 				relPath,
-				isLoaded ? content : symbolText,
-				entry?.state || "symbols",
+				content,
+				entry?.state || "full",
 				{ hash, meta },
 			);
 		}

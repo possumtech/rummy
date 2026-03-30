@@ -45,3 +45,8 @@ WHERE run_id = :run_id AND key = :key;
 SELECT value
 FROM known_entries
 WHERE run_id = :run_id AND key = :key;
+
+-- PREP: get_entry_meta
+SELECT meta
+FROM known_entries
+WHERE run_id = :run_id AND key = :key;

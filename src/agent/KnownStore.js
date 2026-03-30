@@ -96,13 +96,13 @@ export default class KnownStore {
 			context.push({ key: r.key, state: "file:path", value: "" });
 		}
 
-		// 4. Symbol files
+		// 4. Symbol files — value from meta.symbols, never raw file content
 		for (const r of await this.#db.get_symbol_files.all({ run_id: runId })) {
 			const meta = r.meta ? JSON.parse(r.meta) : null;
 			context.push({
 				key: r.key,
 				state: "file:symbols",
-				value: meta?.symbols || r.value || "",
+				value: meta?.symbols || "",
 			});
 		}
 
@@ -193,6 +193,11 @@ export default class KnownStore {
 	async getValue(runId, key) {
 		const row = await this.#db.get_entry_value.get({ run_id: runId, key });
 		return row?.value ?? null;
+	}
+
+	async getMeta(runId, key) {
+		const row = await this.#db.get_entry_meta.get({ run_id: runId, key });
+		return row?.meta ? JSON.parse(row.meta) : null;
 	}
 
 	static toolFromKey(key) {

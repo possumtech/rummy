@@ -282,6 +282,14 @@ export default class AgentLoop {
 
 		if (action === "accept") {
 			await this.#knownStore.resolve(runId, key, "pass", output || "");
+
+			// If accepting a delete, erase the target file key
+			if (key.startsWith("/:delete/")) {
+				const meta = await this.#knownStore.getMeta(runId, key);
+				if (meta?.key) {
+					await this.#knownStore.remove(runId, meta.key);
+				}
+			}
 		} else if (action === "reject") {
 			await this.#knownStore.resolve(runId, key, "warn", output || "rejected");
 		} else {
