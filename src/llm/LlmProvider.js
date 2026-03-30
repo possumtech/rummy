@@ -8,21 +8,37 @@ export default class LlmProvider {
 	#ollama;
 	#openAi;
 	#capabilities;
+	#hooks;
+	#db;
 
 	constructor(hooks, db) {
+		this.#hooks = hooks;
+		this.#db = db;
 		this.#capabilities = new ModelCapabilities();
-		this.#openRouter = new OpenRouterClient(
-			process.env.OPENROUTER_API_KEY,
-			hooks,
-			this.#capabilities,
-			db,
-		);
+	}
 
-		this.#ollama = new OllamaClient(process.env.OLLAMA_BASE_URL, hooks);
-		this.#openAi = new OpenAiClient(
-			process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE,
-			process.env.OPENAI_API_KEY,
+	#getOpenRouter() {
+		this.#openRouter ??= new OpenRouterClient(
+			process.env.OPENROUTER_API_KEY,
+			this.#hooks,
+			this.#capabilities,
+			this.#db,
 		);
+		return this.#openRouter;
+	}
+
+	#getOllama() {
+		this.#ollama ??= new OllamaClient(process.env.OLLAMA_BASE_URL, this.#hooks);
+		return this.#ollama;
+	}
+
+	#getOpenAi() {
+		if (!this.#openAi) {
+			const baseUrl = process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE;
+			if (!baseUrl) throw new Error("openai/ model requested but neither OPENAI_BASE_URL nor OPENAI_API_BASE is set.");
+			this.#openAi = new OpenAiClient(baseUrl, process.env.OPENAI_API_KEY);
+		}
+		return this.#openAi;
 	}
 
 	get capabilities() {
@@ -50,15 +66,15 @@ export default class LlmProvider {
 
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");
-			return this.#ollama.completion(messages, localModel, resolvedOptions);
+			return this.#getOllama().completion(messages, localModel, resolvedOptions);
 		}
 
 		if (resolvedModel.startsWith("openai/")) {
 			const localModel = resolvedModel.replace("openai/", "");
-			return this.#openAi.completion(messages, localModel, resolvedOptions);
+			return this.#getOpenAi().completion(messages, localModel, resolvedOptions);
 		}
 
-		return this.#openRouter.completion(
+		return this.#getOpenRouter().completion(
 			messages,
 			resolvedModel,
 			resolvedOptions,
@@ -69,11 +85,11 @@ export default class LlmProvider {
 		const resolvedModel = LlmProvider.resolve(model);
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");
-			return this.#ollama.getContextSize(localModel);
+			return this.#getOllama().getContextSize(localModel);
 		}
 		if (resolvedModel.startsWith("openai/")) {
-			return this.#openAi.getContextSize(resolvedModel);
+			return this.#getOpenAi().getContextSize(resolvedModel);
 		}
-		return this.#openRouter.getContextSize(resolvedModel);
+		return this.#getOpenRouter().getContextSize(resolvedModel);
 	}
 }

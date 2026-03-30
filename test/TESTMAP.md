@@ -16,20 +16,20 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] file domain: full, readonly, active, ignore, symbols (integration: known_store)
 - [x] known domain: full, stored (integration: known_store)
 - [x] result domain: proposed, pass, info, warn, error, summary (integration: known_store)
-- [x] /:unknown/* entries are known domain (integration: known_store)
+- [x] /:unknown:* entries are known domain (integration: known_store)
 - [x] file:ignore hidden from model (integration: known_store)
 - [x] proposed hidden from model (integration: known_store)
 
 ### §1.3 Key Namespaces
 - [x] bare paths → file domain (integration: known_store)
-- [x] /:known/ prefix → known domain (integration: known_store)
-- [x] /:[tool]/ prefix → result domain (integration: known_store)
+- [x] /:known: prefix → known domain (integration: known_store)
+- [x] /:[tool]: prefix → result domain (integration: known_store)
 - [x] sequential result key generation (integration: known_store)
 
 ### §1.4 UPSERT Semantics
 - [x] UPSERT overwrites value on conflict (integration: known_store)
 - [x] blank value is legitimate, not a delete (integration: known_store)
-- [ ] delete tool removes entry (E2E: act mode with delete)
+- [ ] delete tool removes entry (E2E: delete with file erasure)
 
 ### §1.5 State Lock
 - [ ] TurnExecutor blocks when proposed entries exist (integration)
@@ -37,59 +37,65 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 ### §1.6 Resolution
 - [x] accept changes proposed → pass (integration: known_store)
 - [x] reject changes proposed → warn (integration: known_store)
-- [x] auto-resume after all accepted (E2E: act_lifecycle) (E2E: edit resolution)
-- [x] stop after rejection (E2E: act_lifecycle) (E2E: edit rejection)
+- [x] auto-resume after all accepted (E2E: act_lifecycle)
+- [x] stop after rejection (E2E: act_lifecycle)
 
-## §2 Native Tool Calling
+## §2 XML Tool Commands
 
-### §2.1 Tools
-- [x] ask mode has 7 tools (unit: ToolSchema)
-- [x] act mode has 10 tools (unit: ToolSchema)
-- [x] all tools have strict: true (unit: ToolSchema)
-- [x] high-frequency tools have flat string params (unit: ToolSchema)
-- [x] AJV validates tool arguments (unit: ToolSchema)
-- [x] API stripping removes unsupported keywords (unit: ToolSchema)
-- [x] mode validation rejects act-only tools in ask mode (unit: ToolSchema)
+### §2.1 Tool Commands
+- [x] htmlparser2 parses well-formed XML commands (unit: XmlParser)
+- [x] htmlparser2 recovers from unclosed tags (unit: XmlParser)
+- [x] htmlparser2 recovers from missing self-closing slashes (unit: XmlParser)
+- [x] unknown HTML tags ignored (unit: XmlParser)
+- [x] edit with SEARCH/REPLACE merge blocks parsed (unit: XmlParser)
+- [x] edit with multiple merge blocks parsed (unit: XmlParser)
+- [x] edit for new file (replace only) parsed (unit: XmlParser)
+- [x] unparsed text captured as reasoning (unit: XmlParser)
 
-### §2.2 How Tools Become Known Entries
-- [x] write creates /:known/* entry (E2E: foundation)
-- [x] summary creates /:summary/N entry (E2E: foundation)
-- [x] unknown creates sticky /:unknown/N entry (E2E: rumsfeld_loop)
+### §2.2 How Commands Become Known Entries
+- [x] known creates /:known:* entry (E2E: foundation)
+- [x] summary creates /:summary:N entry (E2E: foundation)
+- [x] unknown creates sticky /:unknown:N entry (E2E: rumsfeld_loop)
 - [x] read promotes by setting turn (integration: known_store)
 - [x] drop demotes by setting turn to 0 (integration: known_store)
-- [x] env creates /:env/N as proposed (E2E: act mode)
-- [x] edit creates /:edit/N with patch in meta (E2E: act mode)
-- [x] run creates /:run/N as proposed (E2E: act mode)
-- [ ] delete creates /:delete/N as proposed (E2E: act mode)
-- [ ] ask_user creates /:ask_user/N as proposed (E2E: act mode)
+- [x] env creates /:env:N as proposed (E2E: scenarios S6)
+- [x] edit creates /:edit:N with patch in meta (E2E: scenarios S2)
+- [x] run creates /:run:N as proposed (E2E: scenarios S7)
+- [x] ask_user creates /:ask_user:N as proposed (E2E: scenarios S8)
+- [ ] delete creates /:delete:N as proposed
 
 ### §2.3 Promotion Model
 - [x] read(key) sets turn to current (integration: known_store)
 - [x] drop(key) sets turn to 0 (integration: known_store)
 
 ### §2.4 Enforcement Layers
-- [x] strict: true on tool schemas (unit: ToolSchema)
-- [x] tool_choice: "required" sent to provider (code review)
-- [x] summary required — retry on missing (E2E: foundation)
+- [x] prompt instructions define tool commands (prompt.act.md, prompt.ask.md)
+- [x] htmlparser2 forgiving parsing (unit: XmlParser)
+- [x] summary required — placeholder injected if missing (code review)
 - [x] unknowns gate — warn + retry when idle with unknowns (E2E: rumsfeld_loop)
-- [x] free-form content captured as reasoning (code review)
-- [ ] AJV warn-and-heal on invalid args (E2E: summary truncation)
+- [x] free-form content captured as /:reasoning:N (code review)
 
 ### §2.5 Server Execution Order
-- [x] prompt stored as /:prompt/N (E2E: foundation)
-- [x] action tools execute before writes/unknowns/summary (code review)
+- [x] audit entries stored before LLM call (code review)
+- [x] action commands execute before writes/unknowns/summary (code review)
 - [x] unknowns deduplicated on insert (code review)
-- [ ] edit computes unified diff patch (E2E: act mode with edit)
+- [x] edit computes unified diff patch via HeuristicMatcher (E2E: scenarios S2, S5)
 
 ## §3 Model Context
 
 ### §3.1 System Message Contents
-- [x] role description from system.ask.md/system.act.md (code review)
-- [x] tool schemas injected (code review)
-- [x] context array embedded (code review)
+- [x] role description from prompt.ask.md/prompt.act.md (code review)
+- [x] context rendered as markdown by ContextAssembler (unit: ContextAssembler)
 
 ### §3.2 Context Ordering
-- [x] active known → stored known → file paths → symbols → full files → results → unknowns → prompt (integration: known_store)
+- [x] files rendered as code fences with language and tokens (unit: ContextAssembler)
+- [x] active known rendered as bullet list (unit: ContextAssembler)
+- [x] stored known rendered as comma list (unit: ContextAssembler)
+- [x] file paths rendered as comma list (unit: ContextAssembler)
+- [x] unknowns rendered as bullet list (unit: ContextAssembler)
+- [x] results rendered with check marks (unit: ContextAssembler)
+- [x] prompt rendered last (unit: ContextAssembler)
+- [x] bucket ordering: active known → stored known → file paths → symbols → full files → results → unknowns → prompt (integration: known_store)
 
 ### §3.3 Expansion Rule
 - [x] turn > 0 → expanded (integration: known_store)
@@ -97,13 +103,13 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 
 ### §3.4 File Bootstrap
 - [x] files scanned from disk at turn start (E2E: foundation)
-- [ ] client-promoted files bootstrapped with correct state
-- [ ] symbol extraction stores in meta
+- [ ] client-promoted files bootstrapped with correct state (E2E: activate/readOnly/ignore)
 
 ### §3.5 File Change Detection
-- [ ] hash comparison detects modified files
+- [ ] mtime-first scan skips unchanged files
+- [ ] hash comparison detects content changes
 - [ ] new files added, deleted files removed
-- [ ] modified files updated across all active runs
+- [ ] symbol extraction stores in meta
 
 ## §4 State Scopes
 
@@ -120,19 +126,23 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 ### §5.1 Methods
 - [x] init creates project + session (E2E: foundation)
 - [x] ask returns {run, status, turn} (E2E: foundation)
-- [x] act returns {run, status, turn} (E2E: act_lifecycle) {run, status, turn} (E2E: act mode)
-- [x] run/resolve with accept (E2E: act_lifecycle) transitions proposed → pass
-- [x] run/resolve with reject (E2E: act_lifecycle) transitions proposed → warn
-- [x] run/abort sets status to aborted (E2E: rpc_methods) status to aborted
-- [x] run/inject creates (E2E: rpc_methods) /:inject/N entry
-- [x] getRuns lists runs (E2E: rpc_methods) runs for session
-- [x] getModels lists aliases (E2E: rpc_methods) aliases
+- [x] act returns {run, status, turn} (E2E: act_lifecycle)
+- [x] run/resolve with accept (E2E: act_lifecycle)
+- [x] run/resolve with reject (E2E: act_lifecycle)
+- [x] run/abort sets status to aborted (E2E: rpc_methods)
+- [x] run/inject creates /:inject:N entry (E2E: rpc_methods)
+- [x] getRuns lists runs for session (E2E: rpc_methods)
+- [x] getModels lists aliases (E2E: rpc_methods)
+- [x] discover returns methods and notifications (E2E: rpc_methods)
+- [x] setTemperature/getTemperature round-trip (E2E: rpc_methods)
+- [x] skill/add, skill/remove, getSkills (E2E: rpc_methods)
 - [ ] activate/readOnly/ignore/drop set file state
 
 ### §5.2 Notifications
-- [x] run/state sent (E2E: run_state) after each turn with correct shape
-- [x] run/state.proposed includes type (E2E: run_state) type field
-- [x] run/state.telemetry includes model info (E2E: run_state) model info
+- [x] run/state sent after each turn with correct shape (E2E: run_state)
+- [x] run/state.history entries have correct shape (E2E: run_state)
+- [x] run/state.proposed includes type (E2E: run_state)
+- [x] run/state.telemetry includes model info (E2E: run_state)
 - [x] run/progress sent during turn (code review)
 
 ### §5.3 Run Lifecycle
@@ -142,14 +152,13 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 
 ### §5.4 Run Modes
 - [x] new run creates fresh known store (E2E: foundation)
-- [x] continue run preserves (E2E: run_modes) known store
-- [x] lite mode skips file bootstrap (E2E: run_modes) file bootstrap
-- [x] fork inherits parent known store (E2E: persona_fork) parent known store
+- [x] continue run preserves known store (E2E: run_modes)
+- [x] lite mode skips file bootstrap (E2E: run_modes)
+- [x] fork inherits parent known store (E2E: persona_fork)
 
 ## §6 Provider Compatibility
-- [x] OpenRouter sends tools + tool_choice (code review)
-- [x] Ollama normalizes arguments from object to string (code review)
-- [x] OpenAI-compatible sends tools + tool_choice (code review)
+- [x] XML in content works with any provider (E2E: all tests use OpenRouter)
+- [x] reasoning_content normalized across providers (code review)
 
 ## §7 Plugin System
 - [x] plugins loaded from src/plugins/ (E2E: foundation — server boots)
@@ -158,17 +167,19 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [ ] custom RPC method plugin registers and works
 
 ## §8 Testing
-- [x] unit tests in src/**/*.test.js (exists)
-- [x] integration tests in test/integration/ (exists)
-- [x] E2E tests in test/e2e/ (exists, 5 tests)
-- [x] E2E tests use real LLM (kimi via OpenRouter)
+- [x] unit tests in src/**/*.test.js (XmlParser, ContextAssembler, HeuristicMatcher)
+- [x] integration tests in test/integration/ (known_store)
+- [x] E2E tests in test/e2e/ (8 files, 32 tests)
+- [x] E2E tests use real LLM, never mocked
 
 ## Summary
 
-Tested:     ~65 promises (101 tests: 78 unit/integration + 23 E2E)
-Untested:   ~5 promises
+Tested:     ~75 promises (103 tests: 37 unit + 35 integration + 31 E2E)
+Untested:   ~8 promises
 Remaining:
-  - §3.4: client-promoted file bootstrap states
-  - §3.5: hash-based change detection, cross-run bulk updates
-  - §5.1: activate/readOnly/ignore/drop RPC, ask_user flow, delete erasure
+  - §1.4, §2.2: delete tool creates proposed entry, removes on accept
+  - §1.5: TurnExecutor blocks on proposed (integration test)
+  - §3.4: client-promoted file bootstrap states (activate/readOnly/ignore)
+  - §3.5: FileScanner mtime/hash/symbol lifecycle (integration test)
+  - §5.1: activate/readOnly/ignore/drop RPC
   - §7: custom plugin registration E2E
