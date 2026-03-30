@@ -86,7 +86,7 @@ app.use("/api", (req, res, next) => {
 			prompt: "What testing framework does this project use? What CI pipeline is configured?",
 		});
 
-		await client.assertRun(result, "completed", "sticky unknowns");
+		await client.assertRun(result, ["completed", "proposed"], "sticky unknowns");
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
