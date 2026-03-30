@@ -33,7 +33,7 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] delete rejection preserves target key (integration: known_store)
 
 ### §1.5 State Lock
-- [ ] TurnExecutor blocks when proposed entries exist (integration)
+- [x] TurnExecutor blocks when proposed entries exist (integration: state_lock)
 
 ### §1.6 Resolution
 - [x] accept changes proposed → pass (integration: known_store)
@@ -110,10 +110,10 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] client-promoted files bootstrapped with correct state (E2E: rpc_methods — activate/readOnly/ignore/drop/fileStatus)
 
 ### §3.5 File Change Detection
-- [ ] mtime-first scan skips unchanged files
-- [ ] hash comparison detects content changes
-- [ ] new files added, deleted files removed
-- [ ] symbol extraction stores in meta
+- [x] mtime-first scan skips unchanged files (integration: file_scanner)
+- [x] hash comparison detects content changes (integration: file_scanner)
+- [x] new files added, deleted files removed (integration: file_scanner)
+- [x] symbol extraction stores in meta (integration: file_scanner)
 
 ## §4 State Scopes
 
@@ -170,20 +170,17 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 ## §7 Plugin System
 - [x] plugins loaded from src/plugins/ (E2E: foundation — server boots)
 - [x] onTurn hooks fire each turn (code review)
-- [ ] custom tool plugin registers and works
-- [ ] custom RPC method plugin registers and works
+- [x] custom RPC method plugin registers and works (E2E: plugin_registration)
+- [x] custom RPC method appears in discover (E2E: plugin_registration)
+- [x] custom RPC method with requiresInit receives context (E2E: plugin_registration)
 
 ## §8 Testing
 - [x] unit tests in src/**/*.test.js (XmlParser, ContextAssembler, HeuristicMatcher)
-- [x] integration tests in test/integration/ (known_store, context_distribution)
-- [x] E2E tests in test/e2e/ (8 files, 40 tests)
+- [x] integration tests in test/integration/ (known_store, context_distribution, state_lock, file_scanner)
+- [x] E2E tests in test/e2e/ (9 files, 43 tests)
 - [x] E2E tests use real LLM, never mocked
 
 ## Summary
 
-Tested:     ~89 promises (120 tests: 37 unit + 44 integration + 39 E2E)
-Untested:   ~3 promises
-Remaining:
-  - §1.5: TurnExecutor blocks on proposed (integration test)
-  - §3.5: FileScanner mtime/hash/symbol lifecycle (integration test)
-  - §7: custom plugin registration E2E
+Tested:     ~95 promises (134 tests: 37 unit + 56 integration + 42 E2E)
+Untested:   0

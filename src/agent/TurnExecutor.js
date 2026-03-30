@@ -200,26 +200,20 @@ export default class TurnExecutor {
 		const hasReads = actionCalls.some((c) => c.name === "read");
 		const flags = { hasAct, hasReads };
 
-		// Handle missing summary
+		// Handle missing summary — always heal, never throw
 		if (!summaryText) {
-			const calledTools = commands.map((c) => c.name).join(", ") || "none";
-			console.warn(`[RUMMY] Missing summary. Tools called: ${calledTools}`);
-			if (commands.length === 0) {
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					`/:retry:${turn}`,
-					JSON.stringify({
-						error: "empty response",
-						content: content.slice(0, 500),
-					}),
-					"error",
+			const trimmed = content.trim();
+			if (commands.length === 0 && trimmed) {
+				// Plain text response — model skipped XML. Use as summary.
+				console.warn("[RUMMY] Healed: plain text response used as summary");
+				summaryText = trimmed.slice(0, 500);
+			} else {
+				// Empty response or commands without <summary> — inject placeholder
+				console.warn(
+					`[RUMMY] Healed: missing <summary>, injecting placeholder. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
 				);
-				const retryErr = new Error("missing required summary");
-				retryErr.code = "MISSING_SUMMARY";
-				throw retryErr;
+				summaryText = "...";
 			}
-			summaryText = "...";
 		}
 
 		// Commit usage

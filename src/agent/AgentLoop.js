@@ -186,36 +186,18 @@ export default class AgentLoop {
 					turnPrompt = parts.join("\n");
 				}
 
-				let result;
-				try {
-					result = await this.#turnExecutor.execute({
-						type,
-						project,
-						sessionId,
-						currentRunId,
-						currentAlias,
-						requestedModel,
-						loopPrompt: turnPrompt,
-						noContext,
-						contextSize,
-						options: { ...options, isContinuation: loopIteration > 1 },
-					});
-				} catch (err) {
-					if (
-						err.code === "MISSING_SUMMARY" &&
-						loopIteration < MAX_LOOP_ITERATIONS
-					) {
-						console.warn(`[RUMMY] Validation retry: ${err.message}`);
-						await this.#hooks.run.progress.emit({
-							sessionId,
-							run: currentAlias,
-							turn: loopIteration,
-							status: "retrying",
-						});
-						continue;
-					}
-					throw err;
-				}
+				const result = await this.#turnExecutor.execute({
+					type,
+					project,
+					sessionId,
+					currentRunId,
+					currentAlias,
+					requestedModel,
+					loopPrompt: turnPrompt,
+					noContext,
+					contextSize,
+					options: { ...options, isContinuation: loopIteration > 1 },
+				});
 
 				// Build and emit run/state notification
 				const runUsage = await this.#db.get_run_usage.get({
