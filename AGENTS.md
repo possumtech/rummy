@@ -50,11 +50,11 @@
 - [x] `fork_known_entries` SQL copies parent store
 - [x] AgentLoop wired
 
-**Remaining E2E coverage:**
-- [ ] Persona E2E: set persona, verify model receives it
-- [ ] Fork E2E: fork preserves known store from parent
-- [ ] Continue run preserves known store across calls
-- [ ] Lite mode (`noContext: true`) skips file bootstrap
+**E2E coverage:** ✅ (23 tests)
+- [x] Persona: stored and applied to model context
+- [x] Fork: preserves parent known store
+- [x] Continue: preserves store across calls
+- [x] Lite mode: skips file bootstrap
 - [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods
 - [ ] `ask_user` proposed flow
 - [ ] `delete` tool with file erasure on accept

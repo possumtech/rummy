@@ -142,9 +142,9 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 
 ### §5.4 Run Modes
 - [x] new run creates fresh known store (E2E: foundation)
-- [ ] continue run preserves known store
-- [ ] lite mode skips file bootstrap
-- [ ] fork inherits parent known store
+- [x] continue run preserves (E2E: run_modes) known store
+- [x] lite mode skips file bootstrap (E2E: run_modes) file bootstrap
+- [x] fork inherits parent known store (E2E: persona_fork) parent known store
 
 ## §6 Provider Compatibility
 - [x] OpenRouter sends tools + tool_choice (code review)
@@ -165,10 +165,10 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 
 ## Summary
 
-Tested:     ~60 promises (88 tests: 69 unit/integration + 19 E2E)
-Untested:   ~10 promises
+Tested:     ~65 promises (101 tests: 78 unit/integration + 23 E2E)
+Untested:   ~5 promises
 Remaining:
-  - §3.4: client-promoted file bootstrap states, symbol extraction in meta
+  - §3.4: client-promoted file bootstrap states
   - §3.5: hash-based change detection, cross-run bulk updates
-  - §5.4: continue/lite/fork run modes
+  - §5.1: activate/readOnly/ignore/drop RPC, ask_user flow, delete erasure
   - §7: custom plugin registration E2E
