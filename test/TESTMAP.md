@@ -29,7 +29,8 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 ### §1.4 UPSERT Semantics
 - [x] UPSERT overwrites value on conflict (integration: known_store)
 - [x] blank value is legitimate, not a delete (integration: known_store)
-- [ ] delete tool removes entry (E2E: delete with file erasure)
+- [x] delete resolution erases target key on accept (integration: known_store)
+- [x] delete rejection preserves target key (integration: known_store)
 
 ### §1.5 State Lock
 - [ ] TurnExecutor blocks when proposed entries exist (integration)
@@ -62,7 +63,7 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] edit creates /:edit:N with patch in meta (E2E: scenarios S2)
 - [x] run creates /:run:N as proposed (E2E: scenarios S7)
 - [x] ask_user creates /:ask_user:N as proposed (E2E: scenarios S8)
-- [ ] delete creates /:delete:N as proposed
+- [x] delete creates /:delete:N as proposed (integration: known_store)
 
 ### §2.3 Promotion Model
 - [x] read(key) sets turn to current (integration: known_store)
@@ -174,10 +175,9 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 
 ## Summary
 
-Tested:     ~75 promises (103 tests: 37 unit + 35 integration + 31 E2E)
-Untested:   ~8 promises
+Tested:     ~78 promises (105 tests: 37 unit + 37 integration + 31 E2E)
+Untested:   ~6 promises
 Remaining:
-  - §1.4, §2.2: delete tool creates proposed entry, removes on accept
   - §1.5: TurnExecutor blocks on proposed (integration test)
   - §3.4: client-promoted file bootstrap states (activate/readOnly/ignore)
   - §3.5: FileScanner mtime/hash/symbol lifecycle (integration test)

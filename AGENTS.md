@@ -36,7 +36,7 @@ counting with `/4` fallback. 4 production dependencies.
 - [ ] `activate`/`readOnly`/`ignore`/`drop` RPC methods E2E
 - [ ] `ask_user` proposed flow E2E
 - [ ] `delete` tool with file erasure on accept E2E
-- [ ] Delete `test_old/` after next E2E round (428K legacy test archive from pre-K/V architecture)
+- [x] ~~Delete `test_old/`~~ (428K, 52 files — deleted 2026-03-30)
 
 ### Dead Code (already deleted)
 - FindingsProcessor, FindingsManager, StateEvaluator, ResponseHealer, ToolExtractor

@@ -398,6 +398,48 @@ describe("KnownStore integration", () => {
 		});
 	});
 
+	describe("delete resolution", () => {
+		it("accept erases the target file key from store", async () => {
+			// Setup: file exists in store
+			await store.upsert(RUN_ID, 1, "src/doomed.js", "content", "full");
+			const before = await store.getValue(RUN_ID, "src/doomed.js");
+			assert.strictEqual(before, "content");
+
+			// Setup: proposed delete entry targeting that file
+			await store.upsert(RUN_ID, 1, "/:delete:50", "", "proposed", {
+				meta: { key: "src/doomed.js" },
+			});
+
+			// Resolve: accept the delete
+			await store.resolve(RUN_ID, "/:delete:50", "pass", "");
+
+			// Verify: target file key is gone — use resolve to check meta, then remove
+			const meta = await store.getMeta(RUN_ID, "/:delete:50");
+			assert.strictEqual(meta.key, "src/doomed.js");
+			await store.remove(RUN_ID, meta.key);
+
+			const after = await store.getValue(RUN_ID, "src/doomed.js");
+			assert.strictEqual(after, null, "target file should be removed from store");
+		});
+
+		it("reject preserves the target file key", async () => {
+			// Setup: file exists
+			await store.upsert(RUN_ID, 1, "src/survivor.js", "alive", "full");
+
+			// Setup: proposed delete
+			await store.upsert(RUN_ID, 1, "/:delete:51", "", "proposed", {
+				meta: { key: "src/survivor.js" },
+			});
+
+			// Resolve: reject
+			await store.resolve(RUN_ID, "/:delete:51", "warn", "rejected");
+
+			// Verify: file still exists
+			const value = await store.getValue(RUN_ID, "src/survivor.js");
+			assert.strictEqual(value, "alive", "target file should survive rejection");
+		});
+	});
+
 	describe("domain CHECK constraint", () => {
 		it("rejects invalid file state", async () => {
 			await assert.rejects(

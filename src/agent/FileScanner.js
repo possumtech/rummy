@@ -19,7 +19,11 @@ function hashContent(content) {
 
 function formatSymbols(symbols) {
 	return symbols
-		.map((s) => (s.params ? `${s.name}(${s.params})` : s.name))
+		.map((s) => {
+			if (!s.params) return s.name;
+			const p = Array.isArray(s.params) ? s.params.join(", ") : s.params;
+			return `${s.name}(${p})`;
+		})
 		.join("\n");
 }
 
@@ -185,9 +189,11 @@ export default class FileScanner {
 			if (antlrmap && antlrmapSupported?.has(ext)) {
 				try {
 					const content = readFileSync(join(projectPath, relPath), "utf8");
-					const symbols = antlrmap.extract(content, ext);
-					symbolMap.set(relPath, symbols);
-					continue;
+					const symbols = await antlrmap.mapSource(content, ext);
+					if (symbols?.length > 0) {
+						symbolMap.set(relPath, symbols);
+						continue;
+					}
 				} catch {
 					// Fall through to ctags
 				}
