@@ -6,7 +6,9 @@ export default class DebugLoggerPlugin {
 	static register(hooks) {
 		hooks.run.step.completed.on(async (payload) => {
 			if (process.env.RUMMY_DEBUG !== "true") return;
-			console.log(`[DEBUG] Turn ${payload.turn} completed for run ${payload.run}`);
+			console.log(
+				`[DEBUG] Turn ${payload.turn} completed for run ${payload.run}`,
+			);
 		});
 	}
 }

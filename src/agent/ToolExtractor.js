@@ -45,7 +45,8 @@ export default class ToolExtractor {
 	 * @returns {string|null} Error message if validation fails, null if ok.
 	 */
 	static validate({ summaryCall }) {
-		if (!summaryCall) return "Model response missing required 'summary' tool call.";
+		if (!summaryCall)
+			return "Model response missing required 'summary' tool call.";
 		return null;
 	}
 }

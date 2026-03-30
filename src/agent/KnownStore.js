@@ -6,7 +6,8 @@ export default class KnownStore {
 	}
 
 	static domain(key) {
-		if (key.startsWith("/:known/") || key.startsWith("/:unknown/")) return "known";
+		if (key.startsWith("/:known/") || key.startsWith("/:unknown/"))
+			return "known";
 		if (key.startsWith("/:")) return "result";
 		return "file";
 	}
@@ -21,7 +22,14 @@ export default class KnownStore {
 		return `/:${toolName}/${row.seq}`;
 	}
 
-	async upsert(runId, turn, key, value, state, { meta = null, hash = null } = {}) {
+	async upsert(
+		runId,
+		turn,
+		key,
+		value,
+		state,
+		{ meta = null, hash = null } = {},
+	) {
 		const domain = KnownStore.domain(key);
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
@@ -48,7 +56,12 @@ export default class KnownStore {
 	}
 
 	async resolve(runId, key, state, value) {
-		await this.#db.resolve_known_entry.run({ run_id: runId, key, state, value });
+		await this.#db.resolve_known_entry.run({
+			run_id: runId,
+			key,
+			state,
+			value,
+		});
 	}
 
 	/**
@@ -86,14 +99,21 @@ export default class KnownStore {
 		// 4. Symbol files
 		for (const r of await this.#db.get_symbol_files.all({ run_id: runId })) {
 			const meta = r.meta ? JSON.parse(r.meta) : null;
-			context.push({ key: r.key, state: "file:symbols", value: meta?.symbols || r.value || "" });
+			context.push({
+				key: r.key,
+				state: "file:symbols",
+				value: meta?.symbols || r.value || "",
+			});
 		}
 
 		// 5. Full files
 		for (const r of await this.#db.get_full_files.all({ run_id: runId })) {
-			const fileState = r.state === "readonly" ? "file:readonly"
-				: r.state === "active" ? "file:active"
-				: "file";
+			const fileState =
+				r.state === "readonly"
+					? "file:readonly"
+					: r.state === "active"
+						? "file:active"
+						: "file";
 			context.push({ key: r.key, state: fileState, value: r.value });
 		}
 

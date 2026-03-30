@@ -5,7 +5,8 @@ RETURNING id, sequence;
 
 -- PREP: update_turn_stats
 UPDATE turns
-SET prompt_tokens = :prompt_tokens
+SET
+	prompt_tokens = :prompt_tokens
 	, completion_tokens = :completion_tokens
 	, total_tokens = :total_tokens
 	, cost = :cost
@@ -23,6 +24,7 @@ WHERE run_id = :run_id;
 -- PREP: get_run_log
 SELECT key, state AS status, value, meta
 FROM known_entries
-WHERE run_id = :run_id
+WHERE
+	run_id = :run_id
 	AND domain = 'result'
 ORDER BY id;

@@ -14,7 +14,7 @@ export default class SessionManager {
 		this.#knownStore = new KnownStore(db);
 	}
 
-	async init(projectPath, projectName, clientId, projectBufferFiles = []) {
+	async init(projectPath, projectName, clientId, _projectBufferFiles = []) {
 		await this.#hooks.project.init.started.emit({
 			projectPath,
 			projectName,
@@ -41,9 +41,7 @@ export default class SessionManager {
 			client_id: clientId,
 		});
 
-		const { default: GitProvider } = await import(
-			"../fs/GitProvider.js"
-		);
+		const { default: GitProvider } = await import("../fs/GitProvider.js");
 		const gitRoot = await GitProvider.detectRoot(projectPath);
 		const headHash = gitRoot ? await GitProvider.getHeadHash(gitRoot) : null;
 
@@ -72,9 +70,11 @@ export default class SessionManager {
 	}
 
 	async getFiles(projectPath) {
-		const projects = await this.#db.get_project_by_path.all({ path: projectPath });
+		const projects = await this.#db.get_project_by_path.all({
+			path: projectPath,
+		});
 		if (projects.length === 0) return [];
-		const projectId = projects[0].id;
+		const _projectId = projects[0].id;
 
 		const ctx = await ProjectContext.open(projectPath);
 		const mappable = await ctx.getMappableFiles();
@@ -82,7 +82,7 @@ export default class SessionManager {
 		return mappable.map((path) => ({ path, fidelity: "path" }));
 	}
 
-	async fileStatus(projectId, path) {
+	async fileStatus(_projectId, path) {
 		return { path, fidelity: "path" };
 	}
 
@@ -98,7 +98,9 @@ export default class SessionManager {
 		if (!path) return { status: "ok" };
 
 		await this.#hooks.project.files.update.started.emit({
-			projectId, pattern: path, constraint: state,
+			projectId,
+			pattern: path,
+			constraint: state,
 		});
 
 		// Update across all active runs
@@ -136,7 +138,9 @@ export default class SessionManager {
 		if (!path) return { status: "ok" };
 
 		await this.#hooks.project.files.update.started.emit({
-			projectId, pattern: path, constraint: null,
+			projectId,
+			pattern: path,
+			constraint: null,
 		});
 
 		// Remove file entry from all active runs
@@ -159,7 +163,9 @@ export default class SessionManager {
 
 	async startRun(sessionId, runConfig) {
 		const runId = crypto.randomUUID();
-		const config = await this.#hooks.run.config.filter(runConfig, { sessionId });
+		const config = await this.#hooks.run.config.filter(runConfig, {
+			sessionId,
+		});
 
 		const modelAlias = config.model || process.env.RUMMY_MODEL_DEFAULT;
 		const prefix = `${modelAlias}_`;
@@ -176,7 +182,10 @@ export default class SessionManager {
 		});
 
 		await this.#hooks.run.started.emit({
-			runId, alias, sessionId, type: config.type,
+			runId,
+			alias,
+			sessionId,
+			type: config.type,
 		});
 		return { runId, alias };
 	}
@@ -201,14 +210,17 @@ export default class SessionManager {
 	}
 
 	async getSkills(sessionId) {
-		const rows = await this.#db.get_session_skills.all({ session_id: sessionId });
+		const rows = await this.#db.get_session_skills.all({
+			session_id: sessionId,
+		});
 		return rows.map((r) => r.name);
 	}
 
 	async setTemperature(sessionId, temperature) {
 		const clamped = Math.max(0, Math.min(2, temperature));
 		await this.#db.update_session_temperature.run({
-			id: sessionId, temperature: clamped,
+			id: sessionId,
+			temperature: clamped,
 		});
 		return clamped;
 	}

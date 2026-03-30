@@ -30,7 +30,8 @@ UPDATE sessions SET system_prompt = :system_prompt WHERE id = :id;
 UPDATE sessions SET persona = :persona WHERE id = :id;
 
 -- PREP: insert_session_skill
-INSERT OR IGNORE INTO session_skills (session_id, name) VALUES (:session_id, :name);
+INSERT OR IGNORE INTO session_skills (session_id, name)
+VALUES (:session_id, :name);
 
 -- PREP: delete_session_skill
 DELETE FROM session_skills WHERE session_id = :session_id AND name = :name;

@@ -23,7 +23,9 @@ export default class ContextAssembler {
 
 		// The ordered known context — one flat array
 		if (context.length > 0) {
-			sections.push(`## Context\n\`\`\`json\n${JSON.stringify(context)}\n\`\`\``);
+			sections.push(
+				`## Context\n\`\`\`json\n${JSON.stringify(context)}\n\`\`\``,
+			);
 		}
 
 		const messages = [{ role: "system", content: sections.join("\n\n") }];

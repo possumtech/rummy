@@ -35,7 +35,9 @@ export default class FileScanner {
 	 * Scan the project and sync file entries across all active runs.
 	 */
 	async scan(projectPath, projectId, mappableFiles, currentTurn = 0) {
-		const activeRuns = await this.#db.get_active_runs.all({ project_id: projectId });
+		const activeRuns = await this.#db.get_active_runs.all({
+			project_id: projectId,
+		});
 		if (activeRuns.length === 0) return;
 
 		// Read all files from disk
@@ -52,7 +54,9 @@ export default class FileScanner {
 		}
 
 		// Extract symbols for files that need it
-		const symbolMap = await this.#extractAllSymbols(projectPath, [...diskFiles.keys()]);
+		const symbolMap = await this.#extractAllSymbols(projectPath, [
+			...diskFiles.keys(),
+		]);
 
 		// Sync each active run
 		for (const run of activeRuns) {
@@ -77,10 +81,16 @@ export default class FileScanner {
 			const symbols = symbolMap.get(relPath);
 			const symbolText = symbols ? formatSymbols(symbols) : "";
 			const meta = symbolText ? { symbols: symbolText } : null;
-			const isLoaded = entry && (entry.state === "full" || entry.state === "active" || entry.state === "readonly");
+			const isLoaded =
+				entry &&
+				(entry.state === "full" ||
+					entry.state === "active" ||
+					entry.state === "readonly");
 
 			await this.#knownStore.upsert(
-				runId, currentTurn, relPath,
+				runId,
+				currentTurn,
+				relPath,
 				isLoaded ? content : symbolText,
 				entry?.state || "symbols",
 				{ hash, meta },

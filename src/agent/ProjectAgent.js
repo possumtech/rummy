@@ -1,7 +1,7 @@
 import LlmProvider from "../llm/LlmProvider.js";
-import SessionManager from "./SessionManager.js";
 import AgentLoop from "./AgentLoop.js";
 import KnownStore from "./KnownStore.js";
+import SessionManager from "./SessionManager.js";
 import TurnExecutor from "./TurnExecutor.js";
 
 export default class ProjectAgent {

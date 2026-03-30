@@ -1,5 +1,5 @@
-import ToolRegistry from "./ToolRegistry.js";
 import HookRegistry from "./HookRegistry.js";
+import ToolRegistry from "./ToolRegistry.js";
 
 /**
  * createHooks returns a structured, strictly-typed API for registering

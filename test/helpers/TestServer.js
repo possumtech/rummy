@@ -1,9 +1,9 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import createHooks from "../../src/hooks/Hooks.js";
+import { registerPlugins } from "../../src/plugins/index.js";
 import RpcRegistry from "../../src/server/RpcRegistry.js";
 import SocketServer from "../../src/server/SocketServer.js";
-import { registerPlugins } from "../../src/plugins/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

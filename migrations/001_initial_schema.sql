@@ -65,7 +65,8 @@ CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 
 -- Known K/V Store: the unified state machine
 -- Files, knowledge, tool results, audit — everything is a keyed entry.
--- domain + state are normalized columns; the model sees a projection (e.g. "file:symbols").
+-- domain + state are normalized columns;
+-- the model sees a projection (e.g. "file:symbols").
 CREATE TABLE IF NOT EXISTS known_entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
@@ -82,9 +83,15 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, CHECK (
-		(domain = 'file' AND state IN ('full', 'readonly', 'active', 'ignore', 'symbols'))
+		(
+			domain = 'file'
+			AND state IN ('full', 'readonly', 'active', 'ignore', 'symbols')
+		)
 		OR (domain = 'known' AND state IN ('full', 'stored'))
-		OR (domain = 'result' AND state IN ('proposed', 'pass', 'info', 'warn', 'error', 'summary'))
+		OR (
+			domain = 'result'
+			AND state IN ('proposed', 'pass', 'info', 'warn', 'error', 'summary')
+		)
 	)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_key

@@ -10,7 +10,8 @@ export default class OllamaClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		const tools = options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
+		const tools =
+			options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
 
 		const body = {
 			model,

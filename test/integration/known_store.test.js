@@ -1,7 +1,7 @@
-import { after, before, describe, it } from "node:test";
 import assert from "node:assert";
-import TestDb from "../helpers/TestDb.js";
+import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
+import TestDb from "../helpers/TestDb.js";
 
 describe("KnownStore integration", () => {
 	let tdb;
@@ -13,7 +13,11 @@ describe("KnownStore integration", () => {
 		store = new KnownStore(tdb.db);
 
 		// Create prerequisite rows
-		await tdb.db.upsert_project.run({ id: "p1", path: "/tmp/test", name: "Test" });
+		await tdb.db.upsert_project.run({
+			id: "p1",
+			path: "/tmp/test",
+			name: "Test",
+		});
 		await tdb.db.create_session.run({
 			id: "s1",
 			project_id: "p1",
@@ -100,7 +104,9 @@ describe("KnownStore integration", () => {
 		});
 
 		it("inserts a result entry", async () => {
-			await store.upsert(RUN_ID, 1, "/:read/1", "file contents", "pass", { meta: { command: "read src/app.js" } });
+			await store.upsert(RUN_ID, 1, "/:read/1", "file contents", "pass", {
+				meta: { command: "read src/app.js" },
+			});
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.key === "/:read/1");
 			assert.ok(entry);
@@ -140,7 +146,9 @@ describe("KnownStore integration", () => {
 
 	describe("resolve", () => {
 		it("changes proposed to pass with output", async () => {
-			await store.upsert(RUN_ID, 1, "/:edit/1", "", "proposed", { meta: { file: "src/app.js", search: "old", replace: "new" } });
+			await store.upsert(RUN_ID, 1, "/:edit/1", "", "proposed", {
+				meta: { file: "src/app.js", search: "old", replace: "new" },
+			});
 			const unresolved = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(unresolved.length, 1);
 			assert.strictEqual(unresolved[0].key, "/:edit/1");
@@ -156,7 +164,9 @@ describe("KnownStore integration", () => {
 		});
 
 		it("changes proposed to warn on rejection", async () => {
-			await store.upsert(RUN_ID, 1, "/:run/1", "", "proposed", { meta: { command: "npm test" } });
+			await store.upsert(RUN_ID, 1, "/:run/1", "", "proposed", {
+				meta: { command: "npm test" },
+			});
 			await store.resolve(RUN_ID, "/:run/1", "warn", "rejected by user");
 
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
@@ -170,13 +180,21 @@ describe("KnownStore integration", () => {
 		const CURRENT_TURN = 5;
 
 		it("hides file:ignore entries", async () => {
-			await store.upsert(RUN_ID, CURRENT_TURN, "node_modules/x.js", "", "ignore");
+			await store.upsert(
+				RUN_ID,
+				CURRENT_TURN,
+				"node_modules/x.js",
+				"",
+				"ignore",
+			);
 			const model = await store.getModelContext(RUN_ID);
 			assert.ok(!model.find((e) => e.key === "node_modules/x.js"));
 		});
 
 		it("hides proposed entries", async () => {
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:edit/99", "", "proposed", { meta: { file: "x.js" } });
+			await store.upsert(RUN_ID, CURRENT_TURN, "/:edit/99", "", "proposed", {
+				meta: { file: "x.js" },
+			});
 			const model = await store.getModelContext(RUN_ID);
 			assert.ok(!model.find((e) => e.key === "/:edit/99"));
 			await store.resolve(RUN_ID, "/:edit/99", "pass", "done");
@@ -184,7 +202,13 @@ describe("KnownStore integration", () => {
 
 		it("expanded files (turn == currentTurn) show full value", async () => {
 			await store.upsert(RUN_ID, CURRENT_TURN, "readme.md", "# Hi", "readonly");
-			await store.upsert(RUN_ID, CURRENT_TURN, "main.js", "export default {}", "active");
+			await store.upsert(
+				RUN_ID,
+				CURRENT_TURN,
+				"main.js",
+				"export default {}",
+				"active",
+			);
 
 			const model = await store.getModelContext(RUN_ID);
 			const readme = model.find((e) => e.key === "readme.md");
@@ -197,7 +221,13 @@ describe("KnownStore integration", () => {
 		});
 
 		it("collapsed files (turn == 0) show as file:path with empty value", async () => {
-			await store.upsert(RUN_ID, 0, "utils.js", "const add = (a,b) => a+b;", "full");
+			await store.upsert(
+				RUN_ID,
+				0,
+				"utils.js",
+				"const add = (a,b) => a+b;",
+				"full",
+			);
 			const model = await store.getModelContext(RUN_ID);
 			const utils = model.find((e) => e.key === "utils.js");
 
@@ -206,7 +236,13 @@ describe("KnownStore integration", () => {
 		});
 
 		it("expanded file:full shows as 'file'", async () => {
-			await store.upsert(RUN_ID, CURRENT_TURN, "src/app.js", "const x = 1;", "full");
+			await store.upsert(
+				RUN_ID,
+				CURRENT_TURN,
+				"src/app.js",
+				"const x = 1;",
+				"full",
+			);
 			const model = await store.getModelContext(RUN_ID);
 			const app = model.find((e) => e.key === "src/app.js");
 			assert.strictEqual(app.state, "file");
@@ -214,7 +250,13 @@ describe("KnownStore integration", () => {
 		});
 
 		it("result entries show with their status and empty value (recallable)", async () => {
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:read/1", "file contents", "pass");
+			await store.upsert(
+				RUN_ID,
+				CURRENT_TURN,
+				"/:read/1",
+				"file contents",
+				"pass",
+			);
 			const model = await store.getModelContext(RUN_ID);
 			const read = model.find((e) => e.key === "/:read/1");
 			assert.strictEqual(read.state, "pass");
@@ -222,7 +264,13 @@ describe("KnownStore integration", () => {
 		});
 
 		it("expanded known shows as full with value", async () => {
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:known/db_type", "PostgreSQL", "full");
+			await store.upsert(
+				RUN_ID,
+				CURRENT_TURN,
+				"/:known/db_type",
+				"PostgreSQL",
+				"full",
+			);
 			const model = await store.getModelContext(RUN_ID);
 			const known = model.find((e) => e.key === "/:known/db_type");
 			assert.strictEqual(known.state, "full");
@@ -238,10 +286,28 @@ describe("KnownStore integration", () => {
 		});
 
 		it("hides internal keys but shows sticky unknowns", async () => {
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:unknown/1", "What is the session store?", "full");
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:system/5", "prompt text", "info");
+			await store.upsert(
+				RUN_ID,
+				CURRENT_TURN,
+				"/:unknown/1",
+				"What is the session store?",
+				"full",
+			);
+			await store.upsert(
+				RUN_ID,
+				CURRENT_TURN,
+				"/:system/5",
+				"prompt text",
+				"info",
+			);
 			await store.upsert(RUN_ID, CURRENT_TURN, "/:user/5", "user text", "info");
-			await store.upsert(RUN_ID, CURRENT_TURN, "/:reasoning/5", "thinking...", "info");
+			await store.upsert(
+				RUN_ID,
+				CURRENT_TURN,
+				"/:reasoning/5",
+				"thinking...",
+				"info",
+			);
 
 			const model = await store.getModelContext(RUN_ID);
 			assert.ok(!model.find((e) => e.key === "/:system/5"));

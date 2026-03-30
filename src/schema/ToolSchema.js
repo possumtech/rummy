@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
@@ -6,15 +6,30 @@ import Ajv from "ajv";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TOOLS_DIR = join(__dirname, "tools");
 
-const SHARED_TOOLS = ["write", "summary", "unknown", "read", "drop", "env", "ask_user"];
+const SHARED_TOOLS = [
+	"write",
+	"summary",
+	"unknown",
+	"read",
+	"drop",
+	"env",
+	"ask_user",
+];
 const ACT_TOOLS = ["run", "delete", "edit"];
 const ALL_TOOL_NAMES = [...SHARED_TOOLS, ...ACT_TOOLS];
 
 // Keywords that OpenAI strict mode doesn't support
 const UNSUPPORTED_STRICT_KEYWORDS = new Set([
-	"minLength", "maxLength", "minItems", "maxItems",
-	"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
-	"pattern", "multipleOf",
+	"minLength",
+	"maxLength",
+	"minItems",
+	"maxItems",
+	"minimum",
+	"maximum",
+	"exclusiveMinimum",
+	"exclusiveMaximum",
+	"pattern",
+	"multipleOf",
 ]);
 
 function stripUnsupported(obj) {
@@ -64,13 +79,18 @@ export default class ToolSchema {
 
 	static validate(toolName, args) {
 		const validator = validators[toolName];
-		if (!validator) return { valid: false, errors: [{ message: `Unknown tool: ${toolName}` }] };
+		if (!validator)
+			return {
+				valid: false,
+				errors: [{ message: `Unknown tool: ${toolName}` }],
+			};
 		const valid = validator(args);
 		return { valid, errors: valid ? null : [...validator.errors] };
 	}
 
 	static validateRequired(calledTools) {
-		const names = calledTools instanceof Set ? calledTools : new Set(calledTools);
+		const names =
+			calledTools instanceof Set ? calledTools : new Set(calledTools);
 		const missing = [];
 		if (!names.has("summary")) missing.push("summary");
 		return { valid: missing.length === 0, missing };

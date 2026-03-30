@@ -1,11 +1,11 @@
-import ToolExtractor from "./ToolExtractor.js";
-import ContextAssembler from "./ContextAssembler.js";
-import FileScanner from "./FileScanner.js";
-import ToolSchema from "../schema/ToolSchema.js";
-import PromptManager from "./PromptManager.js";
 import ProjectContext from "../fs/ProjectContext.js";
 import RummyContext from "../hooks/RummyContext.js";
+import ToolSchema from "../schema/ToolSchema.js";
+import ContextAssembler from "./ContextAssembler.js";
+import FileScanner from "./FileScanner.js";
 import HeuristicMatcher, { generateUnifiedDiff } from "./HeuristicMatcher.js";
+import PromptManager from "./PromptManager.js";
+import ToolExtractor from "./ToolExtractor.js";
 
 export default class TurnExecutor {
 	#db;
@@ -46,7 +46,9 @@ export default class TurnExecutor {
 		// Check state lock — no new turns while proposed entries exist
 		const unresolved = await this.#knownStore.getUnresolved(currentRunId);
 		if (unresolved.length > 0) {
-			throw new Error(`Blocked: run has ${unresolved.length} unresolved proposed entries.`);
+			throw new Error(
+				`Blocked: run has ${unresolved.length} unresolved proposed entries.`,
+			);
 		}
 
 		// Scan project files and sync to known store
@@ -58,7 +60,9 @@ export default class TurnExecutor {
 
 		// Run onTurn hooks
 		const hookRoot = {
-			tag: "turn", attrs: {}, content: null,
+			tag: "turn",
+			attrs: {},
+			content: null,
 			children: [
 				{ tag: "system", attrs: {}, content: null, children: [] },
 				{ tag: "context", attrs: {}, content: null, children: [] },
@@ -67,8 +71,14 @@ export default class TurnExecutor {
 			],
 		};
 		const rummy = new RummyContext(hookRoot, {
-			db: this.#db, project, type, sequence: turn,
-			runId: currentRunId, turnId: turnRow.id, noContext, contextSize,
+			db: this.#db,
+			project,
+			type,
+			sequence: turn,
+			runId: currentRunId,
+			turnId: turnRow.id,
+			noContext,
+			contextSize,
 		});
 		await this.#hooks.processTurn(rummy);
 
@@ -80,7 +90,13 @@ export default class TurnExecutor {
 		});
 
 		// Store user prompt as a known entry (visible to model at bottom of context)
-		await this.#knownStore.upsert(currentRunId, turn, `/:prompt/${turn}`, loopPrompt, "info");
+		await this.#knownStore.upsert(
+			currentRunId,
+			turn,
+			`/:prompt/${turn}`,
+			loopPrompt,
+			"info",
+		);
 
 		// Assemble context from known store — one ordered array
 		const systemPrompt = await PromptManager.getSystemPrompt(type);
@@ -93,14 +109,18 @@ export default class TurnExecutor {
 			userMessage: loopPrompt,
 		});
 
-		const filteredMessages = await this.#hooks.llm.messages.filter(
-			messages,
-			{ model: requestedModel, sessionId, runId: currentRunId },
-		);
+		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
+			model: requestedModel,
+			sessionId,
+			runId: currentRunId,
+		});
 
 		// DEBUG: dump what we're sending
 		if (process.env.RUMMY_DEBUG === "true") {
-			console.log("[DEBUG] Messages:", JSON.stringify(filteredMessages, null, 2));
+			console.log(
+				"[DEBUG] Messages:",
+				JSON.stringify(filteredMessages, null, 2),
+			);
 		}
 
 		// Call LLM with tool calling
@@ -112,7 +132,10 @@ export default class TurnExecutor {
 		const responseMessage = result.choices?.[0]?.message;
 
 		if (process.env.RUMMY_DEBUG === "true") {
-			console.log("[DEBUG] Response tool_calls:", JSON.stringify(responseMessage?.tool_calls, null, 2));
+			console.log(
+				"[DEBUG] Response tool_calls:",
+				JSON.stringify(responseMessage?.tool_calls, null, 2),
+			);
 			console.log("[DEBUG] Response content:", responseMessage?.content);
 		}
 
@@ -125,7 +148,14 @@ export default class TurnExecutor {
 
 		// Extract and validate tool calls
 		const extracted = ToolExtractor.extract(responseMessage);
-		const { actionCalls, writeCalls, unknownCalls, summaryCall, askUserCall, flags } = extracted;
+		const {
+			actionCalls,
+			writeCalls,
+			unknownCalls,
+			summaryCall,
+			askUserCall,
+			flags,
+		} = extracted;
 
 		const validationError = ToolExtractor.validate({ summaryCall });
 		if (validationError) throw new Error(validationError);
@@ -136,26 +166,39 @@ export default class TurnExecutor {
 			const args = JSON.parse(tc.function?.arguments || "{}");
 			const { valid, errors } = ToolSchema.validate(name, args);
 			if (!valid) {
-				console.warn(`[RUMMY] Healing ${name}: ${errors.map((e) => e.message).join(", ")}`);
+				console.warn(
+					`[RUMMY] Healing ${name}: ${errors.map((e) => e.message).join(", ")}`,
+				);
 			}
 		}
 
 		// Heal summary length — truncate, don't retry
 		if (summaryCall?.args?.text?.length > 80) {
-			console.warn(`[RUMMY] Summary truncated from ${summaryCall.args.text.length} to 80 chars`);
+			console.warn(
+				`[RUMMY] Summary truncated from ${summaryCall.args.text.length} to 80 chars`,
+			);
 			summaryCall.args.text = summaryCall.args.text.slice(0, 80);
 		}
 
 		// Validate tool names for mode
-		const toolNames = (responseMessage.tool_calls || []).map((tc) => tc.function?.name);
-		const { valid: modeValid, invalid } = ToolSchema.validateMode(type, toolNames);
+		const toolNames = (responseMessage.tool_calls || []).map(
+			(tc) => tc.function?.name,
+		);
+		const { valid: modeValid, invalid } = ToolSchema.validateMode(
+			type,
+			toolNames,
+		);
 		if (!modeValid) {
-			throw new Error(`Tools not allowed in ${type} mode: ${invalid.join(", ")}`);
+			throw new Error(
+				`Tools not allowed in ${type} mode: ${invalid.join(", ")}`,
+			);
 		}
 
 		// Capture any free-form content as reasoning (model may emit text alongside tools)
 		const freeformContent = (responseMessage.content || "").trim();
-		const reasoning = [responseMessage.reasoning_content, freeformContent].filter(Boolean).join("\n");
+		const reasoning = [responseMessage.reasoning_content, freeformContent]
+			.filter(Boolean)
+			.join("\n");
 
 		// Commit usage stats
 		const usage = result.usage || {};
@@ -170,7 +213,8 @@ export default class TurnExecutor {
 		// Store reasoning (explicit + free-form content) as audit entry
 		if (reasoning) {
 			await this.#knownStore.upsert(
-				currentRunId, turn,
+				currentRunId,
+				turn,
 				`/:reasoning/${turn}`,
 				reasoning,
 				"info",
@@ -178,8 +222,20 @@ export default class TurnExecutor {
 		}
 
 		// Store the system prompt and user message sent this turn (audit)
-		await this.#knownStore.upsert(currentRunId, turn, `/:system/${turn}`, systemPrompt, "info");
-		await this.#knownStore.upsert(currentRunId, turn, `/:user/${turn}`, loopPrompt, "info");
+		await this.#knownStore.upsert(
+			currentRunId,
+			turn,
+			`/:system/${turn}`,
+			systemPrompt,
+			"info",
+		);
+		await this.#knownStore.upsert(
+			currentRunId,
+			turn,
+			`/:user/${turn}`,
+			loopPrompt,
+			"info",
+		);
 
 		// --- SERVER EXECUTION ORDER ---
 
@@ -194,24 +250,38 @@ export default class TurnExecutor {
 				continue;
 			}
 
-			const resultKey = await this.#knownStore.nextResultKey(currentRunId, call.name);
+			const resultKey = await this.#knownStore.nextResultKey(
+				currentRunId,
+				call.name,
+			);
 			call.resultKey = resultKey;
 
 			if (call.name === "edit") {
 				// Compute patch from file content in known store
-				const fileContent = await this.#knownStore.getValue(currentRunId, call.args.file);
+				const fileContent = await this.#knownStore.getValue(
+					currentRunId,
+					call.args.file,
+				);
 				let patch = null;
 				let warning = null;
 				let error = null;
 
 				if (call.args.search === null) {
 					// New file or full overwrite
-					patch = call.args.search === null && fileContent
-						? generateUnifiedDiff(call.args.file, fileContent, call.args.replace)
-						: null;
+					patch =
+						call.args.search === null && fileContent
+							? generateUnifiedDiff(
+									call.args.file,
+									fileContent,
+									call.args.replace,
+								)
+							: null;
 				} else if (fileContent !== null) {
 					const result = HeuristicMatcher.matchAndPatch(
-						call.args.file, fileContent, call.args.search, call.args.replace,
+						call.args.file,
+						fileContent,
+						call.args.search,
+						call.args.replace,
 					);
 					patch = result.patch;
 					warning = result.warning;
@@ -219,7 +289,9 @@ export default class TurnExecutor {
 				}
 
 				await this.#knownStore.upsert(
-					currentRunId, turn, resultKey,
+					currentRunId,
+					turn,
+					resultKey,
 					patch || "",
 					error ? "error" : "proposed",
 					{ meta: { ...call.args, patch, warning, error } },
@@ -231,7 +303,9 @@ export default class TurnExecutor {
 				// env, run, delete
 				const isProposed = call.name === "run" || call.name === "delete";
 				await this.#knownStore.upsert(
-					currentRunId, turn, resultKey,
+					currentRunId,
+					turn,
+					resultKey,
 					"",
 					isProposed ? "proposed" : "pass",
 					{ meta: { ...call.args } },
@@ -241,10 +315,15 @@ export default class TurnExecutor {
 
 		// Step 1b: ask_user (also proposed)
 		if (askUserCall) {
-			const resultKey = await this.#knownStore.nextResultKey(currentRunId, "ask_user");
+			const resultKey = await this.#knownStore.nextResultKey(
+				currentRunId,
+				"ask_user",
+			);
 			askUserCall.resultKey = resultKey;
 			await this.#knownStore.upsert(
-				currentRunId, turn, resultKey,
+				currentRunId,
+				turn,
+				resultKey,
 				"",
 				"proposed",
 				{ meta: { ...askUserCall.args } },
@@ -253,18 +332,29 @@ export default class TurnExecutor {
 
 		// Step 2: Process unknowns — sticky, deduplicated via SQL
 		if (unknownCalls.length > 0) {
-			const existingValues = await this.#knownStore.getUnknownValues(currentRunId);
+			const existingValues =
+				await this.#knownStore.getUnknownValues(currentRunId);
 			for (const call of unknownCalls) {
 				if (existingValues.has(call.args.text)) continue;
-				const key = await this.#knownStore.nextResultKey(currentRunId, "unknown");
-				await this.#knownStore.upsert(currentRunId, turn, key, call.args.text, "full");
+				const key = await this.#knownStore.nextResultKey(
+					currentRunId,
+					"unknown",
+				);
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					key,
+					call.args.text,
+					"full",
+				);
 			}
 		}
 
 		// Step 3: Process writes
 		for (const call of writeCalls) {
 			await this.#knownStore.upsert(
-				currentRunId, turn,
+				currentRunId,
+				turn,
 				call.args.key,
 				call.args.value,
 				"full",
@@ -272,9 +362,14 @@ export default class TurnExecutor {
 		}
 
 		// Step 4: Store summary
-		const summaryKey = await this.#knownStore.nextResultKey(currentRunId, "summary");
+		const summaryKey = await this.#knownStore.nextResultKey(
+			currentRunId,
+			"summary",
+		);
 		await this.#knownStore.upsert(
-			currentRunId, turn, summaryKey,
+			currentRunId,
+			turn,
+			summaryKey,
 			summaryCall.args.text || "",
 			"summary",
 		);
@@ -290,7 +385,9 @@ export default class TurnExecutor {
 			flags,
 			model: result.model || requestedModel,
 			modelAlias: requestedModel,
-			temperature: options?.temperature ?? Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
+			temperature:
+				options?.temperature ??
+				Number.parseFloat(process.env.RUMMY_TEMPERATURE || "0.7"),
 			contextSize,
 			usage,
 		};

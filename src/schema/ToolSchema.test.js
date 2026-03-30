@@ -1,5 +1,5 @@
-import { describe, it } from "node:test";
 import assert from "node:assert";
+import { describe, it } from "node:test";
 import ToolSchema from "./ToolSchema.js";
 
 describe("ToolSchema", () => {
@@ -16,7 +16,10 @@ describe("ToolSchema", () => {
 			const askNames = ToolSchema.ask.map((t) => t.function.name);
 			const actNames = ToolSchema.act.map((t) => t.function.name);
 			for (const name of askNames) {
-				assert.ok(actNames.includes(name), `act mode missing ask tool: ${name}`);
+				assert.ok(
+					actNames.includes(name),
+					`act mode missing ask tool: ${name}`,
+				);
 			}
 		});
 
@@ -31,7 +34,11 @@ describe("ToolSchema", () => {
 
 		it("every tool has strict: true", () => {
 			for (const tool of ToolSchema.act) {
-				assert.strictEqual(tool.function.strict, true, `${tool.function.name} missing strict: true`);
+				assert.strictEqual(
+					tool.function.strict,
+					true,
+					`${tool.function.name} missing strict: true`,
+				);
 			}
 		});
 
@@ -58,12 +65,23 @@ describe("ToolSchema", () => {
 		});
 
 		it("high-frequency tools have flat string parameters", () => {
-			const flat = ["write", "summary", "unknown", "read", "drop", "env", "run", "delete"];
+			const flat = [
+				"write",
+				"summary",
+				"unknown",
+				"read",
+				"drop",
+				"env",
+				"run",
+				"delete",
+			];
 			for (const tool of ToolSchema.act) {
 				if (!flat.includes(tool.function.name)) continue;
 				const props = tool.function.parameters.properties;
 				for (const [propName, schema] of Object.entries(props)) {
-					const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+					const types = Array.isArray(schema.type)
+						? schema.type
+						: [schema.type];
 					for (const t of types) {
 						assert.ok(
 							t === "string" || t === "null",
@@ -77,7 +95,8 @@ describe("ToolSchema", () => {
 
 	describe("API stripping", () => {
 		it("API tools have no minLength/maxLength/minItems", () => {
-			const json = JSON.stringify(ToolSchema.askApi) + JSON.stringify(ToolSchema.actApi);
+			const json =
+				JSON.stringify(ToolSchema.askApi) + JSON.stringify(ToolSchema.actApi);
 			assert.ok(!json.includes("minLength"), "API schemas contain minLength");
 			assert.ok(!json.includes("maxLength"), "API schemas contain maxLength");
 			assert.ok(!json.includes("minItems"), "API schemas contain minItems");
@@ -93,7 +112,10 @@ describe("ToolSchema", () => {
 			for (const apiTool of ToolSchema.actApi) {
 				const name = apiTool.function.name;
 				const master = ToolSchema.master[name];
-				assert.strictEqual(apiTool.function.description, master.function.description);
+				assert.strictEqual(
+					apiTool.function.description,
+					master.function.description,
+				);
 				assert.strictEqual(apiTool.function.strict, true);
 			}
 		});
@@ -102,7 +124,8 @@ describe("ToolSchema", () => {
 	describe("argument validation", () => {
 		it("valid write passes", () => {
 			const { valid } = ToolSchema.validate("write", {
-				key: "/:known/test", value: "hello",
+				key: "/:known/test",
+				value: "hello",
 			});
 			assert.ok(valid);
 		});
@@ -113,7 +136,10 @@ describe("ToolSchema", () => {
 		});
 
 		it("write with empty value passes (blank values are legitimate)", () => {
-			const { valid } = ToolSchema.validate("write", { key: "/:known/x", value: "" });
+			const { valid } = ToolSchema.validate("write", {
+				key: "/:known/x",
+				value: "",
+			});
 			assert.ok(valid);
 		});
 
@@ -128,12 +154,16 @@ describe("ToolSchema", () => {
 		});
 
 		it("summary over 80 chars fails (maxLength)", () => {
-			const { valid } = ToolSchema.validate("summary", { text: "x".repeat(81) });
+			const { valid } = ToolSchema.validate("summary", {
+				text: "x".repeat(81),
+			});
 			assert.ok(!valid);
 		});
 
 		it("summary at exactly 80 chars passes", () => {
-			const { valid } = ToolSchema.validate("summary", { text: "x".repeat(80) });
+			const { valid } = ToolSchema.validate("summary", {
+				text: "x".repeat(80),
+			});
 			assert.ok(valid);
 		});
 
@@ -148,46 +178,60 @@ describe("ToolSchema", () => {
 		});
 
 		it("valid read passes", () => {
-			const { valid } = ToolSchema.validate("read", { key: "src/app.js", reason: "check it" });
+			const { valid } = ToolSchema.validate("read", {
+				key: "src/app.js",
+				reason: "check it",
+			});
 			assert.ok(valid);
 		});
 
 		it("read with empty key fails", () => {
-			const { valid } = ToolSchema.validate("read", { key: "", reason: "check it" });
+			const { valid } = ToolSchema.validate("read", {
+				key: "",
+				reason: "check it",
+			});
 			assert.ok(!valid);
 		});
 
 		it("valid edit passes", () => {
 			const { valid } = ToolSchema.validate("edit", {
-				file: "src/app.js", search: "old", replace: "new",
+				file: "src/app.js",
+				search: "old",
+				replace: "new",
 			});
 			assert.ok(valid);
 		});
 
 		it("edit with null search passes (new file)", () => {
 			const { valid } = ToolSchema.validate("edit", {
-				file: "src/new.js", search: null, replace: "content",
+				file: "src/new.js",
+				search: null,
+				replace: "content",
 			});
 			assert.ok(valid);
 		});
 
 		it("edit with empty replace fails", () => {
 			const { valid } = ToolSchema.validate("edit", {
-				file: "src/app.js", search: "old", replace: "",
+				file: "src/app.js",
+				search: "old",
+				replace: "",
 			});
 			assert.ok(!valid);
 		});
 
 		it("valid prompt passes", () => {
 			const { valid } = ToolSchema.validate("ask_user", {
-				question: "Which?", options: ["A", "B"],
+				question: "Which?",
+				options: ["A", "B"],
 			});
 			assert.ok(valid);
 		});
 
 		it("prompt with one option fails (minItems: 2)", () => {
 			const { valid } = ToolSchema.validate("ask_user", {
-				question: "Which?", options: ["only one"],
+				question: "Which?",
+				options: ["only one"],
 			});
 			assert.ok(!valid);
 		});
@@ -201,7 +245,11 @@ describe("ToolSchema", () => {
 
 	describe("required tool validation", () => {
 		it("passes when summary present", () => {
-			const { valid } = ToolSchema.validateRequired(["summary", "write", "read"]);
+			const { valid } = ToolSchema.validateRequired([
+				"summary",
+				"write",
+				"read",
+			]);
 			assert.ok(valid);
 		});
 
@@ -219,22 +267,39 @@ describe("ToolSchema", () => {
 
 	describe("mode validation", () => {
 		it("ask mode rejects act-only tools", () => {
-			const { valid, invalid } = ToolSchema.validateMode("ask", ["write", "summary", "run"]);
+			const { valid, invalid } = ToolSchema.validateMode("ask", [
+				"write",
+				"summary",
+				"run",
+			]);
 			assert.ok(!valid);
 			assert.deepStrictEqual(invalid, ["run"]);
 		});
 
 		it("act mode accepts all tools", () => {
 			const { valid } = ToolSchema.validateMode("act", [
-				"write", "summary", "read", "drop", "env", "ask_user",
-				"run", "delete", "edit",
+				"write",
+				"summary",
+				"read",
+				"drop",
+				"env",
+				"ask_user",
+				"run",
+				"delete",
+				"edit",
 			]);
 			assert.ok(valid);
 		});
 
 		it("ask mode accepts all shared tools", () => {
 			const { valid } = ToolSchema.validateMode("ask", [
-				"write", "summary", "unknown", "read", "drop", "env", "ask_user",
+				"write",
+				"summary",
+				"unknown",
+				"read",
+				"drop",
+				"env",
+				"ask_user",
 			]);
 			assert.ok(valid);
 		});

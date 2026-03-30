@@ -10,7 +10,8 @@ export default class OpenAiClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		const tools = options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
+		const tools =
+			options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
 
 		const body = {
 			model,
@@ -46,8 +47,11 @@ export default class OpenAiClient {
 			if (!msg) continue;
 
 			// Normalize reasoning
-			const parts = [msg.reasoning_content, msg.reasoning, msg.thinking].filter(Boolean);
-			msg.reasoning_content = parts.length > 0 ? [...new Set(parts)].join("\n") : null;
+			const parts = [msg.reasoning_content, msg.reasoning, msg.thinking].filter(
+				Boolean,
+			);
+			msg.reasoning_content =
+				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
 
 			// Normalize tool_calls arguments
 			for (const tc of msg.tool_calls || []) {

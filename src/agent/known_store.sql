@@ -1,6 +1,10 @@
 -- PREP: upsert_known_entry
-INSERT INTO known_entries (run_id, turn, key, value, domain, state, hash, meta, tokens)
-VALUES (:run_id, :turn, :key, :value, :domain, :state, :hash, :meta, length(:value) / 4)
+INSERT INTO known_entries (
+	run_id, turn, key, value, domain, state, hash, meta, tokens
+)
+VALUES (
+	:run_id, :turn, :key, :value, :domain, :state, :hash, :meta, length(:value) / 4
+)
 ON CONFLICT (run_id, key) DO UPDATE SET
 	value = excluded.value
 	, state = excluded.state
@@ -17,20 +21,23 @@ WHERE run_id = :run_id AND key = :key;
 
 -- PREP: resolve_known_entry
 UPDATE known_entries
-SET state = :state
+SET
+	state = :state
 	, value = :value
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND key = :key;
 
 -- PREP: promote_key
 UPDATE known_entries
-SET turn = :turn
+SET
+	turn = :turn
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND key = :key;
 
 -- PREP: demote_key
 UPDATE known_entries
-SET turn = 0
+SET
+	turn = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND key = :key;
 

@@ -1,5 +1,3 @@
-import ProjectContext from "../../fs/ProjectContext.js";
-
 export default class FileScanPlugin {
 	static register(hooks) {
 		hooks.onTurn(async (rummy) => {
@@ -8,7 +6,7 @@ export default class FileScanPlugin {
 			// This hook is reserved for future per-turn file operations.
 		});
 
-		hooks.project.init.completed.on(async (payload) => {
+		hooks.project.init.completed.on(async (_payload) => {
 			// Initial file scan happens on first run creation, not on init.
 			// Init just sets up the project record.
 		});

@@ -3,10 +3,10 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import KnownStore from "../../src/agent/KnownStore.js";
 import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
-import KnownStore from "../../src/agent/KnownStore.js";
 
 const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
@@ -46,7 +46,9 @@ describe("E2E: Tool Calling Foundation", () => {
 		await fs.rm(projectPath, { recursive: true, force: true });
 	});
 
-	it("ask completes with summary in known store", { timeout: TIMEOUT }, async () => {
+	it("ask completes with summary in known store", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const result = await client.call("ask", {
 			model,
 			prompt: "What is the capital of France?",
@@ -66,10 +68,15 @@ describe("E2E: Tool Calling Foundation", () => {
 
 		// Verify summary text is non-empty
 		const lastSummary = summaries.at(-1);
-		assert.ok(lastSummary.value.length > 0, `Summary should be non-empty. Got: "${lastSummary.value}"`);
+		assert.ok(
+			lastSummary.value.length > 0,
+			`Summary should be non-empty. Got: "${lastSummary.value}"`,
+		);
 	});
 
-	it("ask with file context shows project files", { timeout: TIMEOUT }, async () => {
+	it("ask with file context shows project files", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const result = await client.call("ask", {
 			model,
 			prompt: "What does the greet function in hello.js do?",
@@ -87,13 +94,19 @@ describe("E2E: Tool Calling Foundation", () => {
 		// hello.js should be present
 		const hello = fileEntries.find((e) => e.key === "hello.js");
 		assert.ok(hello, "hello.js should be in known store");
-		assert.ok(hello.value.includes("greet"), "hello.js value should contain function content");
+		assert.ok(
+			hello.value.includes("greet"),
+			"hello.js value should contain function content",
+		);
 	});
 
-	it("model can use write tool to persist knowledge", { timeout: TIMEOUT }, async () => {
+	it("model can use write tool to persist knowledge", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt: "The greet function returns 'hello'. Write this fact to /:known/greet_behavior",
+			prompt:
+				"The greet function returns 'hello'. Write this fact to /:known/greet_behavior",
 		});
 
 		assert.strictEqual(result.status, "completed");
@@ -102,7 +115,9 @@ describe("E2E: Tool Calling Foundation", () => {
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 
 		// Check if the model used the write tool
-		const knownEntries = all.filter((e) => e.domain === "known" && e.key !== "/:unknown");
+		const _knownEntries = all.filter(
+			(e) => e.domain === "known" && e.key !== "/:unknown",
+		);
 		// The model might or might not have written to exactly /:known/greet_behavior
 		// but it should have called summary at minimum
 		const summaries = all.filter((e) => e.key.startsWith("/:summary/"));

@@ -69,9 +69,9 @@ CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 | `full` | Value loaded | `full` |
 | `stored` | Key exists, value not in context | `stored` |
 
-The special key `/:unknown` uses domain `known`, state `full`. It stores the
-previous turn's unknown list as a JSON array. Not a `/:known/*` key — it's an
-internal mechanism for persisting unknowns between turns.
+Unknowns are individual `/:unknown/{seq}` entries (domain `known`, state `full`).
+Each `unknown("text")` call creates a sticky entry that persists until the model
+drops it via `drop("/:unknown/N")`. The server deduplicates on insert.
 
 **Result domain** — tool call results, summaries, and notifications (`/:[tool]/*` keys):
 
@@ -84,10 +84,10 @@ internal mechanism for persisting unknowns between turns.
 | `error` | Failed | `stored` |
 | `summary` | Summary text | `stored` |
 
-The model sees a simplified projection. The server maps `{domain, state}` to a
-model-facing state string at query time. `file:ignore` and `proposed` entries
-are hidden from the model entirely. All resolved result entries appear as `stored`
-— the model can `read` them to recall the full value.
+The model sees a projection controlled by the `turn` field (see §3.3). `file:ignore`
+and `proposed` entries are hidden. Result entries show their actual status
+(pass/warn/error/summary) in the context. The model can `read` any result key
+to recall the full value.
 
 ### 1.3 Key Namespaces
 
@@ -127,9 +127,8 @@ No database trigger — the check lives in code.
 
 When the client resolves a proposed entry via `run/resolve`:
 
-- **Accept** → state changes from `proposed` to `pass`. Value updated with output.
-- **Reject** → state changes from `proposed` to `warn`. Value updated with rejection reason.
-- **Error** → state changes from `proposed` to `error`. Value updated with error details.
+- **`accept`** → state changes from `proposed` to `pass`. Value updated with output.
+- **`reject`** → state changes from `proposed` to `warn`. Value updated with rejection reason.
 
 The model sees the resolved entry as `stored` next turn. It can `read` the key
 to see the full resolution output.
@@ -143,8 +142,9 @@ After all proposed entries are resolved:
 
 ## 2. Native Tool Calling
 
-The model communicates exclusively through tool calls. No structured JSON in the
-content body. No message history. Content is suppressed.
+The model communicates exclusively through tool calls. No message history.
+Free-form content is not suppressed — any text the model emits alongside tools
+is captured as `/:reasoning/{turn}` (hidden from model, audit only).
 
 ### 2.1 Tools
 
@@ -171,8 +171,8 @@ objects, no arrays. Only `ask_user` uses an array (for multiple-choice options).
 | `delete` | `key: string, reason: string` |
 | `edit` | `file: string, search: string\|null, replace: string` |
 
-Tool definitions live in `src/domain/schema/tools/*.json` (one file per tool),
-composed by `src/domain/schema/ToolSchema.js`. Server-side validation via AJV
+Tool definitions live in `src/schema/tools/*.json` (one file per tool),
+composed by `src/schema/ToolSchema.js`. Server-side validation via AJV
 enforces constraints (`minLength`, `maxLength`, `minItems`) that OpenAI strict
 mode cannot express. All tools use `strict: true` for constrained decoding on
 supporting providers; unsupported keywords are stripped at API send time.
@@ -196,40 +196,42 @@ is not re-registered. Unknowns appear in context position 7 (before the prompt)
 every turn. The server warns and retries (up to 3 times) if the model attempts
 to complete with unresolved unknowns and no investigation tools called.
 
-**`read`** — for file keys: reads file from disk, updates the known entry value with
-file contents, sets state to `full`. For `/:known/*` or `/:[tool]/*` keys: promotes
-state to `full` (value already stored, just making it visible). Creates a
-`/:read/N` result entry for the log.
+**`read`** — promotes the key by setting `turn` to the current turn number.
+The value is already in the store (from the file scanner or a previous write).
+Promotion makes it visible in the model's context next turn. One integer update.
 
-**`drop`** — for file keys: demotes to `symbols` (if symbols available) or removes
-the entry. For system keys: sets state to `stored` (clears value from context but
-key remains discoverable). No result key generated (not a logged action).
+**`drop`** — demotes the key by setting `turn` to 0 (purgatory). The value stays
+in the store but disappears from the model's context. One integer update.
 
-**`env`** — creates a `/:env/N` entry with domain `result`, state `pass`, and
-command output as value. The `meta` field stores the original command.
+**`env`** — creates a `/:env/N` entry with domain `result`, state `proposed`.
+The client executes the command and resolves with output.
 
-**`edit`** — creates a `/:edit/N` entry with domain `result`, state `proposed`.
-The `meta` field stores `{file, search, replace}`. Blocks the turn loop until
-the client resolves it.
+**`edit`** — the server computes a unified diff from the file's current content
+(in known_entries) and the model's search/replace. Creates a `/:edit/N` entry
+with state `proposed`. The `meta` field stores `{file, search, replace, patch, warning, error}`.
+The patch is sent to the client for review.
 
 **`run`** — creates a `/:run/N` entry with domain `result`, state `proposed`.
-Blocks until resolved. On resolution, value is updated with command output.
+The client executes and resolves with output.
 
 **`delete`** — creates a `/:delete/N` entry with domain `result`, state `proposed`.
-Blocks until resolved.
+The client confirms and resolves.
 
-**`ask_user`** — creates a `/:prompt/N` entry with domain `result`, state `proposed`.
-Blocks until user responds. On resolution, value is the selected answer.
+**`ask_user`** — creates a `/:ask_user/N` entry with domain `result`, state `proposed`.
+The client shows the question and resolves with the selected answer.
 
-### 2.3 Namespace Routing
+### 2.3 Promotion Model
 
-`read`, `drop`, and `delete` accept a `key` parameter and route by prefix:
+`read` and `drop` operate on the `turn` field, not on state:
 
-| Tool | File path key | `/:known/*` key | `/:[tool]/*` key |
-|------|---------------|-----------------|------------------|
-| `read` | Read from disk, set to `file:full` | Set to `known:full` | Set to `result:pass` (recall) |
-| `drop` | Demote to `file:symbols` if available, else remove | Set to `known:stored` | Set to `result:stored` |
-| `delete` | Delete from disk, remove entry | Remove entry | Remove entry |
+| Tool | Effect |
+|------|--------|
+| `read(key)` | Set `turn` to current turn → value appears in context |
+| `drop(key)` | Set `turn` to 0 → value hidden from context (purgatory) |
+
+All other action tools (`env`, `edit`, `run`, `delete`, `ask_user`) create new
+result entries as `proposed`. The `delete` tool for `/:known/*` or `/:[tool]/*`
+keys removes the entry from the store entirely.
 
 ### 2.4 Enforcement Layers
 
@@ -244,11 +246,11 @@ Blocks until user responds. On resolution, value is the selected answer.
 The model emits all tool calls as a parallel batch. The server processes in strict order:
 
 1. **Store user prompt** — create `/:prompt/{turn}` entry.
-2. **Execute action tools** — `read` promotes (set turn), `drop` demotes (set turn to 0). `env`, `run`, `delete`, `edit`, `ask_user` generate result keys and store as `proposed`.
-3. **Process unknowns** — collect all `unknown` calls into an array, store as `/:unknown`. Delete `/:unknown` if model made no `unknown` calls.
+2. **Execute action tools** — `read` promotes (set turn), `drop` demotes (set turn to 0). `env`, `run`, `delete`, `edit`, `ask_user` generate result keys and store as `proposed`. `edit` also computes a unified diff patch from the file's known content.
+3. **Process unknowns** — create `/:unknown/{seq}` entries, deduplicated against existing unknowns.
 4. **Process writes** — UPSERT each `write` call's key/value pair.
 5. **Store summary** — create `/:summary/N` entry.
-5. **Done** — results are now in the known store. Next turn's context assembly reads from it.
+6. **Emit `run/state`** — build and send the client notification with history, proposed, unknowns, and telemetry.
 
 ---
 
@@ -288,9 +290,9 @@ Stable background at the top, actionable items at the bottom:
 setting turn to 0. All files start at turn 0 unless promoted by the client,
 the model, or the relevance engine.
 
-### 3.3 File Bootstrap
+### 3.4 File Bootstrap
 
-At run start, the server populates `known_entries` from the repo map. This is how
+At run start, the file scanner populates `known_entries` from disk. This is how
 files enter the known store — the model never sees a separate file listing.
 
 | Source | Domain | State | Value |
@@ -302,7 +304,7 @@ files enter the known store — the model never sees a separate file listing.
 | Root file or heat-promoted | `file` | `symbols` | `name(params)` per line |
 | Other indexed files | Not bootstrapped — discoverable via `read` if model knows the path |
 
-### 3.4 File Change Detection
+### 3.5 File Change Detection
 
 Each turn, the server scans the project's files and compares against
 `known_entries.hash`:
@@ -315,9 +317,9 @@ Each turn, the server scans the project's files and compares against
 Files whose `turn` matches the current turn were recently engaged — this is
 the heat signal for future context budgeting.
 
-The `relevance` field stores a computed heat score. The `hash` field enables
+The `refs` field will store cross-reference counts. The `hash` field enables
 change detection without re-reading file contents. Both are inert (default 0 /
-NULL) until the heat engine and context budgeting are implemented.
+NULL) until the relevance engine and context budgeting are implemented.
 
 Symbol extraction (ctags/antlrmap) runs when a file's hash changes. Symbols
 are stored in `meta` on the file's known entry.
@@ -417,7 +419,7 @@ defined via `RUMMY_MODEL_{alias}` env vars.
 | Notification | Payload | Description |
 |---|---|---|
 | `run/state` | See below | Primary turn update — sent after each turn |
-| `run/progress` | `run`, `turn`, `status` | Turn status: `thinking`, `processing` |
+| `run/progress` | `run`, `turn`, `status` | Turn status: `thinking`, `processing`, `retrying` |
 | `ui/render` | `text`, `append` | Streaming output |
 | `ui/notify` | `text`, `level` | Toast notification |
 
@@ -492,7 +494,6 @@ to its own filesystem. The server never touches the working tree.
 |---------|--------|------------|--------|
 | `strict: true` | Yes | Provider-dependent | No |
 | `tool_choice: "required"` | Yes | Provider-dependent | Not enforced |
-| `response_format` shim | Yes | Provider-dependent | No |
 | Parallel tool calls | Yes | Provider-dependent | Model-dependent |
 
 Ollama: all constraints are server-side. Arguments returned as parsed objects
@@ -533,9 +534,8 @@ export default class MyPlugin {
 ```
 
 Plugin directories (loaded in order):
-1. `src/application/plugins/` — internal core
-2. `src/plugins/` — bundled
-3. `~/.rummy/plugins/` — user-installed
+1. `src/plugins/` — bundled core and community plugins
+2. `~/.rummy/plugins/` — user-installed
 
 Within each directory, the loader scans subdirectories for files named `index.js`
 or matching the directory name (e.g., `tools/tools.js`). Test files are skipped.
@@ -635,15 +635,12 @@ hooks.project.init.completed.on(async (payload) => {
 | `project.files.update.started` | `{ projectId, pattern, constraint }` | Before file state change |
 | `project.files.update.completed` | `{ projectId, projectPath, pattern, constraint, db }` | After file state change |
 | `run.started` | `{ run, sessionId, type }` | Run created |
-| `run.progress` | `{ sessionId, run, turn, status }` | Turn progress |
-| `run.command` | `{ sessionId, run, key, type, command }` | Command proposed |
-| `run.step.completed` | `{ run, sessionId, turn, projectFiles, cumulative }` | Turn finished |
+| `run.progress` | `{ sessionId, run, turn, status }` | Turn progress (thinking/processing/retrying) |
+| `run.state` | `{ sessionId, run, turn, status, summary, history, unknowns, proposed, telemetry }` | Turn state update |
 | `ask.started` / `ask.completed` | `{ sessionId, model, prompt, ... }` | Ask lifecycle |
 | `act.started` / `act.completed` | `{ sessionId, model, prompt, ... }` | Act lifecycle |
 | `ui.render` | `{ sessionId, text, append }` | Streaming output |
 | `ui.notify` | `{ sessionId, text, level }` | Notification |
-| `ui.ask_user` | `{ sessionId, run, key, question, options }` | Model question |
-| `editor.diff` | `{ sessionId, run, key, type, file, ... }` | Proposed edit |
 | `run.turn.audit` | `{ ... }` | Debug audit data |
 | `llm.request.started` | `{ ... }` | LLM call started |
 | `llm.request.completed` | `{ ... }` | LLM call finished |
@@ -802,7 +799,7 @@ Git operations shell out to `git` CLI.
 
 | Term | Definition |
 |------|------------|
-| **Project** | A codebase. Owns file index, symbols, references. |
+| **Project** | A codebase. Project path, name, git state. |
 | **Session** | A client connection. Owns config (persona, system prompt, skills). |
 | **Run** | An open-ended conversation. Owns `known_entries` and turns. |
 | **Turn** | A single LLM request/response cycle. |

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import msg from "./messages.js";
 import KnownStore from "./KnownStore.js";
+import msg from "./messages.js";
 
 export default class AgentLoop {
 	#db;
@@ -10,7 +10,14 @@ export default class AgentLoop {
 	#knownStore;
 	#sessionManager;
 
-	constructor(db, llmProvider, hooks, turnExecutor, knownStore, sessionManager) {
+	constructor(
+		db,
+		llmProvider,
+		hooks,
+		turnExecutor,
+		knownStore,
+		sessionManager,
+	) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
@@ -51,7 +58,8 @@ export default class AgentLoop {
 		}
 		const projectId = String(sessions[0].project_id || "");
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		if (!project) throw new Error(msg("error.project_not_found", { projectId }));
+		if (!project)
+			throw new Error(msg("error.project_not_found", { projectId }));
 
 		const noContext = options?.noContext === true;
 		const isFork = options?.fork === true;
@@ -72,7 +80,8 @@ export default class AgentLoop {
 
 		if (run && isFork) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
-			if (!existingRun) throw new Error(msg("error.run_not_found", { runId: run }));
+			if (!existingRun)
+				throw new Error(msg("error.run_not_found", { runId: run }));
 			currentRunId = crypto.randomUUID();
 			currentAlias = await this.#generateAlias(requestedModel);
 			await this.#db.create_run.run({
@@ -85,7 +94,8 @@ export default class AgentLoop {
 			});
 		} else if (run) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
-			if (!existingRun) throw new Error(msg("error.run_not_found", { runId: run }));
+			if (!existingRun)
+				throw new Error(msg("error.run_not_found", { runId: run }));
 			currentRunId = existingRun.id;
 			currentAlias = existingRun.alias;
 
@@ -99,7 +109,10 @@ export default class AgentLoop {
 				};
 			}
 
-			await this.#db.update_run_status.run({ id: currentRunId, status: "running" });
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "running",
+			});
 		} else {
 			currentRunId = crypto.randomUUID();
 			currentAlias = await this.#generateAlias(requestedModel);
@@ -129,8 +142,12 @@ export default class AgentLoop {
 				if (loopIteration === 1) {
 					turnPrompt = prompt;
 				} else {
-					const unknownCount = await this.#knownStore.countUnknowns(currentRunId);
-					turnPrompt = unknownCount > 0 ? `${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.` : "";
+					const unknownCount =
+						await this.#knownStore.countUnknowns(currentRunId);
+					turnPrompt =
+						unknownCount > 0
+							? `${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.`
+							: "";
 				}
 
 				let result;
@@ -148,10 +165,16 @@ export default class AgentLoop {
 						options,
 					});
 				} catch (err) {
-					if (err.message.includes("missing required") && loopIteration < MAX_LOOP_ITERATIONS) {
+					if (
+						err.message.includes("missing required") &&
+						loopIteration < MAX_LOOP_ITERATIONS
+					) {
 						console.warn(`[RUMMY] Validation retry: ${err.message}`);
 						await this.#hooks.run.progress.emit({
-							sessionId, run: currentAlias, turn: loopIteration, status: "retrying",
+							sessionId,
+							run: currentAlias,
+							turn: loopIteration,
+							status: "retrying",
 						});
 						continue;
 					}
@@ -159,12 +182,18 @@ export default class AgentLoop {
 				}
 
 				// Build and emit run/state notification
-				const runUsage = await this.#db.get_run_usage.get({ run_id: currentRunId });
+				const runUsage = await this.#db.get_run_usage.get({
+					run_id: currentRunId,
+				});
 				const history = await this.#knownStore.getLog(currentRunId);
-				const unknowns = await this.#db.get_unknowns.all({ run_id: currentRunId });
+				const unknowns = await this.#db.get_unknowns.all({
+					run_id: currentRunId,
+				});
 				const unresolved = await this.#knownStore.getUnresolved(currentRunId);
 
-				const latestSummary = history.filter((e) => e.status === "summary").at(-1);
+				const latestSummary = history
+					.filter((e) => e.status === "summary")
+					.at(-1);
 
 				await this.#hooks.run.state.emit({
 					sessionId,
@@ -191,7 +220,10 @@ export default class AgentLoop {
 					},
 				});
 				if (unresolved.length > 0) {
-					await this.#db.update_run_status.run({ id: currentRunId, status: "proposed" });
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: "proposed",
+					});
 					return {
 						run: currentAlias,
 						status: "proposed",
@@ -210,28 +242,40 @@ export default class AgentLoop {
 				const openUnknowns = await this.#knownStore.countUnknowns(currentRunId);
 				if (openUnknowns > 0 && unknownWarnings < MAX_UNKNOWN_WARNINGS) {
 					unknownWarnings++;
-					console.warn(`[RUMMY] Unknown warning ${unknownWarnings}/${MAX_UNKNOWN_WARNINGS}: ${openUnknowns} unresolved`);
+					console.warn(
+						`[RUMMY] Unknown warning ${unknownWarnings}/${MAX_UNKNOWN_WARNINGS}: ${openUnknowns} unresolved`,
+					);
 					await this.#hooks.run.progress.emit({
-						sessionId, run: currentAlias, turn: result.turn, status: "retrying",
+						sessionId,
+						run: currentAlias,
+						turn: result.turn,
+						status: "retrying",
 					});
 					continue;
 				}
 
 				// Completed (or gave up after max unknown warnings)
-				await this.#db.update_run_status.run({ id: currentRunId, status: "completed" });
+				await this.#db.update_run_status.run({
+					id: currentRunId,
+					status: "completed",
+				});
 				return { run: currentAlias, status: "completed", turn: result.turn };
 			}
 
 			return { run: currentAlias, status: "running", turn: 0 };
 		} catch (err) {
-			await this.#db.update_run_status.run({ id: currentRunId, status: "failed" });
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "failed",
+			});
 			throw err;
 		}
 	}
 
 	async resolve(runAlias, resolution) {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
-		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		if (!runRow)
+			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 		const runId = runRow.id;
 
 		const { key, action, output } = resolution;
@@ -241,7 +285,9 @@ export default class AgentLoop {
 		} else if (action === "reject") {
 			await this.#knownStore.resolve(runId, key, "warn", output || "rejected");
 		} else {
-			throw new Error(`Invalid resolution action: ${action}. Use 'accept' or 'reject'.`);
+			throw new Error(
+				`Invalid resolution action: ${action}. Use 'accept' or 'reject'.`,
+			);
 		}
 
 		const unresolved = await this.#knownStore.getUnresolved(runId);
@@ -272,11 +318,14 @@ export default class AgentLoop {
 
 	async inject(runAlias, message) {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
-		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		if (!runRow)
+			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 
 		const isActive = runRow.status === "running" || runRow.status === "queued";
 		const resultKey = await this.#knownStore.nextResultKey(runRow.id, "inject");
-		await this.#knownStore.upsert(runRow.id, 0, resultKey, message, "info", { meta: { source: "user" } });
+		await this.#knownStore.upsert(runRow.id, 0, resultKey, message, "info", {
+			meta: { source: "user" },
+		});
 
 		if (isActive) {
 			return { run: runAlias, status: runRow.status, injected: "queued" };
@@ -287,7 +336,8 @@ export default class AgentLoop {
 
 	async getRunHistory(runAlias) {
 		const runRow = await this.#db.get_run_by_alias.get({ alias: runAlias });
-		if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+		if (!runRow)
+			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 		return this.#knownStore.getLog(runRow.id);
 	}
 }

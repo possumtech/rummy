@@ -29,12 +29,18 @@ WHERE session_id = :session_id
 ORDER BY created_at DESC;
 
 -- PREP: get_next_run_alias
-SELECT COALESCE(MAX(CAST(REPLACE(alias, :prefix, '') AS INTEGER)), 0) + 1 AS next_seq
+SELECT
+	COALESCE(
+		MAX(CAST(REPLACE(alias, :prefix, '') AS INTEGER))
+		, 0
+	) + 1 AS next_seq
 FROM runs
 WHERE alias LIKE :prefix || '%';
 
 -- PREP: rename_run
-UPDATE runs SET alias = :new_alias WHERE id = :id AND alias = :old_alias;
+UPDATE runs
+SET alias = :new_alias
+WHERE id = :id AND alias = :old_alias;
 
 -- PREP: update_run_status
 UPDATE runs SET status = :status WHERE id = :id;
@@ -55,5 +61,6 @@ RETURNING next_turn - 1 AS turn;
 SELECT r.id
 FROM runs AS r
 JOIN sessions AS s ON r.session_id = s.id
-WHERE s.project_id = :project_id
+WHERE
+	s.project_id = :project_id
 	AND r.status IN ('queued', 'running', 'proposed');

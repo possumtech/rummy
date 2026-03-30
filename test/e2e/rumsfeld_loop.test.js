@@ -3,16 +3,16 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import KnownStore from "../../src/agent/KnownStore.js";
 import RpcClient from "../helpers/RpcClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
-import KnownStore from "../../src/agent/KnownStore.js";
 
 const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 180_000;
 
 describe("E2E: Rumsfeld Loop — Sticky Unknowns", () => {
-	let tdb, tserver, client, knownStore;
+	let tdb, tserver, client, _knownStore;
 	const projectPath = join(tmpdir(), `rummy-rumsfeld-${Date.now()}`);
 
 	before(async () => {
@@ -46,7 +46,7 @@ app.use("/api", (req, res, next) => {
 		);
 
 		tdb = await TestDb.create();
-		knownStore = new KnownStore(tdb.db);
+		_knownStore = new KnownStore(tdb.db);
 		tserver = await TestServer.start(tdb.db);
 		client = new RpcClient(tserver.url);
 		await client.connect();
@@ -64,10 +64,13 @@ app.use("/api", (req, res, next) => {
 		await fs.rm(projectPath, { recursive: true, force: true });
 	});
 
-	it("model investigates unknowns before completing", { timeout: TIMEOUT }, async () => {
+	it("model investigates unknowns before completing", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt: "How does authentication work in this project? What session store does it use?",
+			prompt:
+				"How does authentication work in this project? What session store does it use?",
 		});
 
 		// completed = model answered. proposed = model is investigating (called env/run).
@@ -83,13 +86,15 @@ app.use("/api", (req, res, next) => {
 		// Model should have engaged — summaries, reads, writes, or proposed commands
 		const summaries = all.filter((e) => e.key.match(/^\/:summary\//));
 		assert.ok(summaries.length > 0, "Should have summary entries");
-
 	});
 
-	it("sticky unknowns persist and are visible in context", { timeout: TIMEOUT }, async () => {
+	it("sticky unknowns persist and are visible in context", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt: "What testing framework does this project use? What CI pipeline is configured?",
+			prompt:
+				"What testing framework does this project use? What CI pipeline is configured?",
 		});
 
 		assert.strictEqual(result.status, "completed");
