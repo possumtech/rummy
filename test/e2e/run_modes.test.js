@@ -41,7 +41,9 @@ describe("E2E: Run Modes", () => {
 		await fs.rm(projectPath, { recursive: true, force: true });
 	});
 
-	it("continue run preserves known store across calls", { timeout: TIMEOUT }, async () => {
+	it("continue run preserves known store across calls", {
+		timeout: TIMEOUT,
+	}, async () => {
 		// First call creates a run
 		const run1 = await client.call("ask", {
 			model,
@@ -63,12 +65,18 @@ describe("E2E: Run Modes", () => {
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 
 		// Should have multiple summaries (one per turn)
-		const summaries = entries.filter((e) => e.key.startsWith("/:summary/"));
-		assert.ok(summaries.length >= 2, `Should have 2+ summaries, got ${summaries.length}`);
+		const summaries = entries.filter((e) => e.key.startsWith("/:summary:"));
+		assert.ok(
+			summaries.length >= 2,
+			`Should have 2+ summaries, got ${summaries.length}`,
+		);
 
 		// Should have multiple prompts
-		const prompts = entries.filter((e) => e.key.startsWith("/:prompt/"));
-		assert.ok(prompts.length >= 2, `Should have 2+ prompts, got ${prompts.length}`);
+		const prompts = entries.filter((e) => e.key.startsWith("/:prompt:"));
+		assert.ok(
+			prompts.length >= 2,
+			`Should have 2+ prompts, got ${prompts.length}`,
+		);
 	});
 
 	it("lite mode skips file bootstrap", { timeout: TIMEOUT }, async () => {
@@ -84,10 +92,14 @@ describe("E2E: Run Modes", () => {
 
 		// Should have no file entries (lite mode = no bootstrap)
 		const files = entries.filter((e) => e.domain === "file");
-		assert.strictEqual(files.length, 0, "Lite mode should have no file entries");
+		assert.strictEqual(
+			files.length,
+			0,
+			"Lite mode should have no file entries",
+		);
 
 		// Should still have a summary
-		const summaries = entries.filter((e) => e.key.startsWith("/:summary/"));
+		const summaries = entries.filter((e) => e.key.startsWith("/:summary:"));
 		assert.ok(summaries.length > 0, "Should still have summary");
 	});
 });

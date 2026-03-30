@@ -67,10 +67,15 @@ app.use("/api", (req, res, next) => {
 	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt: "How does authentication work in this project? What session store does it use?",
+			prompt:
+				"How does authentication work in this project? What session store does it use?",
 		});
 
-		await client.assertRun(result, ["completed", "proposed"], "investigate unknowns");
+		await client.assertRun(
+			result,
+			["completed", "proposed"],
+			"investigate unknowns",
+		);
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
@@ -83,14 +88,19 @@ app.use("/api", (req, res, next) => {
 	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt: "What testing framework does this project use? What CI pipeline is configured?",
+			prompt:
+				"What testing framework does this project use? What CI pipeline is configured?",
 		});
 
-		await client.assertRun(result, ["completed", "proposed"], "sticky unknowns");
+		await client.assertRun(
+			result,
+			["completed", "proposed"],
+			"sticky unknowns",
+		);
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-		const summaries = all.filter((e) => e.key.startsWith("/:summary/"));
+		const summaries = all.filter((e) => e.key.startsWith("/:summary:"));
 		assert.ok(summaries.length > 0, "Should have completed with summaries");
 	});
 });

@@ -149,9 +149,10 @@ export default class AgentLoop {
 				} else {
 					const unknownCount =
 						await this.#knownStore.countUnknowns(currentRunId);
-					turnPrompt = unknownCount > 0
-						? `${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.\nRequired: summary`
-						: "Required: summary";
+					turnPrompt =
+						unknownCount > 0
+							? `${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}.\nRequired: summary`
+							: "Required: summary";
 				}
 
 				let result;
@@ -288,7 +289,7 @@ export default class AgentLoop {
 			await this.#knownStore.resolve(runId, key, "pass", output || "");
 
 			// If accepting a delete, erase the target file key
-			if (key.startsWith("/:delete/")) {
+			if (key.startsWith("/:delete:")) {
 				const meta = await this.#knownStore.getMeta(runId, key);
 				if (meta?.key) {
 					await this.#knownStore.remove(runId, meta.key);

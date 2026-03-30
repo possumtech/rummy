@@ -34,9 +34,13 @@ export default class AuditClient extends RpcClient {
 		}
 
 		const entries = await this.#db.get_known_entries.all({ run_id: runRow.id });
-		const turns = [...new Set(entries.map((e) => e.turn))].sort((a, b) => a - b);
+		const turns = [...new Set(entries.map((e) => e.turn))].sort(
+			(a, b) => a - b,
+		);
 
-		console.log(`\n=== AUDIT: ${alias} (${runRow.status}, ${entries.length} entries) ===`);
+		console.log(
+			`\n=== AUDIT: ${alias} (${runRow.status}, ${entries.length} entries) ===`,
+		);
 		for (const t of turns) {
 			const turnEntries = entries.filter((e) => e.turn === t);
 			console.log(`\n  Turn ${t}:`);
@@ -55,7 +59,9 @@ export default class AuditClient extends RpcClient {
 	 * Assert run result. Dumps the SPECIFIC run on failure.
 	 */
 	async assertRun(result, validStatuses, label) {
-		const statuses = Array.isArray(validStatuses) ? validStatuses : [validStatuses];
+		const statuses = Array.isArray(validStatuses)
+			? validStatuses
+			: [validStatuses];
 		if (!statuses.includes(result.status)) {
 			await this.dumpRun(result.run);
 			throw new Error(

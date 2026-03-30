@@ -16,7 +16,10 @@ describe("E2E: Persona & Fork", () => {
 
 	before(async () => {
 		await fs.mkdir(projectPath, { recursive: true });
-		await fs.writeFile(join(projectPath, "main.py"), "def hello(): return 'hi'\n");
+		await fs.writeFile(
+			join(projectPath, "main.py"),
+			"def hello(): return 'hi'\n",
+		);
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
@@ -41,8 +44,12 @@ describe("E2E: Persona & Fork", () => {
 		await fs.rm(projectPath, { recursive: true, force: true });
 	});
 
-	it("persona is stored and applied to session", { timeout: TIMEOUT }, async () => {
-		await client.call("persona", { text: "You are a grumpy senior Python developer who hates JavaScript." });
+	it("persona is stored and applied to session", {
+		timeout: TIMEOUT,
+	}, async () => {
+		await client.call("persona", {
+			text: "You are a grumpy senior Python developer who hates JavaScript.",
+		});
 
 		// Verify persona is stored
 		const temp = await client.call("getTemperature");
@@ -67,8 +74,12 @@ describe("E2E: Persona & Fork", () => {
 
 		// Check parent run has entries
 		const parentRow = await tdb.db.get_run_by_alias.get({ alias: run1.run });
-		const parentEntries = await tdb.db.get_known_entries.all({ run_id: parentRow.id });
-		const parentKnowns = parentEntries.filter((e) => e.key.startsWith("/:known/"));
+		const parentEntries = await tdb.db.get_known_entries.all({
+			run_id: parentRow.id,
+		});
+		const _parentKnowns = parentEntries.filter((e) =>
+			e.key.startsWith("/:known:"),
+		);
 
 		// Fork from the parent run
 		const run2 = await client.call("ask", {
@@ -82,7 +93,9 @@ describe("E2E: Persona & Fork", () => {
 
 		// Check forked run has parent's entries
 		const forkRow = await tdb.db.get_run_by_alias.get({ alias: run2.run });
-		const forkEntries = await tdb.db.get_known_entries.all({ run_id: forkRow.id });
+		const forkEntries = await tdb.db.get_known_entries.all({
+			run_id: forkRow.id,
+		});
 
 		// Fork should have at least as many file entries as parent
 		const parentFiles = parentEntries.filter((e) => e.domain === "file");

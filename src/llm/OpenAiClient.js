@@ -1,5 +1,3 @@
-import ToolSchema from "../schema/ToolSchema.js";
-
 export default class OpenAiClient {
 	#baseUrl;
 	#apiKey;
@@ -10,15 +8,7 @@ export default class OpenAiClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		const tools =
-			options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
-
-		const body = {
-			model,
-			messages,
-			tools,
-			tool_choice: "required",
-		};
+		const body = { model, messages };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
@@ -52,13 +42,6 @@ export default class OpenAiClient {
 			);
 			msg.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
-
-			// Normalize tool_calls arguments
-			for (const tc of msg.tool_calls || []) {
-				if (tc.function && typeof tc.function.arguments !== "string") {
-					tc.function.arguments = JSON.stringify(tc.function.arguments);
-				}
-			}
 		}
 
 		return data;

@@ -2,9 +2,9 @@ import ProjectContext from "../fs/ProjectContext.js";
 import RummyContext from "../hooks/RummyContext.js";
 import ContextAssembler from "./ContextAssembler.js";
 import FileScanner from "./FileScanner.js";
-import HeuristicMatcher, { generateUnifiedDiff } from "./HeuristicMatcher.js";
+import HeuristicMatcher from "./HeuristicMatcher.js";
 import PromptManager from "./PromptManager.js";
-import ResponseHealer from "./ResponseHealer.js";
+import XmlParser from "./XmlParser.js";
 
 export default class TurnExecutor {
 	#db;
@@ -33,16 +33,13 @@ export default class TurnExecutor {
 		contextSize,
 		options,
 	}) {
-		// Advance turn counter
 		const turn = await this.#knownStore.nextTurn(currentRunId);
 
-		// Create turn record for usage tracking
 		const turnRow = await this.#db.create_turn.get({
 			run_id: currentRunId,
 			sequence: turn,
 		});
 
-		// Check state lock — no new turns while proposed entries exist
 		const unresolved = await this.#knownStore.getUnresolved(currentRunId);
 		if (unresolved.length > 0) {
 			throw new Error(
@@ -50,14 +47,14 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Scan project files and sync to known store
+		// File scan
 		if (!noContext && project?.path) {
 			const ctx = await ProjectContext.open(project.path);
 			const files = await ctx.getMappableFiles();
 			await this.#fileScanner.scan(project.path, project.id, files, turn);
 		}
 
-		// Run onTurn hooks
+		// Run hooks
 		const hookRoot = {
 			tag: "turn",
 			attrs: {},
@@ -88,16 +85,14 @@ export default class TurnExecutor {
 			status: "thinking",
 		});
 
-		// Assemble context from known store — one ordered array
+		// Assemble context
 		const systemPrompt = await PromptManager.getSystemPrompt(type, {
 			db: this.#db,
 			sessionId,
 		});
 		const context = await this.#knownStore.getModelContext(currentRunId);
-
 		const messages = ContextAssembler.assemble({
 			systemPrompt,
-			mode: type,
 			context,
 			userMessage: loopPrompt,
 		});
@@ -108,12 +103,30 @@ export default class TurnExecutor {
 			runId: currentRunId,
 		});
 
-		// Store what we're sending BEFORE the LLM call (audit survives failures)
-		await this.#knownStore.upsert(currentRunId, turn, `/:system/${turn}`, systemPrompt, "info");
+		// Store audit BEFORE LLM call
+		await this.#knownStore.upsert(
+			currentRunId,
+			turn,
+			`/:system:${turn}`,
+			systemPrompt,
+			"info",
+		);
 		if (loopPrompt && !options?.isContinuation) {
-			await this.#knownStore.upsert(currentRunId, turn, `/:prompt/${turn}`, loopPrompt, "info");
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				`/:prompt:${turn}`,
+				loopPrompt,
+				"info",
+			);
 		}
-		await this.#knownStore.upsert(currentRunId, turn, `/:user/${turn}`, loopPrompt || "", "info");
+		await this.#knownStore.upsert(
+			currentRunId,
+			turn,
+			`/:user:${turn}`,
+			loopPrompt || "",
+			"info",
+		);
 
 		if (process.env.RUMMY_DEBUG === "true") {
 			console.log(
@@ -122,20 +135,17 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Call LLM with tool calling
+		// Call LLM
 		const result = await this.#llmProvider.completion(
 			filteredMessages,
 			requestedModel,
-			{ temperature: options?.temperature, mode: type },
+			{ temperature: options?.temperature },
 		);
 		const responseMessage = result.choices?.[0]?.message;
+		const content = responseMessage?.content || "";
 
 		if (process.env.RUMMY_DEBUG === "true") {
-			console.log(
-				"[DEBUG] Response tool_calls:",
-				JSON.stringify(responseMessage?.tool_calls, null, 2),
-			);
-			console.log("[DEBUG] Response content:", responseMessage?.content);
+			console.log("[DEBUG] Response content:", content.slice(0, 500));
 		}
 
 		await this.#hooks.run.progress.emit({
@@ -145,26 +155,36 @@ export default class TurnExecutor {
 			status: "processing",
 		});
 
-		// Heal and validate tool calls
-		const { calls: healedCalls, warnings } = ResponseHealer.heal(
-			responseMessage.tool_calls || [],
-			type,
-		);
-		for (const w of warnings) console.warn(`[RUMMY] Healer: ${w}`);
+		// Parse XML commands from content
+		const { commands, unparsed } = XmlParser.parse(content);
 
-		// Categorize healed calls
+		// Store reasoning (explicit reasoning + unparsed text)
+		const reasoning = [responseMessage?.reasoning_content, unparsed]
+			.filter(Boolean)
+			.join("\n");
+		if (reasoning) {
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				`/:reasoning:${turn}`,
+				reasoning,
+				"info",
+			);
+		}
+
+		// Categorize commands
 		const actionCalls = [];
 		const writeCalls = [];
 		const unknownCalls = [];
-		let summaryCall = null;
-		let askUserCall = null;
+		let summaryText = null;
+		let askUserCmd = null;
 
-		for (const call of healedCalls) {
-			if (call.name === "write") writeCalls.push(call);
-			else if (call.name === "unknown") unknownCalls.push(call);
-			else if (call.name === "summary") summaryCall = call;
-			else if (call.name === "ask_user") askUserCall = call;
-			else actionCalls.push(call);
+		for (const cmd of commands) {
+			if (cmd.name === "summary") summaryText = cmd.value;
+			else if (cmd.name === "known") writeCalls.push(cmd);
+			else if (cmd.name === "unknown") unknownCalls.push(cmd);
+			else if (cmd.name === "ask_user") askUserCmd = cmd;
+			else actionCalls.push(cmd);
 		}
 
 		const hasAct = actionCalls.some((c) =>
@@ -173,32 +193,27 @@ export default class TurnExecutor {
 		const hasReads = actionCalls.some((c) => c.name === "read");
 		const flags = { hasAct, hasReads };
 
-		if (!summaryCall) {
-			const calledTools = healedCalls.map((c) => c.name).join(", ") || "none";
+		// Handle missing summary
+		if (!summaryText) {
+			const calledTools = commands.map((c) => c.name).join(", ") || "none";
 			console.warn(`[RUMMY] Missing summary. Tools called: ${calledTools}`);
-
-			// If the model called nothing at all, retry
-			const hasWork = healedCalls.length > 0;
-			if (!hasWork) {
+			if (commands.length === 0) {
 				await this.#knownStore.upsert(
-					currentRunId, turn, `/:retry/${turn}`,
-					JSON.stringify({ error: "empty response", warnings }),
+					currentRunId,
+					turn,
+					`/:retry:${turn}`,
+					JSON.stringify({
+						error: "empty response",
+						content: content.slice(0, 500),
+					}),
 					"error",
 				);
-				throw new Error("Model response missing required 'summary' tool call.");
+				throw new Error("Model response contained no tool commands.");
 			}
-
-			// Inject a placeholder summary so the pipeline continues
-			summaryCall = { id: "healed", name: "summary", args: { text: "..." } };
+			summaryText = "...";
 		}
 
-		// Capture any free-form content as reasoning (model may emit text alongside tools)
-		const freeformContent = (responseMessage.content || "").trim();
-		const reasoning = [responseMessage.reasoning_content, freeformContent]
-			.filter(Boolean)
-			.join("\n");
-
-		// Commit usage stats
+		// Commit usage
 		const usage = result.usage || {};
 		await this.#db.update_turn_stats.run({
 			id: turnRow.id,
@@ -208,68 +223,49 @@ export default class TurnExecutor {
 			cost: Number(usage.cost || 0),
 		});
 
-		// Store reasoning (explicit + free-form content) as audit entry
-		if (reasoning) {
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				`/:reasoning/${turn}`,
-				reasoning,
-				"info",
-			);
-		}
-
-		// Note: /:system, /:user, /:prompt already stored before LLM call
-
 		// --- SERVER EXECUTION ORDER ---
 
-		// Step 1: Execute action tools
-		for (const call of actionCalls) {
-			if (call.name === "read") {
-				await this.#knownStore.promote(currentRunId, call.args.key, turn);
+		// Step 1: Action tools
+		for (const cmd of actionCalls) {
+			if (cmd.name === "read") {
+				await this.#knownStore.promote(currentRunId, cmd.key, turn);
 				continue;
 			}
-			if (call.name === "drop") {
-				await this.#knownStore.demote(currentRunId, call.args.key);
+			if (cmd.name === "drop") {
+				await this.#knownStore.demote(currentRunId, cmd.key);
 				continue;
 			}
 
 			const resultKey = await this.#knownStore.nextResultKey(
 				currentRunId,
-				call.name,
+				cmd.name,
 			);
-			call.resultKey = resultKey;
+			cmd.resultKey = resultKey;
+			const isProposed = ["edit", "run", "env", "delete"].includes(cmd.name);
 
-			if (call.name === "edit") {
-				// Compute patch from file content in known store
+			if (cmd.name === "edit") {
 				const fileContent = await this.#knownStore.getValue(
 					currentRunId,
-					call.args.file,
+					cmd.file,
 				);
 				let patch = null;
 				let warning = null;
 				let error = null;
 
-				if (call.args.search === null) {
-					// New file or full overwrite
-					patch =
-						call.args.search === null && fileContent
-							? generateUnifiedDiff(
-									call.args.file,
-									fileContent,
-									call.args.replace,
-								)
-							: null;
-				} else if (fileContent !== null) {
-					const result = HeuristicMatcher.matchAndPatch(
-						call.args.file,
+				if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
+					// New file
+					patch = cmd.blocks[0].replace;
+				} else if (fileContent !== null && cmd.blocks?.length > 0) {
+					const block = cmd.blocks[0];
+					const matched = HeuristicMatcher.matchAndPatch(
+						cmd.file,
 						fileContent,
-						call.args.search,
-						call.args.replace,
+						block.search,
+						block.replace,
 					);
-					patch = result.patch;
-					warning = result.warning;
-					error = result.error;
+					patch = matched.patch;
+					warning = matched.warning;
+					error = matched.error;
 				}
 
 				await this.#knownStore.upsert(
@@ -278,48 +274,57 @@ export default class TurnExecutor {
 					resultKey,
 					patch || "",
 					error ? "error" : "proposed",
-					{ meta: { ...call.args, patch, warning, error } },
+					{
+						meta: { file: cmd.file, blocks: cmd.blocks, patch, warning, error },
+					},
 				);
-				call.patch = patch;
-				call.warning = warning;
-				call.error = error;
+				cmd.patch = patch;
+				cmd.warning = warning;
+				cmd.error = error;
 			} else {
-				// env, run, delete
-				const isProposed = call.name === "env" || call.name === "run" || call.name === "delete";
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
 					resultKey,
 					"",
 					isProposed ? "proposed" : "pass",
-					{ meta: { ...call.args } },
+					{
+						meta: {
+							command: cmd.command,
+							key: cmd.key,
+							question: cmd.question,
+							options: cmd.options,
+						},
+					},
 				);
 			}
 		}
 
-		// Step 1b: ask_user (also proposed)
-		if (askUserCall) {
+		// Step 1b: ask_user
+		if (askUserCmd) {
 			const resultKey = await this.#knownStore.nextResultKey(
 				currentRunId,
 				"ask_user",
 			);
-			askUserCall.resultKey = resultKey;
+			askUserCmd.resultKey = resultKey;
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
 				resultKey,
 				"",
 				"proposed",
-				{ meta: { ...askUserCall.args } },
+				{
+					meta: { question: askUserCmd.question, options: askUserCmd.options },
+				},
 			);
 		}
 
-		// Step 2: Process unknowns — sticky, deduplicated via SQL
+		// Step 2: Unknowns — sticky, deduplicated
 		if (unknownCalls.length > 0) {
 			const existingValues =
 				await this.#knownStore.getUnknownValues(currentRunId);
-			for (const call of unknownCalls) {
-				if (existingValues.has(call.args.text)) continue;
+			for (const cmd of unknownCalls) {
+				if (existingValues.has(cmd.value)) continue;
 				const key = await this.#knownStore.nextResultKey(
 					currentRunId,
 					"unknown",
@@ -328,24 +333,25 @@ export default class TurnExecutor {
 					currentRunId,
 					turn,
 					key,
-					call.args.text,
+					cmd.value,
 					"full",
 				);
 			}
 		}
 
-		// Step 3: Process writes
-		for (const call of writeCalls) {
+		// Step 3: Known entries
+		for (const cmd of writeCalls) {
+			if (!cmd.key) continue;
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				call.args.key,
-				call.args.value,
+				cmd.key,
+				cmd.value,
 				"full",
 			);
 		}
 
-		// Step 4: Store summary
+		// Step 4: Summary
 		const summaryKey = await this.#knownStore.nextResultKey(
 			currentRunId,
 			"summary",
@@ -354,7 +360,7 @@ export default class TurnExecutor {
 			currentRunId,
 			turn,
 			summaryKey,
-			summaryCall.args.text || "",
+			summaryText,
 			"summary",
 		);
 
@@ -364,8 +370,8 @@ export default class TurnExecutor {
 			actionCalls,
 			writeCalls,
 			unknownCalls,
-			summaryCall,
-			askUserCall,
+			summaryText,
+			askUserCmd,
 			flags,
 			model: result.model || requestedModel,
 			modelAlias: requestedModel,

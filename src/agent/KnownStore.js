@@ -6,7 +6,7 @@ export default class KnownStore {
 	}
 
 	static domain(key) {
-		if (key.startsWith("/:known/") || key.startsWith("/:unknown/"))
+		if (key.startsWith("/:known:") || key.startsWith("/:unknown:"))
 			return "known";
 		if (key.startsWith("/:")) return "result";
 		return "file";
@@ -19,7 +19,7 @@ export default class KnownStore {
 
 	async nextResultKey(runId, toolName) {
 		const row = await this.#db.next_result_key.get({ run_id: runId });
-		return `/:${toolName}/${row.seq}`;
+		return `/:${toolName}:${row.seq}`;
 	}
 
 	async upsert(
@@ -70,13 +70,13 @@ export default class KnownStore {
 	 * Each bucket is a separate SQL query. No full-table scan.
 	 *
 	 * Order:
-	 *   1. Active known (/:known/* at turn > 0)
-	 *   2. Stored known (/:known/* at turn 0)
+	 *   1. Active known (/:known:* at turn > 0)
+	 *   2. Stored known (/:known:* at turn 0)
 	 *   3. Stored file paths (turn 0, not symbols, not ignore)
 	 *   4. Symbol files
 	 *   5. Full files (turn > 0, not ignore)
 	 *   6. Chronological results (not proposed)
-	 *   7. Unknowns (/:unknown/*)
+	 *   7. Unknowns (/:unknown:*)
 	 *   8. Latest user prompt
 	 */
 	async getModelContext(runId) {
@@ -115,14 +115,20 @@ export default class KnownStore {
 					: r.state === "active"
 						? "file:active"
 						: "file";
-			context.push({ key: r.key, state: fileState, value: r.value, tokens: r.tokens });
+			context.push({
+				key: r.key,
+				state: fileState,
+				value: r.value,
+				tokens: r.tokens,
+			});
 		}
 
 		// 6. Chronological results — filtered by tool type
 		for (const r of await this.#db.get_results.all({ run_id: runId })) {
 			const tool = KnownStore.toolFromKey(r.key);
 			const meta = r.meta ? JSON.parse(r.meta) : {};
-			const target = meta.command || meta.file || meta.key || meta.question || "";
+			const target =
+				meta.command || meta.file || meta.key || meta.question || "";
 
 			// What the model sees depends on the tool type:
 			// summary: full text
@@ -132,7 +138,8 @@ export default class KnownStore {
 			// read/drop: key only
 			let value = "";
 			if (r.state === "summary") value = r.value;
-			else if (tool === "env" || tool === "run" || tool === "ask_user") value = r.value;
+			else if (tool === "env" || tool === "run" || tool === "ask_user")
+				value = r.value;
 
 			context.push({
 				key: r.key,
@@ -165,13 +172,21 @@ export default class KnownStore {
 		return rows.map((row) => {
 			const tool = KnownStore.toolFromKey(row.key);
 			const meta = row.meta ? JSON.parse(row.meta) : {};
-			const target = meta.command || meta.file || meta.key || meta.question || "";
+			const target =
+				meta.command || meta.file || meta.key || meta.question || "";
 
 			let value = "";
 			if (row.state === "summary") value = row.value;
-			else if (tool === "env" || tool === "run" || tool === "ask_user") value = row.value;
+			else if (tool === "env" || tool === "run" || tool === "ask_user")
+				value = row.value;
 
-			return { tool: tool || row.state, target, status: row.state, key: row.key, value };
+			return {
+				tool: tool || row.state,
+				target,
+				status: row.state,
+				key: row.key,
+				value,
+			};
 		});
 	}
 
@@ -221,7 +236,7 @@ export default class KnownStore {
 	}
 
 	static toolFromKey(key) {
-		const match = key.match(/^\/:([a-z_]+)\//);
+		const match = key.match(/^\/:([a-z_]+):/);
 		return match ? match[1] : null;
 	}
 

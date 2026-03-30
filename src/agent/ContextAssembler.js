@@ -1,16 +1,38 @@
 import { extname } from "node:path";
-import ToolSchema from "../schema/ToolSchema.js";
 
 const EXT_LANG = {
-	".js": "js", ".mjs": "js", ".cjs": "js", ".jsx": "jsx",
-	".ts": "ts", ".tsx": "tsx",
-	".py": "python", ".rb": "ruby", ".go": "go", ".rs": "rust",
-	".java": "java", ".kt": "kotlin", ".cs": "csharp",
-	".c": "c", ".h": "c", ".cpp": "cpp", ".hpp": "cpp",
-	".lua": "lua", ".sh": "bash", ".zsh": "bash",
-	".sql": "sql", ".json": "json", ".yaml": "yaml", ".yml": "yaml",
-	".toml": "toml", ".xml": "xml", ".html": "html", ".css": "css",
-	".md": "markdown", ".swift": "swift", ".php": "php", ".r": "r",
+	".js": "js",
+	".mjs": "js",
+	".cjs": "js",
+	".jsx": "jsx",
+	".ts": "ts",
+	".tsx": "tsx",
+	".py": "python",
+	".rb": "ruby",
+	".go": "go",
+	".rs": "rust",
+	".java": "java",
+	".kt": "kotlin",
+	".cs": "csharp",
+	".c": "c",
+	".h": "c",
+	".cpp": "cpp",
+	".hpp": "cpp",
+	".lua": "lua",
+	".sh": "bash",
+	".zsh": "bash",
+	".sql": "sql",
+	".json": "json",
+	".yaml": "yaml",
+	".yml": "yaml",
+	".toml": "toml",
+	".xml": "xml",
+	".html": "html",
+	".css": "css",
+	".md": "markdown",
+	".swift": "swift",
+	".php": "php",
+	".r": "r",
 };
 
 function langFor(filePath) {
@@ -32,15 +54,42 @@ function renderContext(context) {
 	let prompt = null;
 
 	for (const entry of context) {
-		if (entry.state === "prompt") { prompt = entry; continue; }
-		if (entry.state === "unknown") { unknowns.push(entry); continue; }
-		if (entry.state === "file") { files.push(entry); continue; }
-		if (entry.state === "file:readonly") { files.push(entry); continue; }
-		if (entry.state === "file:active") { files.push(entry); continue; }
-		if (entry.state === "file:symbols") { symbolFiles.push(entry); continue; }
-		if (entry.state === "file:path") { storedFiles.push(entry); continue; }
-		if (entry.state === "full") { activeKnown.push(entry); continue; }
-		if (entry.state === "stored") { storedKnown.push(entry); continue; }
+		if (entry.state === "prompt") {
+			prompt = entry;
+			continue;
+		}
+		if (entry.state === "unknown") {
+			unknowns.push(entry);
+			continue;
+		}
+		if (entry.state === "file") {
+			files.push(entry);
+			continue;
+		}
+		if (entry.state === "file:readonly") {
+			files.push(entry);
+			continue;
+		}
+		if (entry.state === "file:active") {
+			files.push(entry);
+			continue;
+		}
+		if (entry.state === "file:symbols") {
+			symbolFiles.push(entry);
+			continue;
+		}
+		if (entry.state === "file:path") {
+			storedFiles.push(entry);
+			continue;
+		}
+		if (entry.state === "full") {
+			activeKnown.push(entry);
+			continue;
+		}
+		if (entry.state === "stored") {
+			storedKnown.push(entry);
+			continue;
+		}
 		// Results (pass, warn, error, summary, info)
 		results.push(entry);
 	}
@@ -52,7 +101,8 @@ function renderContext(context) {
 		const fileBlocks = files.map((f) => {
 			const lang = langFor(f.key);
 			const tokens = f.tokens ? ` (${f.tokens} tokens)` : "";
-			const label = f.state !== "file" ? ` (${f.state.replace("file:", "")})` : "";
+			const label =
+				f.state !== "file" ? ` (${f.state.replace("file:", "")})` : "";
 			return `#### ${f.key}${tokens}${label}\n\`\`\`${lang}\n${f.value}\n\`\`\``;
 		});
 		parts.push(`### Files\n\n${fileBlocks.join("\n\n")}`);
@@ -60,7 +110,9 @@ function renderContext(context) {
 
 	// Symbol files
 	if (symbolFiles.length > 0) {
-		const symBlocks = symbolFiles.map((f) => `#### ${f.key} (symbols)\n${f.value}`);
+		const symBlocks = symbolFiles.map(
+			(f) => `#### ${f.key} (symbols)\n${f.value}`,
+		);
 		parts.push(symBlocks.join("\n\n"));
 	}
 
@@ -83,12 +135,16 @@ function renderContext(context) {
 	// Results / history
 	if (results.length > 0) {
 		const lines = results.map((r) => {
-			const check = r.state === "pass" || r.state === "summary" ? "✓"
-				: r.state === "warn" ? "✗"
-				: r.state === "error" ? "✗"
-				: "·";
+			const check =
+				r.state === "pass" || r.state === "summary"
+					? "✓"
+					: r.state === "warn"
+						? "✗"
+						: r.state === "error"
+							? "✗"
+							: "·";
 			if (r.state === "summary") return `* summary: ${r.value}`;
-			const tool = r.tool || r.key.split("/")[1]?.replace(":", "") || "?";
+			const tool = r.tool || r.key.match(/^\/:(\w+):/)?.[1] || "?";
 			const target = r.target || "";
 			const detail = r.value ? ` — ${r.value.slice(0, 120)}` : "";
 			return `* ${tool} ${target} ${check}${detail}`;
@@ -111,11 +167,8 @@ function renderContext(context) {
 }
 
 export default class ContextAssembler {
-	static assemble({ systemPrompt, mode, context, userMessage }) {
+	static assemble({ systemPrompt, context, userMessage }) {
 		const sections = [systemPrompt];
-
-		// Tool schemas are injected by the provider via the tools API parameter.
-		// We don't duplicate them in the system prompt.
 
 		// Context as markdown
 		const rendered = renderContext(context);

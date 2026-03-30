@@ -1,5 +1,3 @@
-import ToolSchema from "../schema/ToolSchema.js";
-
 export default class OllamaClient {
 	#baseUrl;
 	#hooks;
@@ -10,15 +8,7 @@ export default class OllamaClient {
 	}
 
 	async completion(messages, model, options = {}) {
-		const tools =
-			options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
-
-		const body = {
-			model,
-			messages,
-			tools,
-			think: true,
-		};
+		const body = { model, messages, think: true };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
 
@@ -45,13 +35,6 @@ export default class OllamaClient {
 			);
 			msg.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
-
-			// Normalize tool_calls arguments (Ollama returns parsed objects)
-			for (const tc of msg.tool_calls || []) {
-				if (tc.function && typeof tc.function.arguments !== "string") {
-					tc.function.arguments = JSON.stringify(tc.function.arguments);
-				}
-			}
 		}
 
 		return data;

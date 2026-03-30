@@ -78,7 +78,8 @@ describe("E2E: Client Scenarios", () => {
 
 		const result = await client.call("act", {
 			model,
-			prompt: 'Add exactly one line to the end of AGENTS.md: # scenario-2-marker',
+			prompt:
+				"Add exactly one line to the end of AGENTS.md: # scenario-2-marker",
 		});
 
 		if (result.status === "proposed") {
@@ -110,14 +111,18 @@ describe("E2E: Client Scenarios", () => {
 	}, async () => {
 		const result = await client.call("act", {
 			model,
-			prompt: 'Add a line to the end of AGENTS.md: # scenario-3-marker',
+			prompt: "Add a line to the end of AGENTS.md: # scenario-3-marker",
 		});
 
 		if (result.status === "proposed") {
 			const proposed = result.proposed[0];
 			const resolveResult = await client.call("run/resolve", {
 				run: result.run,
-				resolution: { key: proposed.key, action: "reject", output: "User rejected" },
+				resolution: {
+					key: proposed.key,
+					action: "reject",
+					output: "User rejected",
+				},
 			});
 
 			await client.assertRun(
@@ -139,21 +144,18 @@ describe("E2E: Client Scenarios", () => {
 
 		const result = await client.call("act", {
 			model,
-			prompt: 'Edit AGENTS.md and replace the line "THIS LINE DOES NOT EXIST" with "replaced"',
+			prompt:
+				'Edit AGENTS.md and replace the line "THIS LINE DOES NOT EXIST" with "replaced"',
 		});
 
 		// The edit should either error (search not found) or the model adapts
-		await client.assertRun(
-			result,
-			["completed", "proposed"],
-			"S5",
-		);
+		await client.assertRun(result, ["completed", "proposed"], "S5");
 
 		// If proposed, check for error state on edit entries
 		if (result.status === "proposed") {
 			const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 			const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-			const edits = all.filter((e) => e.key.startsWith("/:edit/"));
+			const edits = all.filter((e) => e.key.startsWith("/:edit:"));
 
 			for (const edit of edits) {
 				const meta = edit.meta ? JSON.parse(edit.meta) : {};
@@ -176,7 +178,7 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const envProposed = result.proposed.find((p) =>
-				p.key.startsWith("/:env/"),
+				p.key.startsWith("/:env:"),
 			);
 
 			if (envProposed) {
@@ -185,7 +187,8 @@ describe("E2E: Client Scenarios", () => {
 					resolution: {
 						key: envProposed.key,
 						action: "accept",
-						output: "Filesystem      Size  Used Avail Use%\n/dev/sda1       100G   50G   50G  50%",
+						output:
+							"Filesystem      Size  Used Avail Use%\n/dev/sda1       100G   50G   50G  50%",
 					},
 				});
 
@@ -211,7 +214,7 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const runProposed = result.proposed.find(
-				(p) => p.key.startsWith("/:run/") || p.key.startsWith("/:env/"),
+				(p) => p.key.startsWith("/:run:") || p.key.startsWith("/:env:"),
 			);
 
 			if (runProposed) {
@@ -241,17 +244,21 @@ describe("E2E: Client Scenarios", () => {
 	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt: "What kind of poem should I write? Ask me to choose between haiku and limerick.",
+			prompt:
+				"What kind of poem should I write? Ask me to choose between haiku and limerick.",
 			noContext: true,
 		});
 
 		if (result.status === "proposed") {
 			const askUser = result.proposed.find((p) =>
-				p.key.startsWith("/:ask_user/"),
+				p.key.startsWith("/:ask_user:"),
 			);
 
 			if (askUser) {
-				const meta = typeof askUser.meta === "string" ? JSON.parse(askUser.meta) : askUser.meta;
+				const meta =
+					typeof askUser.meta === "string"
+						? JSON.parse(askUser.meta)
+						: askUser.meta;
 				assert.ok(meta?.question, "Question present in meta");
 				assert.ok(meta?.options?.length >= 2, "At least 2 options");
 
@@ -306,8 +313,11 @@ describe("E2E: Client Scenarios", () => {
 		// Verify multiple turns in the store
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: run1.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-		const prompts = all.filter((e) => e.key.startsWith("/:prompt/"));
-		assert.ok(prompts.length >= 2, `Should have 2+ prompts, got ${prompts.length}`);
+		const prompts = all.filter((e) => e.key.startsWith("/:prompt:"));
+		assert.ok(
+			prompts.length >= 2,
+			`Should have 2+ prompts, got ${prompts.length}`,
+		);
 	});
 
 	// Scenario 12: Yolo Mode (Auto-Accept Everything)

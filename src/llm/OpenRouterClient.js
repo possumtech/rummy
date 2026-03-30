@@ -1,5 +1,3 @@
-import ToolSchema from "../schema/ToolSchema.js";
-
 const CATALOG_MAX_AGE = 24 * 60 * 60 * 1000;
 const CATALOG_TIMEOUT = 120_000;
 
@@ -31,10 +29,6 @@ export default class OpenRouterClient {
 		const body = { model, messages };
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
-
-		// Native tool calling — content is ignored, not suppressed
-		body.tools = options.mode === "act" ? ToolSchema.actApi : ToolSchema.askApi;
-		body.tool_choice = "required";
 
 		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
@@ -72,13 +66,6 @@ export default class OpenRouterClient {
 			].filter(Boolean);
 			msg.reasoning_content =
 				parts.length > 0 ? [...new Set(parts)].join("\n") : null;
-
-			// Normalize tool_calls arguments (Ollama returns parsed objects, not strings)
-			for (const tc of msg.tool_calls || []) {
-				if (tc.function && typeof tc.function.arguments !== "string") {
-					tc.function.arguments = JSON.stringify(tc.function.arguments);
-				}
-			}
 		}
 
 		return data;

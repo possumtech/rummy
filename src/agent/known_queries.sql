@@ -10,7 +10,7 @@ FROM known_entries
 WHERE
 	run_id = :run_id
 	AND domain = 'known'
-	AND key LIKE '/:known/%'
+	AND key LIKE '/:known:%'
 	AND turn > 0
 ORDER BY key;
 
@@ -20,7 +20,7 @@ FROM known_entries
 WHERE
 	run_id = :run_id
 	AND domain = 'known'
-	AND key LIKE '/:known/%'
+	AND key LIKE '/:known:%'
 	AND turn = 0
 ORDER BY key;
 
@@ -62,10 +62,10 @@ WHERE
 	run_id = :run_id
 	AND domain = 'result'
 	AND state != 'proposed'
-	AND key NOT LIKE '/:system/%'
-	AND key NOT LIKE '/:user/%'
-	AND key NOT LIKE '/:reasoning/%'
-	AND key NOT LIKE '/:prompt/%'
+	AND key NOT LIKE '/:system:%'
+	AND key NOT LIKE '/:user:%'
+	AND key NOT LIKE '/:reasoning:%'
+	AND key NOT LIKE '/:prompt:%'
 ORDER BY id;
 
 -- PREP: get_unknowns
@@ -73,7 +73,7 @@ SELECT key, value
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND key LIKE '/:unknown/%'
+	AND key LIKE '/:unknown:%'
 ORDER BY id;
 
 -- PREP: get_latest_prompt
@@ -81,7 +81,7 @@ SELECT key, value
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND key LIKE '/:prompt/%'
+	AND key LIKE '/:prompt:%'
 ORDER BY id DESC
 LIMIT 1;
 

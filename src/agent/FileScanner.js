@@ -94,7 +94,7 @@ export default class FileScanner {
 			changedPaths.push(relPath);
 
 			const isRoot = !relPath.includes("/");
-			const turn = isRoot ? currentTurn : (entry?.turn || 0);
+			const turn = isRoot ? currentTurn : entry?.turn || 0;
 
 			await this.#knownStore.upsert(
 				runId,
@@ -179,10 +179,7 @@ export default class FileScanner {
 			const ext = extname(relPath);
 			if (antlrmap && antlrmapSupported?.has(ext)) {
 				try {
-					const content = readFileSync(
-						join(projectPath, relPath),
-						"utf8",
-					);
+					const content = readFileSync(join(projectPath, relPath), "utf8");
 					const symbols = antlrmap.extract(content, ext);
 					symbolMap.set(relPath, symbols);
 					continue;

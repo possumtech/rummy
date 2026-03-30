@@ -104,7 +104,7 @@ describe("E2E: Tool Calling Foundation", () => {
 		const result = await client.call("ask", {
 			model,
 			prompt:
-				"The greet function returns 'hello'. Write this fact to /:known/greet_behavior",
+				"The greet function returns 'hello'. Write this fact to /:known:greet_behavior",
 		});
 
 		assert.strictEqual(result.status, "completed");
@@ -116,9 +116,9 @@ describe("E2E: Tool Calling Foundation", () => {
 		const _knownEntries = all.filter(
 			(e) => e.domain === "known" && e.key !== "/:unknown",
 		);
-		// The model might or might not have written to exactly /:known/greet_behavior
+		// The model might or might not have written to exactly /:known:greet_behavior
 		// but it should have called summary at minimum
-		const summaries = all.filter((e) => e.key.startsWith("/:summary/"));
+		const summaries = all.filter((e) => e.key.startsWith("/:summary:"));
 		assert.ok(summaries.length > 0, "Model should have called summary");
 	});
 });

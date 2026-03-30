@@ -8,7 +8,7 @@ const ROOT_DIR = join(__dirname, "../..");
 export default class PromptManager {
 	static async getSystemPrompt(type, { db = null, sessionId = null } = {}) {
 		// Base system prompt from file
-		const modePath = join(ROOT_DIR, `system.${type}.md`);
+		const modePath = join(ROOT_DIR, `prompt.${type}.md`);
 		let base;
 		try {
 			base = await fs.readFile(modePath, "utf8");
