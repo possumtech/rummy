@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 	, persona TEXT
 	, system_prompt TEXT
 	, temperature REAL
+	, context_limit INTEGER
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

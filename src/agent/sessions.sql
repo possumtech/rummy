@@ -21,7 +21,7 @@ VALUES (:id, :project_id, :client_id);
 -- PREP: get_session_by_id
 SELECT
 	id, project_id, client_id, persona
-	, system_prompt, temperature, created_at
+	, system_prompt, temperature, context_limit, created_at
 FROM sessions
 WHERE id = :id;
 
@@ -30,6 +30,12 @@ SELECT temperature FROM sessions WHERE id = :id;
 
 -- PREP: update_session_temperature
 UPDATE sessions SET temperature = :temperature WHERE id = :id;
+
+-- PREP: get_session_context_limit
+SELECT context_limit FROM sessions WHERE id = :id;
+
+-- PREP: update_session_context_limit
+UPDATE sessions SET context_limit = :context_limit WHERE id = :id;
 
 -- PREP: update_session_system_prompt
 UPDATE sessions SET system_prompt = :system_prompt WHERE id = :id;

@@ -229,4 +229,18 @@ export default class SessionManager {
 		const row = await this.#db.get_session_temperature.get({ id: sessionId });
 		return row?.temperature ?? null;
 	}
+
+	async setContextLimit(sessionId, limit) {
+		const clamped = limit ? Math.max(1024, Math.round(limit)) : null;
+		await this.#db.update_session_context_limit.run({
+			id: sessionId,
+			context_limit: clamped,
+		});
+		return clamped;
+	}
+
+	async getContextLimit(sessionId) {
+		const row = await this.#db.get_session_context_limit.get({ id: sessionId });
+		return row?.context_limit ?? null;
+	}
 }

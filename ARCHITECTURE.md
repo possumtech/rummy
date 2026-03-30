@@ -342,7 +342,7 @@ are stored in `meta` on the file's known entry.
 | Scope | Lifetime | Contains |
 |-------|----------|----------|
 | **Project** | Until deleted | Project path, name, git state |
-| **Session** | Client connection | Config (persona, system prompt, skills, temperature) |
+| **Session** | Client connection | Config (persona, system prompt, skills, temperature, context limit) |
 | **Run** | Open-ended conversation | `known_entries`, `turns` |
 | **Turn** | Single LLM request/response | Entries written with that turn number |
 
@@ -424,6 +424,8 @@ defined via `RUMMY_MODEL_{alias}` env vars.
 | `getSkills` | — | List active skills |
 | `setTemperature` | `temperature` | Set temperature (0-2) |
 | `getTemperature` | — | Get temperature |
+| `setContextLimit` | `limit` | Override context window (tokens). `null` resets to model default. Min 1024. |
+| `getContext` | `model?` | Returns `{ model_max, limit, effective }` — model's max, session override, actual size used |
 
 ### 5.2 Notifications
 
@@ -461,7 +463,14 @@ defined via `RUMMY_MODEL_{alias}` env vars.
     "prompt_tokens": 3400,
     "completion_tokens": 280,
     "total_tokens": 3680,
-    "cost": 0.0024
+    "cost": 0.0024,
+    "context_distribution": [
+      {"bucket": "system",  "tokens": 800,  "entries": 2},
+      {"bucket": "files",   "tokens": 2400, "entries": 3},
+      {"bucket": "keys",    "tokens": 120,  "entries": 45},
+      {"bucket": "known",   "tokens": 340,  "entries": 5},
+      {"bucket": "history", "tokens": 580,  "entries": 8}
+    ]
   }
 }
 ```
@@ -819,15 +828,27 @@ On every startup, the server runs cleanup:
 1. **`purge_old_runs`** — delete completed/aborted runs older than `RUMMY_RETENTION_DAYS` (default: 31). Cascades handle turns and known entries.
 2. **`purge_stale_sessions`** — delete sessions with no runs.
 
-### 9.1 Configuration
+### 9.1 Context Sizing
+
+The context window is resolved per-turn: `min(session_override, model_max)`.
+
+- **Model max** — reported by the provider catalog (OpenRouter) or `/api/show` (Ollama).
+- **Session override** — set by the client via `setContextLimit({ limit: N })`. Stored in `sessions.context_limit`. Pass `null` to reset to model default.
+- **Effective size** — passed as `rummy.contextSize` to turn processors and the Relevance Engine. The engine uses this budget to decide what to promote/demote.
+
+The client retrieves sizing via `getContext({ model? })` → `{ model_max, limit, effective }`.
+
+Token distribution per bucket is included in every `run/state` notification under
+`telemetry.context_distribution`: `[{ bucket, tokens, entries }]`. Buckets:
+`system`, `files`, `keys`, `known`, `history`.
+
+### 9.2 Configuration
 
 ```env
-RUMMY_MAP_MAX_PERCENT=10        # Percent of model context window for known entries
-RUMMY_MAP_TOKEN_BUDGET=4000     # Hard cap in tokens
-RUMMY_DECAY_THRESHOLD=12        # Turns before attention decay
 RUMMY_RETENTION_DAYS=31         # Days to keep completed runs
-RUMMY_FETCH_TIMEOUT=30000       # LLM fetch timeout (ms)
-RUMMY_RPC_TIMEOUT=10000         # Non-long-running RPC timeout (ms)
+RUMMY_FETCH_TIMEOUT=120000      # LLM fetch timeout (ms)
+RUMMY_RPC_TIMEOUT=30000         # Non-long-running RPC timeout (ms)
+RUMMY_TEMPERATURE=0.7           # Default temperature (client can override)
 ```
 
 ---

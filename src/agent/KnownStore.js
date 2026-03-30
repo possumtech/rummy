@@ -246,6 +246,14 @@ export default class KnownStore {
 	}
 
 	/**
+	 * Token distribution across context buckets.
+	 * Returns: [{ bucket, tokens, entries }]
+	 */
+	async getContextDistribution(runId) {
+		return this.#db.get_context_distribution.all({ run_id: runId });
+	}
+
+	/**
 	 * Recount tokens for all entries written on a specific turn.
 	 * Bulk read → batch encode → bulk write. Encoder stays warm.
 	 * Call async after the turn completes — not on the hot path.

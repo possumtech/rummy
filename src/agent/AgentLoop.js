@@ -131,7 +131,11 @@ export default class AgentLoop {
 			});
 		}
 
-		const contextSize = await this.#llmProvider.getContextSize(requestedModel);
+		const modelContextSize = await this.#llmProvider.getContextSize(requestedModel);
+		const limitRow = await this.#db.get_session_context_limit.get({ id: String(sessionId || "") });
+		const contextSize = limitRow?.context_limit
+			? Math.min(limitRow.context_limit, modelContextSize)
+			: modelContextSize;
 
 		let loopIteration = 0;
 		let unknownWarnings = 0;
@@ -231,6 +235,7 @@ export default class AgentLoop {
 						completion_tokens: runUsage.completion_tokens,
 						total_tokens: runUsage.total_tokens,
 						cost: runUsage.cost,
+						context_distribution: await this.#knownStore.getContextDistribution(currentRunId),
 					},
 				});
 				if (unresolved.length > 0) {

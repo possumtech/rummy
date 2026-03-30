@@ -9,13 +9,15 @@ export default class ProjectAgent {
 	#hooks;
 	#sessionManager;
 	#agentLoop;
+	#llm;
 
 	constructor(db, hooks) {
 		this.#db = db;
 		this.#hooks = hooks;
 		this.#sessionManager = new SessionManager(db, hooks);
 
-		const llm = new LlmProvider(hooks, db);
+		this.#llm = new LlmProvider(hooks, db);
+		const llm = this.#llm;
 		hooks.models = llm.capabilities;
 		const knownStore = new KnownStore(db);
 
@@ -98,6 +100,18 @@ export default class ProjectAgent {
 
 	async getTemperature(sessionId) {
 		return this.#sessionManager.getTemperature(sessionId);
+	}
+
+	async setContextLimit(sessionId, limit) {
+		return this.#sessionManager.setContextLimit(sessionId, limit);
+	}
+
+	async getContextLimit(sessionId) {
+		return this.#sessionManager.getContextLimit(sessionId);
+	}
+
+	async getModelContextSize(model) {
+		return this.#llm.getContextSize(model);
 	}
 
 	async ask(sessionId, model, prompt, run = null, options = {}) {

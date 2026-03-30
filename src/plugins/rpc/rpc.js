@@ -323,10 +323,43 @@ export default class CoreRpcPlugin {
 			requiresInit: true,
 		});
 
+		r.register("setContextLimit", {
+			handler: async (params, ctx) => {
+				const value = await ctx.projectAgent.setContextLimit(
+					ctx.sessionId,
+					params.limit ? Number(params.limit) : null,
+				);
+				return { context_limit: value };
+			},
+			description:
+				"Override context window size (tokens). Clamps to min 1024. Pass null to reset to model default. Returns { context_limit }.",
+			params: { limit: "number | null — token count, or null to reset" },
+			requiresInit: true,
+		});
+
+		r.register("getContext", {
+			handler: async (params, ctx) => {
+				const model = params?.model || process.env.RUMMY_MODEL_DEFAULT;
+				const limit = await ctx.projectAgent.getContextLimit(ctx.sessionId);
+				let modelMax = null;
+				try {
+					modelMax = await ctx.projectAgent.getModelContextSize(model);
+				} catch {}
+				const effective = limit
+					? Math.min(limit, modelMax || limit)
+					: modelMax;
+				return { model_max: modelMax, limit, effective };
+			},
+			description:
+				"Get context sizing. Returns { model_max (from provider), limit (session override or null), effective (actual size used) }.",
+			params: { model: "string? — model alias, defaults to RUMMY_MODEL_DEFAULT" },
+			requiresInit: true,
+		});
+
 		// Notifications
 		r.registerNotification(
 			"run/state",
-			"Turn state update. Payload: { run, turn, status, summary, history[], unknowns[], proposed[], telemetry: { modelAlias, model, temperature, context_size, prompt_tokens, completion_tokens, total_tokens, cost } }.",
+			"Turn state update. Payload: { run, turn, status, summary, history[], unknowns[], proposed[], telemetry: { modelAlias, model, temperature, context_size, prompt_tokens, completion_tokens, total_tokens, cost, context_distribution[] } }.",
 		);
 		r.registerNotification(
 			"run/progress",
