@@ -18,7 +18,7 @@ export default class TurnExecutor {
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
-		this.#fileScanner = new FileScanner(knownStore, db);
+		this.#fileScanner = new FileScanner(knownStore, db, hooks);
 	}
 
 	async execute({
@@ -68,6 +68,7 @@ export default class TurnExecutor {
 		};
 		const rummy = new RummyContext(hookRoot, {
 			db: this.#db,
+			store: this.#knownStore,
 			project,
 			type,
 			sequence: turn,
@@ -136,11 +137,13 @@ export default class TurnExecutor {
 		}
 
 		// Call LLM
+		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
 		const result = await this.#llmProvider.completion(
 			filteredMessages,
 			requestedModel,
 			{ temperature: options?.temperature },
 		);
+		await this.#hooks.llm.request.completed.emit({ model: requestedModel, turn, usage: result.usage });
 		const responseMessage = result.choices?.[0]?.message;
 		const content = responseMessage?.content || "";
 
@@ -208,7 +211,8 @@ export default class TurnExecutor {
 					}),
 					"error",
 				);
-				throw new Error("Model response contained no tool commands.");
+				// Signal retry — don't throw, let AgentLoop handle it
+				throw new Error("missing required summary");
 			}
 			summaryText = "...";
 		}

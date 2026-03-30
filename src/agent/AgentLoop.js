@@ -238,13 +238,17 @@ export default class AgentLoop {
 						id: currentRunId,
 						status: "proposed",
 					});
-					return {
-						run: currentAlias,
-						status: "proposed",
-						turn: result.turn,
-						proposed: unresolved,
-					};
+					const out = { run: currentAlias, status: "proposed", turn: result.turn, proposed: unresolved };
+					await hook.completed.emit({ sessionId, ...out });
+					return out;
 				}
+
+				await this.#hooks.run.step.completed.emit({
+					sessionId,
+					run: currentAlias,
+					turn: result.turn,
+					flags: result.flags,
+				});
 
 				// Continue if model made action calls (reads promote files, env gathers info)
 				if (result.flags.hasReads || result.flags.hasAct) {
@@ -273,15 +277,20 @@ export default class AgentLoop {
 					id: currentRunId,
 					status: "completed",
 				});
-				return { run: currentAlias, status: "completed", turn: result.turn };
+				const out = { run: currentAlias, status: "completed", turn: result.turn };
+				await hook.completed.emit({ sessionId, ...out });
+				return out;
 			}
 
-			return { run: currentAlias, status: "running", turn: 0 };
+			const out = { run: currentAlias, status: "running", turn: 0 };
+			await hook.completed.emit({ sessionId, ...out });
+			return out;
 		} catch (err) {
 			await this.#db.update_run_status.run({
 				id: currentRunId,
 				status: "failed",
 			});
+			await hook.completed.emit({ sessionId, run: currentAlias, status: "failed", error: err.message });
 			throw err;
 		}
 	}

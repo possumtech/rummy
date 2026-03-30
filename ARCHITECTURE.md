@@ -300,14 +300,20 @@ the model, or the relevance engine.
 At run start, the file scanner populates `known_entries` from disk. This is how
 files enter the known store — the model never sees a separate file listing.
 
-| Source | Domain | State | Value |
-|--------|--------|-------|-------|
-| Client-promoted `activate` | `file` | `active` | Full file contents |
-| Client-promoted `readOnly` | `file` | `readonly` | Full file contents |
-| Client-excluded `ignore` | `file` | `ignore` | Empty |
-| Agent-read (from `read` tool) | `file` | `full` | Full file contents |
-| Root file or heat-promoted | `file` | `symbols` | `name(params)` per line |
-| Other indexed files | Not bootstrapped — discoverable via `read` if model knows the path |
+| Source | Domain | State | Turn | Value |
+|--------|--------|-------|------|-------|
+| Client-promoted `activate` | `file` | `active` | current | Full file contents |
+| Client-promoted `readOnly` | `file` | `readonly` | current | Full file contents |
+| Client-excluded `ignore` | `file` | `ignore` | 0 | Empty |
+| Agent-read (from `<read>`) | `file` | `full` | current | Full file contents |
+| Root files (no `/` in path) | `file` | `full` | current | Full file contents |
+| All other tracked files | `file` | `full` | 0 | Full file contents (path-only in context) |
+
+Files at turn 0 appear as paths in the File Index. Files at turn > 0 appear with
+full content in the Files section. The `symbols` state exists for future use by
+the Relevance Engine — a middle tier between full content and path-only. Symbols
+are extracted by antlrmap/ctags and stored in `meta.symbols` on every file scan,
+ready for when the Relevance Engine introduces heat-based promotion tiers.
 
 ### 3.5 File Change Detection
 

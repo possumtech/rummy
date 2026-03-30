@@ -1,23 +1,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { extname, join } from "node:path";
-import CtagsExtractor from "./CtagsExtractor.js";
-
-let Antlrmap = null;
-let antlrmapSupported = null;
-try {
-	Antlrmap = (await import("@possumtech/antlrmap")).default;
-	antlrmapSupported = new Set(Object.keys(Antlrmap.extensions));
-} catch {
-	// antlrmap not installed — ctags only
-}
+import { join } from "node:path";
 
 function hashContent(content) {
 	return crypto.createHash("sha256").update(content).digest("hex");
 }
 
-function formatSymbols(symbols) {
+export function formatSymbols(symbols) {
 	const sorted = symbols.toSorted((a, b) => (a.line || 0) - (b.line || 0));
 	const stack = [];
 	const lines = [];
@@ -41,10 +31,12 @@ function formatSymbols(symbols) {
 export default class FileScanner {
 	#knownStore;
 	#db;
+	#hooks;
 
-	constructor(knownStore, db) {
+	constructor(knownStore, db, hooks) {
 		this.#knownStore = knownStore;
 		this.#db = db;
+		this.#hooks = hooks;
 	}
 
 	/**
@@ -129,16 +121,15 @@ export default class FileScanner {
 			);
 		}
 
-		// Extract symbols for changed files
-		if (changedPaths.length > 0) {
-			const symbolMap = await this.#extractAllSymbols(
-				projectPath,
-				changedPaths,
+		// Extract symbols via plugin hook
+		if (changedPaths.length > 0 && this.#hooks?.file?.symbols) {
+			const symbolMap = await this.#hooks.file.symbols.filter(
+				new Map(),
+				{ paths: changedPaths, projectPath },
 			);
 			for (const [relPath, symbols] of symbolMap) {
 				const symbolText = formatSymbols(symbols);
 				if (!symbolText) continue;
-				// Update meta with symbols (don't overwrite value or state)
 				const current = await this.#knownStore.getValue(runId, relPath);
 				if (current !== null) {
 					await this.#knownStore.upsert(
@@ -188,38 +179,5 @@ export default class FileScanner {
 		for (const [relPath] of fileKeys) {
 			await this.#knownStore.remove(runId, relPath);
 		}
-	}
-
-	async #extractAllSymbols(projectPath, paths) {
-		const symbolMap = new Map();
-		const ctagsQueue = [];
-		const antlrmap = Antlrmap ? new Antlrmap() : null;
-
-		for (const relPath of paths) {
-			const ext = extname(relPath);
-			if (antlrmap && antlrmapSupported?.has(ext)) {
-				try {
-					const content = readFileSync(join(projectPath, relPath), "utf8");
-					const symbols = await antlrmap.mapSource(content, ext);
-					if (symbols?.length > 0) {
-						symbolMap.set(relPath, symbols);
-						continue;
-					}
-				} catch {
-					// Fall through to ctags
-				}
-			}
-			ctagsQueue.push(relPath);
-		}
-
-		if (ctagsQueue.length > 0) {
-			const ctagsExtractor = new CtagsExtractor(projectPath);
-			const results = ctagsExtractor.extract(ctagsQueue);
-			for (const [path, symbols] of results) {
-				if (symbols.length > 0) symbolMap.set(path, symbols);
-			}
-		}
-
-		return symbolMap;
 	}
 }

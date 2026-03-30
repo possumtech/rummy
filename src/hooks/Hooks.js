@@ -42,12 +42,7 @@ export default function createHooks(debug = false) {
 			started: createEvent("run.started"),
 			progress: createEvent("run.progress"),
 			state: createEvent("run.state"),
-			command: createEvent("run.command"),
 			config: createFilter("run.config"),
-			turn: {
-				...createFilter("run.turn"),
-				audit: createEvent("run.turn.audit"),
-			},
 			step: {
 				completed: createEvent("run.step.completed"),
 			},
@@ -68,13 +63,12 @@ export default function createHooks(debug = false) {
 			messages: createFilter("llm.messages"),
 			response: createFilter("llm.response"),
 		},
+		file: {
+			symbols: createFilter("file.symbols"),
+		},
 		ui: {
 			render: createEvent("ui.render"),
 			notify: createEvent("ui.notify"),
-			prompt: createEvent("ui.prompt"),
-		},
-		editor: {
-			diff: createEvent("editor.diff"),
 		},
 		socket: {
 			message: {

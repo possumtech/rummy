@@ -15,6 +15,10 @@ export default class RummyContext {
 		return this.#context.db;
 	}
 
+	get store() {
+		return this.#context.store || null;
+	}
+
 	get project() {
 		return this.#context.project;
 	}
