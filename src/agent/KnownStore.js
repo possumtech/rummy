@@ -28,7 +28,7 @@ export default class KnownStore {
 		key,
 		value,
 		state,
-		{ meta = null, hash = null } = {},
+		{ meta = null, hash = null, updatedAt = null } = {},
 	) {
 		const domain = KnownStore.domain(key);
 		await this.#db.upsert_known_entry.run({
@@ -40,6 +40,7 @@ export default class KnownStore {
 			state,
 			hash,
 			meta: meta ? JSON.stringify(meta) : null,
+			updated_at: updatedAt,
 		});
 	}
 
@@ -117,16 +118,28 @@ export default class KnownStore {
 			context.push({ key: r.key, state: fileState, value: r.value });
 		}
 
-		// 6. Chronological results
+		// 6. Chronological results — filtered by tool type
 		for (const r of await this.#db.get_results.all({ run_id: runId })) {
 			const tool = KnownStore.toolFromKey(r.key);
 			const meta = r.meta ? JSON.parse(r.meta) : {};
+			const target = meta.command || meta.file || meta.key || meta.question || "";
+
+			// What the model sees depends on the tool type:
+			// summary: full text
+			// env/run/ask_user: command/question + output/answer (value)
+			// edit: file path + status only (no patch)
+			// write: key only (value already in known section)
+			// read/drop: key only
+			let value = "";
+			if (r.state === "summary") value = r.value;
+			else if (tool === "env" || tool === "run" || tool === "ask_user") value = r.value;
+
 			context.push({
 				key: r.key,
 				state: r.state,
-				value: r.state === "summary" ? r.value : "",
+				value,
 				tool: tool || r.state,
-				target: meta.command || meta.file || meta.key || meta.question || "",
+				target,
 			});
 		}
 
@@ -152,13 +165,13 @@ export default class KnownStore {
 		return rows.map((row) => {
 			const tool = KnownStore.toolFromKey(row.key);
 			const meta = row.meta ? JSON.parse(row.meta) : {};
-			return {
-				tool: tool || row.status,
-				target: meta.command || meta.file || meta.key || meta.question || "",
-				status: row.state,
-				key: row.key,
-				value: row.state === "summary" ? row.value : "",
-			};
+			const target = meta.command || meta.file || meta.key || meta.question || "";
+
+			let value = "";
+			if (row.state === "summary") value = row.value;
+			else if (tool === "env" || tool === "run" || tool === "ask_user") value = row.value;
+
+			return { tool: tool || row.state, target, status: row.state, key: row.key, value };
 		});
 	}
 
@@ -198,6 +211,13 @@ export default class KnownStore {
 	async getMeta(runId, key) {
 		const row = await this.#db.get_entry_meta.get({ run_id: runId, key });
 		return row?.meta ? JSON.parse(row.meta) : null;
+	}
+
+	/**
+	 * Get all entries written on a specific turn (audit/debug).
+	 */
+	async getTurnAudit(runId, turn) {
+		return this.#db.get_turn_audit.all({ run_id: runId, turn });
 	}
 
 	static toolFromKey(key) {

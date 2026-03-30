@@ -1,9 +1,12 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
-	run_id, turn, key, value, domain, state, hash, meta, tokens
+	run_id, turn, key, value, domain, state, hash, meta
+	, tokens, updated_at
 )
 VALUES (
-	:run_id, :turn, :key, :value, :domain, :state, :hash, :meta, length(:value) / 4
+	:run_id, :turn, :key, :value, :domain, :state, :hash, :meta
+	, length(:value) / 4
+	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
 ON CONFLICT (run_id, key) DO UPDATE SET
 	value = excluded.value
@@ -13,7 +16,7 @@ ON CONFLICT (run_id, key) DO UPDATE SET
 	, turn = excluded.turn
 	, tokens = length(excluded.value) / 4
 	, write_count = known_entries.write_count + 1
-	, updated_at = CURRENT_TIMESTAMP;
+	, updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
 
 -- PREP: delete_known_entry
 DELETE FROM known_entries

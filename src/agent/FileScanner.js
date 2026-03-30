@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import CtagsExtractor from "./CtagsExtractor.js";
 
@@ -33,9 +33,7 @@ export default class FileScanner {
 
 	/**
 	 * Scan the project and sync file entries across all active runs.
-	 * - value = always full file content
-	 * - meta.symbols = always extracted symbols (when available)
-	 * - Root files promoted to currentTurn (visible to model on turn 1)
+	 * Uses filesystem mtime to skip unchanged files (no read, no hash).
 	 */
 	async scan(projectPath, projectId, mappableFiles, currentTurn = 0) {
 		const activeRuns = await this.#db.get_active_runs.all({
@@ -43,51 +41,60 @@ export default class FileScanner {
 		});
 		if (activeRuns.length === 0) return;
 
-		// Read all files from disk
-		const diskFiles = new Map();
+		// Stat all files (cheap — no content reads)
+		const diskStats = new Map();
 		for (const relPath of mappableFiles) {
 			const fullPath = join(projectPath, relPath);
 			if (!existsSync(fullPath)) continue;
 			try {
-				const content = readFileSync(fullPath, "utf8");
-				diskFiles.set(relPath, { content, hash: hashContent(content) });
+				const stat = statSync(fullPath);
+				if (!stat.isFile()) continue;
+				diskStats.set(relPath, { mtime: stat.mtimeMs, fullPath });
 			} catch {
-				// Binary or unreadable
+				// Unreadable
 			}
 		}
 
-		// Extract symbols for all files
-		const symbolMap = await this.#extractAllSymbols(projectPath, [
-			...diskFiles.keys(),
-		]);
-
 		for (const run of activeRuns) {
-			await this.#syncRun(run.id, diskFiles, symbolMap, currentTurn);
+			await this.#syncRun(run.id, projectPath, diskStats, currentTurn);
 		}
 	}
 
-	async #syncRun(runId, diskFiles, symbolMap, currentTurn) {
+	async #syncRun(runId, projectPath, diskStats, currentTurn) {
 		const existing = await this.#knownStore.getFileEntries(runId);
 		const fileKeys = new Map();
 		for (const entry of existing) {
 			fileKeys.set(entry.key, entry);
 		}
 
-		for (const [relPath, { content, hash }] of diskFiles) {
+		const changedPaths = [];
+
+		for (const [relPath, { mtime, fullPath }] of diskStats) {
 			const entry = fileKeys.get(relPath);
 			fileKeys.delete(relPath);
 
-			// Skip unchanged files
+			// Skip if mtime hasn't changed since last scan
+			const storedMtime = entry?.updated_at
+				? new Date(entry.updated_at).getTime()
+				: 0;
+			if (entry && Math.abs(mtime - storedMtime) < 1000) continue;
+
+			// mtime changed — read and hash
+			let content;
+			try {
+				content = readFileSync(fullPath, "utf8");
+			} catch {
+				continue;
+			}
+			const hash = hashContent(content);
+
+			// Skip if hash matches (mtime changed but content didn't)
 			if (entry?.hash === hash) continue;
 
-			// Determine turn: root files get promoted, others start at 0
-			const isRoot = !relPath.includes("/");
-			const turn = isRoot ? currentTurn : entry?.turn || 0;
+			changedPaths.push(relPath);
 
-			// Symbols go in meta, full content always goes in value
-			const symbols = symbolMap.get(relPath);
-			const symbolText = symbols ? formatSymbols(symbols) : "";
-			const meta = symbolText ? { symbols: symbolText } : null;
+			const isRoot = !relPath.includes("/");
+			const turn = isRoot ? currentTurn : (entry?.turn || 0);
 
 			await this.#knownStore.upsert(
 				runId,
@@ -95,7 +102,65 @@ export default class FileScanner {
 				relPath,
 				content,
 				entry?.state || "full",
-				{ hash, meta },
+				{
+					hash,
+					updatedAt: new Date(mtime).toISOString(),
+				},
+			);
+		}
+
+		// Extract symbols for changed files
+		if (changedPaths.length > 0) {
+			const symbolMap = await this.#extractAllSymbols(
+				projectPath,
+				changedPaths,
+			);
+			for (const [relPath, symbols] of symbolMap) {
+				const symbolText = formatSymbols(symbols);
+				if (!symbolText) continue;
+				// Update meta with symbols (don't overwrite value or state)
+				const current = await this.#knownStore.getValue(runId, relPath);
+				if (current !== null) {
+					await this.#knownStore.upsert(
+						runId,
+						currentTurn,
+						relPath,
+						current,
+						"full",
+						{ meta: { symbols: symbolText } },
+					);
+				}
+			}
+		}
+
+		// New files that aren't in the store yet
+		for (const [relPath, { mtime, fullPath }] of diskStats) {
+			if (fileKeys.has(relPath)) continue;
+			const alreadyProcessed = changedPaths.includes(relPath);
+			if (alreadyProcessed) continue;
+
+			// Check if it was already handled above (existed + unchanged)
+			const entry = existing.find((e) => e.key === relPath);
+			if (entry) continue;
+
+			// Truly new file
+			let content;
+			try {
+				content = readFileSync(fullPath, "utf8");
+			} catch {
+				continue;
+			}
+			const isRoot = !relPath.includes("/");
+			await this.#knownStore.upsert(
+				runId,
+				isRoot ? currentTurn : 0,
+				relPath,
+				content,
+				"full",
+				{
+					hash: hashContent(content),
+					updatedAt: new Date(mtime).toISOString(),
+				},
 			);
 		}
 
@@ -114,7 +179,10 @@ export default class FileScanner {
 			const ext = extname(relPath);
 			if (antlrmap && antlrmapSupported?.has(ext)) {
 				try {
-					const content = readFileSync(join(projectPath, relPath), "utf8");
+					const content = readFileSync(
+						join(projectPath, relPath),
+						"utf8",
+					);
 					const symbols = antlrmap.extract(content, ext);
 					symbolMap.set(relPath, symbols);
 					continue;

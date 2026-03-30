@@ -38,7 +38,7 @@ WHERE
 	AND (key LIKE '/:edit/%' OR key LIKE '/:run/%' OR key LIKE '/:delete/%');
 
 -- PREP: get_file_entries
-SELECT key, state, hash
+SELECT key, state, hash, updated_at
 FROM known_entries
 WHERE
 	run_id = :run_id

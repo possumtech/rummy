@@ -84,3 +84,11 @@ WHERE
 	AND key LIKE '/:prompt/%'
 ORDER BY id DESC
 LIMIT 1;
+
+-- PREP: get_turn_audit
+SELECT key, domain, state, turn, value, meta
+FROM known_entries
+WHERE
+	run_id = :run_id
+	AND turn = :turn
+ORDER BY id;
