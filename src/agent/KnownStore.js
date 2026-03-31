@@ -51,7 +51,11 @@ export default class KnownStore {
 	}
 
 	async setFileState(runId, pattern, state) {
-		const result = await this.#db.set_file_state.run({ run_id: runId, pattern, state });
+		const result = await this.#db.set_file_state.run({
+			run_id: runId,
+			pattern,
+			state,
+		});
 		if (result.changes === 0) {
 			await this.upsert(runId, 0, pattern, "", state);
 		}
@@ -69,6 +73,48 @@ export default class KnownStore {
 		await this.#db.delete_file_entries_by_pattern.run({
 			run_id: runId,
 			pattern,
+		});
+	}
+
+	async promoteByPattern(runId, path, value, turn) {
+		await this.#db.promote_by_pattern.run({
+			run_id: runId,
+			path,
+			value: value || null,
+			turn,
+		});
+	}
+
+	async demoteByPattern(runId, path, value) {
+		await this.#db.demote_by_pattern.run({
+			run_id: runId,
+			path,
+			value: value || null,
+		});
+	}
+
+	async getEntriesByPattern(runId, path, value) {
+		return this.#db.get_entries_by_pattern.all({
+			run_id: runId,
+			path,
+			value: value || null,
+		});
+	}
+
+	async deleteByPattern(runId, path, value) {
+		await this.#db.delete_entries_by_pattern.run({
+			run_id: runId,
+			path,
+			value: value || null,
+		});
+	}
+
+	async updateValueByPattern(runId, path, value, newValue) {
+		await this.#db.update_value_by_pattern.run({
+			run_id: runId,
+			path,
+			value: value || null,
+			new_value: newValue,
 		});
 	}
 

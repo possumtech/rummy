@@ -88,3 +88,51 @@ ORDER BY path;
 SELECT meta
 FROM known_entries
 WHERE run_id = :run_id AND path = :path;
+
+-- PREP: promote_by_pattern
+UPDATE known_entries
+SET
+	turn = :turn
+	, updated_at = CURRENT_TIMESTAMP
+WHERE
+	run_id = :run_id
+	AND glorp(:path, path)
+	AND (:value IS NULL OR glorp(:value, value));
+
+-- PREP: demote_by_pattern
+UPDATE known_entries
+SET
+	turn = 0
+	, updated_at = CURRENT_TIMESTAMP
+WHERE
+	run_id = :run_id
+	AND glorp(:path, path)
+	AND (:value IS NULL OR glorp(:value, value));
+
+-- PREP: get_entries_by_pattern
+SELECT path, value, domain, state, tokens, meta
+FROM known_entries
+WHERE
+	run_id = :run_id
+	AND glorp(:path, path)
+	AND (:value IS NULL OR glorp(:value, value))
+ORDER BY path;
+
+-- PREP: delete_entries_by_pattern
+DELETE FROM known_entries
+WHERE
+	run_id = :run_id
+	AND glorp(:path, path)
+	AND (:value IS NULL OR glorp(:value, value));
+
+-- PREP: update_value_by_pattern
+UPDATE known_entries
+SET
+	value = :new_value
+	, tokens = length(:new_value) / 4
+	, write_count = write_count + 1
+	, updated_at = CURRENT_TIMESTAMP
+WHERE
+	run_id = :run_id
+	AND glorp(:path, path)
+	AND (:value IS NULL OR glorp(:value, value));

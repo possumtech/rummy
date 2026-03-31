@@ -86,10 +86,7 @@ export default class SessionManager {
 		const path = await this.#normalizePath(projectId, pattern);
 		const run = await this.#db.get_latest_run.get({ project_id: projectId });
 		if (!run) return [];
-		const rows = await this.#knownStore.getFileStatesByPattern(
-			run.id,
-			path,
-		);
+		const rows = await this.#knownStore.getFileStatesByPattern(run.id, path);
 		return rows.map((r) => ({
 			path: r.path,
 			state: r.state,

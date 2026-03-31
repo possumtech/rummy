@@ -224,76 +224,80 @@ export default class TurnExecutor {
 
 		// Step 1: Action tools
 		for (const cmd of actionCalls) {
-			if (cmd.name === "read") {
-				await this.#knownStore.promote(currentRunId, cmd.path, turn);
-				continue;
-			}
-			if (cmd.name === "drop") {
-				await this.#knownStore.demote(currentRunId, cmd.path);
+			// keys flag — preview matches, no state change
+			if (cmd.keys && cmd.path) {
+				const matches = await this.#knownStore.getEntriesByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.value,
+				);
+				const total = matches.reduce((sum, m) => sum + m.tokens, 0);
+				const listing = matches
+					.map((m) => `${m.path} (${m.tokens})`)
+					.join("\n");
+				const keysPath = await this.#knownStore.nextResultPath(
+					currentRunId,
+					"keys",
+				);
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					keysPath,
+					`${matches.length} paths (${total} tokens total)\n${listing}`,
+					"info",
+				);
 				continue;
 			}
 
+			if (cmd.name === "read") {
+				await this.#knownStore.promoteByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.value,
+					turn,
+				);
+				continue;
+			}
+			if (cmd.name === "drop") {
+				await this.#knownStore.demoteByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.value,
+				);
+				continue;
+			}
+
+			if (cmd.name === "edit") {
+				await this.#processEdit(currentRunId, turn, cmd);
+				continue;
+			}
+
+			if (cmd.name === "delete") {
+				await this.#processDelete(currentRunId, turn, cmd);
+				continue;
+			}
+
+			// run, env — single proposed/pass entry
 			const resultPath = await this.#knownStore.nextResultPath(
 				currentRunId,
 				cmd.name,
 			);
 			cmd.resultPath = resultPath;
-			const isProposed = ["edit", "run", "env", "delete"].includes(cmd.name);
-
-			if (cmd.name === "edit") {
-				const fileContent = await this.#knownStore.getValue(
-					currentRunId,
-					cmd.path,
-				);
-				let patch = null;
-				let warning = null;
-				let error = null;
-
-				if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
-					patch = cmd.blocks[0].replace;
-				} else if (fileContent !== null && cmd.blocks?.length > 0) {
-					const block = cmd.blocks[0];
-					const matched = HeuristicMatcher.matchAndPatch(
-						cmd.path,
-						fileContent,
-						block.search,
-						block.replace,
-					);
-					patch = matched.patch;
-					warning = matched.warning;
-					error = matched.error;
-				}
-
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					resultPath,
-					patch || "",
-					error ? "error" : "proposed",
-					{
-						meta: { path: cmd.path, blocks: cmd.blocks, patch, warning, error },
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				resultPath,
+				"",
+				cmd.name === "env" ? "pass" : "proposed",
+				{
+					meta: {
+						command: cmd.command,
+						path: cmd.path,
+						question: cmd.question,
+						options: cmd.options,
 					},
-				);
-				cmd.patch = patch;
-				cmd.warning = warning;
-				cmd.error = error;
-			} else {
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					resultPath,
-					"",
-					isProposed ? "proposed" : "pass",
-					{
-						meta: {
-							command: cmd.command,
-							path: cmd.path,
-							question: cmd.question,
-							options: cmd.options,
-						},
-					},
-				);
-			}
+				},
+			);
 		}
 
 		// Step 1b: ask_user
@@ -338,13 +342,49 @@ export default class TurnExecutor {
 		// Step 3: Known entries
 		for (const cmd of writeCalls) {
 			if (!cmd.path) continue;
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				cmd.path,
-				cmd.value,
-				"full",
-			);
+
+			// keys flag — preview matches
+			if (cmd.keys) {
+				const matches = await this.#knownStore.getEntriesByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.value,
+				);
+				const total = matches.reduce((sum, m) => sum + m.tokens, 0);
+				const listing = matches
+					.map((m) => `${m.path} (${m.tokens})`)
+					.join("\n");
+				const keysPath = await this.#knownStore.nextResultPath(
+					currentRunId,
+					"keys",
+				);
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					keysPath,
+					`${matches.length} paths (${total} tokens total)\n${listing}`,
+					"info",
+				);
+				continue;
+			}
+
+			// Pattern-based bulk update or single upsert
+			if (cmd.filter || /[*+?^${}()|[\]\\]/.test(cmd.path)) {
+				await this.#knownStore.updateValueByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.filter || null,
+					cmd.value,
+				);
+			} else {
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					cmd.path,
+					cmd.value,
+					"full",
+				);
+			}
 		}
 
 		// Step 4: Summary
@@ -382,5 +422,79 @@ export default class TurnExecutor {
 			contextSize,
 			usage,
 		};
+	}
+
+	async #processEdit(runId, turn, cmd) {
+		const matches = await this.#knownStore.getEntriesByPattern(
+			runId,
+			cmd.path,
+			cmd.value,
+		);
+
+		for (const entry of matches) {
+			const resultPath = await this.#knownStore.nextResultPath(runId, "edit");
+			let patch = null;
+			let warning = null;
+			let error = null;
+
+			if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
+				patch = cmd.blocks[0].replace;
+			} else if (entry.value && cmd.blocks?.length > 0) {
+				const block = cmd.blocks[0];
+				const matched = HeuristicMatcher.matchAndPatch(
+					entry.path,
+					entry.value,
+					block.search,
+					block.replace,
+				);
+				patch = matched.patch;
+				warning = matched.warning;
+				error = matched.error;
+			}
+
+			// Files → proposed (client reviews). Keys → pass (immediate).
+			const state = error
+				? "error"
+				: entry.domain === "file"
+					? "proposed"
+					: "pass";
+
+			await this.#knownStore.upsert(
+				runId,
+				turn,
+				resultPath,
+				patch || "",
+				state,
+				{
+					meta: { path: entry.path, blocks: cmd.blocks, patch, warning, error },
+				},
+			);
+
+			// For non-file entries, apply the edit directly
+			if (state === "pass" && patch) {
+				await this.#knownStore.upsert(
+					runId,
+					turn,
+					entry.path,
+					patch,
+					entry.state,
+				);
+			}
+		}
+	}
+
+	async #processDelete(runId, turn, cmd) {
+		const matches = await this.#knownStore.getEntriesByPattern(
+			runId,
+			cmd.path,
+			cmd.value,
+		);
+
+		for (const entry of matches) {
+			const resultPath = await this.#knownStore.nextResultPath(runId, "delete");
+			await this.#knownStore.upsert(runId, turn, resultPath, "", "proposed", {
+				meta: { path: entry.path },
+			});
+		}
 	}
 }

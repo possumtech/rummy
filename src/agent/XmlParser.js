@@ -61,7 +61,17 @@ function resolveCommand(name, attrs, body) {
 	}
 
 	if (name === "known") {
-		// Canonical: path in attr, value in body. Alt: value in attr (self-closing).
+		// Body is always the new content to write.
+		// value="" attr is a filter for pattern-based bulk updates.
+		if (trimmed && a.value) {
+			return {
+				name,
+				path: a.path,
+				filter: a.value,
+				value: trimmed,
+				keys: a.keys,
+			};
+		}
 		const value = trimmed || a.value || "";
 		return { name, path: a.path, value, keys: a.keys };
 	}
