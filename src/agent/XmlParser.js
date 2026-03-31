@@ -1,15 +1,14 @@
 import { Parser } from "htmlparser2";
 
-const SELF_CLOSING_TOOLS = new Set([
-	"read",
-	"drop",
-	"delete",
+const STORE_TOOLS = new Set(["read", "drop", "delete", "known", "edit"]);
+const ALL_TOOLS = new Set([
+	...STORE_TOOLS,
 	"run",
 	"env",
 	"ask_user",
+	"summary",
+	"unknown",
 ]);
-const CONTENT_TOOLS = new Set(["summary", "unknown", "known", "edit"]);
-const ALL_TOOLS = new Set([...SELF_CLOSING_TOOLS, ...CONTENT_TOOLS]);
 
 function parseEditContent(content) {
 	const blocks = [];
@@ -30,10 +29,76 @@ function parseEditContent(content) {
 	return blocks;
 }
 
+/**
+ * Normalize legacy and alternative attribute names to canonical form.
+ * key="" → path="", file="" → path="". Silent, no warnings.
+ */
+function normalizeAttrs(attrs) {
+	const out = { ...attrs };
+	if (out.key && !out.path) {
+		out.path = out.key;
+		delete out.key;
+	}
+	if (out.file && !out.path) {
+		out.path = out.file;
+		delete out.file;
+	}
+	if ("keys" in out) out.keys = true;
+	return out;
+}
+
+/**
+ * Resolve the competing attr-vs-body philosophies per tool.
+ * If the canonical attribute is missing, the body fills it. Silent.
+ */
+function resolveCommand(name, attrs, body) {
+	const a = normalizeAttrs(attrs);
+	const trimmed = body.trim();
+
+	if (name === "edit") {
+		const blocks = parseEditContent(body);
+		return { name, path: a.path, value: a.value, keys: a.keys, blocks };
+	}
+
+	if (name === "known") {
+		// Canonical: path in attr, value in body. Alt: value in attr (self-closing).
+		const value = trimmed || a.value || "";
+		return { name, path: a.path, value, keys: a.keys };
+	}
+
+	if (name === "summary" || name === "unknown") {
+		// Canonical: text in body. Alt: value in attr.
+		const value = trimmed || a.value || "";
+		return { name, value };
+	}
+
+	if (name === "read" || name === "drop" || name === "delete") {
+		// Canonical: path in attr. Alt: path in body.
+		const path = a.path || trimmed || null;
+		return { name, path, value: a.value, keys: a.keys };
+	}
+
+	if (name === "run" || name === "env") {
+		// Canonical: command in attr. Alt: command in body.
+		const command = a.command || trimmed || null;
+		return { name, command };
+	}
+
+	if (name === "ask_user") {
+		// Canonical: question in attr. Alt: question in body.
+		const question = a.question || trimmed || null;
+		return { name, question, options: a.options };
+	}
+
+	return { name, ...a, value: trimmed || a.value };
+}
+
 export default class XmlParser {
 	/**
 	 * Parse tool commands from model content using htmlparser2.
 	 * Handles malformed XML gracefully — unclosed tags, missing slashes, etc.
+	 * Every tool can appear as self-closing (attrs only) or with body content.
+	 * Competing attr-vs-body philosophies are resolved silently.
 	 * @param {string} content - Raw model response text
 	 * @returns {{ commands: Array, warnings: string[], unparsed: string }}
 	 */
@@ -51,18 +116,12 @@ export default class XmlParser {
 				onopentag(name, attrs) {
 					if (!ALL_TOOLS.has(name)) {
 						if (current) {
-							// Nested unknown tag inside a content tool — treat as text
 							current.body += `<${name}>`;
 						}
 						return;
 					}
 
-					if (SELF_CLOSING_TOOLS.has(name)) {
-						commands.push({ name, ...attrs });
-						return;
-					}
-
-					// Content tool — start collecting body
+					// Every tool can have a body — start collecting
 					current = { name, attrs, body: "" };
 				},
 
@@ -74,30 +133,20 @@ export default class XmlParser {
 					}
 				},
 
-				onclosetag(name) {
+				onclosetag(name, isImplied) {
 					if (current && name === current.name) {
 						if (ended) {
 							warnings.push(`Unclosed <${name}> tag — content captured anyway`);
 						}
-						const { name: toolName, attrs, body } = current;
-
-						if (toolName === "edit") {
-							const blocks = parseEditContent(body);
-							commands.push({ name: toolName, file: attrs.file, blocks });
-						} else if (toolName === "known") {
-							commands.push({
-								name: toolName,
-								key: attrs.key,
-								value: body.trim(),
-							});
-						} else {
-							commands.push({ name: toolName, value: body.trim(), ...attrs });
-						}
-
+						commands.push(
+							resolveCommand(current.name, current.attrs, current.body),
+						);
 						current = null;
 					} else if (current) {
-						// Closing tag for something else while inside a content tool — treat as text
 						current.body += `</${name}>`;
+					} else if (isImplied && ALL_TOOLS.has(name)) {
+						// Self-closing tag that htmlparser2 auto-closed
+						// Already handled by onopentag → current was set, body is empty
 					}
 				},
 
@@ -115,6 +164,13 @@ export default class XmlParser {
 		parser.write(content);
 		ended = true;
 		parser.end();
+
+		// Flush any unclosed tool tag
+		if (current) {
+			warnings.push(`Unclosed <${current.name}> tag — content captured anyway`);
+			commands.push(resolveCommand(current.name, current.attrs, current.body));
+			current = null;
+		}
 
 		const unparsed = textChunks.join("").trim();
 		return { commands, warnings, unparsed };

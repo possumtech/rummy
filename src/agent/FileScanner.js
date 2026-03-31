@@ -80,7 +80,7 @@ export default class FileScanner {
 		const existing = await this.#knownStore.getFileEntries(runId);
 		const fileKeys = new Map();
 		for (const entry of existing) {
-			fileKeys.set(entry.key, entry);
+			fileKeys.set(entry.path, entry);
 		}
 
 		const changedPaths = [];
@@ -155,7 +155,7 @@ export default class FileScanner {
 			if (alreadyProcessed) continue;
 
 			// Check if it was already handled above (existed + unchanged)
-			const entry = existing.find((e) => e.key === relPath);
+			const entry = existing.find((e) => e.path === relPath);
 			if (entry) continue;
 
 			// Truly new file

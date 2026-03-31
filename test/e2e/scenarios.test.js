@@ -114,7 +114,7 @@ describe("E2E: Client Scenarios", () => {
 				const resolveResult = await client.call("run/resolve", {
 					run: result.run,
 					resolution: {
-						key: editProposed.key,
+						path: editProposed.path,
 						action: "accept",
 						output: "applied",
 					},
@@ -147,7 +147,7 @@ describe("E2E: Client Scenarios", () => {
 			const resolveResult = await client.call("run/resolve", {
 				run: result.run,
 				resolution: {
-					key: proposed.key,
+					path: proposed.path,
 					action: "reject",
 					output: "User rejected",
 				},
@@ -185,7 +185,7 @@ describe("E2E: Client Scenarios", () => {
 		if (result.status === "proposed") {
 			const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 			const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-			const edits = all.filter((e) => e.key.startsWith("/:edit:"));
+			const edits = all.filter((e) => e.path.startsWith("/:edit:"));
 
 			for (const edit of edits) {
 				const meta = edit.meta ? JSON.parse(edit.meta) : {};
@@ -208,14 +208,14 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const envProposed = result.proposed.find((p) =>
-				p.key.startsWith("/:env:"),
+				p.path.startsWith("/:env:"),
 			);
 
 			if (envProposed) {
 				const resolveResult = await client.call("run/resolve", {
 					run: result.run,
 					resolution: {
-						key: envProposed.key,
+						path: envProposed.path,
 						action: "accept",
 						output:
 							"Filesystem      Size  Used Avail Use%\n/dev/sda1       100G   50G   50G  50%",
@@ -244,14 +244,14 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const runProposed = result.proposed.find(
-				(p) => p.key.startsWith("/:run:") || p.key.startsWith("/:env:"),
+				(p) => p.path.startsWith("/:run:") || p.path.startsWith("/:env:"),
 			);
 
 			if (runProposed) {
 				const resolveResult = await client.call("run/resolve", {
 					run: result.run,
 					resolution: {
-						key: runProposed.key,
+						key: runProposed.path,
 						action: "reject",
 						output: "Command denied by user",
 					},
@@ -281,7 +281,7 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const askUser = result.proposed.find((p) =>
-				p.key.startsWith("/:ask_user:"),
+				p.path.startsWith("/:ask_user:"),
 			);
 
 			if (askUser) {
@@ -295,7 +295,7 @@ describe("E2E: Client Scenarios", () => {
 				const resolveResult = await client.call("run/resolve", {
 					run: result.run,
 					resolution: {
-						key: askUser.key,
+						key: askUser.path,
 						action: "accept",
 						output: meta.options[0],
 					},
@@ -327,7 +327,7 @@ describe("E2E: Client Scenarios", () => {
 			for (const p of run1.proposed) {
 				await client.call("run/resolve", {
 					run: run1.run,
-					resolution: { key: p.key, action: "accept", output: "" },
+					resolution: { key: p.path, action: "accept", output: "" },
 				});
 			}
 		}
@@ -343,7 +343,7 @@ describe("E2E: Client Scenarios", () => {
 		// Verify multiple turns in the store
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: run1.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-		const prompts = all.filter((e) => e.key.startsWith("/:prompt:"));
+		const prompts = all.filter((e) => e.path.startsWith("/:prompt:"));
 		assert.ok(
 			prompts.length >= 2,
 			`Should have 2+ prompts, got ${prompts.length}`,
@@ -368,7 +368,7 @@ describe("E2E: Client Scenarios", () => {
 		const runAlias = result.run;
 		while (current.status === "proposed" && iterations < 10) {
 			for (const p of current.proposed) {
-				const type = p.key.match(/^\/:(\w+):/)?.[1];
+				const type = p.path.match(/^\/:(\w+):/)?.[1];
 				const meta = typeof p.meta === "string" ? JSON.parse(p.meta) : p.meta;
 				let output = "ok";
 
@@ -398,7 +398,7 @@ describe("E2E: Client Scenarios", () => {
 				try {
 					current = await client.call("run/resolve", {
 						run: runAlias,
-						resolution: { key: p.key, action: "accept", output },
+						resolution: { key: p.path, action: "accept", output },
 					});
 				} catch (err) {
 					await client.dumpRun(runAlias);

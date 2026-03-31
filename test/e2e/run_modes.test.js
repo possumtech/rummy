@@ -65,14 +65,14 @@ describe("E2E: Run Modes", () => {
 		const entries = await tdb.db.get_known_entries.all({ run_id: runRow.id });
 
 		// Should have multiple summaries (one per turn)
-		const summaries = entries.filter((e) => e.key.startsWith("/:summary:"));
+		const summaries = entries.filter((e) => e.path.startsWith("/:summary:"));
 		assert.ok(
 			summaries.length >= 2,
 			`Should have 2+ summaries, got ${summaries.length}`,
 		);
 
 		// Should have multiple prompts
-		const prompts = entries.filter((e) => e.key.startsWith("/:prompt:"));
+		const prompts = entries.filter((e) => e.path.startsWith("/:prompt:"));
 		assert.ok(
 			prompts.length >= 2,
 			`Should have 2+ prompts, got ${prompts.length}`,
@@ -99,7 +99,7 @@ describe("E2E: Run Modes", () => {
 		);
 
 		// Should still have a summary
-		const summaries = entries.filter((e) => e.key.startsWith("/:summary:"));
+		const summaries = entries.filter((e) => e.path.startsWith("/:summary:"));
 		assert.ok(summaries.length > 0, "Should still have summary");
 	});
 });

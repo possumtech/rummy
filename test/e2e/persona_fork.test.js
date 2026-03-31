@@ -78,7 +78,7 @@ describe("E2E: Persona & Fork", () => {
 			run_id: parentRow.id,
 		});
 		const _parentKnowns = parentEntries.filter((e) =>
-			e.key.startsWith("/:known:"),
+			e.path.startsWith("/:known:"),
 		);
 
 		// Fork from the parent run

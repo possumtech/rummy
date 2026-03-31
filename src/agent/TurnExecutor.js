@@ -237,37 +237,36 @@ export default class TurnExecutor {
 		// Step 1: Action tools
 		for (const cmd of actionCalls) {
 			if (cmd.name === "read") {
-				await this.#knownStore.promote(currentRunId, cmd.key, turn);
+				await this.#knownStore.promote(currentRunId, cmd.path, turn);
 				continue;
 			}
 			if (cmd.name === "drop") {
-				await this.#knownStore.demote(currentRunId, cmd.key);
+				await this.#knownStore.demote(currentRunId, cmd.path);
 				continue;
 			}
 
-			const resultKey = await this.#knownStore.nextResultKey(
+			const resultPath = await this.#knownStore.nextResultPath(
 				currentRunId,
 				cmd.name,
 			);
-			cmd.resultKey = resultKey;
+			cmd.resultPath = resultPath;
 			const isProposed = ["edit", "run", "env", "delete"].includes(cmd.name);
 
 			if (cmd.name === "edit") {
 				const fileContent = await this.#knownStore.getValue(
 					currentRunId,
-					cmd.file,
+					cmd.path,
 				);
 				let patch = null;
 				let warning = null;
 				let error = null;
 
 				if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
-					// New file
 					patch = cmd.blocks[0].replace;
 				} else if (fileContent !== null && cmd.blocks?.length > 0) {
 					const block = cmd.blocks[0];
 					const matched = HeuristicMatcher.matchAndPatch(
-						cmd.file,
+						cmd.path,
 						fileContent,
 						block.search,
 						block.replace,
@@ -280,11 +279,11 @@ export default class TurnExecutor {
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
-					resultKey,
+					resultPath,
 					patch || "",
 					error ? "error" : "proposed",
 					{
-						meta: { file: cmd.file, blocks: cmd.blocks, patch, warning, error },
+						meta: { path: cmd.path, blocks: cmd.blocks, patch, warning, error },
 					},
 				);
 				cmd.patch = patch;
@@ -294,13 +293,13 @@ export default class TurnExecutor {
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
-					resultKey,
+					resultPath,
 					"",
 					isProposed ? "proposed" : "pass",
 					{
 						meta: {
 							command: cmd.command,
-							key: cmd.key,
+							path: cmd.path,
 							question: cmd.question,
 							options: cmd.options,
 						},
@@ -311,15 +310,15 @@ export default class TurnExecutor {
 
 		// Step 1b: ask_user
 		if (askUserCmd) {
-			const resultKey = await this.#knownStore.nextResultKey(
+			const resultPath = await this.#knownStore.nextResultPath(
 				currentRunId,
 				"ask_user",
 			);
-			askUserCmd.resultKey = resultKey;
+			askUserCmd.resultPath = resultPath;
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				resultKey,
+				resultPath,
 				"",
 				"proposed",
 				{
@@ -334,14 +333,14 @@ export default class TurnExecutor {
 				await this.#knownStore.getUnknownValues(currentRunId);
 			for (const cmd of unknownCalls) {
 				if (existingValues.has(cmd.value)) continue;
-				const key = await this.#knownStore.nextResultKey(
+				const unknownPath = await this.#knownStore.nextResultPath(
 					currentRunId,
 					"unknown",
 				);
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
-					key,
+					unknownPath,
 					cmd.value,
 					"full",
 				);
@@ -350,25 +349,25 @@ export default class TurnExecutor {
 
 		// Step 3: Known entries
 		for (const cmd of writeCalls) {
-			if (!cmd.key) continue;
+			if (!cmd.path) continue;
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				cmd.key,
+				cmd.path,
 				cmd.value,
 				"full",
 			);
 		}
 
 		// Step 4: Summary
-		const summaryKey = await this.#knownStore.nextResultKey(
+		const summaryPath = await this.#knownStore.nextResultPath(
 			currentRunId,
 			"summary",
 		);
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
-			summaryKey,
+			summaryPath,
 			summaryText,
 			"summary",
 		);

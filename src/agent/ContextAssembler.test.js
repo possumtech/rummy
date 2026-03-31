@@ -28,7 +28,7 @@ describe("ContextAssembler", () => {
 		it("omits user message when prompt exists in context", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
-				context: [{ key: "/:prompt:1", state: "prompt", value: "task" }],
+				context: [{ path: "/:prompt:1", state: "prompt", value: "task" }],
 				userMessage: "hello",
 			});
 			assert.equal(messages.length, 1);
@@ -41,7 +41,7 @@ describe("ContextAssembler", () => {
 				systemPrompt: "sys",
 				context: [
 					{
-						key: "src/app.js",
+						path: "src/app.js",
 						state: "file",
 						value: "const x = 1;",
 						tokens: 5,
@@ -57,7 +57,9 @@ describe("ContextAssembler", () => {
 		it("renders active known as bullet list", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
-				context: [{ key: "/:known:auth", state: "full", value: "OAuth2 PKCE" }],
+				context: [
+					{ path: "/:known:auth", state: "full", value: "OAuth2 PKCE" },
+				],
 				userMessage: "",
 			});
 			assert.ok(messages[0].content.includes("* /:known:auth — OAuth2 PKCE"));
@@ -67,8 +69,8 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ key: "/:known:a", state: "stored", value: "" },
-					{ key: "/:known:b", state: "stored", value: "" },
+					{ path: "/:known:a", state: "stored", value: "" },
+					{ path: "/:known:b", state: "stored", value: "" },
 				],
 				userMessage: "",
 			});
@@ -79,8 +81,8 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ key: "src/a.js", state: "file:path", value: "" },
-					{ key: "src/b.js", state: "file:path", value: "" },
+					{ path: "src/a.js", state: "file:path", value: "" },
+					{ path: "src/b.js", state: "file:path", value: "" },
 				],
 				userMessage: "",
 			});
@@ -91,7 +93,7 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ key: "/:unknown:1", state: "unknown", value: "which db adapter?" },
+					{ path: "/:unknown:1", state: "unknown", value: "which db adapter?" },
 				],
 				userMessage: "",
 			});
@@ -103,14 +105,14 @@ describe("ContextAssembler", () => {
 				systemPrompt: "sys",
 				context: [
 					{
-						key: "/:read:1",
+						path: "/:read:1",
 						state: "pass",
 						value: "",
 						tool: "read",
 						target: "src/a.js",
 					},
 					{
-						key: "/:summary:1",
+						path: "/:summary:1",
 						state: "summary",
 						value: "Did stuff.",
 						tool: "summary",
@@ -129,7 +131,7 @@ describe("ContextAssembler", () => {
 				systemPrompt: "sys",
 				context: [
 					{
-						key: "src/utils.js",
+						path: "src/utils.js",
 						state: "file:symbols",
 						value: "foo(a, b)\nbar()",
 					},
@@ -144,8 +146,8 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ key: "a.js", state: "file:readonly", value: "x", tokens: 1 },
-					{ key: "b.js", state: "file:active", value: "y", tokens: 1 },
+					{ path: "a.js", state: "file:readonly", value: "x", tokens: 1 },
+					{ path: "b.js", state: "file:active", value: "y", tokens: 1 },
 				],
 				userMessage: "",
 			});
@@ -158,8 +160,8 @@ describe("ContextAssembler", () => {
 			const messages = ContextAssembler.assemble({
 				systemPrompt: "sys",
 				context: [
-					{ key: "/:known:x", state: "full", value: "v" },
-					{ key: "/:prompt:1", state: "prompt", value: "Do the thing" },
+					{ path: "/:known:x", state: "full", value: "v" },
+					{ path: "/:prompt:1", state: "prompt", value: "Do the thing" },
 				],
 				userMessage: "",
 			});

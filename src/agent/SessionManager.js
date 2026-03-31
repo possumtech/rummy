@@ -93,7 +93,7 @@ export default class SessionManager {
 			regexPattern,
 		);
 		return rows.map((r) => ({
-			path: r.key,
+			path: r.path,
 			state: r.state,
 			turn: r.turn,
 		}));
@@ -105,7 +105,6 @@ export default class SessionManager {
 		if (!project) return path;
 		return relative(project.path, path);
 	}
-
 
 	async #setFileState(projectId, pattern, state) {
 		const path = await this.#normalizePath(projectId, pattern);

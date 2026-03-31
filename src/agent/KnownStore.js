@@ -7,10 +7,10 @@ export default class KnownStore {
 		this.#db = db;
 	}
 
-	static domain(key) {
-		if (key.startsWith("/:known:") || key.startsWith("/:unknown:"))
+	static domain(path) {
+		if (path.startsWith("/:known:") || path.startsWith("/:unknown:"))
 			return "known";
-		if (key.startsWith("/:")) return "result";
+		if (path.startsWith("/:")) return "result";
 		return "file";
 	}
 
@@ -19,7 +19,7 @@ export default class KnownStore {
 		return row.turn;
 	}
 
-	async nextResultKey(runId, toolName) {
+	async nextResultPath(runId, toolName) {
 		const row = await this.#db.next_result_key.get({ run_id: runId });
 		return `/:${toolName}:${row.seq}`;
 	}
@@ -27,16 +27,16 @@ export default class KnownStore {
 	async upsert(
 		runId,
 		turn,
-		key,
+		path,
 		value,
 		state,
 		{ meta = null, hash = null, updatedAt = null } = {},
 	) {
-		const domain = KnownStore.domain(key);
+		const domain = KnownStore.domain(path);
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
 			turn,
-			key,
+			path,
 			value,
 			domain,
 			state,
@@ -46,20 +46,20 @@ export default class KnownStore {
 		});
 	}
 
-	async promote(runId, key, turn) {
-		await this.#db.promote_key.run({ run_id: runId, key, turn });
+	async promote(runId, path, turn) {
+		await this.#db.promote_path.run({ run_id: runId, path, turn });
 	}
 
 	async setFileState(runId, pattern, state) {
 		await this.#db.set_file_state.run({ run_id: runId, pattern, state });
 	}
 
-	async demote(runId, key) {
-		await this.#db.demote_key.run({ run_id: runId, key });
+	async demote(runId, path) {
+		await this.#db.demote_path.run({ run_id: runId, path });
 	}
 
-	async remove(runId, key) {
-		await this.#db.delete_known_entry.run({ run_id: runId, key });
+	async remove(runId, path) {
+		await this.#db.delete_known_entry.run({ run_id: runId, path });
 	}
 
 	async removeFilesByPattern(runId, pattern) {
@@ -69,10 +69,10 @@ export default class KnownStore {
 		});
 	}
 
-	async resolve(runId, key, state, value) {
+	async resolve(runId, path, state, value) {
 		await this.#db.resolve_known_entry.run({
 			run_id: runId,
-			key,
+			path,
 			state,
 			value,
 		});
@@ -97,24 +97,24 @@ export default class KnownStore {
 
 		// 1. Active known
 		for (const r of await this.#db.get_active_known.all({ run_id: runId })) {
-			context.push({ key: r.key, state: "full", value: r.value });
+			context.push({ path: r.path, state: "full", value: r.value });
 		}
 
 		// 2. Stored known
 		for (const r of await this.#db.get_stored_known.all({ run_id: runId })) {
-			context.push({ key: r.key, state: "stored", value: "" });
+			context.push({ path: r.path, state: "stored", value: "" });
 		}
 
 		// 3. Stored file paths
 		for (const r of await this.#db.get_stored_files.all({ run_id: runId })) {
-			context.push({ key: r.key, state: "file:path", value: "" });
+			context.push({ path: r.path, state: "file:path", value: "" });
 		}
 
 		// 4. Symbol files — value from meta.symbols, never raw file content
 		for (const r of await this.#db.get_symbol_files.all({ run_id: runId })) {
 			const meta = r.meta ? JSON.parse(r.meta) : null;
 			context.push({
-				key: r.key,
+				path: r.path,
 				state: "file:symbols",
 				value: meta?.symbols || "",
 			});
@@ -129,7 +129,7 @@ export default class KnownStore {
 						? "file:active"
 						: "file";
 			context.push({
-				key: r.key,
+				path: r.path,
 				state: fileState,
 				value: r.value,
 				tokens: r.tokens,
@@ -138,17 +138,10 @@ export default class KnownStore {
 
 		// 6. Chronological results — filtered by tool type
 		for (const r of await this.#db.get_results.all({ run_id: runId })) {
-			const tool = KnownStore.toolFromKey(r.key);
+			const tool = KnownStore.toolFromPath(r.path);
 			const meta = r.meta ? JSON.parse(r.meta) : {};
-			const target =
-				meta.command || meta.file || meta.key || meta.question || "";
+			const target = meta.command || meta.path || meta.question || "";
 
-			// What the model sees depends on the tool type:
-			// summary: full text
-			// env/run/ask_user: command/question + output/answer (value)
-			// edit: search/replace blocks from meta
-			// write: key only (value already in known section)
-			// read/drop: key only
 			let value = "";
 			if (r.state === "summary") value = r.value;
 			else if (tool === "env" || tool === "run" || tool === "ask_user")
@@ -163,7 +156,7 @@ export default class KnownStore {
 					.join("\n");
 
 			context.push({
-				key: r.key,
+				path: r.path,
 				state: r.state,
 				value,
 				tool: tool || r.state,
@@ -173,13 +166,17 @@ export default class KnownStore {
 
 		// 7. Unknowns
 		for (const r of await this.#db.get_unknowns.all({ run_id: runId })) {
-			context.push({ key: r.key, state: "unknown", value: r.value });
+			context.push({ path: r.path, state: "unknown", value: r.value });
 		}
 
 		// 8. Latest prompt
 		const prompt = await this.#db.get_latest_prompt.get({ run_id: runId });
 		if (prompt) {
-			context.push({ key: prompt.key, state: "prompt", value: prompt.value });
+			context.push({
+				path: prompt.path,
+				state: "prompt",
+				value: prompt.value,
+			});
 		}
 
 		return context;
@@ -191,10 +188,9 @@ export default class KnownStore {
 	async getLog(runId) {
 		const rows = await this.#db.get_results.all({ run_id: runId });
 		return rows.map((row) => {
-			const tool = KnownStore.toolFromKey(row.key);
+			const tool = KnownStore.toolFromPath(row.path);
 			const meta = row.meta ? JSON.parse(row.meta) : {};
-			const target =
-				meta.command || meta.file || meta.key || meta.question || "";
+			const target = meta.command || meta.path || meta.question || "";
 
 			let value = "";
 			if (row.state === "summary") value = row.value;
@@ -205,7 +201,7 @@ export default class KnownStore {
 				tool: tool || row.state,
 				target,
 				status: row.state,
-				key: row.key,
+				path: row.path,
 				value,
 			};
 		});
@@ -243,13 +239,13 @@ export default class KnownStore {
 		return new Set(rows.map((r) => r.value));
 	}
 
-	async getValue(runId, key) {
-		const row = await this.#db.get_entry_value.get({ run_id: runId, key });
+	async getValue(runId, path) {
+		const row = await this.#db.get_entry_value.get({ run_id: runId, path });
 		return row?.value ?? null;
 	}
 
-	async getMeta(runId, key) {
-		const row = await this.#db.get_entry_meta.get({ run_id: runId, key });
+	async getMeta(runId, path) {
+		const row = await this.#db.get_entry_meta.get({ run_id: runId, path });
 		return row?.meta ? JSON.parse(row.meta) : null;
 	}
 
@@ -277,24 +273,22 @@ export default class KnownStore {
 		const rows = await this.#db.get_stale_tokens.all({ run_id: runId, turn });
 		if (rows.length === 0) return;
 
-		// Batch encode — one pass through the encoder
 		const updates = rows.map((row) => ({
-			key: row.key,
+			path: row.path,
 			tokens: countTokens(row.value),
 		}));
 
-		// Bulk write
-		for (const { key, tokens } of updates) {
-			await this.#db.recount_tokens.run({ run_id: runId, key, tokens });
+		for (const { path, tokens } of updates) {
+			await this.#db.recount_tokens.run({ run_id: runId, path, tokens });
 		}
 	}
 
-	static toolFromKey(key) {
-		const match = key.match(/^\/:([a-z_]+):/);
+	static toolFromPath(path) {
+		const match = path.match(/^\/:([a-z_]+):/);
 		return match ? match[1] : null;
 	}
 
-	static isSystemKey(key) {
-		return key.startsWith("/:");
+	static isSystemPath(path) {
+		return path.startsWith("/:");
 	}
 }

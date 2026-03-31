@@ -231,10 +231,10 @@ export default class AgentLoop {
 					status: unresolved.length > 0 ? "proposed" : "running",
 					summary: latestSummary?.value || "",
 					history,
-					unknowns: unknowns.map((u) => ({ key: u.key, value: u.value })),
+					unknowns: unknowns.map((u) => ({ path: u.path, value: u.value })),
 					proposed: unresolved.map((p) => ({
-						key: p.key,
-						type: KnownStore.toolFromKey(p.key) || "unknown",
+						path: p.path,
+						type: KnownStore.toolFromPath(p.path) || "unknown",
 						meta: p.meta ? JSON.parse(p.meta) : null,
 					})),
 					telemetry: {
@@ -287,7 +287,7 @@ export default class AgentLoop {
 							run_id: currentRunId,
 						});
 						for (const u of staleUnknowns) {
-							await this.#knownStore.demote(currentRunId, u.key);
+							await this.#knownStore.demote(currentRunId, u.path);
 						}
 						await this.#db.update_run_status.run({
 							id: currentRunId,
@@ -377,20 +377,20 @@ export default class AgentLoop {
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 		const runId = runRow.id;
 
-		const { key, action, output } = resolution;
+		const { path, action, output } = resolution;
 
 		if (action === "accept") {
-			await this.#knownStore.resolve(runId, key, "pass", output || "");
+			await this.#knownStore.resolve(runId, path, "pass", output || "");
 
-			// If accepting a delete, erase the target file key
-			if (key.startsWith("/:delete:")) {
-				const meta = await this.#knownStore.getMeta(runId, key);
-				if (meta?.key) {
-					await this.#knownStore.remove(runId, meta.key);
+			// If accepting a delete, erase the target path
+			if (path.startsWith("/:delete:")) {
+				const meta = await this.#knownStore.getMeta(runId, path);
+				if (meta?.path) {
+					await this.#knownStore.remove(runId, meta.path);
 				}
 			}
 		} else if (action === "reject") {
-			await this.#knownStore.resolve(runId, key, "warn", output || "rejected");
+			await this.#knownStore.resolve(runId, path, "warn", output || "rejected");
 		} else {
 			throw new Error(msg("error.resolution_invalid", { action }));
 		}
@@ -427,8 +427,11 @@ export default class AgentLoop {
 			throw new Error(msg("error.run_not_found", { runId: runAlias }));
 
 		const isActive = runRow.status === "running" || runRow.status === "queued";
-		const resultKey = await this.#knownStore.nextResultKey(runRow.id, "inject");
-		await this.#knownStore.upsert(runRow.id, 0, resultKey, message, "info", {
+		const resultPath = await this.#knownStore.nextResultPath(
+			runRow.id,
+			"inject",
+		);
+		await this.#knownStore.upsert(runRow.id, 0, resultPath, message, "info", {
 			meta: { source: "user" },
 		});
 

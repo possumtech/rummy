@@ -47,7 +47,7 @@ describe("State lock: proposed entries block execution", () => {
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 1);
-		assert.strictEqual(unresolved[0].key, "/:edit:1");
+		assert.strictEqual(unresolved[0].path, "/:edit:1");
 	});
 
 	it("multiple proposed entries all returned", async () => {
@@ -62,7 +62,7 @@ describe("State lock: proposed entries block execution", () => {
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 1);
-		assert.strictEqual(unresolved[0].key, "/:run:1");
+		assert.strictEqual(unresolved[0].path, "/:run:1");
 	});
 
 	it("resolving all entries clears the lock", async () => {

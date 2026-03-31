@@ -1,14 +1,14 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
-	run_id, turn, key, value, domain, state, hash, meta
+	run_id, turn, path, value, domain, state, hash, meta
 	, tokens, updated_at
 )
 VALUES (
-	:run_id, :turn, :key, :value, :domain, :state, :hash, :meta
+	:run_id, :turn, :path, :value, :domain, :state, :hash, :meta
 	, length(:value) / 4
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
-ON CONFLICT (run_id, key) DO UPDATE SET
+ON CONFLICT (run_id, path) DO UPDATE SET
 	value = excluded.value
 	, state = excluded.state
 	, hash = COALESCE(excluded.hash, known_entries.hash)
@@ -21,10 +21,10 @@ ON CONFLICT (run_id, key) DO UPDATE SET
 -- PREP: recount_tokens
 UPDATE known_entries
 SET tokens = :tokens
-WHERE run_id = :run_id AND key = :key;
+WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_stale_tokens
-SELECT key, value
+SELECT path, value
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -32,11 +32,11 @@ WHERE
 
 -- PREP: delete_known_entry
 DELETE FROM known_entries
-WHERE run_id = :run_id AND key = :key;
+WHERE run_id = :run_id AND path = :path;
 
 -- PREP: delete_file_entries_by_pattern
 DELETE FROM known_entries
-WHERE run_id = :run_id AND glorp(:pattern, key) AND domain = 'file';
+WHERE run_id = :run_id AND glorp(:pattern, path) AND domain = 'file';
 
 -- PREP: resolve_known_entry
 UPDATE known_entries
@@ -44,7 +44,7 @@ SET
 	state = :state
 	, value = :value
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND key = :key;
+WHERE run_id = :run_id AND path = :path;
 
 -- PREP: set_file_state
 UPDATE known_entries
@@ -52,39 +52,39 @@ SET
 	state = :state
 	, turn = CASE WHEN :state = 'ignore' THEN 0 ELSE turn END
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND glorp(:pattern, key) AND domain = 'file';
+WHERE run_id = :run_id AND glorp(:pattern, path) AND domain = 'file';
 
--- PREP: promote_key
+-- PREP: promote_path
 UPDATE known_entries
 SET
 	turn = :turn
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND key = :key;
+WHERE run_id = :run_id AND path = :path;
 
--- PREP: demote_key
+-- PREP: demote_path
 UPDATE known_entries
 SET
 	turn = 0
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND key = :key;
+WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_entry_value
 SELECT value
 FROM known_entries
-WHERE run_id = :run_id AND key = :key;
+WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_entry_state
 SELECT state, domain, turn
 FROM known_entries
-WHERE run_id = :run_id AND key = :key;
+WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_file_states_by_pattern
-SELECT key, state, turn
+SELECT path, state, turn
 FROM known_entries
-WHERE run_id = :run_id AND glorp(:pattern, key) AND domain = 'file'
-ORDER BY key;
+WHERE run_id = :run_id AND glorp(:pattern, path) AND domain = 'file'
+ORDER BY path;
 
 -- PREP: get_entry_meta
 SELECT meta
 FROM known_entries
-WHERE run_id = :run_id AND key = :key;
+WHERE run_id = :run_id AND path = :path;

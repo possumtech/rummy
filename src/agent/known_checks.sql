@@ -3,17 +3,17 @@ SELECT COUNT(*) AS count
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND key LIKE '/:unknown:%';
+	AND path LIKE '/:unknown:%';
 
 -- PREP: get_unknown_values
 SELECT value
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND key LIKE '/:unknown:%';
+	AND path LIKE '/:unknown:%';
 
 -- PREP: get_unresolved
-SELECT key, value, meta, turn
+SELECT path, value, meta, turn
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -35,10 +35,10 @@ WHERE
 	run_id = :run_id
 	AND domain = 'result'
 	AND state = 'pass'
-	AND key REGEXP '^/:(edit|run|delete):';
+	AND path REGEXP '^/:(edit|run|delete):';
 
 -- PREP: get_file_entries
-SELECT key, state, hash, updated_at
+SELECT path, state, hash, updated_at
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -47,13 +47,13 @@ WHERE
 -- PREP: get_context_distribution
 SELECT
 	CASE
-		WHEN key REGEXP '^/:(system|prompt):' THEN 'system'
+		WHEN path REGEXP '^/:(system|prompt):' THEN 'system'
 		WHEN domain = 'file' AND turn > 0 AND state != 'symbols' THEN 'files'
 		WHEN domain = 'file' THEN 'keys'
-		WHEN domain = 'known' AND key LIKE '/:known:%' AND turn > 0 THEN 'known'
-		WHEN domain = 'known' AND key LIKE '/:known:%' AND turn = 0 THEN 'keys'
+		WHEN domain = 'known' AND path LIKE '/:known:%' AND turn > 0 THEN 'known'
+		WHEN domain = 'known' AND path LIKE '/:known:%' AND turn = 0 THEN 'keys'
 		WHEN domain = 'result' AND state NOT IN ('proposed', 'info') THEN 'history'
-		WHEN domain = 'known' AND key LIKE '/:unknown:%' THEN 'history'
+		WHEN domain = 'known' AND path LIKE '/:unknown:%' THEN 'history'
 		ELSE 'system'
 	END AS bucket,
 	COALESCE(SUM(tokens), 0) AS tokens,
@@ -61,6 +61,6 @@ SELECT
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND key NOT REGEXP '^/:(reasoning|user|retry):'
+	AND path NOT REGEXP '^/:(reasoning|user|retry):'
 GROUP BY bucket
 ORDER BY bucket;

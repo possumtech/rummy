@@ -191,7 +191,7 @@ export default class CoreRpcPlugin {
 			params: {
 				run: "string — run name",
 				resolution:
-					"{ key: string, action: 'accept'|'reject', output?: string }",
+					"{ path: string, action: 'accept'|'reject', output?: string }",
 			},
 			requiresInit: true,
 		});

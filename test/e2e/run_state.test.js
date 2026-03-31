@@ -83,7 +83,7 @@ describe("E2E: run/state notification shape", () => {
 		assert.ok(state.history.length > 0, "history should have entries");
 
 		for (const entry of state.history) {
-			assert.ok(entry.key, `history entry has key: ${JSON.stringify(entry)}`);
+			assert.ok(entry.path, `history entry has key: ${JSON.stringify(entry)}`);
 			assert.ok(
 				entry.status,
 				`history entry has status: ${JSON.stringify(entry)}`,
@@ -147,7 +147,7 @@ describe("E2E: run/state notification shape", () => {
 			const state = states.at(-1);
 			assert.ok(state.proposed.length > 0, "should have proposed entries");
 			for (const p of state.proposed) {
-				assert.ok(p.key, "proposed has key");
+				assert.ok(p.path, "proposed has key");
 				assert.ok(p.type, `proposed has type: ${JSON.stringify(p)}`);
 				assert.ok(p.meta, `proposed has meta: ${JSON.stringify(p)}`);
 			}

@@ -90,7 +90,7 @@ describe("E2E: Tool Calling Foundation", () => {
 		assert.ok(fileEntries.length > 0, "Should have file entries from scanner");
 
 		// hello.js should be present
-		const hello = fileEntries.find((e) => e.key === "hello.js");
+		const hello = fileEntries.find((e) => e.path === "hello.js");
 		assert.ok(hello, "hello.js should be in known store");
 		assert.ok(
 			hello.value.includes("greet"),
@@ -114,11 +114,11 @@ describe("E2E: Tool Calling Foundation", () => {
 
 		// Check if the model used the write tool
 		const _knownEntries = all.filter(
-			(e) => e.domain === "known" && e.key !== "/:unknown",
+			(e) => e.domain === "known" && e.path !== "/:unknown",
 		);
 		// The model might or might not have written to exactly /:known:greet_behavior
 		// but it should have called summary at minimum
-		const summaries = all.filter((e) => e.key.startsWith("/:summary:"));
+		const summaries = all.filter((e) => e.path.startsWith("/:summary:"));
 		assert.ok(summaries.length > 0, "Model should have called summary");
 	});
 });

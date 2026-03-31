@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL DEFAULT 0
-	, key TEXT NOT NULL
+	, path TEXT NOT NULL
 	, value TEXT NOT NULL DEFAULT ''
 	, domain TEXT NOT NULL CHECK (domain IN ('file', 'known', 'result'))
 	, state TEXT NOT NULL
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_key
-ON known_entries (run_id, key);
+ON known_entries (run_id, path);
 CREATE INDEX IF NOT EXISTS idx_known_entries_domain_state
 ON known_entries (run_id, domain, state);
 CREATE INDEX IF NOT EXISTS idx_known_entries_turn
@@ -106,7 +106,7 @@ ON known_entries (run_id, turn);
 CREATE VIEW IF NOT EXISTS v_unresolved AS
 SELECT
 	run_id
-	, key
+	, path
 	, value
 	, meta
 	, turn
@@ -118,7 +118,7 @@ CREATE VIEW IF NOT EXISTS v_turn_history AS
 SELECT
 	run_id
 	, turn
-	, key
+	, path
 	, domain
 	, state
 	, value

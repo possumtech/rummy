@@ -51,7 +51,7 @@ describe("FileScanner integration", () => {
 		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 1);
 
 		const entries = await store.getFileEntries(RUN_ID);
-		const app = entries.find((e) => e.key === "app.js");
+		const app = entries.find((e) => e.path === "app.js");
 		assert.ok(app, "app.js should be in store");
 		assert.strictEqual(app.state, "full");
 		assert.ok(app.hash, "should have hash");
@@ -59,19 +59,19 @@ describe("FileScanner integration", () => {
 
 	it("skips unchanged files (mtime within tolerance)", async () => {
 		const entriesBefore = await store.getFileEntries(RUN_ID);
-		const appBefore = entriesBefore.find((e) => e.key === "app.js");
+		const appBefore = entriesBefore.find((e) => e.path === "app.js");
 
 		// Scan again without touching the file
 		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 2);
 
 		const entriesAfter = await store.getFileEntries(RUN_ID);
-		const appAfter = entriesAfter.find((e) => e.key === "app.js");
+		const appAfter = entriesAfter.find((e) => e.path === "app.js");
 		assert.strictEqual(appAfter.hash, appBefore.hash, "hash should not change");
 	});
 
 	it("detects content changes via hash", async () => {
 		const entriesBefore = await store.getFileEntries(RUN_ID);
-		const hashBefore = entriesBefore.find((e) => e.key === "app.js").hash;
+		const hashBefore = entriesBefore.find((e) => e.path === "app.js").hash;
 
 		// Change file content and set mtime 2 seconds in the future
 		// to exceed the 1-second tolerance
@@ -82,7 +82,7 @@ describe("FileScanner integration", () => {
 		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 3);
 
 		const entriesAfter = await store.getFileEntries(RUN_ID);
-		const hashAfter = entriesAfter.find((e) => e.key === "app.js").hash;
+		const hashAfter = entriesAfter.find((e) => e.path === "app.js").hash;
 		assert.notStrictEqual(hashAfter, hashBefore, "hash should change");
 	});
 
@@ -92,7 +92,7 @@ describe("FileScanner integration", () => {
 
 		let entries = await store.getFileEntries(RUN_ID);
 		assert.ok(
-			entries.find((e) => e.key === "temp.js"),
+			entries.find((e) => e.path === "temp.js"),
 			"temp.js should exist",
 		);
 
@@ -102,7 +102,7 @@ describe("FileScanner integration", () => {
 
 		entries = await store.getFileEntries(RUN_ID);
 		assert.ok(
-			!entries.find((e) => e.key === "temp.js"),
+			!entries.find((e) => e.path === "temp.js"),
 			"temp.js should be removed",
 		);
 	});
@@ -145,8 +145,8 @@ describe("FileScanner integration", () => {
 		);
 
 		const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-		const root = all.find((e) => e.key === "root.js");
-		const nested = all.find((e) => e.key === "src/nested.js");
+		const root = all.find((e) => e.path === "root.js");
+		const nested = all.find((e) => e.path === "src/nested.js");
 		assert.strictEqual(root.turn, 7, "root file gets current turn");
 		assert.strictEqual(nested.turn, 0, "nested file gets turn 0");
 	});

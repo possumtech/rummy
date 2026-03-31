@@ -78,7 +78,7 @@ describe("E2E: Act Mode Lifecycle", () => {
 			);
 
 			const entry = lastState.proposed[0];
-			assert.ok(entry.key, "proposed entry has key");
+			assert.ok(entry.path, "proposed entry has key");
 			assert.ok(entry.type, "proposed entry has type");
 			assert.ok(entry.meta, "proposed entry has meta");
 		}
@@ -99,12 +99,12 @@ describe("E2E: Act Mode Lifecycle", () => {
 		}
 
 		const proposed = result.proposed[0];
-		assert.ok(proposed.key, "has proposed key");
+		assert.ok(proposed.path, "has proposed key");
 
 		const resolveResult = await client.call("run/resolve", {
 			run: result.run,
 			resolution: {
-				key: proposed.key,
+				path: proposed.path,
 				action: "accept",
 				output: "test_output",
 			},
@@ -133,7 +133,7 @@ describe("E2E: Act Mode Lifecycle", () => {
 		const resolveResult = await client.call("run/resolve", {
 			run: result.run,
 			resolution: {
-				key: proposed.key,
+				path: proposed.path,
 				action: "reject",
 				output: "Dangerous command rejected.",
 			},

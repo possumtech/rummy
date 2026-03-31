@@ -99,11 +99,11 @@ function renderContext(context) {
 	// Files with content
 	if (files.length > 0) {
 		const fileBlocks = files.map((f) => {
-			const lang = langFor(f.key);
+			const lang = langFor(f.path);
 			const tokens = f.tokens ? ` (${f.tokens} tokens)` : "";
 			const label =
 				f.state !== "file" ? ` (${f.state.replace("file:", "")})` : "";
-			return `#### ${f.key}${tokens}${label}\n\`\`\`${lang}\n${f.value}\n\`\`\``;
+			return `#### ${f.path}${tokens}${label}\n\`\`\`${lang}\n${f.value}\n\`\`\``;
 		});
 		parts.push(`### Files\n\n${fileBlocks.join("\n\n")}`);
 	}
@@ -111,25 +111,25 @@ function renderContext(context) {
 	// Symbol files
 	if (symbolFiles.length > 0) {
 		const symBlocks = symbolFiles.map(
-			(f) => `#### ${f.key} (symbols)\n${f.value}`,
+			(f) => `#### ${f.path} (symbols)\n${f.value}`,
 		);
 		parts.push(symBlocks.join("\n\n"));
 	}
 
 	// Stored file paths
 	if (storedFiles.length > 0) {
-		parts.push(`### File Index\n${storedFiles.map((f) => f.key).join(", ")}`);
+		parts.push(`### File Index\n${storedFiles.map((f) => f.path).join(", ")}`);
 	}
 
 	// Active knowledge
 	if (activeKnown.length > 0) {
-		const lines = activeKnown.map((k) => `* ${k.key} — ${k.value}`);
+		const lines = activeKnown.map((k) => `* ${k.path} — ${k.value}`);
 		parts.push(`### Knowledge\n${lines.join("\n")}`);
 	}
 
 	// Stored knowledge
 	if (storedKnown.length > 0) {
-		parts.push(`### Stored\n${storedKnown.map((k) => k.key).join(", ")}`);
+		parts.push(`### Stored\n${storedKnown.map((k) => k.path).join(", ")}`);
 	}
 
 	// Results / history
@@ -144,7 +144,7 @@ function renderContext(context) {
 							? "✗"
 							: "·";
 			if (r.state === "summary") return `* summary: ${r.value}`;
-			const tool = r.tool || r.key.match(/^\/:(\w+):/)?.[1] || "?";
+			const tool = r.tool || r.path.match(/^\/:(\w+):/)?.[1] || "?";
 			const target = r.target || "";
 			const detail = r.value ? ` — ${r.value.slice(0, 120)}` : "";
 			return `* ${tool} ${target} ${check}${detail}`;
