@@ -204,7 +204,9 @@ export default class TurnExecutor {
 		const hasAct = actionCalls.some((c) =>
 			["edit", "delete", "run"].includes(c.name),
 		);
-		const hasReads = actionCalls.some((c) => c.name === "read");
+		const hasReads = actionCalls.some((c) =>
+			["read", "env"].includes(c.name),
+		);
 		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
 		const flags = { hasAct, hasReads, hasWrites };
 
@@ -250,6 +252,7 @@ export default class TurnExecutor {
 			}
 
 			if (cmd.name === "read") {
+				if (!cmd.path) continue;
 				await this.#knownStore.promoteByPattern(
 					currentRunId,
 					cmd.path,
@@ -259,6 +262,7 @@ export default class TurnExecutor {
 				continue;
 			}
 			if (cmd.name === "drop") {
+				if (!cmd.path) continue;
 				await this.#knownStore.demoteByPattern(
 					currentRunId,
 					cmd.path,

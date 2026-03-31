@@ -76,11 +76,17 @@ export default class KnownStore {
 		});
 	}
 
+	static #valuePattern(value) {
+		if (!value) return null;
+		if (/[*+?^${}()|[\]\\]/.test(value)) return value;
+		return `*${value}*`;
+	}
+
 	async promoteByPattern(runId, path, value, turn) {
 		await this.#db.promote_by_pattern.run({
 			run_id: runId,
 			path,
-			value: value || null,
+			value: KnownStore.#valuePattern(value),
 			turn,
 		});
 	}
@@ -89,7 +95,7 @@ export default class KnownStore {
 		await this.#db.demote_by_pattern.run({
 			run_id: runId,
 			path,
-			value: value || null,
+			value: KnownStore.#valuePattern(value),
 		});
 	}
 
@@ -97,7 +103,7 @@ export default class KnownStore {
 		return this.#db.get_entries_by_pattern.all({
 			run_id: runId,
 			path,
-			value: value || null,
+			value: KnownStore.#valuePattern(value),
 		});
 	}
 
@@ -105,7 +111,7 @@ export default class KnownStore {
 		await this.#db.delete_entries_by_pattern.run({
 			run_id: runId,
 			path,
-			value: value || null,
+			value: KnownStore.#valuePattern(value),
 		});
 	}
 
@@ -113,7 +119,7 @@ export default class KnownStore {
 		await this.#db.update_value_by_pattern.run({
 			run_id: runId,
 			path,
-			value: value || null,
+			value: KnownStore.#valuePattern(value),
 			new_value: newValue,
 		});
 	}

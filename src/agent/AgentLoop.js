@@ -285,7 +285,15 @@ export default class AgentLoop {
 				return out;
 			}
 
-			const out = { run: currentAlias, status: "running", turn: 0 };
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "completed",
+			});
+			const out = {
+				run: currentAlias,
+				status: "completed",
+				turn: loopIteration,
+			};
 			await hook.completed.emit({ sessionId, ...out });
 			return out;
 		} catch (err) {
