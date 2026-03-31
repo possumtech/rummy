@@ -446,11 +446,6 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Async token recount — not on the hot path
-		this.#knownStore.recountTokens(currentRunId, turn).catch((err) => {
-			console.warn(`[RUMMY] Token recount failed: ${err.message}`);
-		});
-
 		return {
 			turn,
 			turnId: turnRow.id,

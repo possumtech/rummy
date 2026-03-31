@@ -37,7 +37,7 @@ function makeRummy(db, store, { sequence = 1, contextSize = 1000 } = {}) {
 }
 
 function pad(n) {
-	return "x".repeat(n * 4);
+	return Array(n).fill("hello").join(" ");
 }
 
 describe("Engine integration", () => {

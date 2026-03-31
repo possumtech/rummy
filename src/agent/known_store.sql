@@ -5,8 +5,8 @@ INSERT INTO known_entries (
 )
 VALUES (
 	:run_id, :turn, :path, :value, :state, :hash, :meta
-	, length(:value) / 4
-	, length(:value) / 4
+	, countTokens(:value)
+	, countTokens(:value)
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
 ON CONFLICT (run_id, path) DO UPDATE SET
@@ -15,8 +15,8 @@ ON CONFLICT (run_id, path) DO UPDATE SET
 	, hash = COALESCE(excluded.hash, known_entries.hash)
 	, meta = COALESCE(excluded.meta, known_entries.meta)
 	, turn = excluded.turn
-	, tokens = length(excluded.value) / 4
-	, tokens_full = length(excluded.value) / 4
+	, tokens = countTokens(excluded.value)
+	, tokens_full = countTokens(excluded.value)
 	, write_count = known_entries.write_count + 1
 	, updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
 
@@ -58,8 +58,8 @@ SET
 				WHEN
 					json_valid(meta)
 					AND json_extract(meta, '$.symbols') IS NOT NULL
-					THEN length(json_extract(meta, '$.symbols')) / 4
-				ELSE length(path) / 4
+					THEN countTokens(json_extract(meta, '$.symbols'))
+				ELSE countTokens(path)
 			END
 		ELSE tokens_full
 	END
@@ -78,7 +78,7 @@ WHERE run_id = :run_id AND path = :path;
 UPDATE known_entries
 SET
 	turn = 0
-	, tokens = length(path) / 4
+	, tokens = countTokens(path)
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
@@ -118,7 +118,7 @@ WHERE
 UPDATE known_entries
 SET
 	turn = 0
-	, tokens = length(path) / 4
+	, tokens = countTokens(path)
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
@@ -145,8 +145,8 @@ WHERE
 UPDATE known_entries
 SET
 	value = :new_value
-	, tokens = length(:new_value) / 4
-	, tokens_full = length(:new_value) / 4
+	, tokens = countTokens(:new_value)
+	, tokens_full = countTokens(:new_value)
 	, write_count = write_count + 1
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
