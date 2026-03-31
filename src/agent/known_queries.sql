@@ -47,7 +47,7 @@ SELECT path, state, value, tokens
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND scheme IS NULL
+	AND (scheme IS NULL OR scheme IN ('http', 'https'))
 	AND state != 'ignore'
 	AND state != 'symbols'
 	AND turn > 0

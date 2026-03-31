@@ -97,8 +97,10 @@ CREATE TABLE IF NOT EXISTS known_entries (
 				THEN state IN ('pass', 'info')
 			WHEN scheme = 'summary'
 				THEN state = 'summary'
-			WHEN scheme IN ('system', 'user', 'reasoning', 'prompt', 'keys', 'inject')
-				THEN state = 'info'
+			WHEN scheme IN (
+				'system', 'user', 'reasoning', 'prompt',
+				'keys', 'inject', 'search'
+			) THEN state = 'info'
 			WHEN scheme = 'retry'
 				THEN state = 'error'
 			WHEN scheme IN ('http', 'https')

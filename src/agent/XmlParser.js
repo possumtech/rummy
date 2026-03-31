@@ -8,6 +8,7 @@ const STORE_TOOLS = new Set([
 	"edit",
 	"move",
 	"copy",
+	"search",
 ]);
 const ALL_TOOLS = new Set([
 	...STORE_TOOLS,
@@ -105,6 +106,12 @@ function resolveCommand(name, attrs, body) {
 		// Canonical: path in attr. Alt: path in body.
 		const path = a.path || trimmed || null;
 		return { name, path, value: a.value, keys: a.keys };
+	}
+
+	if (name === "search") {
+		// Canonical: path (query) in attr. Alt: query in body.
+		const path = a.path || trimmed || null;
+		return { name, path };
 	}
 
 	if (name === "move" || name === "copy") {

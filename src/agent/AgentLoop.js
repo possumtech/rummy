@@ -42,8 +42,8 @@ export default class AgentLoop {
 	#buildContinuationPrompt(type, turn, maxTurns, contextSize, report) {
 		const allowed =
 			type === "act"
-				? "<unknown/> <known/> <read/> <drop/> <edit/> <delete/> <run/> <env/> <ask_user/> <summary/>"
-				: "<unknown/> <known/> <read/> <drop/> <env/> <ask_user/> <summary/>";
+				? "<unknown/> <known/> <read/> <drop/> <edit/> <delete/> <move/> <copy/> <run/> <env/> <search/> <ask_user/> <summary/>"
+				: "<unknown/> <known/> <read/> <drop/> <env/> <search/> <ask_user/> <summary/>";
 
 		const parts = [];
 

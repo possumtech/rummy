@@ -3,6 +3,7 @@ import AgentLoop from "./AgentLoop.js";
 import KnownStore from "./KnownStore.js";
 import SessionManager from "./SessionManager.js";
 import TurnExecutor from "./TurnExecutor.js";
+import WebFetcher from "./WebFetcher.js";
 
 export default class ProjectAgent {
 	#db;
@@ -10,18 +11,26 @@ export default class ProjectAgent {
 	#sessionManager;
 	#agentLoop;
 	#llm;
+	#webFetcher;
 
 	constructor(db, hooks) {
 		this.#db = db;
 		this.#hooks = hooks;
 		this.#sessionManager = new SessionManager(db, hooks);
+		this.#webFetcher = new WebFetcher();
 
 		this.#llm = new LlmProvider(hooks, db);
 		const llm = this.#llm;
 		hooks.models = llm.capabilities;
 		const knownStore = new KnownStore(db);
 
-		const turnExecutor = new TurnExecutor(db, llm, hooks, knownStore);
+		const turnExecutor = new TurnExecutor(
+			db,
+			llm,
+			hooks,
+			knownStore,
+			this.#webFetcher,
+		);
 
 		this.#agentLoop = new AgentLoop(
 			db,
