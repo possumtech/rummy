@@ -197,10 +197,12 @@ export default class TurnExecutor {
 		const writeCalls = [];
 		const unknownCalls = [];
 		let summaryText = null;
+		let updateText = null;
 		let askUserCmd = null;
 
 		for (const cmd of commands) {
 			if (cmd.name === "summary") summaryText = cmd.value;
+			else if (cmd.name === "update") updateText = cmd.value;
 			else if (cmd.name === "known") writeCalls.push(cmd);
 			else if (cmd.name === "unknown") unknownCalls.push(cmd);
 			else if (cmd.name === "ask_user") askUserCmd = cmd;
@@ -216,7 +218,13 @@ export default class TurnExecutor {
 		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
 		const flags = { hasAct, hasReads, hasWrites };
 
-		// summaryText stays null if the model didn't emit <summary/>
+		// If model sent both, summary wins (terminates)
+		if (summaryText && updateText) updateText = null;
+
+		// If model sent neither, heal from content
+		if (!summaryText && !updateText) {
+			updateText = ResponseHealer.healUpdate(content, commands);
+		}
 
 		// Commit usage
 		const usage = result.usage || {};
@@ -411,7 +419,7 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Step 4: Summary (only if the model explicitly emitted one)
+		// Step 4: Status (summary terminates, update continues)
 		if (summaryText) {
 			const summaryPath = await this.#knownStore.nextResultPath(
 				currentRunId,
@@ -423,6 +431,18 @@ export default class TurnExecutor {
 				summaryPath,
 				summaryText,
 				"summary",
+			);
+		} else if (updateText) {
+			const updatePath = await this.#knownStore.nextResultPath(
+				currentRunId,
+				"update",
+			);
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				updatePath,
+				updateText,
+				"info",
 			);
 		}
 
@@ -438,6 +458,7 @@ export default class TurnExecutor {
 			writeCalls,
 			unknownCalls,
 			summaryText,
+			updateText,
 			askUserCmd,
 			flags,
 			model: result.model || requestedModel,

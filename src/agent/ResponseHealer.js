@@ -1,43 +1,60 @@
 const MAX_STALLS = Number(process.env.RUMMY_MAX_STALLS) || 3;
 
 export default class ResponseHealer {
-	#lastFlags = null;
 	#stallCount = 0;
 
 	/**
-	 * Assess whether the run should continue after this turn.
+	 * Heal a missing status tag. Called when the model emits
+	 * neither <summary/> nor <update/>.
+	 */
+	static healUpdate(content, commands) {
+		const trimmed = content.trim();
+
+		if (commands.length === 0 && trimmed) {
+			console.warn("[RUMMY] Healed: plain text response used as update");
+			return trimmed.slice(0, 500);
+		}
+
+		console.warn(
+			`[RUMMY] Healed: missing <update>/<summary>. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
+		);
+		return "...";
+	}
+
+	/**
+	 * Assess whether the run should continue.
 	 *
 	 * Returns { continue: boolean, reason?: string }
-	 *   continue=false → run should complete
-	 *   continue=true  → loop should keep going
 	 *
 	 * Rules:
-	 *   1. Model emitted <summary/> → done (summary is the termination signal)
-	 *   2. Model did nothing (no tools, no summary) → stall counter
-	 *   3. Model used tools but no summary → continue (working)
+	 *   <summary/> present → done (terminate)
+	 *   <update/> present  → continue (model says it's working)
+	 *   neither present    → warn, increment stall counter, continue
+	 *   stall counter hits MAX_STALLS → force-complete
 	 */
-	assessProgress({ summaryText, flags }) {
+	assessProgress({ summaryText, updateText }) {
 		if (summaryText) {
+			this.#stallCount = 0;
 			return { continue: false };
 		}
 
-		const didSomething = flags.hasAct || flags.hasReads || flags.hasWrites;
-
-		if (didSomething) {
+		if (updateText) {
 			this.#stallCount = 0;
-			this.#lastFlags = flags;
 			return { continue: true };
 		}
 
-		// No summary, no tools — model produced nothing useful
+		// Neither — model is glitching
 		this.#stallCount++;
 
 		if (this.#stallCount >= MAX_STALLS) {
-			const reason = `${this.#stallCount} idle turns with no tools and no summary`;
+			const reason = `${this.#stallCount} turns with no <update/> or <summary/>`;
 			console.warn(`[RUMMY] Stalled: ${reason}. Force-completing.`);
 			return { continue: false, reason };
 		}
 
+		console.warn(
+			`[RUMMY] No <update/> or <summary/> (stall ${this.#stallCount}/${MAX_STALLS})`,
+		);
 		return { continue: true };
 	}
 
@@ -45,7 +62,6 @@ export default class ResponseHealer {
 	 * Reset state for a new run or after resolution resume.
 	 */
 	reset() {
-		this.#lastFlags = null;
 		this.#stallCount = 0;
 	}
 }

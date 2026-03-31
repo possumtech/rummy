@@ -3,124 +3,111 @@ import { describe, it } from "node:test";
 import ResponseHealer from "./ResponseHealer.js";
 
 describe("ResponseHealer", () => {
+	describe("healUpdate", () => {
+		it("uses plain text as update when no commands", () => {
+			const result = ResponseHealer.healUpdate("I did the thing.", []);
+			assert.strictEqual(result, "I did the thing.");
+		});
+
+		it("truncates long plain text to 500 chars", () => {
+			const long = "x".repeat(600);
+			const result = ResponseHealer.healUpdate(long, []);
+			assert.strictEqual(result.length, 500);
+		});
+
+		it("injects placeholder when commands exist but no status tag", () => {
+			const result = ResponseHealer.healUpdate("", [{ name: "read" }]);
+			assert.strictEqual(result, "...");
+		});
+
+		it("injects placeholder for empty content with no commands", () => {
+			const result = ResponseHealer.healUpdate("", []);
+			assert.strictEqual(result, "...");
+		});
+
+		it("injects placeholder for whitespace-only content", () => {
+			const result = ResponseHealer.healUpdate("   \n  ", []);
+			assert.strictEqual(result, "...");
+		});
+	});
+
 	describe("assessProgress", () => {
 		it("summary terminates the run", () => {
 			const healer = new ResponseHealer();
 			const result = healer.assessProgress({
 				summaryText: "all done",
-				flags: { hasAct: true, hasReads: true, hasWrites: true },
+				updateText: null,
 			});
 			assert.strictEqual(result.continue, false);
 		});
 
-		it("summary terminates even with no tools", () => {
-			const healer = new ResponseHealer();
-			const result = healer.assessProgress({
-				summaryText: "finished",
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
-			});
-			assert.strictEqual(result.continue, false);
-		});
-
-		it("tools without summary continues", () => {
+		it("update continues the run", () => {
 			const healer = new ResponseHealer();
 			const result = healer.assessProgress({
 				summaryText: null,
-				flags: { hasAct: true, hasReads: false, hasWrites: false },
+				updateText: "reading files",
 			});
 			assert.strictEqual(result.continue, true);
 		});
 
-		it("reads without summary continues", () => {
+		it("neither increments stall counter and continues", () => {
 			const healer = new ResponseHealer();
 			const result = healer.assessProgress({
 				summaryText: null,
-				flags: { hasAct: false, hasReads: true, hasWrites: false },
+				updateText: null,
 			});
 			assert.strictEqual(result.continue, true);
 		});
 
-		it("writes without summary continues", () => {
-			const healer = new ResponseHealer();
-			const result = healer.assessProgress({
-				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: true },
-			});
-			assert.strictEqual(result.continue, true);
-		});
-
-		it("no tools no summary increments stall counter", () => {
-			const healer = new ResponseHealer();
-			const r1 = healer.assessProgress({
-				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
-			});
-			assert.strictEqual(r1.continue, true);
-		});
-
-		it("stalls force-complete after MAX_STALLS idle turns", () => {
+		it("stalls force-complete after MAX_STALLS", () => {
 			const healer = new ResponseHealer();
 			for (let i = 0; i < 2; i++) {
-				healer.assessProgress({
-					summaryText: null,
-					flags: { hasAct: false, hasReads: false, hasWrites: false },
-				});
+				healer.assessProgress({ summaryText: null, updateText: null });
 			}
 			const result = healer.assessProgress({
 				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
+				updateText: null,
 			});
 			assert.strictEqual(result.continue, false);
 			assert.ok(result.reason);
 		});
 
-		it("tools reset stall counter", () => {
+		it("update resets stall counter", () => {
 			const healer = new ResponseHealer();
-
-			// Two idle turns
-			healer.assessProgress({
-				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
-			});
-			healer.assessProgress({
-				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
-			});
-
-			// Tool use resets
-			healer.assessProgress({
-				summaryText: null,
-				flags: { hasAct: false, hasReads: true, hasWrites: false },
-			});
-
-			// Two more idle — should not hit MAX_STALLS yet
-			healer.assessProgress({
-				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
-			});
+			healer.assessProgress({ summaryText: null, updateText: null });
+			healer.assessProgress({ summaryText: null, updateText: null });
+			// One more would stall — but update resets
+			healer.assessProgress({ summaryText: null, updateText: "working" });
+			healer.assessProgress({ summaryText: null, updateText: null });
+			healer.assessProgress({ summaryText: null, updateText: null });
 			const result = healer.assessProgress({
 				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
+				updateText: null,
 			});
-			assert.strictEqual(result.continue, true);
+			assert.strictEqual(result.continue, false);
+		});
+
+		it("summary resets stall counter", () => {
+			const healer = new ResponseHealer();
+			healer.assessProgress({ summaryText: null, updateText: null });
+			healer.assessProgress({ summaryText: null, updateText: null });
+			const result = healer.assessProgress({
+				summaryText: "done",
+				updateText: null,
+			});
+			assert.strictEqual(result.continue, false);
+			assert.ok(!result.reason);
 		});
 
 		it("reset clears state", () => {
 			const healer = new ResponseHealer();
-			healer.assessProgress({
-				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
-			});
-			healer.assessProgress({
-				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
-			});
+			healer.assessProgress({ summaryText: null, updateText: null });
+			healer.assessProgress({ summaryText: null, updateText: null });
 			healer.reset();
-
-			// After reset, stall counter is 0 again
+			// After reset, counter is 0 — needs 3 more to stall
 			const result = healer.assessProgress({
 				summaryText: null,
-				flags: { hasAct: false, hasReads: false, hasWrites: false },
+				updateText: null,
 			});
 			assert.strictEqual(result.continue, true);
 		});

@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 				THEN state = 'summary'
 			WHEN scheme IN (
 				'system', 'user', 'reasoning', 'content', 'prompt',
-				'keys', 'inject', 'search'
+				'update', 'keys', 'inject', 'search'
 			) THEN state = 'info'
 			WHEN scheme = 'retry'
 				THEN state = 'error'

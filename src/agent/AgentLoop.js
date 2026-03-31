@@ -42,8 +42,8 @@ export default class AgentLoop {
 	#buildContinuationPrompt(type, turn, maxTurns, contextSize, report) {
 		const allowed =
 			type === "act"
-				? "<unknown/> <known/> <read/> <drop/> <edit/> <delete/> <move/> <copy/> <run/> <env/> <search/> <ask_user/> <summary/>"
-				: "<unknown/> <known/> <read/> <drop/> <env/> <search/> <ask_user/> <summary/>";
+				? "<unknown/> <known/> <read/> <drop/> <edit/> <delete/> <move/> <copy/> <run/> <env/> <search/> <ask_user/> <update/> <summary/>"
+				: "<unknown/> <known/> <read/> <drop/> <env/> <search/> <ask_user/> <update/> <summary/>";
 
 		const parts = [];
 
@@ -66,6 +66,9 @@ export default class AgentLoop {
 		}
 
 		parts.push(`Allowed: ${allowed}`);
+		parts.push(
+			"Required: <update/> if still working, <summary/> if done. Not both.",
+		);
 		return parts.join("\n");
 	}
 

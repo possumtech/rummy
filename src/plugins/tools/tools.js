@@ -8,6 +8,7 @@ export default class CoreToolsPlugin {
 		// Structural
 		tools.register("write", { modes: BOTH, category: "structural" });
 		tools.register("summary", { modes: BOTH, category: "structural" });
+		tools.register("update", { modes: BOTH, category: "structural" });
 		tools.register("unknown", { modes: BOTH, category: "structural" });
 
 		// Ask tools (direct execution)
