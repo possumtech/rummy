@@ -76,6 +76,16 @@ export default {};
 >>>>>>> REPLACE
 </edit>
 
+## <move path="[from]" to="[to]"/> - Move or rename
+
+* Example: <move path="src/old.js" to="src/new.js"/>
+* Example: <move path="known://env_vars" to=".env"/>
+
+## <copy path="[from]" to="[to]"/> - Copy
+
+* Example: <copy path=".env" to="known://env_snapshot"/>
+* Example: <copy path="src/config.js" to="src/config.backup.js"/>
+
 ## <delete path="[path]"/> - Delete a file or entry
 
 * Example: <delete path="src/old.js"/>

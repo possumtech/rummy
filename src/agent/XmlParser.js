@@ -1,6 +1,14 @@
 import { Parser } from "htmlparser2";
 
-const STORE_TOOLS = new Set(["read", "drop", "delete", "known", "edit"]);
+const STORE_TOOLS = new Set([
+	"read",
+	"drop",
+	"delete",
+	"known",
+	"edit",
+	"move",
+	"copy",
+]);
 const ALL_TOOLS = new Set([
 	...STORE_TOOLS,
 	"run",
@@ -97,6 +105,12 @@ function resolveCommand(name, attrs, body) {
 		// Canonical: path in attr. Alt: path in body.
 		const path = a.path || trimmed || null;
 		return { name, path, value: a.value, keys: a.keys };
+	}
+
+	if (name === "move" || name === "copy") {
+		// Canonical: path (from) and to attrs. Alt: to in body.
+		const to = a.to || trimmed || null;
+		return { name, path: a.path, to };
 	}
 
 	if (name === "run" || name === "env") {

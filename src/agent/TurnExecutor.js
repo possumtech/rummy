@@ -3,6 +3,7 @@ import RummyContext from "../hooks/RummyContext.js";
 import ContextAssembler from "./ContextAssembler.js";
 import FileScanner from "./FileScanner.js";
 import HeuristicMatcher from "./HeuristicMatcher.js";
+import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import PromptManager from "./PromptManager.js";
 import ResponseHealer from "./ResponseHealer.js";
@@ -202,7 +203,7 @@ export default class TurnExecutor {
 		}
 
 		const hasAct = actionCalls.some((c) =>
-			["edit", "delete", "run"].includes(c.name),
+			["edit", "delete", "run", "move", "copy"].includes(c.name),
 		);
 		const hasReads = actionCalls.some((c) => ["read", "env"].includes(c.name));
 		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
@@ -276,6 +277,11 @@ export default class TurnExecutor {
 
 			if (cmd.name === "delete") {
 				await this.#processDelete(currentRunId, turn, cmd);
+				continue;
+			}
+
+			if (cmd.name === "move" || cmd.name === "copy") {
+				await this.#processMoveCopy(currentRunId, turn, cmd);
 				continue;
 			}
 
@@ -517,8 +523,61 @@ export default class TurnExecutor {
 
 		for (const entry of matches) {
 			const resultPath = await this.#knownStore.nextResultPath(runId, "delete");
-			await this.#knownStore.upsert(runId, turn, resultPath, "", "proposed", {
-				meta: { path: entry.path },
+
+			if (entry.scheme === null) {
+				// File → proposed (client confirms deletion)
+				await this.#knownStore.upsert(runId, turn, resultPath, "", "proposed", {
+					meta: { path: entry.path },
+				});
+			} else {
+				// K/V → immediate remove
+				await this.#knownStore.remove(runId, entry.path);
+				await this.#knownStore.upsert(runId, turn, resultPath, "", "pass", {
+					meta: { path: entry.path },
+				});
+			}
+		}
+	}
+
+	async #processMoveCopy(runId, turn, cmd) {
+		if (!cmd.path || !cmd.to) return;
+
+		const source = await this.#knownStore.getValue(runId, cmd.path);
+		if (source === null) return;
+
+		const _sourceScheme = KnownStore.scheme(cmd.path);
+		const destScheme = KnownStore.scheme(cmd.to);
+		const isMove = cmd.name === "move";
+
+		// Check for clobber on K/V targets
+		const existing = await this.#knownStore.getValue(runId, cmd.to);
+		let warning = null;
+		if (existing !== null && destScheme !== null) {
+			warning = `Overwrote existing entry at ${cmd.to}`;
+		}
+
+		const resultPath = await this.#knownStore.nextResultPath(runId, cmd.name);
+
+		// File destinations → proposed (client writes to disk)
+		// K/V destinations → pass (immediate)
+		if (destScheme === null) {
+			await this.#knownStore.upsert(
+				runId,
+				turn,
+				resultPath,
+				source,
+				"proposed",
+				{
+					meta: { from: cmd.path, to: cmd.to, isMove, warning },
+				},
+			);
+		} else {
+			await this.#knownStore.upsert(runId, turn, cmd.to, source, "full");
+			if (isMove) {
+				await this.#knownStore.remove(runId, cmd.path);
+			}
+			await this.#knownStore.upsert(runId, turn, resultPath, "", "pass", {
+				meta: { from: cmd.path, to: cmd.to, isMove, warning },
 			});
 		}
 	}

@@ -32,7 +32,7 @@ FROM known_entries
 WHERE
 	run_id = :run_id
 	AND state = 'pass'
-	AND scheme IN ('edit', 'run', 'delete');
+	AND scheme IN ('edit', 'run', 'delete', 'move', 'copy');
 
 -- PREP: get_file_entries
 SELECT path, state, hash, updated_at

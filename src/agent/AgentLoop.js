@@ -374,6 +374,14 @@ export default class AgentLoop {
 					await this.#knownStore.remove(runId, meta.path);
 				}
 			}
+
+			// If accepting a move to file, remove the source entry
+			if (path.startsWith("move://")) {
+				const meta = await this.#knownStore.getMeta(runId, path);
+				if (meta?.isMove && meta?.from) {
+					await this.#knownStore.remove(runId, meta.from);
+				}
+			}
 		} else if (action === "reject") {
 			await this.#knownStore.resolve(runId, path, "warn", output || "rejected");
 		} else {

@@ -217,7 +217,7 @@ export default class CoreRpcPlugin {
 		r.register("run/rename", {
 			handler: async (params, ctx) => {
 				const { run, name } = params;
-				if (!name || !/^[a-z_]+$/.test(name)) {
+				if (!name || !/^[a-zA-Z0-9_]+$/.test(name)) {
 					throw new Error(msg("error.run_name_invalid"));
 				}
 				const runRow = await ctx.db.get_run_by_alias.get({ alias: run });
@@ -237,10 +237,10 @@ export default class CoreRpcPlugin {
 				}
 				return { run: name };
 			},
-			description: "Rename a run. Must be unique, [a-z_]+.",
+			description: "Rename a run. Must be unique, [a-zA-Z0-9_]+.",
 			params: {
 				run: "string — current run name",
-				name: "string — new name, [a-z_]+",
+				name: "string — new name, [a-zA-Z0-9_]+",
 			},
 			requiresInit: true,
 		});

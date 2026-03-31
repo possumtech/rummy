@@ -162,6 +162,31 @@ export default {};
 			);
 			assert.strictEqual(commands[0].replace, "new");
 		});
+
+		it("parses move with from and to", () => {
+			const { commands } = XmlParser.parse(
+				'<move path="known://env_vars" to=".env"/>',
+			);
+			assert.strictEqual(commands[0].name, "move");
+			assert.strictEqual(commands[0].path, "known://env_vars");
+			assert.strictEqual(commands[0].to, ".env");
+		});
+
+		it("parses copy with from and to", () => {
+			const { commands } = XmlParser.parse(
+				'<copy path=".env" to="known://env_snapshot"/>',
+			);
+			assert.strictEqual(commands[0].name, "copy");
+			assert.strictEqual(commands[0].path, ".env");
+			assert.strictEqual(commands[0].to, "known://env_snapshot");
+		});
+
+		it("move: to in body", () => {
+			const { commands } = XmlParser.parse(
+				'<move path="src/old.js">src/new.js</move>',
+			);
+			assert.strictEqual(commands[0].to, "src/new.js");
+		});
 	});
 
 	describe("alternative philosophies", () => {
