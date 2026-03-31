@@ -83,18 +83,20 @@ export default class SessionManager {
 	}
 
 	async fileStatus(projectId, path) {
-		const relPath = await this.#normalizePath(projectId, path);
+		const regexPattern = this.#toRegex(
+			await this.#normalizePath(projectId, path),
+		);
 		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
-		if (runs.length === 0) return { path: relPath, state: null };
-		const row = await this.#db.get_entry_state.get({
-			run_id: runs[0].id,
-			key: relPath,
-		});
-		return {
-			path: relPath,
-			state: row?.state || null,
-			turn: row?.turn ?? null,
-		};
+		if (runs.length === 0) return [];
+		const rows = await this.#knownStore.getFileStatesByPattern(
+			runs[0].id,
+			regexPattern,
+		);
+		return rows.map((r) => ({
+			path: r.key,
+			state: r.state,
+			turn: r.turn,
+		}));
 	}
 
 	async #normalizePath(projectId, path) {
@@ -104,27 +106,35 @@ export default class SessionManager {
 		return relative(project.path, path);
 	}
 
+	#toRegex(pattern) {
+		if (!pattern) return null;
+		if (/[*+?^${}()|[\]\\]/.test(pattern)) return pattern;
+		return `^${pattern.replace(/\./g, "\\.")}$`;
+	}
+
 	async #setFileState(projectId, pattern, state) {
-		const path = await this.#normalizePath(projectId, pattern);
-		if (!path) return { status: "ok" };
+		const regexPattern = this.#toRegex(
+			await this.#normalizePath(projectId, pattern),
+		);
+		if (!regexPattern) return { status: "ok" };
 
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			pattern: path,
+			pattern: regexPattern,
 			constraint: state,
 		});
 
 		// Update state across all active runs (preserves file content)
 		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
 		for (const run of runs) {
-			await this.#knownStore.setFileState(run.id, path, state);
+			await this.#knownStore.setFileState(run.id, regexPattern, state);
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
-			pattern,
+			pattern: regexPattern,
 			constraint: state,
 			db: this.#db,
 		});
@@ -145,26 +155,28 @@ export default class SessionManager {
 	}
 
 	async drop(projectId, pattern) {
-		const path = await this.#normalizePath(projectId, pattern);
-		if (!path) return { status: "ok" };
+		const regexPattern = this.#toRegex(
+			await this.#normalizePath(projectId, pattern),
+		);
+		if (!regexPattern) return { status: "ok" };
 
 		await this.#hooks.project.files.update.started.emit({
 			projectId,
-			pattern: path,
+			pattern: regexPattern,
 			constraint: null,
 		});
 
-		// Remove file entry from all active runs
+		// Remove file entries matching pattern from all active runs
 		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
 		for (const run of runs) {
-			await this.#knownStore.remove(run.id, path);
+			await this.#knownStore.removeFilesByPattern(run.id, regexPattern);
 		}
 
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		await this.#hooks.project.files.update.completed.emit({
 			projectId,
 			projectPath: project.path,
-			pattern: path,
+			pattern: regexPattern,
 			constraint: null,
 			db: this.#db,
 		});

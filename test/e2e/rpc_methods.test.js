@@ -220,41 +220,52 @@ describe("E2E: RPC Methods", () => {
 		const result = await client.call("activate", { pattern: "app.js" });
 		assert.strictEqual(result.status, "ok");
 
-		const status = await client.call("fileStatus", { path: "app.js" });
-		assert.strictEqual(status.path, "app.js");
-		assert.strictEqual(status.state, "active");
+		const status = await client.call("fileStatus", { pattern: "app.js" });
+		assert.strictEqual(status.length, 1);
+		assert.strictEqual(status[0].path, "app.js");
+		assert.strictEqual(status[0].state, "active");
 	});
 
 	it("readOnly sets file state to readonly", async () => {
 		const result = await client.call("readOnly", { pattern: "app.js" });
 		assert.strictEqual(result.status, "ok");
 
-		const status = await client.call("fileStatus", { path: "app.js" });
-		assert.strictEqual(status.state, "readonly");
+		const status = await client.call("fileStatus", { pattern: "app.js" });
+		assert.strictEqual(status[0].state, "readonly");
 	});
 
 	it("ignore sets file state to ignore", async () => {
 		const result = await client.call("ignore", { pattern: "app.js" });
 		assert.strictEqual(result.status, "ok");
 
-		const status = await client.call("fileStatus", { path: "app.js" });
-		assert.strictEqual(status.state, "ignore");
+		const status = await client.call("fileStatus", { pattern: "app.js" });
+		assert.strictEqual(status[0].state, "ignore");
 	});
 
 	it("drop removes file state override", async () => {
 		// First set a state
 		await client.call("activate", { pattern: "app.js" });
-		const before = await client.call("fileStatus", { path: "app.js" });
-		assert.strictEqual(before.state, "active");
+		const before = await client.call("fileStatus", { pattern: "app.js" });
+		assert.strictEqual(before[0].state, "active");
 
 		// Drop it
 		const result = await client.call("drop", { pattern: "app.js" });
 		assert.strictEqual(result.status, "ok");
 	});
 
-	it("fileStatus returns null state for unknown file", async () => {
-		const status = await client.call("fileStatus", { path: "nonexistent.js" });
-		assert.strictEqual(status.state, null);
+	it("fileStatus returns empty for unknown file", async () => {
+		const status = await client.call("fileStatus", {
+			pattern: "nonexistent.js",
+		});
+		assert.strictEqual(status.length, 0);
+	});
+
+	it("fileStatus supports regex patterns", async () => {
+		const status = await client.call("fileStatus", { pattern: "\\.js$" });
+		assert.ok(Array.isArray(status), "returns array");
+		for (const entry of status) {
+			assert.ok(entry.path.endsWith(".js"), "matches regex");
+		}
 	});
 
 	it("getModelInfo returns model metadata", async () => {
@@ -273,7 +284,7 @@ describe("E2E: RPC Methods", () => {
 
 		// Now activate — should NOT overwrite the file's value
 		await client.call("activate", { pattern: "app.js" });
-		const status = await client.call("fileStatus", { path: "app.js" });
-		assert.strictEqual(status.state, "active");
+		const status = await client.call("fileStatus", { pattern: "app.js" });
+		assert.strictEqual(status[0].state, "active");
 	});
 });

@@ -66,9 +66,10 @@ export default class CoreRpcPlugin {
 
 		r.register("fileStatus", {
 			handler: async (params, ctx) =>
-				ctx.projectAgent.fileStatus(ctx.projectId, params.path),
-			description: "File state in the known store. Returns { path, fidelity }.",
-			params: { path: "string — relative file path" },
+				ctx.projectAgent.fileStatus(ctx.projectId, params.pattern),
+			description:
+				"File state in the known store. Accepts regex pattern. Returns [{ path, state, turn }].",
+			params: { pattern: "string — file path or regex pattern" },
 			requiresInit: true,
 		});
 

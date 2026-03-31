@@ -50,8 +50,8 @@ export default class KnownStore {
 		await this.#db.promote_key.run({ run_id: runId, key, turn });
 	}
 
-	async setFileState(runId, key, state) {
-		await this.#db.set_file_state.run({ run_id: runId, key, state });
+	async setFileState(runId, pattern, state) {
+		await this.#db.set_file_state.run({ run_id: runId, pattern, state });
 	}
 
 	async demote(runId, key) {
@@ -60,6 +60,13 @@ export default class KnownStore {
 
 	async remove(runId, key) {
 		await this.#db.delete_known_entry.run({ run_id: runId, key });
+	}
+
+	async removeFilesByPattern(runId, pattern) {
+		await this.#db.delete_file_entries_by_pattern.run({
+			run_id: runId,
+			pattern,
+		});
 	}
 
 	async resolve(runId, key, state, value) {
@@ -206,6 +213,10 @@ export default class KnownStore {
 
 	async getFileEntries(runId) {
 		return this.#db.get_file_entries.all({ run_id: runId });
+	}
+
+	async getFileStatesByPattern(runId, pattern) {
+		return this.#db.get_file_states_by_pattern.all({ run_id: runId, pattern });
 	}
 
 	async hasRejections(runId) {

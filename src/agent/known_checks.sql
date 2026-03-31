@@ -35,7 +35,7 @@ WHERE
 	run_id = :run_id
 	AND domain = 'result'
 	AND state = 'pass'
-	AND (key LIKE '/:edit:%' OR key LIKE '/:run:%' OR key LIKE '/:delete:%');
+	AND key REGEXP '^/:(edit|run|delete):';
 
 -- PREP: get_file_entries
 SELECT key, state, hash, updated_at
@@ -47,7 +47,7 @@ WHERE
 -- PREP: get_context_distribution
 SELECT
 	CASE
-		WHEN key LIKE '/:system:%' OR key LIKE '/:prompt:%' THEN 'system'
+		WHEN key REGEXP '^/:(system|prompt):' THEN 'system'
 		WHEN domain = 'file' AND turn > 0 AND state != 'symbols' THEN 'files'
 		WHEN domain = 'file' THEN 'keys'
 		WHEN domain = 'known' AND key LIKE '/:known:%' AND turn > 0 THEN 'known'
@@ -61,8 +61,6 @@ SELECT
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND key NOT LIKE '/:reasoning:%'
-	AND key NOT LIKE '/:user:%'
-	AND key NOT LIKE '/:retry:%'
+	AND key NOT REGEXP '^/:(reasoning|user|retry):'
 GROUP BY bucket
 ORDER BY bucket;

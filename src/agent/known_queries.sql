@@ -62,10 +62,7 @@ WHERE
 	run_id = :run_id
 	AND domain = 'result'
 	AND state != 'proposed'
-	AND key NOT LIKE '/:system:%'
-	AND key NOT LIKE '/:user:%'
-	AND key NOT LIKE '/:reasoning:%'
-	AND key NOT LIKE '/:prompt:%'
+	AND key NOT REGEXP '^/:(system|user|reasoning|prompt):'
 ORDER BY id;
 
 -- PREP: get_unknowns
