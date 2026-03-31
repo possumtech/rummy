@@ -65,7 +65,7 @@ describe("E2E: Pattern Operations", () => {
 		const entries = await tdb.db.get_known_entries.all({
 			run_id: runRow.id,
 		});
-		const files = entries.filter((e) => e.domain === "file" && e.turn > 0);
+		const files = entries.filter((e) => e.scheme === null && e.turn > 0);
 		assert.ok(
 			files.length >= 2,
 			`Should promote multiple files, got ${files.length}`,
@@ -86,7 +86,7 @@ describe("E2E: Pattern Operations", () => {
 		const entries = await tdb.db.get_known_entries.all({
 			run_id: runRow.id,
 		});
-		const summaries = entries.filter((e) => e.path.startsWith("/:summary:"));
+		const summaries = entries.filter((e) => e.path.startsWith("summary://"));
 		assert.ok(summaries.length > 0, "Should have summaries");
 	});
 
@@ -106,7 +106,7 @@ describe("E2E: Pattern Operations", () => {
 			run_id: runRow.id,
 		});
 		const known = entries.filter(
-			(e) => e.domain === "known" && e.path.startsWith("/:known:"),
+			(e) => e.scheme === "known" && e.path.startsWith("known://"),
 		);
 		assert.ok(known.length > 0, "Should have known entries");
 	});

@@ -185,7 +185,7 @@ describe("E2E: Client Scenarios", () => {
 		if (result.status === "proposed") {
 			const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });
 			const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-			const edits = all.filter((e) => e.path.startsWith("/:edit:"));
+			const edits = all.filter((e) => e.path.startsWith("edit://"));
 
 			for (const edit of edits) {
 				const meta = edit.meta ? JSON.parse(edit.meta) : {};
@@ -208,7 +208,7 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const envProposed = result.proposed.find((p) =>
-				p.path.startsWith("/:env:"),
+				p.path.startsWith("env://"),
 			);
 
 			if (envProposed) {
@@ -244,7 +244,7 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const runProposed = result.proposed.find(
-				(p) => p.path.startsWith("/:run:") || p.path.startsWith("/:env:"),
+				(p) => p.path.startsWith("run://") || p.path.startsWith("env://"),
 			);
 
 			if (runProposed) {
@@ -281,7 +281,7 @@ describe("E2E: Client Scenarios", () => {
 
 		if (result.status === "proposed") {
 			const askUser = result.proposed.find((p) =>
-				p.path.startsWith("/:ask_user:"),
+				p.path.startsWith("ask_user://"),
 			);
 
 			if (askUser) {
@@ -343,7 +343,7 @@ describe("E2E: Client Scenarios", () => {
 		// Verify multiple turns in the store
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: run1.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-		const prompts = all.filter((e) => e.path.startsWith("/:prompt:"));
+		const prompts = all.filter((e) => e.path.startsWith("prompt://"));
 		assert.ok(
 			prompts.length >= 2,
 			`Should have 2+ prompts, got ${prompts.length}`,
@@ -368,7 +368,7 @@ describe("E2E: Client Scenarios", () => {
 		const runAlias = result.run;
 		while (current.status === "proposed" && iterations < 10) {
 			for (const p of current.proposed) {
-				const type = p.path.match(/^\/:(\w+):/)?.[1];
+				const type = p.path.match(/^(\w+):\/\//)?.[1];
 				const meta = typeof p.meta === "string" ? JSON.parse(p.meta) : p.meta;
 				let output = "ok";
 

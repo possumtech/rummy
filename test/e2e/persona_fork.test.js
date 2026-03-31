@@ -78,7 +78,7 @@ describe("E2E: Persona & Fork", () => {
 			run_id: parentRow.id,
 		});
 		const _parentKnowns = parentEntries.filter((e) =>
-			e.path.startsWith("/:known:"),
+			e.path.startsWith("known://"),
 		);
 
 		// Fork from the parent run
@@ -98,8 +98,8 @@ describe("E2E: Persona & Fork", () => {
 		});
 
 		// Fork should have at least as many file entries as parent
-		const parentFiles = parentEntries.filter((e) => e.domain === "file");
-		const forkFiles = forkEntries.filter((e) => e.domain === "file");
+		const parentFiles = parentEntries.filter((e) => e.scheme === null);
+		const forkFiles = forkEntries.filter((e) => e.scheme === null);
 		assert.ok(
 			forkFiles.length >= parentFiles.length,
 			`Fork should inherit files. Parent: ${parentFiles.length}, Fork: ${forkFiles.length}`,
