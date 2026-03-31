@@ -51,7 +51,10 @@ export default class KnownStore {
 	}
 
 	async setFileState(runId, pattern, state) {
-		await this.#db.set_file_state.run({ run_id: runId, pattern, state });
+		const result = await this.#db.set_file_state.run({ run_id: runId, pattern, state });
+		if (result.changes === 0) {
+			await this.upsert(runId, 0, pattern, "", state);
+		}
 	}
 
 	async demote(runId, path) {

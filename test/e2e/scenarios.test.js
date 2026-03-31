@@ -97,7 +97,7 @@ describe("E2E: Client Scenarios", () => {
 
 				// Apply edit to disk
 				if (editProposed.meta?.blocks) {
-					const filePath = join(projectPath, editProposed.meta.file);
+					const filePath = join(projectPath, editProposed.meta.path);
 					try {
 						let content = await fs.readFile(filePath, "utf8");
 						for (const block of editProposed.meta.blocks) {
@@ -251,7 +251,7 @@ describe("E2E: Client Scenarios", () => {
 				const resolveResult = await client.call("run/resolve", {
 					run: result.run,
 					resolution: {
-						key: runProposed.path,
+						path: runProposed.path,
 						action: "reject",
 						output: "Command denied by user",
 					},
@@ -295,7 +295,7 @@ describe("E2E: Client Scenarios", () => {
 				const resolveResult = await client.call("run/resolve", {
 					run: result.run,
 					resolution: {
-						key: askUser.path,
+						path: askUser.path,
 						action: "accept",
 						output: meta.options[0],
 					},
@@ -327,7 +327,7 @@ describe("E2E: Client Scenarios", () => {
 			for (const p of run1.proposed) {
 				await client.call("run/resolve", {
 					run: run1.run,
-					resolution: { key: p.path, action: "accept", output: "" },
+					resolution: { path: p.path, action: "accept", output: "" },
 				});
 			}
 		}
@@ -374,7 +374,7 @@ describe("E2E: Client Scenarios", () => {
 
 				if (type === "edit" && meta?.patch) {
 					// Apply the edit to disk so the model sees the change
-					const filePath = join(projectPath, meta.file);
+					const filePath = join(projectPath, meta.path);
 					try {
 						const content = await fs.readFile(filePath, "utf8");
 						// Apply search/replace from blocks
@@ -398,7 +398,7 @@ describe("E2E: Client Scenarios", () => {
 				try {
 					current = await client.call("run/resolve", {
 						run: runAlias,
-						resolution: { key: p.path, action: "accept", output },
+						resolution: { path: p.path, action: "accept", output },
 					});
 				} catch (err) {
 					await client.dumpRun(runAlias);

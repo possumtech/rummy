@@ -84,10 +84,10 @@ export default class SessionManager {
 
 	async fileStatus(projectId, pattern) {
 		const path = await this.#normalizePath(projectId, pattern);
-		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
-		if (runs.length === 0) return [];
+		const run = await this.#db.get_latest_run.get({ project_id: projectId });
+		if (!run) return [];
 		const rows = await this.#knownStore.getFileStatesByPattern(
-			runs[0].id,
+			run.id,
 			path,
 		);
 		return rows.map((r) => ({
@@ -114,7 +114,7 @@ export default class SessionManager {
 			constraint: state,
 		});
 
-		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
+		const runs = await this.#db.get_all_runs.all({ project_id: projectId });
 		for (const run of runs) {
 			await this.#knownStore.setFileState(run.id, path, state);
 		}
@@ -153,7 +153,7 @@ export default class SessionManager {
 			constraint: null,
 		});
 
-		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
+		const runs = await this.#db.get_all_runs.all({ project_id: projectId });
 		for (const run of runs) {
 			await this.#knownStore.removeFilesByPattern(run.id, path);
 		}

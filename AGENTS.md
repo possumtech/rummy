@@ -9,6 +9,13 @@ sqlfluff). TESTMAP.md at 0 untested promises. Response healing: always recover, 
 
 ---
 
+## Next
+
+- [ ] Pattern tooling — glorp-powered bulk operations (`path`/`value`/`keys` on all store-facing tools)
+- [ ] Continuation prompt makeover — "state of the run" report: what changed this turn, context budget used/remaining, open unknowns, pending actions. The model should know where it is, what it did, and what it costs.
+
+---
+
 ## Future: Dependency Alternatives
 
 **isomorphic-git** — Pure JS git implementation. Would eliminate all `execSync("git ...")` subprocess spawns in `GitProvider.js`. Currently `ProjectContext.open()` caches results keyed on HEAD hash, so the subprocess cost is amortized. Consider adopting if: (a) git operations expand beyond `ls-files`/`rev-parse`, or (b) we need to run in environments without git installed.
