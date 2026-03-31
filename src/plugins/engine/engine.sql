@@ -5,7 +5,9 @@ WHERE
 	run_id = :run_id
 	AND turn > 0
 	AND state NOT IN ('proposed', 'ignore', 'info', 'summary')
-	AND scheme NOT IN ('system', 'user', 'reasoning', 'prompt', 'inject')
+	AND (scheme IS NULL OR scheme NOT IN (
+		'system', 'user', 'reasoning', 'prompt', 'inject'
+	))
 ORDER BY path;
 
 -- PREP: get_promoted_token_total
@@ -15,4 +17,6 @@ WHERE
 	run_id = :run_id
 	AND turn > 0
 	AND state NOT IN ('proposed', 'ignore', 'info', 'summary')
-	AND scheme NOT IN ('system', 'user', 'reasoning', 'prompt', 'inject');
+	AND (scheme IS NULL OR scheme NOT IN (
+		'system', 'user', 'reasoning', 'prompt', 'inject'
+	));

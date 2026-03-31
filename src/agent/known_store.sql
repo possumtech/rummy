@@ -55,11 +55,14 @@ SET
 	, turn = CASE WHEN :state = 'ignore' THEN 0 ELSE turn END
 	, tokens = CASE
 		WHEN :state = 'ignore' THEN 0
-		WHEN
-			:state = 'symbols'
-			AND json_valid(meta)
-			AND json_extract(meta, '$.symbols') IS NOT NULL
-			THEN length(json_extract(meta, '$.symbols')) / 4
+		WHEN :state = 'symbols'
+			THEN CASE
+				WHEN
+					json_valid(meta)
+					AND json_extract(meta, '$.symbols') IS NOT NULL
+					THEN length(json_extract(meta, '$.symbols')) / 4
+				ELSE length(path) / 4
+			END
 		ELSE tokens_full
 	END
 	, updated_at = CURRENT_TIMESTAMP

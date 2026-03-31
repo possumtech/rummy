@@ -17,41 +17,35 @@ Move/copy across file and K/V namespaces. Edit search/replace attribute mode.
 context budget. Runs after file scan and existing plugins (priority 10), before
 context assembly (hardcoded after all hooks in TurnExecutor).
 
-### Phase 0: Budget Enforcement (the engine)
+### Phase 0: Budget Enforcement (the engine) ✓
 
-The MVP. A plugin that prevents OOM by enforcing the token budget.
+- [x] **Engine plugin** — `src/plugins/engine/engine.js`, priority 20.
+- [x] **Token budget check** — fast `SUM(tokens)` query, early return if under budget.
+- [x] **Demotion cascade** — results → file full→symbols → known → file symbols→path.
+- [x] **Current-turn protection** — entries at `turn === sequence` are never touched.
+- [x] **Demotion report** — injects `inject://` info entry with budget percentages.
+- [x] **Schema: tokens split** — `tokens` (context cost) + `tokens_full` (raw value cost).
+      All state-changing queries update `tokens`: promote restores to `tokens_full`,
+      demote sets to `length(path)/4`, setFileState(symbols) uses `meta.symbols` length.
+- [x] **Symbol file query fix** — `get_symbol_files` respects `turn > 0`.
+      `get_stored_files` includes demoted symbols files.
 
-- [ ] **Engine plugin skeleton** — `src/plugins/engine/engine.js`, `export default class Engine`,
-      `static register(hooks)`, `hooks.onTurn(callback, 20)`. No-op if `rummy.noContext`.
-- [ ] **Token budget check** — sum `tokens` across all promoted entries (`turn > 0`).
-      If total ≤ `rummy.contextSize`, return early — no intervention needed.
-- [ ] **Demotion cascade** — when over budget, demote entries until total fits:
-    1. Result entries (`edit://`, `run://`, `env://`, etc.) oldest turn first, highest tokens first
-    2. Files at `full` → downgrade to `symbols` (oldest turn, lowest refs, highest tokens)
-    3. `known://` entries → demote to `stored` (oldest turn, lowest refs)
-    4. Files at `symbols` → downgrade to `path` (turn 0)
-    5. Files at `path` → demote to `stored` (engine nuclear option, last resort)
-- [ ] **Current-turn protection** — never touch entries where `turn === rummy.sequence`.
-      The model's current-turn decisions are sacred.
-- [ ] **`stored://` key maintenance** — when an entry is demoted to stored, append its
-      path to the `stored://` value. When promoted back, remove it. Engine owns this key.
-- [ ] **Demotion report** — after intervention, append a summary to the continuation prompt:
-      `demoted: src/old.js, known://stale_note (budget: 96% → 78%)`. The model learns
-      the budget is real and adapts.
+### Phase 1: Integration Tests ✓
 
-### Phase 1: Integration Tests
+17 tests in `test/integration/engine.test.js`:
 
-In `test/integration/engine.test.js`, using the real store and `node:test`.
-
-- [ ] **Over-budget trimming** — populate store with entries totaling 2x budget,
-      run engine, assert total promoted tokens ≤ budget.
-- [ ] **Cascade order** — verify files demote `full → symbols → path → stored`
-      before knowledge entries are touched.
-- [ ] **Current-turn protection** — entries at current turn survive even under pressure.
-- [ ] **Stored key maintenance** — demoted keys appear in `stored://`, promoted keys
-      are removed from it.
-- [ ] **No-op when under budget** — engine makes zero changes when within budget.
-- [ ] **Edge cases** — exactly at budget, single entry exceeds budget, empty store.
+- [x] No-op when under budget / empty store
+- [x] Over-budget trimming to fit budget
+- [x] Results demoted before files
+- [x] Files downgraded to symbols before known entries demoted
+- [x] Current-turn protection (single entry + mixed turns)
+- [x] Oldest turn first within same tier
+- [x] Largest entries first within same turn
+- [x] Entry persists in store after demotion
+- [x] `tokens_full` preserved after demotion
+- [x] Promote restores `tokens` to `tokens_full`
+- [x] Demotion report injection + no report when unnecessary
+- [x] Symbol file query: turn 0 hidden, turn > 0 visible, demoted in stored files
 
 ### Phase 2: Metrics
 
