@@ -38,7 +38,7 @@ WHERE run_id = :run_id AND path = :path;
 
 -- PREP: delete_file_entries_by_pattern
 DELETE FROM known_entries
-WHERE run_id = :run_id AND glorp(:pattern, path) AND scheme IS NULL;
+WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL;
 
 -- PREP: resolve_known_entry
 UPDATE known_entries
@@ -64,7 +64,7 @@ SET
 		ELSE tokens_full
 	END
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND glorp(:pattern, path) AND scheme IS NULL;
+WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL;
 
 -- PREP: promote_path
 UPDATE known_entries
@@ -95,7 +95,7 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: get_file_states_by_pattern
 SELECT path, state, turn
 FROM known_entries
-WHERE run_id = :run_id AND glorp(:pattern, path) AND scheme IS NULL
+WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL
 ORDER BY path;
 
 -- PREP: get_entry_meta
@@ -111,8 +111,8 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
-	AND glorp(:path, path)
-	AND (:value IS NULL OR glorp(:value, value));
+	AND hedberg(:path, path)
+	AND (:value IS NULL OR hedberg(:value, value));
 
 -- PREP: demote_by_pattern
 UPDATE known_entries
@@ -122,24 +122,24 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
-	AND glorp(:path, path)
-	AND (:value IS NULL OR glorp(:value, value));
+	AND hedberg(:path, path)
+	AND (:value IS NULL OR hedberg(:value, value));
 
 -- PREP: get_entries_by_pattern
 SELECT path, value, scheme, state, tokens_full, meta
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND glorp(:path, path)
-	AND (:value IS NULL OR glorp(:value, value))
+	AND hedberg(:path, path)
+	AND (:value IS NULL OR hedberg(:value, value))
 ORDER BY path;
 
 -- PREP: delete_entries_by_pattern
 DELETE FROM known_entries
 WHERE
 	run_id = :run_id
-	AND glorp(:path, path)
-	AND (:value IS NULL OR glorp(:value, value));
+	AND hedberg(:path, path)
+	AND (:value IS NULL OR hedberg(:value, value));
 
 -- PREP: update_value_by_pattern
 UPDATE known_entries
@@ -151,5 +151,5 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
-	AND glorp(:path, path)
-	AND (:value IS NULL OR glorp(:value, value));
+	AND hedberg(:path, path)
+	AND (:value IS NULL OR hedberg(:value, value));
