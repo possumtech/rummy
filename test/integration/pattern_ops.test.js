@@ -32,7 +32,13 @@ describe("Pattern operations integration", () => {
 
 		// Seed files
 		await store.upsert(RUN_ID, 0, "src/app.js", "const app = 1;", "full");
-		await store.upsert(RUN_ID, 0, "src/config.js", "const port = 3000;", "full");
+		await store.upsert(
+			RUN_ID,
+			0,
+			"src/config.js",
+			"const port = 3000;",
+			"full",
+		);
 		await store.upsert(RUN_ID, 0, "src/utils.js", "// TODO: refactor", "full");
 		await store.upsert(RUN_ID, 0, "readme.md", "# Hello", "full");
 
@@ -53,24 +59,40 @@ describe("Pattern operations integration", () => {
 		});
 
 		it("matches exact path", async () => {
-			const matches = await store.getEntriesByPattern(RUN_ID, "readme.md", null);
+			const matches = await store.getEntriesByPattern(
+				RUN_ID,
+				"readme.md",
+				null,
+			);
 			assert.strictEqual(matches.length, 1);
 			assert.strictEqual(matches[0].path, "readme.md");
 		});
 
 		it("matches known keys with glob", async () => {
-			const matches = await store.getEntriesByPattern(RUN_ID, "/:known:auth_*", null);
+			const matches = await store.getEntriesByPattern(
+				RUN_ID,
+				"/:known:auth_*",
+				null,
+			);
 			assert.strictEqual(matches.length, 2);
 		});
 
 		it("filters by value pattern", async () => {
-			const matches = await store.getEntriesByPattern(RUN_ID, "src/*.js", "TODO");
+			const matches = await store.getEntriesByPattern(
+				RUN_ID,
+				"src/*.js",
+				"TODO",
+			);
 			assert.strictEqual(matches.length, 1);
 			assert.strictEqual(matches[0].path, "src/utils.js");
 		});
 
 		it("path + value AND together", async () => {
-			const matches = await store.getEntriesByPattern(RUN_ID, "src/*.js", "const");
+			const matches = await store.getEntriesByPattern(
+				RUN_ID,
+				"src/*.js",
+				"const",
+			);
 			assert.strictEqual(matches.length, 2);
 		});
 
@@ -80,7 +102,11 @@ describe("Pattern operations integration", () => {
 		});
 
 		it("includes tokens in results", async () => {
-			const matches = await store.getEntriesByPattern(RUN_ID, "src/app.js", null);
+			const matches = await store.getEntriesByPattern(
+				RUN_ID,
+				"src/app.js",
+				null,
+			);
 			assert.ok(typeof matches[0].tokens === "number");
 		});
 	});
@@ -165,12 +191,7 @@ describe("Pattern operations integration", () => {
 			await store.upsert(RUN_ID, 0, "/:known:ver_a", "v1", "full");
 			await store.upsert(RUN_ID, 0, "/:known:ver_b", "v1", "full");
 
-			await store.updateValueByPattern(
-				RUN_ID,
-				"/:known:ver_*",
-				null,
-				"v2",
-			);
+			await store.updateValueByPattern(RUN_ID, "/:known:ver_*", null, "v2");
 
 			const a = await store.getValue(RUN_ID, "/:known:ver_a");
 			const b = await store.getValue(RUN_ID, "/:known:ver_b");

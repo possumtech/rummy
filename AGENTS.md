@@ -11,7 +11,7 @@ sqlfluff). TESTMAP.md at 0 untested promises. Response healing: always recover, 
 
 ## Next
 
-- [ ] Pattern tooling — glorp-powered bulk operations (`path`/`value`/`keys` on all store-facing tools). SQL queries, KnownStore methods, TurnExecutor dispatch, prompt docs.
+- [x] Pattern tooling — glorp-powered bulk operations. 5 SQL queries, 5 KnownStore methods, TurnExecutor dispatch (keys flag, bulk read/drop/edit/delete/known), prompts updated, ARCHITECTURE.md §2 rewritten. 48/48 E2E.
 - [ ] Continuation prompt makeover — "state of the run" report: what changed this turn, context budget used/remaining, open unknowns, pending actions. The model should know where it is, what it did, and what it costs.
 - [x] ResponseHealer — forward motion model. `healSummary` (static, fixes malformed output), `assessProgress` (stateful, tracks stalls). Actions/reads/writes = progress. Summary-only = done. Repeated idle = stall → force-complete. Unknowns gate removed.
 

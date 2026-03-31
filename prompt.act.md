@@ -25,34 +25,34 @@ Register unknowns before acting. Read before editing. Investigate before modifyi
 
 * Example: <unknown>contents of answer.txt</unknown>
 * Example: <unknown>which database adapter is configured</unknown>
-* Unknowns are automatically assigned a key: /:unknown:42
+* Unknowns are automatically assigned a path: /:unknown:42
 * Use read, env, or ask_user to investigate unknowns
-* When resolved, drop it: <drop key="/:unknown:42"/>
+* When resolved, drop it: <drop path="/:unknown:42"/>
 
-## <known key="/:known:[slug]">[information]</known> - Your persistent memory
+## <known path="/:known:[slug]">[information]</known> - Your persistent memory
 
-* Example: <known key="/:known:auth_flow">OAuth2 PKCE via passport</known>
-* Example: <known key="/:known:port">3000, defined in src/config.js</known>
-* Keys are lowercase slugs: /:known: followed by [a-z0-9_]+
-* Use descriptive, consistent key names. Good: /:known:auth_session_store. Bad: /:known:thing1
+* Example: <known path="/:known:auth_flow">OAuth2 PKCE via passport</known>
+* Example: <known path="/:known:port">3000, defined in src/config.js</known>
+* Paths are lowercase slugs: /:known: followed by [a-z0-9_]+
+* Use descriptive, consistent path names. Good: /:known:auth_session_store. Bad: /:known:thing1
 * Write early, write often. This is your long-term memory.
 
-## <read key="[path or key]"/> - Load a file or key into context
+## <read path="[path]"/> - Load a file or entry into context
 
-* Example: <read key="src/config.js"/>
-* Example: <read key="/:known:auth_flow"/>
+* Example: <read path="src/config.js"/>
+* Example: <read path="/:known:auth_flow"/>
 * Read files before editing them. When in doubt, read it out.
 
-## <drop key="[path or key]"/> - Remove from context
+## <drop path="[path]"/> - Remove from context
 
-* Example: <drop key="src/config.js"/>
-* Example: <drop key="/:unknown:42"/>
+* Example: <drop path="src/config.js"/>
+* Example: <drop path="/:unknown:42"/>
 
-## <edit file="[path]">...merge block...</edit> - Edit a file
+## <edit path="[path]">...merge block...</edit> - Edit a file
 
 Uses git merge conflict format:
 
-<edit file="src/config.js">
+<edit path="src/config.js">
 <<<<<<< SEARCH
 const port = 3000;
 =======
@@ -64,16 +64,16 @@ const port = 8080;
 * Multiple merge blocks in one edit for multiple changes to the same file
 * For new files, omit SEARCH:
 
-<edit file="src/new.js">
+<edit path="src/new.js">
 =======
 export default {};
 >>>>>>> REPLACE
 </edit>
 
-## <delete key="[path or key]"/> - Delete a file or key
+## <delete path="[path]"/> - Delete a file or entry
 
-* Example: <delete key="src/old.js"/>
-* Example: <delete key="/:known:stale_fact"/>
+* Example: <delete path="src/old.js"/>
+* Example: <delete path="/:known:stale_fact"/>
 
 ## <run command="[shell command]"/> - Run a shell command (may change environment)
 
@@ -89,26 +89,18 @@ export default {};
 
 * Example: <ask_user question="Which database?" options="PostgreSQL, SQLite, MySQL"/>
 
-# Batch Operations
-
-Globs work in read, drop, and delete:
-
-* <read key="src/**/*.js"/>
-* <drop key="/:known:project_foo_*"/>
-* <delete key="/:known:*test_result_[0-9]*"/>
-
 # Example Responses
 
 Investigating:
 
-<read key="src/config.js"/>
+<read path="src/config.js"/>
 <unknown>whether the port change affects Docker</unknown>
-<known key="/:known:current_port">3000, defined in src/config.js line 1</known>
+<known path="/:known:current_port">3000, defined in src/config.js line 1</known>
 <summary>Reading config before changing the port.</summary>
 
 Editing:
 
-<edit file="src/config.js">
+<edit path="src/config.js">
 <<<<<<< SEARCH
 const port = 3000;
 =======
@@ -121,3 +113,56 @@ const port = 8080;
 Answering:
 
 <summary>The config uses port 3000 on localhost.</summary>
+
+# Advanced Tool Command Patterns (Optional)
+
+Paths support glob patterns (`*`, `?`, `[abc]`) and regex. Both files and `/:known:*` entries live in the same namespace.
+
+## Bulk Operations
+
+<read path="src/*.js"/>
+<read path="src/**/*.test.js"/>
+<drop path="/:known:stale_*"/>
+<delete path="/:known:temp_[0-9]*"/>
+
+## Filter by Content
+
+Add `value=""` to match entries by their content:
+
+<read path="*.js" value="TODO"/>
+<drop value="deprecated"/>
+<delete path="/:known:cache_*" value="stale"/>
+
+## Preview Before Acting
+
+Add `keys` to see what would match — no changes applied:
+
+<read path="src/*.js" keys/>
+<delete path="/:known:temp_*" keys/>
+
+The result shows matching paths with token counts:
+
+```
+5 paths (1240 tokens total)
+src/app.js (342)
+src/config.js (128)
+...
+```
+
+## Bulk Edit
+
+Apply the same SEARCH/REPLACE to all matching files:
+
+<edit path="src/*.config.js" value="localhost">
+<<<<<<< SEARCH
+localhost:3000
+=======
+0.0.0.0:3000
+>>>>>>> REPLACE
+</edit>
+
+## Bulk Knowledge Update
+
+Update all matching knowledge entries:
+
+<known path="/:known:api_*" value="v1">v2</known>

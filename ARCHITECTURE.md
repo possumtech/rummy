@@ -218,8 +218,7 @@ filters by current content before overwriting.
 **`<unknown>`** — each tag creates a sticky `/:unknown:N` entry (domain `known`,
 state `full`). Unknowns persist across turns until explicitly dropped via
 `<drop path="/:unknown:N"/>`. The server deduplicates on insert. Unknowns appear
-in context position 7 (before the prompt) every turn. The server warns and retries
-(up to 3 times) if the model idles with unresolved unknowns.
+in context position 7 (before the prompt) every turn.
 
 **`<read>`** — promotes matching entries by setting `turn` to the current turn.
 Values are already in the store (from the file scanner or a previous write).
@@ -247,8 +246,16 @@ entry per match with state `proposed`. The client confirms and resolves.
 The client shows the question and resolves with the selected answer.
 
 **`keys` flag** — any store-facing tool with `keys` resolves the pattern and stores
-the matching key list as a `/:keys:N` info entry. No state change occurs. The model
-sees the list next turn and can issue targeted follow-up commands.
+the matching list as a `/:keys:N` info entry. No state change occurs. The entry
+includes per-path token count and a total so the model can gauge context budget
+impact before committing:
+
+```
+23 paths (4812 tokens total)
+src/auth.js (342)
+src/config.js (128)
+/:known:auth_flow (56)
+```
 
 ### 2.3 Promotion Model
 
@@ -270,9 +277,10 @@ keys removes the entry from the store entirely.
 
 1. **Prompt instructions + examples** — system prompt describes tool commands with format and examples. The model is told "You must respond with tool commands and may ONLY respond with tool commands."
 2. **htmlparser2 parsing** — forgiving parser recovers from unclosed tags, missing self-closing slashes, and malformed XML. Warns but does not reject.
-3. **Response healing** — every malformed response is recovered, never rejected. Plain text responses (no XML) are used as the summary. Commands without `<summary>` get a `"..."` placeholder injected. Empty responses get a placeholder. The server never throws on model output.
-4. **Unknowns gate** — if the model has unresolved `/:unknown:*` entries and called no investigation commands (`read`, `env`, etc.), the server warns and retries up to 3 times. Investigating resets the counter. After 3 idle warnings, the run completes anyway. The internal prompt on continuation turns shows "N unresolved unknowns."
-5. **Reasoning capture** — any free-form text between tags is captured as `/:reasoning:N` (audit only, hidden from model).
+3. **Response healing** (`ResponseHealer`) — every malformed response is recovered, never rejected. Plain text responses (no XML) are used as the summary. Commands without `<summary>` get a `"..."` placeholder injected. Empty responses get a placeholder. The server never throws on model output.
+4. **Forward motion** (`ResponseHealer`) — after each turn, assess whether the model made progress. Actions, reads, env commands, and knowledge writes count as progress. A summary-only turn with no actions = done. Repeated idle turns = stalled → force-complete after `RUMMY_MAX_STALLS` (default 3). Unknowns are context, not a gate.
+5. **Alternative philosophy resolution** — the parser silently accepts both attribute-style (`<read path="x"/>`) and body-style (`<read>x</read>`) for every tool. Legacy attributes (`key=""`, `file=""`) are silently remapped to `path=""`.
+6. **Reasoning capture** — any free-form text between tags is captured as `/:reasoning:N` (audit only, hidden from model).
 
 ### 2.6 Response Healing Philosophy
 

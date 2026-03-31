@@ -204,9 +204,7 @@ export default class TurnExecutor {
 		const hasAct = actionCalls.some((c) =>
 			["edit", "delete", "run"].includes(c.name),
 		);
-		const hasReads = actionCalls.some((c) =>
-			["read", "env"].includes(c.name),
-		);
+		const hasReads = actionCalls.some((c) => ["read", "env"].includes(c.name));
 		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
 		const flags = { hasAct, hasReads, hasWrites };
 
