@@ -5,6 +5,7 @@ import FileScanner from "./FileScanner.js";
 import HeuristicMatcher from "./HeuristicMatcher.js";
 import msg from "./messages.js";
 import PromptManager from "./PromptManager.js";
+import ResponseHealer from "./ResponseHealer.js";
 import XmlParser from "./XmlParser.js";
 
 export default class TurnExecutor {
@@ -204,23 +205,10 @@ export default class TurnExecutor {
 			["edit", "delete", "run"].includes(c.name),
 		);
 		const hasReads = actionCalls.some((c) => c.name === "read");
-		const flags = { hasAct, hasReads };
+		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
+		const flags = { hasAct, hasReads, hasWrites };
 
-		// Handle missing summary — always heal, never throw
-		if (!summaryText) {
-			const trimmed = content.trim();
-			if (commands.length === 0 && trimmed) {
-				// Plain text response — model skipped XML. Use as summary.
-				console.warn("[RUMMY] Healed: plain text response used as summary");
-				summaryText = trimmed.slice(0, 500);
-			} else {
-				// Empty response or commands without <summary> — inject placeholder
-				console.warn(
-					`[RUMMY] Healed: missing <summary>, injecting placeholder. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
-				);
-				summaryText = "...";
-			}
-		}
+		summaryText = ResponseHealer.healSummary(summaryText, content, commands);
 
 		// Commit usage
 		const usage = result.usage || {};

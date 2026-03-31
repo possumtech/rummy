@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
+import ResponseHealer from "./ResponseHealer.js";
 
 export default class AgentLoop {
 	#db;
@@ -147,13 +148,8 @@ export default class AgentLoop {
 			: modelContextSize;
 
 		let loopIteration = 0;
-		let unknownWarnings = 0;
-		let lastSummaryText = null;
-		let repetitionCount = 0;
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
-		const MAX_UNKNOWN_WARNINGS =
-			Number(process.env.RUMMY_MAX_UNKNOWN_WARNINGS) || 3;
-		const MAX_REPETITIONS = Number(process.env.RUMMY_MAX_REPETITIONS) || 3;
+		const healer = new ResponseHealer();
 
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
@@ -272,63 +268,10 @@ export default class AgentLoop {
 					flags: result.flags,
 				});
 
-				// Repetition detection: same summary + no new actions = stuck
-				if (
-					result.summaryText === lastSummaryText &&
-					!result.flags.hasAct &&
-					!result.flags.hasReads
-				) {
-					repetitionCount++;
-					if (repetitionCount >= MAX_REPETITIONS) {
-						console.warn(
-							`[RUMMY] Repetition detected: "${result.summaryText?.slice(0, 60)}" repeated ${repetitionCount} times. Force-completing.`,
-						);
-						const staleUnknowns = await this.#db.get_unknowns.all({
-							run_id: currentRunId,
-						});
-						for (const u of staleUnknowns) {
-							await this.#knownStore.demote(currentRunId, u.path);
-						}
-						await this.#db.update_run_status.run({
-							id: currentRunId,
-							status: "completed",
-						});
-						const out = {
-							run: currentAlias,
-							status: "completed",
-							turn: result.turn,
-						};
-						await hook.completed.emit({ sessionId, ...out });
-						return out;
-					}
-				} else {
-					repetitionCount = 0;
-				}
-				lastSummaryText = result.summaryText;
+				const progress = healer.assessProgress(result);
+				if (progress.continue) continue;
 
-				// Continue if model made action calls (reads promote files, env gathers info)
-				if (result.flags.hasReads || result.flags.hasAct) {
-					unknownWarnings = 0;
-					continue;
-				}
-
-				// Unknowns gate: if unknowns exist and model isn't investigating, warn and retry
-				const openUnknowns = await this.#knownStore.countUnknowns(currentRunId);
-				if (openUnknowns > 0 && unknownWarnings < MAX_UNKNOWN_WARNINGS) {
-					unknownWarnings++;
-					console.warn(
-						`[RUMMY] Unknown warning ${unknownWarnings}/${MAX_UNKNOWN_WARNINGS}: ${openUnknowns} unresolved`,
-					);
-					await this.#hooks.run.progress.emit({
-						sessionId,
-						run: currentAlias,
-						turn: result.turn,
-						status: "retrying",
-					});
-					continue;
-				}
-
-				// Completed (or gave up after max unknown warnings)
+				// Stalled — force complete
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: "completed",
