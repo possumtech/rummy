@@ -66,7 +66,6 @@ export default class AgentLoop {
 		}
 
 		parts.push(`Allowed: ${allowed}`);
-		parts.push("Required: <summary/>");
 		return parts.join("\n");
 	}
 
@@ -166,6 +165,10 @@ export default class AgentLoop {
 				type: String(type || "ask"),
 				config: JSON.stringify({ model: requestedModel, noContext }),
 				alias: currentAlias,
+			});
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "running",
 			});
 		}
 

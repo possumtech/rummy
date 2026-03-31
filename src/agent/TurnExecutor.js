@@ -6,7 +6,6 @@ import HeuristicMatcher from "./HeuristicMatcher.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import PromptManager from "./PromptManager.js";
-import ResponseHealer from "./ResponseHealer.js";
 import XmlParser from "./XmlParser.js";
 
 export default class TurnExecutor {
@@ -217,7 +216,7 @@ export default class TurnExecutor {
 		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
 		const flags = { hasAct, hasReads, hasWrites };
 
-		summaryText = ResponseHealer.healSummary(summaryText, content, commands);
+		// summaryText stays null if the model didn't emit <summary/>
 
 		// Commit usage
 		const usage = result.usage || {};
@@ -412,18 +411,20 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Step 4: Summary
-		const summaryPath = await this.#knownStore.nextResultPath(
-			currentRunId,
-			"summary",
-		);
-		await this.#knownStore.upsert(
-			currentRunId,
-			turn,
-			summaryPath,
-			summaryText,
-			"summary",
-		);
+		// Step 4: Summary (only if the model explicitly emitted one)
+		if (summaryText) {
+			const summaryPath = await this.#knownStore.nextResultPath(
+				currentRunId,
+				"summary",
+			);
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				summaryPath,
+				summaryText,
+				"summary",
+			);
+		}
 
 		// Async token recount — not on the hot path
 		this.#knownStore.recountTokens(currentRunId, turn).catch((err) => {

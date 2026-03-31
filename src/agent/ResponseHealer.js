@@ -1,62 +1,39 @@
 const MAX_STALLS = Number(process.env.RUMMY_MAX_STALLS) || 3;
 
 export default class ResponseHealer {
-	#lastSummary = null;
+	#lastFlags = null;
 	#stallCount = 0;
 
 	/**
-	 * Heal a malformed response. Pure — no state mutation.
-	 * Recovers summary from whatever the model gave us.
-	 * Never throws. Always returns a usable summaryText.
-	 */
-	static healSummary(summaryText, content, commands) {
-		if (summaryText) return summaryText;
-
-		const trimmed = content.trim();
-
-		if (commands.length === 0 && trimmed) {
-			console.warn("[RUMMY] Healed: plain text response used as summary");
-			return trimmed.slice(0, 500);
-		}
-
-		console.warn(
-			`[RUMMY] Healed: missing <summary>, injecting placeholder. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
-		);
-		return "...";
-	}
-
-	/**
-	 * Assess whether the run made forward progress this turn.
-	 * Stateful — tracks across turns within a run.
+	 * Assess whether the run should continue after this turn.
 	 *
 	 * Returns { continue: boolean, reason?: string }
+	 *   continue=false → run should complete
 	 *   continue=true  → loop should keep going
-	 *   continue=false → run should complete (stalled out)
+	 *
+	 * Rules:
+	 *   1. Model emitted <summary/> → done (summary is the termination signal)
+	 *   2. Model did nothing (no tools, no summary) → stall counter
+	 *   3. Model used tools but no summary → continue (working)
 	 */
 	assessProgress({ summaryText, flags }) {
+		if (summaryText) {
+			return { continue: false };
+		}
+
 		const didSomething = flags.hasAct || flags.hasReads || flags.hasWrites;
 
 		if (didSomething) {
 			this.#stallCount = 0;
-			this.#lastSummary = summaryText;
+			this.#lastFlags = flags;
 			return { continue: true };
 		}
 
-		// Summary-only turn — model is done or stuck.
-		// First idle turn after progress (or first turn ever) = done.
-		// Repeated idle turns = stalling.
+		// No summary, no tools — model produced nothing useful
 		this.#stallCount++;
-		const repeated = summaryText === this.#lastSummary;
-		this.#lastSummary = summaryText;
-
-		if (this.#stallCount === 1 && !repeated) {
-			return { continue: false };
-		}
 
 		if (this.#stallCount >= MAX_STALLS) {
-			const reason = repeated
-				? `Repeated "${summaryText?.slice(0, 60)}" ${this.#stallCount} times`
-				: `${this.#stallCount} idle turns with no progress`;
+			const reason = `${this.#stallCount} idle turns with no tools and no summary`;
 			console.warn(`[RUMMY] Stalled: ${reason}. Force-completing.`);
 			return { continue: false, reason };
 		}
@@ -68,7 +45,7 @@ export default class ResponseHealer {
 	 * Reset state for a new run or after resolution resume.
 	 */
 	reset() {
-		this.#lastSummary = null;
+		this.#lastFlags = null;
 		this.#stallCount = 0;
 	}
 }

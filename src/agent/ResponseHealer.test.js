@@ -3,132 +3,126 @@ import { describe, it } from "node:test";
 import ResponseHealer from "./ResponseHealer.js";
 
 describe("ResponseHealer", () => {
-	describe("healSummary", () => {
-		it("returns existing summary unchanged", () => {
-			const result = ResponseHealer.healSummary("done", "", []);
-			assert.strictEqual(result, "done");
-		});
-
-		it("uses plain text as summary when no commands", () => {
-			const result = ResponseHealer.healSummary(null, "I did the thing.", []);
-			assert.strictEqual(result, "I did the thing.");
-		});
-
-		it("truncates long plain text to 500 chars", () => {
-			const long = "x".repeat(600);
-			const result = ResponseHealer.healSummary(null, long, []);
-			assert.strictEqual(result.length, 500);
-		});
-
-		it("injects placeholder when commands exist but no summary", () => {
-			const result = ResponseHealer.healSummary(null, "", [{ name: "read" }]);
-			assert.strictEqual(result, "...");
-		});
-
-		it("injects placeholder for empty content with no commands", () => {
-			const result = ResponseHealer.healSummary(null, "", []);
-			assert.strictEqual(result, "...");
-		});
-
-		it("injects placeholder for whitespace-only content", () => {
-			const result = ResponseHealer.healSummary(null, "   \n  ", []);
-			assert.strictEqual(result, "...");
-		});
-	});
-
 	describe("assessProgress", () => {
-		it("actions count as progress", () => {
+		it("summary terminates the run", () => {
 			const healer = new ResponseHealer();
 			const result = healer.assessProgress({
-				summaryText: "did stuff",
+				summaryText: "all done",
+				flags: { hasAct: true, hasReads: true, hasWrites: true },
+			});
+			assert.strictEqual(result.continue, false);
+		});
+
+		it("summary terminates even with no tools", () => {
+			const healer = new ResponseHealer();
+			const result = healer.assessProgress({
+				summaryText: "finished",
+				flags: { hasAct: false, hasReads: false, hasWrites: false },
+			});
+			assert.strictEqual(result.continue, false);
+		});
+
+		it("tools without summary continues", () => {
+			const healer = new ResponseHealer();
+			const result = healer.assessProgress({
+				summaryText: null,
 				flags: { hasAct: true, hasReads: false, hasWrites: false },
 			});
 			assert.strictEqual(result.continue, true);
 		});
 
-		it("reads count as progress", () => {
+		it("reads without summary continues", () => {
 			const healer = new ResponseHealer();
 			const result = healer.assessProgress({
-				summaryText: "reading files",
+				summaryText: null,
 				flags: { hasAct: false, hasReads: true, hasWrites: false },
 			});
 			assert.strictEqual(result.continue, true);
 		});
 
-		it("writes count as progress", () => {
+		it("writes without summary continues", () => {
 			const healer = new ResponseHealer();
 			const result = healer.assessProgress({
-				summaryText: "saving knowledge",
+				summaryText: null,
 				flags: { hasAct: false, hasReads: false, hasWrites: true },
 			});
 			assert.strictEqual(result.continue, true);
 		});
 
-		it("first idle turn completes", () => {
+		it("no tools no summary increments stall counter", () => {
 			const healer = new ResponseHealer();
+			const r1 = healer.assessProgress({
+				summaryText: null,
+				flags: { hasAct: false, hasReads: false, hasWrites: false },
+			});
+			assert.strictEqual(r1.continue, true);
+		});
+
+		it("stalls force-complete after MAX_STALLS idle turns", () => {
+			const healer = new ResponseHealer();
+			for (let i = 0; i < 2; i++) {
+				healer.assessProgress({
+					summaryText: null,
+					flags: { hasAct: false, hasReads: false, hasWrites: false },
+				});
+			}
 			const result = healer.assessProgress({
-				summaryText: "all done",
+				summaryText: null,
 				flags: { hasAct: false, hasReads: false, hasWrites: false },
 			});
 			assert.strictEqual(result.continue, false);
+			assert.ok(result.reason);
 		});
 
-		it("repeated idle after progress stalls eventually", () => {
+		it("tools reset stall counter", () => {
 			const healer = new ResponseHealer();
 
-			// First turn: progress
+			// Two idle turns
 			healer.assessProgress({
-				summaryText: "reading",
+				summaryText: null,
+				flags: { hasAct: false, hasReads: false, hasWrites: false },
+			});
+			healer.assessProgress({
+				summaryText: null,
+				flags: { hasAct: false, hasReads: false, hasWrites: false },
+			});
+
+			// Tool use resets
+			healer.assessProgress({
+				summaryText: null,
 				flags: { hasAct: false, hasReads: true, hasWrites: false },
 			});
 
-			// Now idle with same summary — stalling
-			for (let i = 0; i < 2; i++) {
-				const r = healer.assessProgress({
-					summaryText: "stuck",
-					flags: { hasAct: false, hasReads: false, hasWrites: false },
-				});
-				if (i === 0) assert.strictEqual(r.continue, false);
-			}
-		});
-
-		it("progress resets stall counter", () => {
-			const healer = new ResponseHealer();
-
-			// Idle
+			// Two more idle — should not hit MAX_STALLS yet
 			healer.assessProgress({
-				summaryText: "idle 1",
+				summaryText: null,
 				flags: { hasAct: false, hasReads: false, hasWrites: false },
 			});
-
-			// Progress — resets
-			healer.assessProgress({
-				summaryText: "working",
-				flags: { hasAct: true, hasReads: false, hasWrites: false },
-			});
-
-			// Idle again — first idle after progress = done, not stall
 			const result = healer.assessProgress({
-				summaryText: "done now",
+				summaryText: null,
 				flags: { hasAct: false, hasReads: false, hasWrites: false },
 			});
-			assert.strictEqual(result.continue, false);
-			assert.ok(!result.reason);
+			assert.strictEqual(result.continue, true);
 		});
 
 		it("reset clears state", () => {
 			const healer = new ResponseHealer();
 			healer.assessProgress({
-				summaryText: "x",
+				summaryText: null,
+				flags: { hasAct: false, hasReads: false, hasWrites: false },
+			});
+			healer.assessProgress({
+				summaryText: null,
 				flags: { hasAct: false, hasReads: false, hasWrites: false },
 			});
 			healer.reset();
+
+			// After reset, stall counter is 0 again
 			const result = healer.assessProgress({
-				summaryText: "fresh start",
+				summaryText: null,
 				flags: { hasAct: false, hasReads: false, hasWrites: false },
 			});
-			assert.strictEqual(result.continue, false);
-			assert.ok(!result.reason);
+			assert.strictEqual(result.continue, true);
 		});
 	});
 });
