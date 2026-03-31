@@ -1,10 +1,11 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
 	run_id, turn, path, value, scheme, state, hash, meta
-	, tokens, updated_at
+	, tokens, tokens_full, updated_at
 )
 VALUES (
 	:run_id, :turn, :path, :value, :scheme, :state, :hash, :meta
+	, length(:value) / 4
 	, length(:value) / 4
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
@@ -15,12 +16,13 @@ ON CONFLICT (run_id, path) DO UPDATE SET
 	, meta = COALESCE(excluded.meta, known_entries.meta)
 	, turn = excluded.turn
 	, tokens = length(excluded.value) / 4
+	, tokens_full = length(excluded.value) / 4
 	, write_count = known_entries.write_count + 1
 	, updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
 
 -- PREP: recount_tokens
 UPDATE known_entries
-SET tokens = :tokens
+SET tokens = :tokens, tokens_full = :tokens
 WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_stale_tokens
@@ -51,6 +53,15 @@ UPDATE known_entries
 SET
 	state = :state
 	, turn = CASE WHEN :state = 'ignore' THEN 0 ELSE turn END
+	, tokens = CASE
+		WHEN :state = 'ignore' THEN 0
+		WHEN
+			:state = 'symbols'
+			AND json_valid(meta)
+			AND json_extract(meta, '$.symbols') IS NOT NULL
+			THEN length(json_extract(meta, '$.symbols')) / 4
+		ELSE tokens_full
+	END
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND glorp(:pattern, path) AND scheme IS NULL;
 
@@ -58,6 +69,7 @@ WHERE run_id = :run_id AND glorp(:pattern, path) AND scheme IS NULL;
 UPDATE known_entries
 SET
 	turn = :turn
+	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
@@ -65,6 +77,7 @@ WHERE run_id = :run_id AND path = :path;
 UPDATE known_entries
 SET
 	turn = 0
+	, tokens = length(path) / 4
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
@@ -93,6 +106,7 @@ WHERE run_id = :run_id AND path = :path;
 UPDATE known_entries
 SET
 	turn = :turn
+	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
@@ -103,6 +117,7 @@ WHERE
 UPDATE known_entries
 SET
 	turn = 0
+	, tokens = length(path) / 4
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
@@ -110,7 +125,7 @@ WHERE
 	AND (:value IS NULL OR glorp(:value, value));
 
 -- PREP: get_entries_by_pattern
-SELECT path, value, scheme, state, tokens, meta
+SELECT path, value, scheme, state, tokens_full, meta
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -130,6 +145,7 @@ UPDATE known_entries
 SET
 	value = :new_value
 	, tokens = length(:new_value) / 4
+	, tokens_full = length(:new_value) / 4
 	, write_count = write_count + 1
 	, updated_at = CURRENT_TIMESTAMP
 WHERE

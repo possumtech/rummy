@@ -101,13 +101,13 @@ describe("Pattern operations integration", () => {
 			assert.strictEqual(matches.length, 1);
 		});
 
-		it("includes tokens in results", async () => {
+		it("includes tokens_full in results", async () => {
 			const matches = await store.getEntriesByPattern(
 				RUN_ID,
 				"src/app.js",
 				null,
 			);
-			assert.ok(typeof matches[0].tokens === "number");
+			assert.ok(typeof matches[0].tokens_full === "number");
 		});
 	});
 

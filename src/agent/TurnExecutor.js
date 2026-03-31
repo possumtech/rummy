@@ -235,9 +235,9 @@ export default class TurnExecutor {
 					cmd.path,
 					cmd.value,
 				);
-				const total = matches.reduce((sum, m) => sum + m.tokens, 0);
+				const total = matches.reduce((sum, m) => sum + m.tokens_full, 0);
 				const listing = matches
-					.map((m) => `${m.path} (${m.tokens})`)
+					.map((m) => `${m.path} (${m.tokens_full})`)
 					.join("\n");
 				const keysPath = await this.#knownStore.nextResultPath(
 					currentRunId,
@@ -370,9 +370,9 @@ export default class TurnExecutor {
 					cmd.path,
 					cmd.value,
 				);
-				const total = matches.reduce((sum, m) => sum + m.tokens, 0);
+				const total = matches.reduce((sum, m) => sum + m.tokens_full, 0);
 				const listing = matches
-					.map((m) => `${m.path} (${m.tokens})`)
+					.map((m) => `${m.path} (${m.tokens_full})`)
 					.join("\n");
 				const keysPath = await this.#knownStore.nextResultPath(
 					currentRunId,

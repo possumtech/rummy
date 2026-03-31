@@ -30,7 +30,6 @@ WHERE
 	AND scheme IS NULL
 	AND state != 'ignore'
 	AND turn = 0
-	AND state != 'symbols'
 ORDER BY path;
 
 -- PREP: get_symbol_files
@@ -40,6 +39,7 @@ WHERE
 	run_id = :run_id
 	AND scheme IS NULL
 	AND state = 'symbols'
+	AND turn > 0
 ORDER BY path;
 
 -- PREP: get_full_files

@@ -47,7 +47,7 @@ SELECT
 		WHEN scheme IN ('system', 'prompt') THEN 'system'
 		WHEN scheme IN ('http', 'https') AND turn > 0 THEN 'files'
 		WHEN scheme IN ('http', 'https') THEN 'keys'
-		WHEN scheme IS NULL AND turn > 0 AND state != 'symbols' THEN 'files'
+		WHEN scheme IS NULL AND turn > 0 THEN 'files'
 		WHEN scheme IS NULL THEN 'keys'
 		WHEN scheme = 'known' AND turn > 0 THEN 'known'
 		WHEN scheme = 'known' AND turn = 0 THEN 'keys'

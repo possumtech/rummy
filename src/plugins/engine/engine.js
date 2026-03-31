@@ -13,7 +13,6 @@ export default class Engine {
 
 			const entries = await db.get_promoted_entries.all({ run_id: runId });
 			const demoted = await enforce(
-				db,
 				store,
 				runId,
 				sequence,
@@ -65,7 +64,7 @@ function compareDemotion(a, b) {
 	return b.tokens - a.tokens;
 }
 
-async function enforce(db, store, runId, currentTurn, budget, total, entries) {
+async function enforce(store, runId, currentTurn, budget, total, entries) {
 	const candidates = entries
 		.filter((e) => e.turn !== currentTurn)
 		.toSorted(compareDemotion);
@@ -79,21 +78,18 @@ async function enforce(db, store, runId, currentTurn, budget, total, entries) {
 		const tier = classify(entry);
 
 		if (tier === "file_full") {
-			await db.downgrade_file_to_symbols.run({
-				run_id: runId,
-				path: entry.path,
-			});
+			const before = entry.tokens;
+			await store.setFileState(runId, entry.path, "symbols");
 			const meta = await store.getMeta(runId, entry.path);
-			const symbolsLen = meta?.symbols?.length ?? 0;
-			const symbolsTokens = (symbolsLen / 4) | 0;
-			const saved = entry.tokens - symbolsTokens;
+			const symbolsTokens = ((meta?.symbols?.length ?? 0) / 4) | 0;
+			const saved = before - symbolsTokens;
 			remaining -= saved;
 			demoted.push({ path: entry.path, saved });
 			continue;
 		}
 
-		await store.demote(runId, entry.path);
 		remaining -= entry.tokens;
+		await store.demote(runId, entry.path);
 		demoted.push({ path: entry.path, saved: entry.tokens });
 	}
 
