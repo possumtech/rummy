@@ -39,6 +39,37 @@ export default class AgentLoop {
 		return `${prefix}${row.next_seq}`;
 	}
 
+	#buildContinuationPrompt(type, turn, maxTurns, contextSize, report) {
+		const allowed =
+			type === "act"
+				? "<unknown/> <known/> <read/> <drop/> <edit/> <delete/> <run/> <env/> <ask_user/> <summary/>"
+				: "<unknown/> <known/> <read/> <drop/> <env/> <ask_user/> <summary/>";
+
+		const parts = [];
+
+		if (report) {
+			const dist = report.contextDistribution || [];
+			const usedTokens = dist.reduce((sum, b) => sum + b.tokens, 0);
+			const pct = contextSize
+				? Math.round((usedTokens / contextSize) * 100)
+				: 0;
+			const status = `Turn ${turn}/${maxTurns} · ${usedTokens} tokens (${pct}%)`;
+			if (report.unknownCount > 0) {
+				parts.push(
+					`${status} · ${report.unknownCount} unknown${report.unknownCount > 1 ? "s" : ""} remaining`,
+				);
+			} else {
+				parts.push(status);
+			}
+		} else {
+			parts.push(`Turn ${turn}/${maxTurns}`);
+		}
+
+		parts.push(`Allowed: ${allowed}`);
+		parts.push("Required: <summary/>");
+		return parts.join("\n");
+	}
+
 	async run(
 		type,
 		sessionId,
@@ -150,6 +181,7 @@ export default class AgentLoop {
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
 		const healer = new ResponseHealer();
+		let lastTurnReport = null;
 
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
@@ -176,21 +208,13 @@ export default class AgentLoop {
 				if (loopIteration === 1) {
 					turnPrompt = prompt;
 				} else {
-					const unknownCount =
-						await this.#knownStore.countUnknowns(currentRunId);
-					const allowed =
-						type === "act"
-							? "<unknown/> <known/> <read/> <drop/> <edit/> <delete/> <run/> <env/> <ask_user/> <summary/>"
-							: "<unknown/> <known/> <read/> <drop/> <env/> <ask_user/> <summary/>";
-					const parts = [];
-					if (unknownCount > 0) {
-						parts.push(
-							`${unknownCount} unresolved unknown${unknownCount > 1 ? "s" : ""}. Use <read/> or <env/> to investigate, or <drop/> to dismiss.`,
-						);
-					}
-					parts.push(`Allowed: ${allowed}`);
-					parts.push("Required: <summary/>");
-					turnPrompt = parts.join("\n");
+					turnPrompt = this.#buildContinuationPrompt(
+						type,
+						loopIteration,
+						MAX_LOOP_ITERATIONS,
+						contextSize,
+						lastTurnReport,
+					);
 				}
 
 				const result = await this.#turnExecutor.execute({
@@ -267,6 +291,16 @@ export default class AgentLoop {
 					turn: result.turn,
 					flags: result.flags,
 				});
+
+				lastTurnReport = {
+					turn: result.turn,
+					flags: result.flags,
+					summary: latestSummary?.value || "",
+					unknownCount: unknowns.length,
+					usage: runUsage,
+					contextDistribution:
+						await this.#knownStore.getContextDistribution(currentRunId),
+				};
 
 				const progress = healer.assessProgress(result);
 				if (progress.continue) continue;
