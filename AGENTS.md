@@ -4,10 +4,13 @@
 
 URI-based K/V store (`known://`, `edit://`, `summary://`, bare paths for files).
 Pattern tools via glorp (glob/regex on `path`/`value`, `keys` flag for preview).
-ResponseHealer (forward motion, no unknowns gate). CASE WHEN CHECK constraints
-per scheme. Web search (SearXNG) and URL fetch (Playwright + Readability + Turndown).
+ResponseHealer (forward motion, no unknowns gate). CHECK constraints per scheme.
+Web search (SearXNG) and URL fetch (Playwright + Readability + Turndown).
 Move/copy across file and K/V namespaces. Edit search/replace attribute mode.
-75 unit + 74 integration + 50 E2E.
+`turn_context` materialized view via `v_model_context` VIEW + SQL functions
+(`countTokens`, `schemeOf`, `langFor`, `tierOf`, `fidelityOf`). Generated `scheme`
+column. `file_constraints` table for client visibility (project-scoped).
+80 unit + 81 integration + 50 E2E.
 
 ---
 
@@ -47,18 +50,22 @@ existing plugins (priority 10), before context assembly (reads `turn_context`).
 - [x] Demotion report injection + no report when unnecessary
 - [x] Symbol file query: turn 0 hidden, turn > 0 visible, demoted in stored files
 
-### turn_context Refactor ✓
+### turn_context + SQL Refactor ✓
 
 Materialized `turn_context` table replaces the fragmented query pipeline.
+SQL functions replace JS classification. File constraints separated from fidelity.
 
-- [x] **Schema** — `turn_context` table (run_id, turn, ordinal, path, bucket, content, tokens, meta)
-- [x] **tokens split** — `tokens` (context cost) + `tokens_full` (raw value cost) in `known_entries`
-- [x] **Engine materializes** — after budget enforcement, writes turn_context from known_entries
-- [x] **ContextAssembler.assembleFromTurnContext()** — renders from turn_context rows
-- [x] **TurnExecutor** — systemPrompt built before hooks, passed via RummyContext
-- [x] **AgentLoop** — context_distribution reads from `get_turn_distribution`
-- [x] **Deleted** — `getModelContext()`, `getContextDistribution()`, `get_context_distribution` SQL, `v_turn_history` view
-- [x] **Tests** — 80 unit + 82 integration, all passing
+- [x] **turn_context table** — `scheme` (generated), `fidelity` (full/summary/index), `content`, `tokens`
+- [x] **v_model_context VIEW** — CTEs + window functions + `fidelityOf()`, `countTokens()`
+- [x] **SQL functions** — `countTokens`, `schemeOf`, `langFor`, `tierOf`, `fidelityOf` in `src/sql/functions/`
+- [x] **Generated scheme** — `known_entries.scheme` is `GENERATED ALWAYS AS (schemeOf(path)) STORED`
+- [x] **file_constraints table** — project-scoped client visibility (`active`/`readonly`/`ignore`)
+- [x] **File states simplified** — only `full` and `symbols` in `known_entries` (no client concerns)
+- [x] **tokens split** — `tokens` (context cost) + `tokens_full` (raw value cost)
+- [x] **CHECK constraints** — all numeric fields, temperature/context_limit bounds, sequence minimums
+- [x] **Engine materializes** — `INSERT INTO turn_context SELECT FROM v_model_context` + synthetic rows
+- [x] **ContextAssembler** — routes by `scheme` + `fidelity`, constraint labels from `meta.constraint`
+- [x] **Deleted** — `getModelContext()`, `getContextDistribution()`, 6 dead queries, `v_turn_history`, `bucketOf`
 
 ### Phase 2: Metrics
 

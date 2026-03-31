@@ -19,33 +19,36 @@ IS the model's memory.
 CREATE TABLE known_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT
     , run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-    , turn INTEGER NOT NULL DEFAULT 0
+    , turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
     , path TEXT NOT NULL
     , value TEXT NOT NULL DEFAULT ''
-    , scheme TEXT
+    , scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
     , state TEXT NOT NULL
     , hash TEXT
     , meta JSON
-    , tokens INTEGER NOT NULL DEFAULT 0
-    , refs INTEGER NOT NULL DEFAULT 0
-    , write_count INTEGER NOT NULL DEFAULT 1
+    , tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
+    , tokens_full INTEGER NOT NULL DEFAULT 0 CHECK (tokens_full >= 0)
+    , refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
+    , write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
     , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     , updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     , CHECK (CASE
         WHEN scheme IS NULL
-            THEN state IN ('full', 'readonly', 'active', 'ignore', 'symbols')
+            THEN state IN ('full', 'symbols')
         WHEN scheme IN ('known', 'unknown')
             THEN state IN ('full', 'stored')
         WHEN scheme = 'edit'
             THEN state IN ('proposed', 'pass', 'warn', 'error')
-        WHEN scheme IN ('run', 'env', 'delete', 'ask_user')
+        WHEN scheme IN ('run', 'env', 'delete', 'ask_user', 'move', 'copy')
             THEN state IN ('proposed', 'pass', 'warn')
+        WHEN scheme IN ('read', 'drop')
+            THEN state IN ('pass', 'info')
         WHEN scheme = 'summary' THEN state = 'summary'
-        WHEN scheme IN ('system', 'user', 'reasoning', 'prompt', 'keys', 'inject')
+        WHEN scheme IN ('system', 'user', 'reasoning', 'prompt', 'keys', 'inject', 'search')
             THEN state = 'info'
         WHEN scheme = 'retry' THEN state = 'error'
         WHEN scheme IN ('http', 'https')
-            THEN state IN ('full', 'readonly')
+            THEN state IN ('full')
         ELSE 0
       END)
 );
@@ -56,11 +59,12 @@ CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 
 **Columns:**
 - `path` — the entry's address. Bare file paths (`src/app.js`) or URIs (`known://auth`, `edit://7`).
-- `scheme` — extracted from the URI (`known`, `edit`, `summary`, etc.) or NULL for bare file paths. Drives the CHECK constraint and indexed queries.
+- `scheme` — generated column: `schemeOf(path)`. Always correct by definition. Drives the CHECK constraint and indexed queries.
 - `turn` — integer sequence number. Heat signal for files, production turn for results.
 - `hash` — SHA-256 content hash for file change detection.
-- `meta` — JSON metadata. Files store symbols. Edits store `{ file, blocks, patch }`. Commands store `{ command }`.
-- `tokens` — `length(value) / 4` on UPSERT. Context budget tracking.
+- `meta` — JSON metadata. Files store `{ symbols, constraint }`. Edits store `{ file, blocks, patch }`. Commands store `{ command }`.
+- `tokens` — context cost at current fidelity. Updated on every state change (promote, demote, setFileState).
+- `tokens_full` — cost of the raw value at full fidelity. Set on UPSERT, only changes when value changes.
 - `refs` — cross-reference count. Reserved for the relevance engine.
 - `write_count` — incremented on every UPSERT. Volatility tracking.
 
@@ -71,13 +75,16 @@ uses `scheme://identifier`.
 
 **Files** (`scheme IS NULL`) — project files bootstrapped at run start:
 
-| State | Meaning | Model sees |
-|-------|---------|------------|
-| `full` | Full content, editable | `file` |
-| `readonly` | Full content, not editable | `file:readonly` |
-| `active` | Client-promoted (editor focus) | `file:active` |
-| `ignore` | Excluded from context | *(hidden)* |
-| `symbols` | Signature summaries only | `file:symbols` |
+| State | Fidelity | Model sees |
+|-------|----------|------------|
+| `full` | full | `file` (with content) |
+| `symbols` | summary | `file:symbols` (signatures only) |
+| *(turn 0)* | index | path listed in File Index |
+
+Client visibility constraints (`active`, `readonly`, `ignore`) are stored in the
+`file_constraints` table (project-scoped), not in `known_entries.state`. The
+FileScanner stores the constraint in `meta.constraint` for rendering labels.
+Ignored files are excluded from scanning entirely.
 
 **Knowledge** (`known://`, `unknown://`) — model-emitted:
 
@@ -352,47 +359,53 @@ as a `prompt://N` entry.
 ### 3.1 System Message Contents
 
 1. **Role description + tool commands** — from `prompt.ask.md` or `prompt.act.md`
-2. **Context** — markdown rendered from the K/V store by ContextAssembler
+2. **Context** — markdown rendered from `turn_context` by ContextAssembler
 
-### 3.2 Context Ordering
+### 3.2 Context Materialization
 
-The context array is ordered to optimize the model's attention gradient.
-Stable background at the top, actionable items at the bottom:
+Each turn, the engine materializes `turn_context` from `known_entries` via the
+`v_model_context` VIEW. The VIEW applies `fidelityOf()` to classify each entry
+and `countTokens()` for accurate token counts. Ordinal assignment uses
+`ROW_NUMBER()` to establish render order:
 
-1. **Active non-file keys** — `known://*` at turn > 0 (working memory)
-2. **Stored non-file keys** — `known://*` at turn 0 (discoverable, key only)
-3. **Stored file paths** — files at turn 0 (project index, path only)
-4. **Symbol files** — files with `file:symbols` state
-5. **Full files** — files at turn > 0 (actual code being worked on)
-6. **Chronological results** — tool command results and summaries in id order
-7. **Unknowns** — previous turn's `unknown` entries (uncertainty boundary)
-8. **User prompt** — `prompt://N` (the actual task, always last)
+1. **Knowledge** — `known://*` at fidelity `full` (working memory)
+2. **Stored keys** — `known://*` at fidelity `index` (discoverable, key only)
+3. **File Index** — files at fidelity `index` (path listing)
+4. **Symbol files** — files at fidelity `summary` (signatures only)
+5. **Full files** — files at fidelity `full` (complete content)
+6. **Results** — tool command results and summaries in id order
+7. **Unknowns** — `unknown://*` entries (uncertainty boundary)
+8. **Prompt** — latest `prompt://N` (the actual task, always last)
 
-### 3.3 Expansion Rule
+The system prompt and continuation prompt are inserted as synthetic rows
+(not from the VIEW) by the engine.
 
-- `turn > 0` → expanded (value included in context)
-- `turn == 0` → collapsed (key only, no value — purgatory)
+### 3.3 Fidelity
 
-`read(key)` promotes by setting turn to current turn. `drop(key)` demotes by
-setting turn to 0. All files start at turn 0 unless promoted by the client,
-the model, or the relevance engine.
+Each entry in `turn_context` has a `fidelity` level:
+
+- **`full`** — complete content in context (file content, known values, results)
+- **`summary`** — partial representation (file symbols/signatures)
+- **`index`** — path/key listed, no content (file index, stored key listing)
+
+Fidelity is derived from `scheme`, `state`, and `turn` via `fidelityOf()`.
+`read(key)` promotes by setting turn to current turn (→ fidelity `full`).
+`drop(key)` demotes by setting turn to 0 (→ fidelity `index`).
 
 ### 3.4 File Bootstrap
 
-At run start, the file scanner populates `known_entries` from disk. This is how
-files enter the known store — the model never sees a separate file listing.
+At run start, the file scanner populates `known_entries` from disk. The scanner
+checks `file_constraints` for client visibility rules: ignored files are skipped
+entirely, and `active`/`readonly` constraints are stored in `meta.constraint`.
 
-| Source | Domain | State | Turn | Value |
-|--------|--------|-------|------|-------|
-| Client-promoted `activate` | `file` | `active` | current | Full file contents |
-| Client-promoted `readOnly` | `file` | `readonly` | current | Full file contents |
-| Client-excluded `ignore` | `file` | `ignore` | 0 | Empty |
-| Agent-read (from `<read>`) | `file` | `full` | current | Full file contents |
-| Root files (no `/` in path) | `file` | `full` | current | Full file contents |
-| All other tracked files | `file` | `full` | 0 | Full file contents (path-only in context) |
+| Source | State | Turn | Value |
+|--------|-------|------|-------|
+| Agent-read (from `<read>`) | `full` | current | Full file contents |
+| Root files (no `/` in path) | `full` | current | Full file contents |
+| All other tracked files | `full` | 0 | Full file contents (path-only in context) |
 
 Files at turn 0 appear as paths in the File Index. Files at turn > 0 appear with
-full content in the Files section. The `symbols` state exists for future use by
+full content in the Files section. The `symbols` state exists for use by
 the Relevance Engine — a middle tier between full content and path-only. Symbols
 are extracted by antlrmap/ctags and stored in `meta.symbols` on every file scan,
 ready for when the Relevance Engine introduces heat-based promotion tiers.
@@ -402,13 +415,14 @@ ready for when the Relevance Engine introduces heat-based promotion tiers.
 Each turn, the server scans the project's files and compares against
 `known_entries.hash`:
 
-1. Scan project for all files and their current hashes
-2. Across all active runs, add/update/delete file entries to match disk state
-3. Update the `turn` field on files that are: client-promoted (`active`),
-   model-read (`full`), or newly modified (hash changed)
+1. Load `file_constraints` for the project — skip ignored files
+2. Scan project for all non-ignored files and their current hashes
+3. Across all active runs, add/update/delete file entries to match disk state
+4. Store constraint in `meta.constraint` for VIEW rendering
+5. Update the `turn` field on files that are model-read or newly modified
 
 Files whose `turn` matches the current turn were recently engaged — this is
-the heat signal for future context budgeting.
+the heat signal for context budgeting.
 
 The `refs` field will store cross-reference counts. The `hash` field enables
 change detection without re-reading file contents. Both are inert (default 0 /
@@ -472,14 +486,16 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 
 #### File Visibility (Project-Scoped)
 
+Writes to `file_constraints` table. Constraints persist across runs.
+
 | Method | Params | Description |
 |--------|--------|-------------|
-| `activate` | `pattern` | Bootstrap file as `file:active` |
-| `readOnly` | `pattern` | Bootstrap file as `file:readonly` |
-| `ignore` | `pattern` | Bootstrap file as `file:ignore` |
-| `drop` | `pattern` | Remove client constraint |
-| `fileStatus` | `path` | Get file's current state |
-| `getFiles` | — | Get project tree with states |
+| `activate` | `pattern` | Set constraint to `active` (priority in context) |
+| `readOnly` | `pattern` | Set constraint to `readonly` (edits blocked) |
+| `ignore` | `pattern` | Set constraint to `ignore` (excluded from scanning) |
+| `drop` | `pattern` | Remove constraint (revert to default) |
+| `fileStatus` | `path` | Get file state + constraint |
+| `getFiles` | — | Get project tree |
 
 #### Run Execution
 
@@ -723,6 +739,8 @@ hooks.onTurn(async (rummy) => {
 | `sequence` | Number | Turn sequence number |
 | `noContext` | Boolean | True in Lite mode |
 | `contextSize` | Number | Token budget |
+| `systemPrompt` | String | Built system prompt for this turn |
+| `loopPrompt` | String | User/continuation prompt for this turn |
 | `system` | Object | System node |
 | `contextEl` | Object | Context node |
 | `user` | Object | User node |
@@ -732,10 +750,13 @@ hooks.onTurn(async (rummy) => {
 The `store` property provides the full KnownStore API: `upsert`, `promote`,
 `demote`, `remove`, `resolve`, `getValue`, `getMeta`, `getFileEntries`,
 `getLog`, `countUnknowns`, `getUnresolved`, `hasRejections`,
-`recountTokens`. This is how the Relevance Engine (and any plugin that manages
-context) interacts with the K/V store. The engine materializes `turn_context`
-from `known_entries` each turn — plugins read `turn_context` for the exact
-model view, not `known_entries` directly.
+`recountTokens`.
+
+The engine materializes `turn_context` from `known_entries` each turn via
+the `v_model_context` VIEW (`INSERT INTO turn_context SELECT FROM v_model_context`).
+Plugins read `turn_context` for the exact model view. The VIEW uses SQL
+functions (`fidelityOf`, `countTokens`, `schemeOf`) registered at startup from
+`src/sql/functions/`.
 
 ### 7.4 Events
 
@@ -801,8 +822,25 @@ hooks.llm.messages.addFilter(async (messages, context) => {
 | **git** | `src/plugins/git/` | Git detection and status |
 | **mapping** | `src/plugins/mapping/` | File scanning hooks |
 | **nvim** | `src/plugins/nvim/` | Neovim integration |
+| **engine** | `src/plugins/engine/` | Budget enforcement + turn_context materialization |
 
-### 7.7 Examples
+### 7.7 SQL Functions
+
+Registered at startup via SqlRite's `functions` option. Available in all queries
+and views. Source: `src/sql/functions/`.
+
+| Function | Deterministic | Purpose |
+|----------|--------------|---------|
+| `schemeOf(path)` | Yes | Extract URI scheme from path (`"edit://1"` → `"edit"`, `"src/app.js"` → NULL) |
+| `fidelityOf(scheme, state, turn)` | Yes | Classify entry into fidelity tier (`full`/`summary`/`index`/NULL) |
+| `countTokens(text)` | Yes | Tiktoken o200k_base token count, `ceil(len/4)` fallback |
+| `tierOf(scheme, state)` | Yes | Demotion priority tier (0–4) for budget enforcement |
+| `langFor(path)` | Yes | File extension → syntax language name |
+
+`schemeOf` powers the generated `scheme` column on `known_entries` and
+`turn_context`. `fidelityOf` powers the `v_model_context` VIEW.
+
+### 7.8 Examples
 
 #### Replace Symbol Extraction (tree-sitter)
 
@@ -921,7 +959,8 @@ The context window is resolved per-turn: `min(session_override, model_max)`.
 
 The client retrieves sizing via `getContext({ model? })` → `{ model_max, limit, effective }`.
 
-Token distribution per bucket is included in every `run/state` notification under
+Token distribution is computed from `turn_context` via `get_turn_distribution`
+and included in every `run/state` notification under
 `telemetry.context_distribution`: `[{ bucket, tokens, entries }]`. Buckets:
 `system`, `files`, `keys`, `known`, `history`.
 
@@ -946,7 +985,7 @@ RUMMY_TEMPERATURE=0.7           # Default temperature (client can override)
 | `@possumtech/sqlrite` | SQLite (author's own anti-ORM) |
 | `ws` | WebSocket server |
 | `htmlparser2` | XML parsing for model response tool commands |
-| `tiktoken` | Token counting (o200k_base encoding, with `length/4` fallback) |
+| `tiktoken` | Token counting (o200k_base encoding, with `length/4` fallback). Registered as `countTokens()` SQL function via SqlRite. |
 
 **Optional:** `@possumtech/antlrmap` — ANTLR4-based symbol extraction (formal grammars).
 **CLI deps:** `ctags` (universal-ctags, fallback symbol extraction), `git` (file tracking, cached per HEAD hash).
