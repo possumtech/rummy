@@ -82,15 +82,13 @@ export default class SessionManager {
 		return mappable.map((path) => ({ path, fidelity: "path" }));
 	}
 
-	async fileStatus(projectId, path) {
-		const regexPattern = this.#toRegex(
-			await this.#normalizePath(projectId, path),
-		);
+	async fileStatus(projectId, pattern) {
+		const path = await this.#normalizePath(projectId, pattern);
 		const runs = await this.#db.get_active_runs.all({ project_id: projectId });
 		if (runs.length === 0) return [];
 		const rows = await this.#knownStore.getFileStatesByPattern(
 			runs[0].id,
-			regexPattern,
+			path,
 		);
 		return rows.map((r) => ({
 			path: r.path,
