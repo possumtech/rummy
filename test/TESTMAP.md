@@ -8,22 +8,22 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 ### §1.1 Schema
 - [x] known_entries table exists with all columns (integration: known_store)
 - [x] UNIQUE constraint on (run_id, key) (integration: known_store)
-- [x] CHECK constraint rejects invalid domain/state combos (integration: known_store)
+- [x] CHECK constraint rejects invalid scheme/state combos (integration: known_store)
 - [x] tokens computed by SQL on UPSERT (integration: known_store)
 - [x] write_count increments on UPSERT (integration: known_store)
 
 ### §1.2 Domains & States
-- [x] file domain: full, readonly, active, ignore, symbols (integration: known_store)
-- [x] known domain: full, stored (integration: known_store)
-- [x] result domain: proposed, pass, info, warn, error, summary (integration: known_store)
-- [x] /:unknown:* entries are known domain (integration: known_store)
+- [x] file (NULL scheme): full, readonly, active, ignore, symbols (integration: known_store)
+- [x] known scheme: full, stored (integration: known_store)
+- [x] result scheme: proposed, pass, info, warn, error, summary (integration: known_store)
+- [x] unknown://* entries are known scheme (integration: known_store)
 - [x] file:ignore hidden from model (integration: known_store)
 - [x] proposed hidden from model (integration: known_store)
 
 ### §1.3 Key Namespaces
-- [x] bare paths → file domain (integration: known_store)
-- [x] /:known: prefix → known domain (integration: known_store)
-- [x] /:[tool]: prefix → result domain (integration: known_store)
+- [x] bare paths → file (NULL scheme) (integration: known_store)
+- [x] known:// prefix → known scheme (integration: known_store)
+- [x] [tool]:// prefix → tool scheme (integration: known_store)
 - [x] sequential result key generation (integration: known_store)
 
 ### §1.4 UPSERT Semantics
@@ -54,16 +54,16 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] unparsed text captured as reasoning (unit: XmlParser)
 
 ### §2.2 How Commands Become Known Entries
-- [x] known creates /:known:* entry (E2E: foundation)
-- [x] summary creates /:summary:N entry (E2E: foundation)
-- [x] unknown creates sticky /:unknown:N entry (E2E: rumsfeld_loop)
+- [x] known creates known://* entry (E2E: foundation)
+- [x] summary creates summary://N entry (E2E: foundation)
+- [x] unknown creates sticky unknown://N entry (E2E: rumsfeld_loop)
 - [x] read promotes by setting turn (integration: known_store)
 - [x] drop demotes by setting turn to 0 (integration: known_store)
-- [x] env creates /:env:N as proposed (E2E: scenarios S6)
-- [x] edit creates /:edit:N with patch in meta (E2E: scenarios S2)
-- [x] run creates /:run:N as proposed (E2E: scenarios S7)
-- [x] ask_user creates /:ask_user:N as proposed (E2E: scenarios S8)
-- [x] delete creates /:delete:N as proposed (integration: known_store)
+- [x] env creates env://N as proposed (E2E: scenarios S6)
+- [x] edit creates edit://N with patch in meta (E2E: scenarios S2)
+- [x] run creates run://N as proposed (E2E: scenarios S7)
+- [x] ask_user creates ask_user://N as proposed (E2E: scenarios S8)
+- [x] delete creates delete://N as proposed (integration: known_store)
 
 ### §2.3 Promotion Model
 - [x] read(key) sets turn to current (integration: known_store)
@@ -74,7 +74,7 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] htmlparser2 forgiving parsing (unit: XmlParser)
 - [x] summary required — placeholder injected if missing (code review)
 - [x] unknowns gate — warn + retry when idle with unknowns (E2E: rumsfeld_loop)
-- [x] free-form content captured as /:reasoning:N (code review)
+- [x] free-form content captured as reasoning://N (code review)
 
 ### §2.5 Server Execution Order
 - [x] audit entries stored before LLM call (code review)
@@ -134,7 +134,7 @@ Every testable promise in ARCHITECTURE.md mapped to a test.
 - [x] run/resolve with accept (E2E: act_lifecycle)
 - [x] run/resolve with reject (E2E: act_lifecycle)
 - [x] run/abort sets status to aborted (E2E: rpc_methods)
-- [x] run/inject creates /:inject:N entry (E2E: rpc_methods)
+- [x] run/inject creates inject://N entry (E2E: rpc_methods)
 - [x] getRuns lists runs for session (E2E: rpc_methods)
 - [x] getModels lists aliases (E2E: rpc_methods)
 - [x] discover returns methods and notifications (E2E: rpc_methods)

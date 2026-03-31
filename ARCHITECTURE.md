@@ -9,9 +9,9 @@ defines everything else: data model, protocol, context management, plugins, and 
 ## 1. The Known Store
 
 All model-facing state lives in one table: `known_entries`. Files, knowledge,
-tool results, findings, summaries — everything is a keyed entry with a domain
-and state. There are no separate findings tables, pending context queues, file
-promotion tables, or message history. The known store IS the model's memory.
+tool results, summaries — everything is a keyed entry with a URI scheme
+and state. No separate findings tables, no message history. The known store
+IS the model's memory.
 
 ### 1.1 Schema
 
@@ -20,9 +20,9 @@ CREATE TABLE known_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT
     , run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
     , turn INTEGER NOT NULL DEFAULT 0
-    , key TEXT NOT NULL
+    , path TEXT NOT NULL
     , value TEXT NOT NULL DEFAULT ''
-    , domain TEXT NOT NULL CHECK (domain IN ('file', 'known', 'result'))
+    , scheme TEXT
     , state TEXT NOT NULL
     , hash TEXT
     , meta JSON
@@ -31,28 +31,45 @@ CREATE TABLE known_entries (
     , write_count INTEGER NOT NULL DEFAULT 1
     , created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     , updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    , CHECK (
-        (domain = 'file' AND state IN ('full', 'readonly', 'active', 'ignore', 'symbols'))
-        OR (domain = 'known' AND state IN ('full', 'stored'))
-        OR (domain = 'result' AND state IN ('proposed', 'pass', 'info', 'warn', 'error', 'summary'))
-    )
+    , CHECK (CASE
+        WHEN scheme IS NULL
+            THEN state IN ('full', 'readonly', 'active', 'ignore', 'symbols')
+        WHEN scheme IN ('known', 'unknown')
+            THEN state IN ('full', 'stored')
+        WHEN scheme = 'edit'
+            THEN state IN ('proposed', 'pass', 'warn', 'error')
+        WHEN scheme IN ('run', 'env', 'delete', 'ask_user')
+            THEN state IN ('proposed', 'pass', 'warn')
+        WHEN scheme = 'summary' THEN state = 'summary'
+        WHEN scheme IN ('system', 'user', 'reasoning', 'prompt', 'keys', 'inject')
+            THEN state = 'info'
+        WHEN scheme = 'retry' THEN state = 'error'
+        WHEN scheme IN ('http', 'https')
+            THEN state IN ('full', 'readonly')
+        ELSE 0
+      END)
 );
-CREATE UNIQUE INDEX idx_known_entries_run_key ON known_entries (run_id, key);
-CREATE INDEX idx_known_entries_domain_state ON known_entries (run_id, domain, state);
+CREATE UNIQUE INDEX idx_known_entries_run_path ON known_entries (run_id, path);
+CREATE INDEX idx_known_entries_scheme_state ON known_entries (run_id, scheme, state);
 CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 ```
 
 **Columns:**
-- `turn` — integer sequence number. For files, the most recent turn that engaged with the file (heat signal). For results, the turn that produced them. Not a FK — just a number.
-- `hash` — content hash (SHA-256) for change detection. The file scanner compares this against the current disk hash to detect modifications without re-reading contents.
-- `meta` — JSON metadata. Files store symbols here. Tool results store the original command/args.
-- `tokens` — integer, computed by SQLite on UPSERT: `length(value) / 4`. Tracks the token cost of including this entry in context.
-- `refs` — integer, default 0. Cross-reference count. Reserved for the relevance engine.
-- `write_count` — integer, incremented on every UPSERT. Tracks volatility (oscillation detection).
+- `path` — the entry's address. Bare file paths (`src/app.js`) or URIs (`known://auth`, `edit://7`).
+- `scheme` — extracted from the URI (`known`, `edit`, `summary`, etc.) or NULL for bare file paths. Drives the CHECK constraint and indexed queries.
+- `turn` — integer sequence number. Heat signal for files, production turn for results.
+- `hash` — SHA-256 content hash for file change detection.
+- `meta` — JSON metadata. Files store symbols. Edits store `{ file, blocks, patch }`. Commands store `{ command }`.
+- `tokens` — `length(value) / 4` on UPSERT. Context budget tracking.
+- `refs` — cross-reference count. Reserved for the relevance engine.
+- `write_count` — incremented on every UPSERT. Volatility tracking.
 
-### 1.2 Domains & States
+### 1.2 URI Schemes & States
 
-**File domain** — project files bootstrapped at run start:
+Paths use URI scheme syntax. Bare paths (no `://`) are files. Everything else
+uses `scheme://identifier`.
+
+**Files** (`scheme IS NULL`) — project files bootstrapped at run start:
 
 | State | Meaning | Model sees |
 |-------|---------|------------|
@@ -62,55 +79,49 @@ CREATE INDEX idx_known_entries_turn ON known_entries (run_id, turn);
 | `ignore` | Excluded from context | *(hidden)* |
 | `symbols` | Signature summaries only | `file:symbols` |
 
-**Known domain** — model-emitted knowledge (`/:known:*` keys) and internal state:
+**Knowledge** (`known://`, `unknown://`) — model-emitted:
 
 | State | Meaning | Model sees |
 |-------|---------|------------|
 | `full` | Value loaded | `full` |
 | `stored` | Key exists, value not in context | `stored` |
 
-Unknowns are individual `/:unknown:N` entries (domain `known`, state `full`).
-Each `unknown("text")` call creates a sticky entry that persists until the model
-drops it via `drop("/:unknown:N")`. The server deduplicates on insert.
+Unknowns are `unknown://N` entries. Sticky until the model drops them via
+`<drop path="unknown://42"/>`. Server deduplicates on insert.
 
-**Result domain** — tool command results, summaries, and notifications (`/:[tool]:*` keys):
+**Tool results** (`edit://`, `run://`, `env://`, `delete://`, `ask_user://`):
 
-| State | Meaning | Model sees |
-|-------|---------|------------|
-| `proposed` | Awaiting user approval | *(hidden until resolved)* |
-| `pass` | Succeeded/accepted | `stored` |
-| `info` | Informational notification | `stored` |
-| `warn` | Rejected/partial | `stored` |
-| `error` | Failed | `stored` |
-| `summary` | Summary text | `stored` |
+| State | Meaning |
+|-------|---------|
+| `proposed` | Awaiting user approval *(hidden until resolved)* |
+| `pass` | Succeeded/accepted |
+| `warn` | Rejected |
+| `error` | Failed (edit only) |
 
-The model sees a projection controlled by the `turn` field (see §3.3). `file:ignore`
-and `proposed` entries are hidden. Result entries show their actual status
-(pass/warn/error/summary) in the context. The model can `read` any result key
-to recall the full value.
+**Internal** (`summary://`, `system://`, `prompt://`, `reasoning://`, etc.):
+- `summary://N` — state `summary`
+- `system://N`, `prompt://N`, `user://N`, `keys://N`, `inject://N` — state `info`
+- `retry://N` — state `error`
 
-### 1.3 Key Namespaces
+### 1.3 Path Namespaces
 
-Keys use the `/:` sentinel to distinguish system keys from file paths. No
-relative file path starts with `/:`, so the prefix is unambiguous. Regex: `/^\/:/`.
-
-| Prefix | Namespace | Examples |
+| Format | Namespace | Examples |
 |--------|-----------|---------|
-| *(none)* | File paths | `src/app.js`, `package.json` |
-| `/:known:` | Knowledge entries | `/:known:auth_flow`, `/:known:db_adapter` |
-| `/:[tool]:` | Tool result keys | `/:read:4`, `/:edit:7`, `/:run:12`, `/:summary:3` |
+| bare path | File paths | `src/app.js`, `package.json` |
+| `known://` | Knowledge | `known://auth_flow`, `known://db_adapter` |
+| `unknown://` | Open questions | `unknown://1`, `unknown://42` |
+| `[tool]://` | Tool results | `edit://7`, `run://12`, `summary://3` |
+| `http://`, `https://` | Fetched content | `https://docs.example.com/api` |
 
-Result keys use the tool name as prefix and a sequential integer per run.
-Tracked by `runs.next_result_seq`. Self-documenting: `/:read:4` tells you
-it was the 4th result key generated, produced by the `read` tool.
+Result paths use the tool name as scheme and a sequential integer per run.
+Tracked by `runs.next_result_seq`.
 
-Knowledge key constraint: `^/:known:[a-z0-9_]+$`. Short lowercase slugs.
-Prefer descriptive names over abbreviations — `/:known:oauth2_token_rotation`
-over `/:known:auth_rot`.
+Knowledge path constraint: `known://[a-z0-9_]+`. Short lowercase slugs.
+Prefer descriptive names — `known://oauth2_token_rotation` over `known://auth_rot`.
 
 ### 1.4 UPSERT Semantics
 
-The known store uses INSERT OR REPLACE keyed on `(run_id, key)`. Each write
+The known store uses INSERT OR REPLACE keyed on `(run_id, path)`. Each write
 increments `write_count` (useful for detecting oscillation in future diagnostics).
 
 There is no "empty value = delete" convention. Deletion uses the `delete` tool,
@@ -145,15 +156,15 @@ After all proposed entries are resolved:
 The model communicates via XML tags written directly in the response content.
 No native tool calling API. No message history. The server parses the response
 with htmlparser2 (forgiving HTML/XML parser). Any text between tool tags is
-captured as `/:reasoning:N` (hidden from model, available for audit).
+captured as `reasoning://N` (hidden from model, available for audit).
 
 ### 2.1 Tool Commands
 
 Every store-facing tool uses a unified attribute set:
 
-- **`path=""`** — targets entries by key. Accepts exact paths, globs (`src/*.js`), or regex (`^src/.*\.test\.js$`). Matches against the K/V store key namespace — file paths AND `/:known:*` keys.
+- **`path=""`** — targets entries by key. Accepts exact paths, globs (`src/*.js`), or regex (`^src/.*\.test\.js$`). Matches against the K/V store key namespace — file paths AND `known://*` keys.
 - **`value=""`** — filters entries by content. Same pattern support. When combined with `path`, they AND together.
-- **`keys`** — boolean flag. When present, resolves the pattern and returns the matching key list as a `/:keys:N` info entry. No state change. Preview before committing.
+- **`keys`** — boolean flag. When present, resolves the pattern and returns the matching key list as a `keys://N` info entry. No state change. Preview before committing.
 
 At least one of `path` or `value` must be provided on store-facing tools.
 
@@ -162,7 +173,7 @@ At least one of `path` or `value` must be provided on store-facing tools.
 | Tag | Format | Required |
 |-----|--------|----------|
 | `<summary>` | `<summary>text</summary>` | Yes |
-| `<known>` | `<known path="/:known:slug">value</known>` | No |
+| `<known>` | `<known path="known://slug">value</known>` | No |
 | `<unknown>` | `<unknown>text</unknown>` | No |
 | `<read>` | `<read path="path" value="pattern?" keys?/>` | No |
 | `<drop>` | `<drop path="path" value="pattern?" keys?/>` | No |
@@ -175,10 +186,17 @@ At least one of `path` or `value` must be provided on store-facing tools.
 |-----|--------|
 | `<run>` | `<run command="cmd"/>` |
 | `<delete>` | `<delete path="path" value="pattern?" keys?/>` |
-| `<edit>` | `<edit path="path" value="pattern?" keys?>SEARCH/REPLACE blocks</edit>` |
+| `<edit>` | `<edit path="path" search="text" replace="text"/>` or `<edit path="path">SEARCH/REPLACE blocks</edit>` |
 
-Edit uses git merge conflict format inside the tag body:
+Edit has two modes:
 
+**Attribute mode** — `search` + `replace` for targeted find-and-replace. `search` supports
+plain strings (literal match) or regex. `replace` is always literal text.
+```xml
+<edit path="src/config.js" search="localhost" replace="0.0.0.0"/>
+```
+
+**Merge block mode** — git merge conflict format in the body for multi-line edits:
 ```
 <edit path="src/config.js">
 <<<<<<< SEARCH
@@ -194,10 +212,10 @@ Patterns enable bulk operations:
 ```xml
 <read path="src/*.js"/>                           <!-- promote all JS files -->
 <read path="*.js" value="TODO" keys/>             <!-- preview: which JS files contain TODO? -->
-<drop path="/:known:stale_*"/>                    <!-- demote all stale knowledge -->
+<drop path="known://stale_*"/>                    <!-- demote all stale knowledge -->
 <edit path="src/*.config.js" value="localhost">    <!-- edit all configs containing localhost -->
-<delete path="/:known:temp_*"/>                   <!-- delete all temp knowledge entries -->
-<known path="/:known:cache_*" value="stale">refreshed</known>  <!-- bulk update -->
+<delete path="known://temp_*"/>                   <!-- delete all temp knowledge entries -->
+<known path="known://cache_*" value="stale">refreshed</known>  <!-- bulk update -->
 ```
 
 Tool commands are defined in the system prompt (`prompt.act.md`, `prompt.ask.md`)
@@ -213,11 +231,11 @@ entries in the context next turn. Pattern-based commands operate on all matches.
 With a pattern in `path`, bulk-updates all matching entries' values. With `value`,
 filters by current content before overwriting.
 
-**`<summary>`** — creates a `/:summary:N` entry with domain `result`, state `summary`.
+**`<summary>`** — creates a `summary://N` entry with scheme-specific, state `summary`.
 
-**`<unknown>`** — each tag creates a sticky `/:unknown:N` entry (domain `known`,
+**`<unknown>`** — each tag creates a sticky `unknown://N` entry (scheme `known`,
 state `full`). Unknowns persist across turns until explicitly dropped via
-`<drop path="/:unknown:N"/>`. The server deduplicates on insert. Unknowns appear
+`<drop path="unknown://N"/>`. The server deduplicates on insert. Unknowns appear
 in context position 7 (before the prompt) every turn.
 
 **`<read>`** — promotes matching entries by setting `turn` to the current turn.
@@ -227,26 +245,27 @@ Promotion makes them visible in context next turn. With patterns, bulk-promotes.
 **`<drop>`** — demotes matching entries by setting `turn` to 0 (purgatory).
 Values stay in the store but disappear from context. With patterns, bulk-demotes.
 
-**`<env>`** — creates a `/:env:N` entry with domain `result`, state `proposed`.
+**`<env>`** — creates a `env://N` entry with scheme-specific, state `proposed`.
 The client executes the command and resolves with output.
 
-**`<edit>`** — the server resolves the `path`/`value` pattern to matching entries,
-then applies the SEARCH/REPLACE blocks to each via HeuristicMatcher. Creates one
-`/:edit:N` entry per match. For **file domain** entries: state `proposed` (client
-reviews the diff). For **known/result domain** entries: state `pass` (applied
-immediately — K/V entries are server state, not user files).
+**`<edit>`** — the server resolves the `path`/`value` pattern to matching entries.
+In **attribute mode** (`search`/`replace`), performs literal find-and-replace (or regex
+if `search` contains regex characters). In **merge block mode**, applies
+SEARCH/REPLACE blocks via HeuristicMatcher. Creates one `edit://N` entry per match.
+For **file (scheme NULL)** entries: state `proposed` (client reviews). For **non-file**
+entries: state `pass` (applied immediately — K/V entries are server state).
 
-**`<run>`** — creates a `/:run:N` entry with domain `result`, state `proposed`.
+**`<run>`** — creates a `run://N` entry with scheme-specific, state `proposed`.
 The client executes and resolves with output.
 
-**`<delete>`** — resolves the pattern to matching entries. Creates one `/:delete:N`
+**`<delete>`** — resolves the pattern to matching entries. Creates one `delete://N`
 entry per match with state `proposed`. The client confirms and resolves.
 
-**`<ask_user>`** — creates a `/:ask_user:N` entry with domain `result`, state `proposed`.
+**`<ask_user>`** — creates a `ask_user://N` entry with scheme-specific, state `proposed`.
 The client shows the question and resolves with the selected answer.
 
 **`keys` flag** — any store-facing tool with `keys` resolves the pattern and stores
-the matching list as a `/:keys:N` info entry. No state change occurs. The entry
+the matching list as a `keys://N` info entry. No state change occurs. The entry
 includes per-path token count and a total so the model can gauge context budget
 impact before committing:
 
@@ -254,7 +273,7 @@ impact before committing:
 23 paths (4812 tokens total)
 src/auth.js (342)
 src/config.js (128)
-/:known:auth_flow (56)
+known://auth_flow (56)
 ```
 
 ### 2.3 Promotion Model
@@ -270,8 +289,8 @@ Both support patterns: `<read path="src/*.js"/>` promotes all matching files.
 `<drop value="deprecated"/>` demotes all entries containing "deprecated".
 
 All other action commands (`env`, `edit`, `run`, `delete`, `ask_user`) create new
-result entries as `proposed`. The `delete` command for `/:known:*` or `/:[tool]:*`
-keys removes the entry from the store entirely.
+result entries as `proposed`. The `delete` command for `known://*` or `[tool]://*`
+paths removes the entry from the store entirely.
 
 ### 2.4 Enforcement Layers
 
@@ -280,7 +299,7 @@ keys removes the entry from the store entirely.
 3. **Response healing** (`ResponseHealer`) — every malformed response is recovered, never rejected. Plain text responses (no XML) are used as the summary. Commands without `<summary>` get a `"..."` placeholder injected. Empty responses get a placeholder. The server never throws on model output.
 4. **Forward motion** (`ResponseHealer`) — after each turn, assess whether the model made progress. Actions, reads, env commands, and knowledge writes count as progress. A summary-only turn with no actions = done. Repeated idle turns = stalled → force-complete after `RUMMY_MAX_STALLS` (default 3). Unknowns are context, not a gate.
 5. **Alternative philosophy resolution** — the parser silently accepts both attribute-style (`<read path="x"/>`) and body-style (`<read>x</read>`) for every tool. Legacy attributes (`key=""`, `file=""`) are silently remapped to `path=""`.
-6. **Reasoning capture** — any free-form text between tags is captured as `/:reasoning:N` (audit only, hidden from model).
+6. **Reasoning capture** — any free-form text between tags is captured as `reasoning://N` (audit only, hidden from model).
 
 ### 2.6 Response Healing Philosophy
 
@@ -298,11 +317,11 @@ The server must never throw on model output. Errors in the catch block return `{
 
 The server parses all XML commands from the response, then processes in strict order:
 
-1. **Store audit entries** — create `/:system:N`, `/:user:N`, `/:prompt:N` entries before the LLM call.
+1. **Store audit entries** — create `system://N`, `user://N`, `prompt://N` entries before the LLM call.
 2. **Execute action commands** — `read` promotes (set turn), `drop` demotes (set turn to 0). `env`, `run`, `delete`, `edit`, `ask_user` generate result keys and store as `proposed`. `edit` also computes a unified diff patch via HeuristicMatcher.
-3. **Process unknowns** — create `/:unknown:N` entries, deduplicated against existing unknowns.
+3. **Process unknowns** — create `unknown://N` entries, deduplicated against existing unknowns.
 4. **Process known entries** — UPSERT each `<known>` tag's key/value pair.
-5. **Store summary** — create `/:summary:N` entry.
+5. **Store summary** — create `summary://N` entry.
 6. **Emit `run/state`** — build and send the client notification with history, proposed, unknowns, and telemetry.
 
 ---
@@ -312,7 +331,7 @@ The server parses all XML commands from the response, then processes in strict o
 No message history. The model's entire context is rendered as markdown in the
 system prompt. On the first turn, the user message carries the prompt. On
 continuation turns, the user message is empty — the prompt is in the context
-as a `/:prompt:N` entry.
+as a `prompt://N` entry.
 
 ### 3.1 System Message Contents
 
@@ -324,14 +343,14 @@ as a `/:prompt:N` entry.
 The context array is ordered to optimize the model's attention gradient.
 Stable background at the top, actionable items at the bottom:
 
-1. **Active non-file keys** — `/:known:*` at turn > 0 (working memory)
-2. **Stored non-file keys** — `/:known:*` at turn 0 (discoverable, key only)
+1. **Active non-file keys** — `known://*` at turn > 0 (working memory)
+2. **Stored non-file keys** — `known://*` at turn 0 (discoverable, key only)
 3. **Stored file paths** — files at turn 0 (project index, path only)
 4. **Symbol files** — files with `file:symbols` state
 5. **Full files** — files at turn > 0 (actual code being worked on)
 6. **Chronological results** — tool command results and summaries in id order
 7. **Unknowns** — previous turn's `unknown` entries (uncertainty boundary)
-8. **User prompt** — `/:prompt:N` (the actual task, always last)
+8. **User prompt** — `prompt://N` (the actual task, always last)
 
 ### 3.3 Expansion Rule
 
@@ -398,7 +417,7 @@ are stored in `meta` on the file's known entry.
 - `projects` — project path, name, git hash, last indexed timestamp
 
 No separate file index tables. File metadata (path, hash, symbols) lives in
-`known_entries` as file-domain entries. The project table is structural only.
+`known_entries` as file-scheme entries. The project table is structural only.
 
 ### 4.2 Run Scope
 
@@ -455,7 +474,7 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 | `run/resolve` | `run`, `resolution: {key, action: 'accept'\|'reject', output?}` | Resolve a proposed entry by its key |
 | `run/abort` | `run` | Signal in-flight loop to stop via AbortController. Sets status to `aborted`. |
 | `run/rename` | `run`, `name` | Rename a run. `[a-z_]+`, must be unique. |
-| `run/inject` | `run`, `message` | Inject context (creates `/:inject/N` info entry) |
+| `run/inject` | `run`, `message` | Inject context (creates `inject://N` info entry) |
 | `getRuns` | — | List runs for session |
 
 All run params accept the **run name** (e.g. `ccp_1`), not a UUID. Model aliases
@@ -493,15 +512,15 @@ defined via `RUMMY_MODEL_{alias}` env vars.
   "status": "running",
   "summary": "Latest one-liner status.",
   "history": [
-    {"key": "/:read/1", "tool": "read", "target": "src/auth.js", "status": "pass"},
-    {"key": "/:summary/1", "tool": "summary", "status": "summary", "value": "Previous summary."},
-    {"key": "/:edit/3", "tool": "edit", "target": "src/config.js", "status": "proposed"}
+    {"path": "read://1", "tool": "read", "target": "src/auth.js", "status": "pass"},
+    {"path": "summary://1", "tool": "summary", "status": "summary", "value": "Previous summary."},
+    {"path": "edit://3", "tool": "edit", "target": "src/config.js", "status": "proposed"}
   ],
   "unknowns": [
-    {"key": "/:unknown/1", "value": "Which session store is configured"}
+    {"path": "unknown://1", "value": "Which session store is configured"}
   ],
   "proposed": [
-    {"key": "/:edit:3", "type": "edit", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
+    {"path": "edit://3", "type": "edit", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
   ],
   "telemetry": {
     "modelAlias": "kimi",
@@ -626,7 +645,7 @@ hooks.tools.register("weather", {
 ```
 
 The model writes `<weather city="London"/>` in its response. The server parses
-the tag, creates a `/:weather:N` known entry as `proposed`, and the client
+the tag, creates a `weather://N` known entry as `proposed`, and the client
 resolves it.
 
 - `modes` — which run types this tool is available in.
@@ -926,6 +945,6 @@ RUMMY_TEMPERATURE=0.7           # Default temperature (client can override)
 | **Turn** | A single LLM request/response cycle. |
 | **Known Entry** | A keyed entry in the unified state machine. |
 | **Domain** | The entry's namespace: `file`, `known`, or `result`. |
-| **State** | The entry's status within its domain. Server-internal; the model sees a projection. |
-| **Result Key** | A `/:[tool]:N` key generated for each tool command. Sequential per run. |
+| **State** | The entry's status within its scheme. Server-internal; the model sees a projection. |
+| **Result Key** | A `[tool]://N` key generated for each tool command. Sequential per run. |
 | **Rumsfeld Loop** | The turn cycle: the model uses `<known>` to persist knowledge, `<unknown>` to declare uncertainty, and `<summary>` to report status. Forces discovery before modification. |

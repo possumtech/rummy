@@ -48,9 +48,15 @@ Register unknowns before acting. Read before editing. Investigate before modifyi
 * Example: <drop path="src/config.js"/>
 * Example: <drop path="unknown://42"/>
 
-## <edit path="[path]">...merge block...</edit> - Edit a file
+## <edit path="[path]"> - Edit a file
 
-Uses git merge conflict format:
+Two modes:
+
+**Quick find-and-replace** — use `search` and `replace` attributes:
+
+<edit path="src/config.js" search="localhost" replace="0.0.0.0"/>
+
+**Multi-line edit** — use git merge conflict format in body:
 
 <edit path="src/config.js">
 <<<<<<< SEARCH
@@ -149,9 +155,16 @@ src/config.js (128)
 ...
 ```
 
-## Bulk Edit
+## Bulk Find-and-Replace
 
-Apply the same SEARCH/REPLACE to all matching files:
+Quick targeted edits across matching files:
+
+<edit path="src/*.js" search="localhost" replace="0.0.0.0"/>
+<edit path="src/*.js" search="const port = 3000" replace="const port = 8080"/>
+
+## Bulk Merge Block Edit
+
+Multi-line SEARCH/REPLACE across matching files:
 
 <edit path="src/*.config.js" value="localhost">
 <<<<<<< SEARCH

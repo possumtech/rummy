@@ -216,4 +216,50 @@ describe("Pattern operations integration", () => {
 			assert.strictEqual(b, "fresh");
 		});
 	});
+
+	describe("search/replace edit mode", () => {
+		it("literal search and replace on file content", async () => {
+			await store.upsert(
+				RUN_ID,
+				1,
+				"src/sr_test.js",
+				"const host = 'localhost';\nconst port = 3000;\n",
+				"full",
+			);
+
+			const entries = await store.getEntriesByPattern(
+				RUN_ID,
+				"src/sr_test.js",
+				null,
+			);
+			assert.strictEqual(entries.length, 1);
+
+			const content = entries[0].value;
+			const patched = content.replaceAll("localhost", "0.0.0.0");
+			assert.ok(patched.includes("0.0.0.0"));
+			assert.ok(!patched.includes("localhost"));
+		});
+
+		it("regex search on file content", async () => {
+			const entries = await store.getEntriesByPattern(
+				RUN_ID,
+				"src/sr_test.js",
+				null,
+			);
+			const content = entries[0].value;
+			const re = /\d{4}/g;
+			const patched = content.replace(re, "8080");
+			assert.ok(patched.includes("8080"));
+			assert.ok(!patched.includes("3000"));
+		});
+
+		it("search across multiple matching files", async () => {
+			const matches = await store.getEntriesByPattern(
+				RUN_ID,
+				"src/*.js",
+				"const",
+			);
+			assert.ok(matches.length >= 2, "multiple files contain 'const'");
+		});
+	});
 });

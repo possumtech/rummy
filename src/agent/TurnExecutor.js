@@ -439,7 +439,22 @@ export default class TurnExecutor {
 			let warning = null;
 			let error = null;
 
-			if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
+			if (cmd.search != null) {
+				// Attribute mode: search + replace (literal)
+				const isRegex = /[+(){}|\\$^*?[\]]/.test(cmd.search);
+				if (isRegex) {
+					const re = new RegExp(cmd.search, "g");
+					if (re.test(entry.value)) {
+						patch = entry.value.replace(re, cmd.replace ?? "");
+					} else {
+						error = `Search pattern not found in ${entry.path}`;
+					}
+				} else if (entry.value.includes(cmd.search)) {
+					patch = entry.value.replaceAll(cmd.search, cmd.replace ?? "");
+				} else {
+					error = `"${cmd.search}" not found in ${entry.path}`;
+				}
+			} else if (cmd.blocks?.length > 0 && cmd.blocks[0].search === null) {
 				patch = cmd.blocks[0].replace;
 			} else if (entry.value && cmd.blocks?.length > 0) {
 				const block = cmd.blocks[0];
@@ -457,7 +472,7 @@ export default class TurnExecutor {
 			// Files → proposed (client reviews). Keys → pass (immediate).
 			const state = error
 				? "error"
-				: entry.domain === "file"
+				: entry.scheme === null
 					? "proposed"
 					: "pass";
 
@@ -468,7 +483,15 @@ export default class TurnExecutor {
 				patch || "",
 				state,
 				{
-					meta: { file: entry.path, blocks: cmd.blocks, patch, warning, error },
+					meta: {
+						file: entry.path,
+						search: cmd.search,
+						replace: cmd.replace,
+						blocks: cmd.blocks,
+						patch,
+						warning,
+						error,
+					},
 				},
 			);
 

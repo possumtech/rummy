@@ -110,4 +110,29 @@ describe("E2E: Pattern Operations", () => {
 		);
 		assert.ok(known.length > 0, "Should have known entries");
 	});
+
+	it("edit with search/replace attributes", { timeout: TIMEOUT }, async () => {
+		const result = await client.call("act", {
+			model,
+			prompt:
+				'Use search/replace to change "localhost" to "0.0.0.0" in src/config.js: <edit path="src/config.js" search="localhost" replace="0.0.0.0"/>',
+		});
+
+		await client.assertRun(
+			result,
+			["completed", "proposed"],
+			"search/replace edit",
+		);
+
+		if (result.status === "proposed") {
+			const edit = result.proposed.find((p) => p.path.startsWith("edit://"));
+			assert.ok(edit, "Should have edit proposed");
+			const meta =
+				typeof edit.meta === "string" ? JSON.parse(edit.meta) : edit.meta;
+			assert.ok(
+				meta.patch?.includes("0.0.0.0"),
+				"Patch should contain replacement",
+			);
+		}
+	});
 });

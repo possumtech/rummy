@@ -137,6 +137,31 @@ export default {};
 			assert.strictEqual(commands[0].path, "src/*.js");
 			assert.strictEqual(commands[0].keys, true);
 		});
+
+		it("parses edit with search/replace attributes", () => {
+			const { commands } = XmlParser.parse(
+				'<edit path="src/*.js" search="localhost" replace="0.0.0.0"/>',
+			);
+			assert.strictEqual(commands[0].search, "localhost");
+			assert.strictEqual(commands[0].replace, "0.0.0.0");
+			assert.strictEqual(commands[0].path, "src/*.js");
+			assert.ok(!commands[0].blocks);
+		});
+
+		it("edit: search attr with body as replace", () => {
+			const { commands } = XmlParser.parse(
+				'<edit path="config.js" search="3000">8080</edit>',
+			);
+			assert.strictEqual(commands[0].search, "3000");
+			assert.strictEqual(commands[0].replace, "8080");
+		});
+
+		it("edit: search attr with replace attr takes precedence over body", () => {
+			const { commands } = XmlParser.parse(
+				'<edit path="x.js" search="old" replace="new">ignored</edit>',
+			);
+			assert.strictEqual(commands[0].replace, "new");
+		});
 	});
 
 	describe("alternative philosophies", () => {

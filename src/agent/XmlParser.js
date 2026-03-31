@@ -56,6 +56,17 @@ function resolveCommand(name, attrs, body) {
 	const trimmed = body.trim();
 
 	if (name === "edit") {
+		if (a.search) {
+			const replace = a.replace ?? trimmed;
+			return {
+				name,
+				path: a.path,
+				value: a.value,
+				keys: a.keys,
+				search: a.search,
+				replace,
+			};
+		}
 		const blocks = parseEditContent(body);
 		return { name, path: a.path, value: a.value, keys: a.keys, blocks };
 	}

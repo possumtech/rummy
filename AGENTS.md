@@ -2,18 +2,17 @@
 
 ## Current State
 
-XML tool commands in response content, parsed by htmlparser2. Single `known_entries`
-K/V store as the unified state machine. Markdown context rendering. tiktoken token
-counting with `/4` fallback. 4 production dependencies. Lint fully clean (biome +
-sqlfluff). TESTMAP.md at 0 untested promises. Response healing: always recover, never throw.
+URI-based K/V store (`known://`, `edit://`, `summary://`, bare paths for files).
+Pattern tools via glorp (glob/regex on `path`/`value`, `keys` flag for preview).
+ResponseHealer (forward motion, no unknowns gate). CASE WHEN CHECK constraints
+per scheme. 63 unit + 70 integration + 48 E2E.
 
 ---
 
 ## Next
 
-- [x] Pattern tooling — glorp-powered bulk operations. 5 SQL queries, 5 KnownStore methods, TurnExecutor dispatch (keys flag, bulk read/drop/edit/delete/known), prompts updated, ARCHITECTURE.md §2 rewritten. 48/48 E2E.
-- [x] Continuation prompt makeover — single dense line: `Turn 3/15 · 4812 tokens (38%) · 2 unknowns remaining`. Budget info the model can't derive from context. Everything else is already in the K/V history.
-- [x] ResponseHealer — forward motion model. `healSummary` (static, fixes malformed output), `assessProgress` (stateful, tracks stalls). Actions/reads/writes = progress. Summary-only = done. Repeated idle = stall → force-complete. Unknowns gate removed.
+- [ ] Edit `search`/`replace` attributes — sed-like glorp search/replace as alternative to merge blocks
+- [ ] `https://` fetch integration — URL as K/V path, sanitized fetch on backend, content as value
 
 ---
 
@@ -32,12 +31,23 @@ The `tokens`, `refs`, `turn`, and `write_count` fields are ready. The Relevance 
 - **Relevance engine** — compute `refs` from `meta.symbols` cross-references. Files referenced by promoted files get higher refs. The preheat cascade: root files → their referenced files → symbols.
 - **Budget enforcement** — before context assembly, check total tokens against `rummy.contextSize`. Demote entries from turn > 0 to turn 0 based on: low refs, old turn, high tokens.
 - **Three-tier fidelity** — full (turn > 0), symbols (state = 'symbols'), path-only (turn = 0).
-- **Knowledge graph** — scan `/:known:*` values for `/:` references. Build citation edges. High-connectivity nodes resist demotion.
+- **Knowledge graph** — scan `known://*` values for URI references. Build citation edges. High-connectivity nodes resist demotion.
 - **Janitorial turns** — dedicated turns where the model consolidates its own key space.
 
 ---
 
 ## Historical
+
+### URI + Pattern + Healer Sprint (2026-03-31)
+- URI scheme: `domain` column → `scheme`, `/:known:x` → `known://x` across schema, SQL, all agents, prompts, tests
+- CASE WHEN CHECK constraint (SQLite NULL propagation bug with OR chains — sidestepped)
+- Pattern tooling: glorp bulk ops on path + value, `keys` flag with token counts
+- ResponseHealer: forward motion model, unknowns gate removed, env counts as progress
+- XmlParser: unified attr+body parsing, alternative philosophy resolution, `key`/`file` → `path` legacy compat
+- Continuation prompt: `Turn 3/15 · 4812 tokens (38%) · 2 unknowns remaining`
+- `meta.file` preserved for edit proposed items (client API contract)
+- sqlrite 2.4.0 (glorp), antlrmap 0.0.8, all deps latest
+- 63 unit + 70 integration + 48 E2E
 
 ### Pre-Audit Sprint (2026-03-30)
 - Bug fixes: setFileState preserves content, fileStatus queries real state, getModelInfo on ProjectAgent, summary healing
