@@ -62,7 +62,7 @@ FROM known_entries
 WHERE
 	run_id = :run_id
 	AND scheme IS NOT NULL
-	AND scheme NOT IN ('known', 'unknown', 'system', 'user', 'reasoning', 'content')
+	AND scheme NOT IN ('known', 'unknown', 'system', 'reasoning', 'content')
 ORDER BY id;
 
 -- PREP: get_content
