@@ -1,8 +1,9 @@
 -- PREP: upsert_project
-INSERT INTO projects (id, path, name)
-VALUES (:id, :path, :name)
+INSERT INTO projects (path, name)
+VALUES (:path, :name)
 ON CONFLICT (path) DO UPDATE SET
-	name = COALESCE(excluded.name, projects.name);
+	name = COALESCE(excluded.name, projects.name)
+RETURNING id;
 
 -- PREP: get_project_by_id
 SELECT id, path, name, last_git_hash, last_indexed_at, created_at
@@ -15,8 +16,9 @@ FROM projects
 WHERE path = :path;
 
 -- PREP: create_session
-INSERT INTO sessions (id, project_id, client_id)
-VALUES (:id, :project_id, :client_id);
+INSERT INTO sessions (project_id, client_id)
+VALUES (:project_id, :client_id)
+RETURNING id;
 
 -- PREP: get_session_by_id
 SELECT

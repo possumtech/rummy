@@ -1,25 +1,26 @@
 -- INIT: create_v_run_log
 CREATE VIEW IF NOT EXISTS v_run_log AS
 SELECT
-	run_id
-	, path
-	, state AS status
-	, COALESCE(scheme, state) AS tool
+	ke.run_id
+	, ke.path
+	, ke.state AS status
+	, COALESCE(ke.scheme, ke.state) AS tool
 	, COALESCE(
-		json_extract(meta, '$.command')
-		, json_extract(meta, '$.file')
-		, json_extract(meta, '$.path')
-		, json_extract(meta, '$.question')
+		json_extract(ke.meta, '$.command')
+		, json_extract(ke.meta, '$.file')
+		, json_extract(ke.meta, '$.path')
+		, json_extract(ke.meta, '$.question')
 		, ''
 	) AS target
 	, CASE
-		WHEN state = 'summary' THEN value
-		WHEN scheme IN ('env', 'run', 'ask_user', 'inject') THEN value
+		WHEN ke.state = 'summary' THEN ke.value
+		WHEN ke.scheme IN ('env', 'run', 'ask_user', 'inject') THEN ke.value
 		ELSE ''
 	END AS value
-FROM known_entries
+FROM known_entries AS ke
+JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
-	scheme IS NOT NULL
-	AND state != 'proposed'
-	AND scheme NOT IN ('system', 'user', 'reasoning', 'content', 'prompt', 'known', 'unknown')
-ORDER BY id;
+	ke.scheme IS NOT NULL
+	AND ke.state != 'proposed'
+	AND s.category NOT IN ('knowledge', 'audit')
+ORDER BY ke.id;

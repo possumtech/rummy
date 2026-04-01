@@ -8,9 +8,7 @@ import KnownStore from "../../src/agent/KnownStore.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("FileScanner integration", () => {
-	let tdb, store, scanner;
-	const PROJECT_ID = "p1";
-	const RUN_ID = "run-fs-1";
+	let tdb, store, scanner, PROJECT_ID, RUN_ID;
 	const projectPath = join(tmpdir(), `rummy-scanner-${Date.now()}`);
 
 	before(async () => {
@@ -18,25 +16,13 @@ describe("FileScanner integration", () => {
 
 		tdb = await TestDb.create();
 		store = new KnownStore(tdb.db);
-
-		await tdb.db.upsert_project.run({
-			id: PROJECT_ID,
+		const seed = await tdb.seedRun({
 			path: projectPath,
 			name: "ScannerTest",
-		});
-		await tdb.db.create_session.run({
-			id: "s1",
-			project_id: PROJECT_ID,
-			client_id: "c1",
-		});
-		await tdb.db.create_run.run({
-			id: RUN_ID,
-			session_id: "s1",
-			parent_run_id: null,
-			type: "act",
-			config: "{}",
 			alias: "scan_1",
 		});
+		PROJECT_ID = seed.projectId;
+		RUN_ID = seed.runId;
 	});
 
 	after(async () => {

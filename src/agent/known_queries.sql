@@ -52,13 +52,14 @@ ORDER BY id DESC
 LIMIT 1;
 
 -- PREP: get_history
-SELECT path, state AS status, value, meta, turn
-FROM known_entries
+SELECT ke.path, ke.state AS status, ke.value, ke.meta, ke.turn
+FROM known_entries AS ke
+JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
-	run_id = :run_id
-	AND scheme IS NOT NULL
-	AND scheme NOT IN ('known', 'unknown', 'system', 'reasoning', 'content')
-ORDER BY id;
+	ke.run_id = :run_id
+	AND ke.scheme IS NOT NULL
+	AND s.category NOT IN ('knowledge', 'audit')
+ORDER BY ke.id;
 
 -- PREP: get_content
 SELECT path, value, turn

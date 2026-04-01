@@ -2,8 +2,49 @@
 PRAGMA mmap_size = 274877906944;
 
 -- INIT: initial_schema
+
+-- Scheme registry: single source of truth for all scheme metadata.
+-- fidelity: 'full' = always visible, 'turn' = visible when turn>0, 'null' = never visible.
+-- valid_states: JSON array of allowed state values for this scheme.
+-- tier: demotion priority (0 = demote first under budget pressure).
+CREATE TABLE IF NOT EXISTS schemes (
+	name TEXT PRIMARY KEY
+	, fidelity TEXT NOT NULL CHECK (fidelity IN ('full', 'turn', 'null'))
+	, model_visible BOOLEAN NOT NULL DEFAULT 1
+	, valid_states TEXT NOT NULL
+	, tier INTEGER NOT NULL DEFAULT 0
+	, category TEXT
+);
+
+INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier, category) VALUES
+	('file',      'turn', 1, '["full","symbols"]',                 1, 'file'),
+	('known',     'turn', 1, '["full","stored"]',                   2, 'knowledge'),
+	('unknown',   'full', 1, '["full","stored"]',                   4, 'knowledge'),
+	('write',     'full', 1, '["proposed","pass","warn","error"]',  0, 'result'),
+	('run',       'full', 1, '["proposed","pass","warn"]',          0, 'result'),
+	('env',       'full', 1, '["proposed","pass","warn"]',          0, 'result'),
+	('delete',    'full', 1, '["proposed","pass","warn"]',          0, 'result'),
+	('ask_user',  'full', 1, '["proposed","pass","warn"]',          0, 'result'),
+	('move',      'full', 1, '["proposed","pass","warn"]',          0, 'result'),
+	('copy',      'full', 1, '["proposed","pass","warn"]',          0, 'result'),
+	('read',      'full', 1, '["pass","info"]',                     0, 'result'),
+	('drop',      'full', 1, '["pass","info"]',                     0, 'result'),
+	('search',    'full', 1, '["info"]',                            0, 'result'),
+	('summary',   'full', 1, '["summary"]',                         0, 'structural'),
+	('update',    'null', 0, '["info"]',                            0, 'structural'),
+	('system',    'null', 0, '["info"]',                            0, 'audit'),
+	('user',      'full', 1, '["info"]',                            0, 'audit'),
+	('prompt',    'full', 1, '["info"]',                            0, 'audit'),
+	('reasoning', 'null', 0, '["info"]',                            0, 'audit'),
+	('content',   'null', 0, '["info"]',                            0, 'audit'),
+	('inject',    'null', 0, '["info"]',                            0, 'result'),
+	('keys',      'null', 0, '["info"]',                            0, 'audit'),
+	('retry',     'full', 1, '["error"]',                           0, 'result'),
+	('http',      'turn', 1, '["full"]',                            1, 'file'),
+	('https',     'turn', 1, '["full"]',                            1, 'file');
+
 CREATE TABLE IF NOT EXISTS projects (
-	id TEXT PRIMARY KEY
+	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, path TEXT UNIQUE NOT NULL
 	, name TEXT
 	, last_git_hash TEXT
@@ -12,8 +53,8 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
-	id TEXT PRIMARY KEY
-	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, project_id INTEGER NOT NULL REFERENCES projects (id) ON DELETE CASCADE
 	, client_id TEXT
 	, persona TEXT
 	, system_prompt TEXT
@@ -26,16 +67,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE TABLE IF NOT EXISTS session_skills (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
+	, session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
 	, name TEXT NOT NULL
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, UNIQUE (session_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS runs (
-	id TEXT PRIMARY KEY
-	, session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
-	, parent_run_id TEXT REFERENCES runs (id) ON DELETE SET NULL
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
+	, parent_run_id INTEGER REFERENCES runs (id) ON DELETE SET NULL
 	, type TEXT NOT NULL CHECK (type IN ('ask', 'act'))
 	, status TEXT NOT NULL DEFAULT 'queued' CHECK (
 		status IN ('queued', 'running', 'proposed', 'completed', 'failed', 'aborted')
@@ -52,7 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_runs_alias ON runs (alias);
 -- Turns: usage stats and sequencing (operational, not model-facing)
 CREATE TABLE IF NOT EXISTS turns (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, sequence INTEGER NOT NULL CHECK (sequence >= 1)
 	, prompt_tokens INTEGER NOT NULL DEFAULT 0 CHECK (prompt_tokens >= 0)
 	, completion_tokens INTEGER NOT NULL DEFAULT 0 CHECK (completion_tokens >= 0)
@@ -70,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 -- Persists across runs. Orthogonal to fidelity.
 CREATE TABLE IF NOT EXISTS file_constraints (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE
+	, project_id INTEGER NOT NULL REFERENCES projects (id) ON DELETE CASCADE
 	, pattern TEXT NOT NULL
 	, visibility TEXT NOT NULL CHECK (visibility IN ('active', 'readonly', 'ignore'))
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -79,13 +120,13 @@ CREATE TABLE IF NOT EXISTS file_constraints (
 CREATE INDEX IF NOT EXISTS idx_file_constraints_project
 ON file_constraints (project_id);
 
--- Known K/V Store: the unified state machine
+-- Known K/V Store: the unified state machine.
 -- Files, knowledge, tool results, audit — everything is a keyed entry.
--- scheme: derived from path via schemeOf(). Generated column — always correct by definition.
--- File states: 'full' or 'symbols' (fidelity only, no client constraints).
+-- scheme: derived from path via schemeOf(). Generated column.
+-- State validated by trigger against schemes.valid_states.
 CREATE TABLE IF NOT EXISTS known_entries (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
 	, path TEXT NOT NULL
 	, value TEXT NOT NULL DEFAULT ''
@@ -99,31 +140,6 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	, CHECK (
-		CASE
-			WHEN scheme IS NULL
-				THEN state IN ('full', 'symbols')
-			WHEN scheme IN ('known', 'unknown')
-				THEN state IN ('full', 'stored')
-			WHEN scheme IN ('write')
-				THEN state IN ('proposed', 'pass', 'warn', 'error')
-			WHEN scheme IN ('run', 'env', 'delete', 'ask_user', 'move', 'copy')
-				THEN state IN ('proposed', 'pass', 'warn')
-			WHEN scheme IN ('read', 'drop')
-				THEN state IN ('pass', 'info')
-			WHEN scheme = 'summary'
-				THEN state = 'summary'
-			WHEN scheme IN (
-				'system', 'user', 'reasoning', 'content', 'prompt',
-				'update', 'keys', 'inject', 'search'
-			) THEN state = 'info'
-			WHEN scheme = 'retry'
-				THEN state = 'error'
-			WHEN scheme IN ('http', 'https')
-				THEN state IN ('full')
-			ELSE 0
-		END
-	)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_known_entries_run_path
 ON known_entries (run_id, path);
@@ -131,6 +147,37 @@ CREATE INDEX IF NOT EXISTS idx_known_entries_scheme_state
 ON known_entries (run_id, scheme, state);
 CREATE INDEX IF NOT EXISTS idx_known_entries_turn
 ON known_entries (run_id, turn);
+
+-- Validate state against schemes.valid_states on insert.
+CREATE TRIGGER IF NOT EXISTS trg_known_entry_state_insert
+BEFORE INSERT ON known_entries
+FOR EACH ROW
+BEGIN
+	SELECT RAISE(ABORT, 'invalid state for scheme')
+	WHERE NOT EXISTS (
+		SELECT 1
+		FROM schemes AS s, json_each(s.valid_states) AS j
+		WHERE
+			s.name = COALESCE(schemeOf(NEW.path), 'file')
+			AND j.value = NEW.state
+	);
+END;
+
+-- Validate state against schemes.valid_states on update.
+CREATE TRIGGER IF NOT EXISTS trg_known_entry_state_update
+BEFORE UPDATE OF state ON known_entries
+FOR EACH ROW
+WHEN OLD.state != NEW.state
+BEGIN
+	SELECT RAISE(ABORT, 'invalid state for scheme')
+	WHERE NOT EXISTS (
+		SELECT 1
+		FROM schemes AS s, json_each(s.valid_states) AS j
+		WHERE
+			s.name = COALESCE(schemeOf(NEW.path), 'file')
+			AND j.value = NEW.state
+	);
+END;
 
 -- UNRESOLVED VIEW: all entries awaiting user action
 CREATE VIEW IF NOT EXISTS v_unresolved AS
@@ -145,10 +192,9 @@ WHERE state = 'proposed';
 
 -- Turn context: materialized snapshot of what the model sees each turn.
 -- known_entries is the warehouse. turn_context is the shipment.
--- scheme: derived from path. fidelity: how much of the entry the model sees.
 CREATE TABLE IF NOT EXISTS turn_context (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE
+	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL CHECK (turn >= 1)
 	, ordinal INTEGER NOT NULL CHECK (ordinal >= 0)
 	, path TEXT NOT NULL
@@ -163,9 +209,6 @@ CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn
 ON turn_context (run_id, turn);
 
 -- Enforce valid run state transitions.
--- queued    → running, aborted
--- running   → proposed, completed, failed, aborted
--- proposed  → running, completed, aborted
 CREATE TRIGGER IF NOT EXISTS trg_run_state_transition
 BEFORE UPDATE OF status ON runs
 FOR EACH ROW

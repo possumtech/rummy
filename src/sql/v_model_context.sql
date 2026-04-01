@@ -3,26 +3,36 @@ CREATE VIEW IF NOT EXISTS v_model_context AS
 WITH
 classified AS (
 	SELECT
-		run_id
-		, id
-		, path
-		, value
-		, scheme
-		, state
-		, turn
-		, meta
-		, tokens AS tokens_full
-		, fidelityOf(scheme, state, turn) AS fidelity
+		ke.run_id
+		, ke.id
+		, ke.path
+		, ke.value
+		, ke.scheme
+		, ke.state
+		, ke.turn
+		, ke.meta
+		, ke.tokens AS tokens_full
 		, CASE
-			WHEN scheme IN ('user', 'prompt')
+			WHEN ke.state = 'proposed' THEN NULL
+			WHEN s.fidelity = 'null' THEN NULL
+			WHEN s.fidelity = 'full' THEN 'full'
+			WHEN s.fidelity = 'turn' AND ke.scheme IS NULL AND ke.state = 'symbols' AND ke.turn > 0
+				THEN 'summary'
+			WHEN s.fidelity = 'turn' AND ke.turn > 0 THEN 'full'
+			WHEN s.fidelity = 'turn' AND ke.turn = 0 THEN 'index'
+			ELSE NULL
+		END AS fidelity
+		, CASE
+			WHEN ke.scheme IN ('user', 'prompt')
 				THEN ROW_NUMBER() OVER (
-					PARTITION BY run_id, scheme
-					ORDER BY id DESC
+					PARTITION BY ke.run_id, ke.scheme
+					ORDER BY ke.id DESC
 				)
 			ELSE 1
 		END AS prompt_rank
-	FROM known_entries
-	WHERE state NOT IN ('proposed')
+	FROM known_entries AS ke
+	JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
+	WHERE ke.state NOT IN ('proposed')
 ),
 projected AS (
 	SELECT

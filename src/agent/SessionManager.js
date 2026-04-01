@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { isAbsolute, relative } from "node:path";
 import ProjectContext from "../fs/ProjectContext.js";
 import KnownStore from "./KnownStore.js";
@@ -21,25 +20,17 @@ export default class SessionManager {
 			clientId,
 		});
 
-		const actualProjectId = crypto.randomUUID();
-		const sessionId = crypto.randomUUID();
-
-		await this.#db.upsert_project.run({
-			id: actualProjectId,
+		const projectRow = await this.#db.upsert_project.get({
 			path: projectPath,
 			name: projectName,
 		});
+		const projectId = projectRow.id;
 
-		const projects = await this.#db.get_project_by_path.all({
-			path: projectPath,
-		});
-		const projectId = projects[0].id;
-
-		await this.#db.create_session.run({
-			id: sessionId,
+		const sessionRow = await this.#db.create_session.get({
 			project_id: projectId,
 			client_id: clientId,
 		});
+		const sessionId = sessionRow.id;
 
 		const { default: GitProvider } = await import("../fs/GitProvider.js");
 		const gitRoot = await GitProvider.detectRoot(projectPath);
@@ -183,7 +174,6 @@ export default class SessionManager {
 	}
 
 	async startRun(sessionId, runConfig) {
-		const runId = crypto.randomUUID();
 		const config = await this.#hooks.run.config.filter(runConfig, {
 			sessionId,
 		});
@@ -193,14 +183,14 @@ export default class SessionManager {
 		const row = await this.#db.get_next_run_alias.get({ prefix });
 		const alias = `${prefix}${row.next_seq}`;
 
-		await this.#db.create_run.run({
-			id: runId,
+		const runRow = await this.#db.create_run.get({
 			session_id: sessionId,
 			parent_run_id: config.parentRunId || null,
 			type: config.type,
 			config: JSON.stringify(config.config || {}),
 			alias,
 		});
+		const runId = runRow.id;
 
 		await this.#hooks.run.started.emit({
 			runId,

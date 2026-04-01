@@ -4,31 +4,13 @@ import KnownStore from "../../src/agent/KnownStore.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("State lock: proposed entries block execution", () => {
-	let tdb, store;
-	const RUN_ID = "run-lock-1";
+	let tdb, store, RUN_ID;
 
 	before(async () => {
 		tdb = await TestDb.create();
 		store = new KnownStore(tdb.db);
-
-		await tdb.db.upsert_project.run({
-			id: "p1",
-			path: "/tmp/test",
-			name: "Test",
-		});
-		await tdb.db.create_session.run({
-			id: "s1",
-			project_id: "p1",
-			client_id: "c1",
-		});
-		await tdb.db.create_run.run({
-			id: RUN_ID,
-			session_id: "s1",
-			parent_run_id: null,
-			type: "act",
-			config: "{}",
-			alias: "lock_1",
-		});
+		const seed = await tdb.seedRun({ alias: "lock_1" });
+		RUN_ID = seed.runId;
 	});
 
 	after(async () => {

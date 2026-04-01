@@ -31,6 +31,28 @@ export default class TestDb {
 		return new TestDb(db, dbPath);
 	}
 
+	async seedRun({
+		path = "/tmp/test",
+		name = "Test",
+		clientId = "c1",
+		type = "act",
+		alias = "test_1",
+	} = {}) {
+		const project = await this.db.upsert_project.get({ path, name });
+		const session = await this.db.create_session.get({
+			project_id: project.id,
+			client_id: clientId,
+		});
+		const run = await this.db.create_run.get({
+			session_id: session.id,
+			parent_run_id: null,
+			type,
+			config: "{}",
+			alias,
+		});
+		return { projectId: project.id, sessionId: session.id, runId: run.id };
+	}
+
 	async cleanup() {
 		await this.db.close();
 		await fs.unlink(this.dbPath).catch(() => {});

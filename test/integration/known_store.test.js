@@ -6,31 +6,13 @@ import TestDb from "../helpers/TestDb.js";
 describe("KnownStore integration", () => {
 	let tdb;
 	let store;
-	const RUN_ID = "run-test-1";
+	let RUN_ID;
 
 	before(async () => {
 		tdb = await TestDb.create();
 		store = new KnownStore(tdb.db);
-
-		// Create prerequisite rows
-		await tdb.db.upsert_project.run({
-			id: "p1",
-			path: "/tmp/test",
-			name: "Test",
-		});
-		await tdb.db.create_session.run({
-			id: "s1",
-			project_id: "p1",
-			client_id: "c1",
-		});
-		await tdb.db.create_run.run({
-			id: RUN_ID,
-			session_id: "s1",
-			parent_run_id: null,
-			type: "act",
-			config: "{}",
-			alias: "test_1",
-		});
+		const seed = await tdb.seedRun({ alias: "test_1" });
+		RUN_ID = seed.runId;
 	});
 
 	after(async () => {
@@ -311,21 +293,21 @@ describe("KnownStore integration", () => {
 		it("rejects invalid file state", async () => {
 			await assert.rejects(
 				() => store.upsert(RUN_ID, 0, "bad.js", "", "proposed"),
-				/CHECK constraint/,
+				/invalid state for scheme/,
 			);
 		});
 
 		it("rejects invalid known state", async () => {
 			await assert.rejects(
 				() => store.upsert(RUN_ID, 0, "known://bad", "", "proposed"),
-				/CHECK constraint/,
+				/invalid state for scheme/,
 			);
 		});
 
 		it("rejects invalid edit state", async () => {
 			await assert.rejects(
 				() => store.upsert(RUN_ID, 0, "write://999", "", "full"),
-				/CHECK constraint/,
+				/invalid state for scheme/,
 			);
 		});
 	});

@@ -6,7 +6,8 @@ import RummyContext from "../../src/hooks/RummyContext.js";
 import Engine from "../../src/plugins/engine/engine.js";
 import TestDb from "../helpers/TestDb.js";
 
-const RUN_ID = "run-dist-1";
+let RUN_ID;
+let PROJECT;
 const TURN = 1;
 
 function makeRummy(db, store, { sequence = TURN, contextSize = 50000 } = {}) {
@@ -24,7 +25,7 @@ function makeRummy(db, store, { sequence = TURN, contextSize = 50000 } = {}) {
 	return new RummyContext(hookRoot, {
 		db,
 		store,
-		project: { id: "p1", path: "/tmp/test", name: "Test" },
+		project: PROJECT,
 		type: "act",
 		sequence,
 		runId: RUN_ID,
@@ -44,25 +45,9 @@ describe("turn_context distribution bucket correctness", () => {
 	before(async () => {
 		tdb = await TestDb.create();
 		store = new KnownStore(tdb.db);
-
-		await tdb.db.upsert_project.run({
-			id: "p1",
-			path: "/tmp/test",
-			name: "Test",
-		});
-		await tdb.db.create_session.run({
-			id: "s1",
-			project_id: "p1",
-			client_id: "c1",
-		});
-		await tdb.db.create_run.run({
-			id: RUN_ID,
-			session_id: "s1",
-			parent_run_id: null,
-			type: "act",
-			config: "{}",
-			alias: "dist_1",
-		});
+		const seed = await tdb.seedRun({ alias: "dist_1" });
+		RUN_ID = seed.runId;
+		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
 
 		// Populate known_entries
 		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", "full");

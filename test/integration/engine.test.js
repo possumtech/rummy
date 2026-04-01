@@ -6,8 +6,8 @@ import RummyContext from "../../src/hooks/RummyContext.js";
 import Engine from "../../src/plugins/engine/engine.js";
 import TestDb from "../helpers/TestDb.js";
 
-const RUN_ID = "run-engine-1";
-const PROJECT = { id: "p1", path: "/tmp/test", name: "Test" };
+let RUN_ID;
+let PROJECT;
 
 function makeRummy(db, store, { sequence = 1, contextSize = 1000 } = {}) {
 	const hookRoot = {
@@ -48,25 +48,9 @@ describe("Engine integration", () => {
 	before(async () => {
 		tdb = await TestDb.create();
 		store = new KnownStore(tdb.db);
-
-		await tdb.db.upsert_project.run({
-			id: "p1",
-			path: "/tmp/test",
-			name: "Test",
-		});
-		await tdb.db.create_session.run({
-			id: "s1",
-			project_id: "p1",
-			client_id: "c1",
-		});
-		await tdb.db.create_run.run({
-			id: RUN_ID,
-			session_id: "s1",
-			parent_run_id: null,
-			type: "act",
-			config: "{}",
-			alias: "engine_1",
-		});
+		const seed = await tdb.seedRun({ alias: "engine_1" });
+		RUN_ID = seed.runId;
+		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
 	});
 
 	beforeEach(async () => {

@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
@@ -91,12 +90,12 @@ export default class AgentLoop {
 		});
 
 		const sessions = await this.#db.get_session_by_id.all({
-			id: String(sessionId || ""),
+			id: sessionId,
 		});
 		if (!sessions || sessions.length === 0) {
 			throw new Error(msg("error.session_not_found", { sessionId }));
 		}
-		const projectId = String(sessions[0].project_id || "");
+		const projectId = sessions[0].project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		if (!project)
 			throw new Error(msg("error.project_not_found", { projectId }));
@@ -108,7 +107,7 @@ export default class AgentLoop {
 		// Resolve temperature
 		if (options?.temperature === undefined) {
 			const tempRow = await this.#db.get_session_temperature.get({
-				id: String(sessionId || ""),
+				id: sessionId,
 			});
 			if (tempRow?.temperature !== null && tempRow?.temperature !== undefined) {
 				options = { ...options, temperature: tempRow.temperature };
@@ -122,16 +121,15 @@ export default class AgentLoop {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
 			if (!existingRun)
 				throw new Error(msg("error.run_not_found", { runId: run }));
-			currentRunId = crypto.randomUUID();
 			currentAlias = await this.#generateAlias(requestedModel);
-			await this.#db.create_run.run({
-				id: currentRunId,
-				session_id: String(sessionId || ""),
+			const runRow = await this.#db.create_run.get({
+				session_id: sessionId,
 				parent_run_id: existingRun.id,
-				type: String(type || "ask"),
+				type: type || "ask",
 				config: JSON.stringify({ model: requestedModel, noContext }),
 				alias: currentAlias,
 			});
+			currentRunId = runRow.id;
 			// Copy parent's known store into the fork
 			await this.#db.fork_known_entries.run({
 				new_run_id: currentRunId,
@@ -159,16 +157,15 @@ export default class AgentLoop {
 				status: "running",
 			});
 		} else {
-			currentRunId = crypto.randomUUID();
 			currentAlias = await this.#generateAlias(requestedModel);
-			await this.#db.create_run.run({
-				id: currentRunId,
-				session_id: String(sessionId || ""),
+			const runRow = await this.#db.create_run.get({
+				session_id: sessionId,
 				parent_run_id: null,
-				type: String(type || "ask"),
+				type: type || "ask",
 				config: JSON.stringify({ model: requestedModel, noContext }),
 				alias: currentAlias,
 			});
+			currentRunId = runRow.id;
 			await this.#db.update_run_status.run({
 				id: currentRunId,
 				status: "running",
@@ -178,7 +175,7 @@ export default class AgentLoop {
 		const modelContextSize =
 			await this.#llmProvider.getContextSize(requestedModel);
 		const limitRow = await this.#db.get_session_context_limit.get({
-			id: String(sessionId || ""),
+			id: sessionId,
 		});
 		const contextSize = limitRow?.context_limit
 			? Math.min(limitRow.context_limit, modelContextSize)
