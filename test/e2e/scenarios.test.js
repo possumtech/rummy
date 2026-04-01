@@ -343,7 +343,9 @@ describe("E2E: Client Scenarios", () => {
 		// Verify multiple turns in the store
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: run1.run });
 		const all = await tdb.db.get_known_entries.all({ run_id: runRow.id });
-		const prompts = all.filter((e) => e.path.startsWith("prompt://"));
+		const prompts = all.filter(
+			(e) => e.path.startsWith("user://") || e.path.startsWith("prompt://"),
+		);
 		assert.ok(
 			prompts.length >= 2,
 			`Should have 2+ prompts, got ${prompts.length}`,

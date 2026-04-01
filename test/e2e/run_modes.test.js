@@ -72,7 +72,7 @@ describe("E2E: Run Modes", () => {
 		);
 
 		// Should have multiple prompts
-		const prompts = entries.filter((e) => e.path.startsWith("prompt://"));
+		const prompts = entries.filter((e) => e.path.startsWith("user://"));
 		assert.ok(
 			prompts.length >= 2,
 			`Should have 2+ prompts, got ${prompts.length}`,

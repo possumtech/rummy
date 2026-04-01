@@ -318,8 +318,9 @@ describe("ContextAssembler", () => {
 			];
 			const messages = ContextAssembler.assembleFromTurnContext(rows);
 
-			assert.strictEqual(messages.length, 1);
+			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].content, "sys");
+			assert.strictEqual(messages[1].role, "user");
 		});
 
 		it("renders index fidelity for files and stored known", () => {

@@ -131,22 +131,22 @@ describe("E2E: Pattern Operations", () => {
 		);
 	});
 
-	it("edit with search/replace attributes", { timeout: TIMEOUT }, async () => {
+	it("write with search/replace attributes", { timeout: TIMEOUT }, async () => {
 		const result = await client.call("act", {
 			model,
 			prompt:
-				'Use search/replace to change "localhost" to "0.0.0.0" in src/config.js: <edit path="src/config.js" search="localhost" replace="0.0.0.0"/>',
+				'Use search/replace to change "localhost" to "0.0.0.0" in src/config.js: <write path="src/config.js" search="localhost" replace="0.0.0.0"/>',
 		});
 
 		await client.assertRun(
 			result,
 			["completed", "proposed"],
-			"search/replace edit",
+			"search/replace write",
 		);
 
 		if (result.status === "proposed") {
-			const edit = result.proposed.find((p) => p.path.startsWith("edit://"));
-			assert.ok(edit, "Should have edit proposed");
+			const edit = result.proposed.find((p) => p.path.startsWith("write://"));
+			assert.ok(edit, "Should have write proposed");
 			const meta =
 				typeof edit.meta === "string" ? JSON.parse(edit.meta) : edit.meta;
 			assert.ok(

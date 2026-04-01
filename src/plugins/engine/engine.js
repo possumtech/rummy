@@ -3,50 +3,48 @@ import { countTokens } from "../../agent/tokens.js";
 export default class Engine {
 	static register(hooks) {
 		hooks.onTurn(async (rummy) => {
-			if (rummy.noContext) return;
 			if (!rummy.contextSize) return;
 
 			const { runId, sequence, store, db } = rummy;
 
-			// Budget enforcement — demote from known_entries if over budget
-			const { total } = await db.get_promoted_token_total.get({
-				run_id: runId,
-			});
-			if (total > rummy.contextSize) {
-				const entries = await db.get_promoted_entries.all({
+			// Budget enforcement (skip in lite mode — no files to demote)
+			if (!rummy.noContext) {
+				const { total } = await db.get_promoted_token_total.get({
 					run_id: runId,
 				});
-				const demoted = await enforce(
-					store,
-					runId,
-					sequence,
-					rummy.contextSize,
-					total,
-					entries,
-				);
-				if (demoted.length > 0) {
-					const saved = demoted.reduce((s, d) => s + d.saved, 0);
-					const before = ((total / rummy.contextSize) * 100) | 0;
-					const after = (((total - saved) / rummy.contextSize) * 100) | 0;
-					const names = demoted.map((d) => d.path).join(", ");
-					const report = `engine demoted: ${names} (budget: ${before}% → ${after}%)`;
-					const resultPath = await store.slugPath(runId, "inject", report);
-					await store.upsert(
+				if (total > rummy.contextSize) {
+					const entries = await db.get_promoted_entries.all({
+						run_id: runId,
+					});
+					const demoted = await enforce(
+						store,
 						runId,
 						sequence,
-						resultPath,
-						report,
-						"info",
-						{},
+						rummy.contextSize,
+						total,
+						entries,
 					);
+					if (demoted.length > 0) {
+						const saved = demoted.reduce((s, d) => s + d.saved, 0);
+						const before = ((total / rummy.contextSize) * 100) | 0;
+						const after = (((total - saved) / rummy.contextSize) * 100) | 0;
+						const names = demoted.map((d) => d.path).join(", ");
+						const report = `engine demoted: ${names} (budget: ${before}% → ${after}%)`;
+						const resultPath = await store.slugPath(runId, "inject", report);
+						await store.upsert(
+							runId,
+							sequence,
+							resultPath,
+							report,
+							"info",
+							{},
+						);
+					}
 				}
 			}
 
 			// Materialize turn_context: clear, system prompt, VIEW rows, continuation
-			await db.clear_turn_context.run({
-				run_id: runId,
-				turn: sequence,
-			});
+			await db.clear_turn_context.run({ run_id: runId, turn: sequence });
 
 			if (rummy.systemPrompt) {
 				await db.insert_turn_context.run({

@@ -220,7 +220,7 @@ BEGIN
 		(OLD.status = 'queued' AND NEW.status IN ('running', 'aborted'))
 		OR (OLD.status = 'running' AND NEW.status IN ('proposed', 'completed', 'failed', 'aborted'))
 		OR (OLD.status = 'proposed' AND NEW.status IN ('running', 'completed', 'aborted'))
-		OR (OLD.status = 'completed' AND NEW.status IN ('running'))
+		OR (OLD.status = 'completed' AND NEW.status IN ('running', 'aborted'))
 	);
 END;
 

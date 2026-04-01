@@ -344,9 +344,10 @@ export default class ContextAssembler {
 			userParts.push(`<progress>${continuation}</progress>`);
 		}
 
-		if (userParts.length > 0) {
-			messages.push({ role: "user", content: userParts.join("\n") });
-		}
+		messages.push({
+			role: "user",
+			content: userParts.length > 0 ? userParts.join("\n") : "Begin.",
+		});
 
 		return messages;
 	}

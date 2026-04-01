@@ -61,7 +61,7 @@ describe("E2E: Tool Calling Foundation", () => {
 
 		// Verify known store has a summary entry
 		const log = await tdb.db.get_results.all({ run_id: runRow.id });
-		const summaries = log.filter((e) => e.state === "summary");
+		const summaries = log.filter((e) => e.status === "summary");
 		assert.ok(summaries.length > 0, "Should have at least one summary entry");
 
 		// Verify summary text is non-empty

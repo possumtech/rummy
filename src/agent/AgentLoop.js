@@ -135,6 +135,10 @@ export default class AgentLoop {
 				new_run_id: currentRunId,
 				parent_run_id: existingRun.id,
 			});
+			await this.#db.update_run_status.run({
+				id: currentRunId,
+				status: "running",
+			});
 		} else if (run) {
 			const existingRun = await this.#db.get_run_by_alias.get({ alias: run });
 			if (!existingRun)

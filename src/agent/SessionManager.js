@@ -111,7 +111,7 @@ export default class SessionManager {
 		await this.#db.upsert_file_constraint.run({
 			project_id: projectId,
 			pattern: path,
-			constraint,
+			visibility: constraint,
 		});
 
 		// ignore → demote across all runs so file leaves context immediately
