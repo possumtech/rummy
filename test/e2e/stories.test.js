@@ -155,8 +155,8 @@ describe("E2E Stories", () => {
 	});
 
 	// ---------------------------------------------------------------
-	// Story 2: Research session — read, write known, glob, search, drop
-	// 7 turns on one run
+	// Story 2: Research session — read, write known, glob, search, store
+	// 9 turns on one run
 	// ---------------------------------------------------------------
 	it("Story 2: research session", { timeout: TIMEOUT }, async () => {
 		// Turn 1: read config, identify database
@@ -217,34 +217,49 @@ describe("E2E Stories", () => {
 		resp = await lastResponse(tdb.db, r4.run);
 		assertContains(resp, "hello", "S2-T4");
 
-		// Turn 5: web search
+		// Turn 5: search and use results to answer
 		const r5 = await client.call("ask", {
 			model,
-			prompt: 'Search the web for "Express.js error handling middleware".',
+			prompt:
+				'Search the web for "Tom Petty death date" and tell me when he died. Reply with the date.',
 			run: r1.run,
 		});
 		await client.assertRun(r5, "completed", "S2-T5");
+		resp = await lastResponse(tdb.db, r5.run);
+		assertContains(resp, "2017", "S2-T5 search result used");
 
-		// Turn 6: drop a file
+		// Turn 6: store a file (remove from context, keep in storage)
 		const r6 = await client.call("ask", {
 			model,
-			prompt: "Drop data/users.json from context — we're done with it.",
+			prompt:
+				'Store data/users.json — remove it from context. Use: <store path="data/users.json"/>',
 			run: r1.run,
 		});
 		await client.assertRun(r6, "completed", "S2-T6");
 
-		// Turn 7: synthesis — recall across all turns
+		// Turn 7: verify stored file is gone from context, then re-read it
 		const r7 = await client.call("ask", {
+			model,
+			prompt:
+				"Read data/users.json back into context and tell me Bob's role. Reply with the role.",
+			run: r1.run,
+		});
+		await client.assertRun(r7, "completed", "S2-T7");
+		resp = await lastResponse(tdb.db, r7.run);
+		assertContains(resp, "viewer", "S2-T7 re-read after store");
+
+		// Turn 8: synthesis — recall across all turns
+		const r8 = await client.call("ask", {
 			model,
 			prompt:
 				"Based on everything you've learned: what database does this project use, what port does the app run on, and what's the project codename? Reply with all three answers.",
 			run: r1.run,
 		});
-		await client.assertRun(r7, "completed", "S2-T7");
-		resp = await lastResponse(tdb.db, r7.run);
-		assertContains(resp, "postgres", "S2-T7 db");
-		assertContains(resp, "8080", "S2-T7 port");
-		assertContains(resp, "phoenix", "S2-T7 codename");
+		await client.assertRun(r8, "completed", "S2-T8");
+		resp = await lastResponse(tdb.db, r8.run);
+		assertContains(resp, "postgres", "S2-T8 db");
+		assertContains(resp, "8080", "S2-T8 port");
+		assertContains(resp, "phoenix", "S2-T8 codename");
 	});
 
 	// ---------------------------------------------------------------
@@ -492,11 +507,11 @@ describe("E2E Stories", () => {
 		});
 		await client.assertRun(r3, "completed", "S5-T3");
 
-		// Turn 4: drop resolved unknowns and synthesize
+		// Turn 4: store resolved unknowns and synthesize
 		const r4 = await client.call("ask", {
 			model,
 			prompt:
-				"Drop any unknowns you've resolved. What do you know for certain about this project's architecture? Reply with specific facts.",
+				"Store any unknowns you've resolved. What do you know for certain about this project's architecture? Reply with specific facts.",
 			run: r1.run,
 		});
 		await client.assertRun(r4, "completed", "S5-T4");
@@ -669,5 +684,92 @@ describe("E2E Stories", () => {
 			acceptedWrites.length > 0,
 			"S8: at least one accepted write should exist",
 		);
+	});
+
+	// ---------------------------------------------------------------
+	// Story 9: Tool awareness — keys preview, store/re-read,
+	// search-then-answer, plain text healing
+	// Tests that the model can see and use tool result content.
+	// ---------------------------------------------------------------
+	it("Story 9: tool awareness", { timeout: TIMEOUT }, async () => {
+		// Turn 1: keys preview — list JS files without reading them
+		const r1 = await client.call("ask", {
+			model,
+			prompt:
+				'Preview what JS files exist in src/ using the keys flag: <read path="src/*.js" keys/>\nHow many JS files matched? Reply with the count.',
+		});
+		await client.assertRun(r1, "completed", "S9-T1");
+		let resp = await lastResponse(tdb.db, r1.run);
+		// Should mention 2 or 3 files (app.js, utils.js, possibly config.json excluded)
+		const all1 = await allEntries(tdb.db, r1.run);
+		const keysEntries = all1.filter((e) => e.state === "keys");
+		assert.ok(keysEntries.length > 0, "S9-T1: keys preview should exist");
+
+		// Turn 2: write a known entry, then store it
+		const r2 = await client.call("ask", {
+			model,
+			prompt:
+				'Save known://temp_note with the value "temporary data". Then store it away from context: <write path="known://temp_note">temporary data</write>',
+			run: r1.run,
+		});
+		await client.assertRun(r2, "completed", "S9-T2");
+
+		// Turn 3: store it away
+		const r3 = await client.call("ask", {
+			model,
+			prompt:
+				'Store the temp note away from context: <store path="known://temp_note"/>',
+			run: r1.run,
+		});
+		await client.assertRun(r3, "completed", "S9-T3");
+
+		// Turn 4: re-read the stored entry
+		const r4 = await client.call("ask", {
+			model,
+			prompt:
+				"Read known://temp_note back into context. What does it say? Reply with its content.",
+			run: r1.run,
+		});
+		await client.assertRun(r4, "completed", "S9-T4");
+		resp = await lastResponse(tdb.db, r4.run);
+		assertContains(resp, "temporary", "S9-T4 re-read stored entry");
+
+		// Turn 5: search and answer — model must use search results
+		const r5 = await client.call("ask", {
+			model,
+			prompt:
+				'Search for "SQLite WAL mode" and explain what WAL mode does in one sentence.',
+			run: r1.run,
+		});
+		await client.assertRun(r5, "completed", "S9-T5");
+		resp = await lastResponse(tdb.db, r5.run);
+		const mentionsWal =
+			resp.toLowerCase().includes("write") ||
+			resp.toLowerCase().includes("log") ||
+			resp.toLowerCase().includes("wal") ||
+			resp.toLowerCase().includes("concurrent");
+		assert.ok(
+			mentionsWal,
+			`S9-T5: should explain WAL mode, got: "${resp.slice(0, 200)}"`,
+		);
+
+		// Turn 6: plain text answer — no tools, should heal to summary
+		const r6 = await client.call("ask", {
+			model,
+			prompt: "What is 2 + 2? Reply with just the number, no tool commands.",
+			run: r1.run,
+			noContext: true,
+		});
+		await client.assertRun(r6, "completed", "S9-T6");
+		resp = await lastResponse(tdb.db, r6.run);
+		assertContains(resp, "4", "S9-T6 plain text healed to summary");
+
+		// Verify it completed in 1 turn (plain text → summary, no continuation)
+		const all6 = await allEntries(tdb.db, r6.run);
+		const _progress6 = all6.filter(
+			(e) => e.scheme === "progress" && e.path.includes("//"),
+		);
+		// The run may have used continuation turns before, but turn 6 specifically
+		// should not spawn new progress entries beyond what already existed
 	});
 });

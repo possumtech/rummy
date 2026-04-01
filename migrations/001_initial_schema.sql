@@ -27,6 +27,8 @@ INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier
 ('ask_user', 'full', 1, '["proposed","pass","warn"]', 0, 'result'),
 ('move', 'full', 1, '["proposed","pass","warn","keys"]', 0, 'result'),
 ('copy', 'full', 1, '["proposed","pass","warn","keys"]', 0, 'result'),
+('read', 'full', 1, '["keys"]', 0, 'result'),
+('store', 'full', 1, '["keys"]', 0, 'result'),
 ('search', 'full', 1, '["info"]', 0, 'result'),
 ('summary', 'full', 1, '["summary"]', 0, 'structural'),
 ('update', 'null', 0, '["info"]', 0, 'structural'),
