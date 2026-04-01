@@ -34,160 +34,202 @@ detail, fix the assertion. If the story broke, fix the implementation.
 
 ## Todo: E2E Story Suite
 
-Replace the current scattered E2E collection with a focused suite of multi-turn
-story tests. Each story runs on a **single run** with multiple turns, exercising
-tools, verifying model behavior relative to tools, and validating our response
-processing. Only Story 1 is single-turn.
+Replace the current scattered E2E collection with a focused suite of long,
+chained story tests. Each story runs on a **single run** with many turns,
+each turn exercising a different tool, building on context from previous turns.
+Stories test whether the full pipeline — prompt assembly, tool dispatch, context
+materialization, model comprehension — actually works under sustained use.
 
-Every assertion targets **content and behavior**, not implementation details.
-If the model's answer is correct, the test passes — regardless of how many
-entries exist, what schemes were used, or what intermediate states occurred.
+Every assertion targets **content and behavior**. If the model's answer is
+correct, the test passes.
 
 ### Test Infrastructure
 
 Shared `before()`: git-initialized temp project with known files:
-- `src/app.js` — Express app on port 8080, TODO comment
+- `src/app.js` — Express app on port 8080, `// TODO: add error handling`
 - `src/config.json` — `{ "db": "postgres", "pool": 5, "host": "db.internal" }`
-- `src/utils.js` — 2 exported functions (`greet()`, `add(a, b)`)
+- `src/utils.js` — exports `greet()` returning "hello", `add(a, b)` returning a+b
 - `notes.md` — "The project codename is: phoenix"
 - `data/users.json` — `[{"name":"Alice","role":"admin"},{"name":"Bob","role":"viewer"}]`
 
 ### Story 1: Baseline — single-turn factual answer (ask)
 
-**1 turn.** "What is the project codename in notes.md? Reply ONLY with the word."
-- Assert: summary/update contains "phoenix"
+The only single-turn test. Proves the simplest path works.
 
-### Story 2: Multi-turn knowledge building (ask, same run)
-
-**Turn 1:** "Read src/config.json and save the database type as a known entry."
-- Assert: run completed, known entry exists with value containing "postgres"
-
-**Turn 2 (continue):** "What database pool size did you find? Reply with the number."
-- Assert: response contains "5"
-- Validates: multi-turn memory, known entries persist across turns
-
-### Story 3: File editing with SEARCH/REPLACE (act)
-
-**Turn 1:** "In src/app.js, replace the TODO comment with an actual error handler.
-Use SEARCH/REPLACE to make the edit."
-- Assert: run reaches `proposed` status
-- Assert: proposed entry exists for a write:// path
-
-**Turn 2 (resolve accept):** Accept the proposed edit.
-- Assert: run resumes and completes
-- Assert: the write result has state `pass`
-
-### Story 4: Read → reason → write chain (act)
-
-**Turn 1:** "Read data/users.json. How many admin users are there? Write the count
-to known://admin_count."
-- Assert: run completes
-- Assert: known://admin_count exists with value containing "1"
-
-**Turn 2 (continue):** "Now read src/config.json. What's the database host?
-Save it to known://db_host."
-- Assert: known://db_host contains "db.internal"
-- Validates: model reads files, extracts specific data, writes to known entries
-
-### Story 5: Unknown → investigate → resolve (ask)
-
-**Turn 1:** "What testing framework does this project use? Don't guess — register
-what you don't know first."
-- Assert: run completes
-- Assert: at some point an unknown:// entry existed (or the model investigated)
-- Assert: the final response is reasonable (acknowledges uncertainty or investigates)
-
-### Story 6: Pattern operations — glob read (ask)
-
-**Turn 1:** "Read all .js files in src/ using a glob pattern. Which file contains
-the word 'express'? Reply with the filename."
-- Assert: response contains "app.js"
-
-**Turn 2 (continue):** "Now which file exports a function called 'add'?"
-- Assert: response contains "utils.js"
-- Validates: glob expansion, model reasoning over multiple file contents
-
-### Story 7: Move and copy (act)
-
-**Turn 1:** "Copy known://admin_count to known://admin_count_backup" (depends on
-Story 4's known entries — or seed it fresh)
-- Assert: run completes
-- Assert: known://admin_count_backup exists
-
-**Turn 2 (continue):** "Move known://admin_count_backup to known://archived_count"
-- Assert: known://archived_count exists
-- Assert: known://admin_count_backup is gone
-- Validates: copy creates duplicate, move removes source
-
-### Story 8: Delete operations (act)
-
-**Turn 1:** "Delete the file notes.md"
-- Assert: proposed (file deletion requires approval)
-
-**Turn 2 (resolve reject):** Reject the deletion.
-- Assert: run status becomes `resolved` or resumes
-- Assert: notes.md entry still exists in the store
-- Validates: reject flow, file survives rejection
-
-### Story 9: Env command (act)
-
-**Turn 1:** "Run `node --version` to check the Node.js version."
-- Assert: env entry has state `pass` (env auto-passes)
-- Assert: model reports the version
-
-**Turn 2 (continue):** "Now run `echo RUMMY_TEST_MARKER` and tell me what it prints."
-- Assert: response mentions "RUMMY_TEST_MARKER"
-- Validates: env execution, model reads output, multi-turn env
-
-### Story 10: Drop and re-read (ask)
-
-**Turn 1:** "Read src/config.json and tell me the pool size."
-- Assert: response contains "5"
-
-**Turn 2 (continue):** "Drop src/config.json from context, then re-read it and
-tell me the database host."
-- Assert: response contains "db.internal"
-- Validates: drop removes from context, re-read restores, model answers from fresh read
-
-### Story 11: Lite mode — no file context (ask)
-
-**Turn 1:** "What is 7 * 13? Reply ONLY with the number." (noContext: true)
-- Assert: response contains "91"
-
-**Turn 2 (continue on same run):** "What is the square root of 144? Reply ONLY
-with the number."
-- Assert: response contains "12"
-- Validates: lite mode works, multi-turn works without file context
-
-### Story 12: Abort mid-run (ask)
-
-**Turn 1:** Start a prompt that will take multiple turns: "Carefully read every
-file in the project, summarize each one individually, then provide a final summary."
-- Send `run/abort` via RPC while the run is active
-- Assert: run status transitions to `aborted`
-- Validates: abort signal reaches the LLM call, run terminates cleanly
-
-### Story 13: Second question on same run (ask)
-
-**Turn 1:** "What is the project codename? Reply ONLY with the word."
+**Turn 1:** "What is the project codename in notes.md? Reply ONLY with the word."
 - Assert: response contains "phoenix"
 
-**Turn 2 (new question, same run):** "What port does src/app.js use? Reply ONLY
-with the number."
-- Assert: response contains "8080" (NOT "phoenix")
-- Validates: model answers the NEW question, not the old one. Tests message
-  structure — the latest prompt is in `<prompt>`, not buried in history.
+### Story 2: Research session (ask, ~8 turns)
 
-### Story 14: Write with naked path (ask)
+A user explores an unfamiliar codebase. Read files, build knowledge, use that
+knowledge to answer follow-up questions, search the web, drop stale context.
 
-**Turn 1:** "The answer to life is 42. Save that as a known entry."
-- Assert: a known:// entry exists with a slug-derived path
-- Assert: value contains "42"
-- Validates: naked `<write>content</write>` generates known:// slug path
+**Turn 1:** "Read src/config.json and tell me what database this project uses."
+- Assert: response contains "postgres"
 
-**Turn 2 (continue):** "What did you save about the answer to life?"
-- Assert: response contains "42"
-- Validates: model can recall its own known entries
+**Turn 2:** "Save that database config as a known entry, then read data/users.json
+and tell me how many users have the admin role."
+- Assert: response contains "1" (Alice)
+- Assert: a known:// entry exists containing "postgres"
+
+**Turn 3:** "Read all the JS files in src/ using a glob. Which one uses express?"
+- Assert: response contains "app.js"
+
+**Turn 4:** "What does the greet function in src/utils.js return?"
+- Assert: response contains "hello"
+
+**Turn 5:** "Search the web for 'Express.js error handling middleware'."
+- Assert: run completes (search executed)
+
+**Turn 6:** "Drop data/users.json from context — we're done with it."
+- Assert: run completes
+
+**Turn 7:** "Based on everything you've learned: what database does this project
+use, what port does the app run on, and what's the project codename?"
+- Assert: response contains "postgres", "8080", "phoenix"
+- Validates: knowledge persists across turns, dropped files don't break recall
+  of information already saved to known entries
+
+### Story 3: Edit and build session (act, ~10 turns)
+
+A user modifies code, manages files, and runs commands. Tests the full act-mode
+lifecycle including proposals, acceptance, rejection, env, run, move, copy, delete.
+
+**Turn 1:** "Read src/app.js and tell me what the TODO says."
+- Assert: response mentions "error handling"
+
+**Turn 2:** "Replace the TODO comment in src/app.js with `// error handler added`.
+Use SEARCH/REPLACE."
+- Assert: run reaches `proposed`
+- Resolve: accept
+
+**Turn 3 (auto-resumed after accept):** assert run completes after acceptance.
+
+**Turn 4:** "Save the note 'app.js has been updated' to known://changelog."
+- Assert: known://changelog exists
+
+**Turn 5:** "Copy known://changelog to known://changelog_backup."
+- Assert: known://changelog_backup exists with same content
+
+**Turn 6:** "Move known://changelog_backup to known://archive."
+- Assert: known://archive exists
+- Assert: known://changelog_backup is gone
+
+**Turn 7:** "Run `node -e \"console.log('build-ok')\"` to verify the build."
+- Assert: proposed (run commands need approval)
+- Resolve: accept with output "build-ok"
+
+**Turn 8 (auto-resumed):** "Check the node version with env."
+- Assert: env result exists
+
+**Turn 9:** "Delete known://archive — we don't need it anymore."
+- Assert: known://archive is gone
+
+**Turn 10:** "Summarize everything you did in this session."
+- Assert: response mentions the edit, the commands, the knowledge entries
+- Validates: full act lifecycle — read, edit+propose+accept, known write,
+  copy, move, run+propose+accept, env, delete, multi-turn coherence
+
+### Story 4: Adversarial prompt coherence (ask, ~6 turns)
+
+Tests that the model tracks which question it's supposed to answer across turns.
+Each turn asks a completely different question. The model must answer the LATEST
+question, not echo earlier ones.
+
+**Turn 1:** "What is the project codename in notes.md? Reply ONLY with the word."
+- Assert: response contains "phoenix"
+
+**Turn 2:** "What port does src/app.js listen on? Reply ONLY with the number."
+- Assert: response contains "8080", NOT "phoenix"
+
+**Turn 3:** "How many users are in data/users.json? Reply ONLY with the number."
+- Assert: response contains "2", NOT "8080"
+
+**Turn 4:** "What is the database host in src/config.json? Reply ONLY with the hostname."
+- Assert: response contains "db.internal", NOT "2"
+
+**Turn 5:** "What is the pool size in src/config.json? Reply ONLY with the number."
+- Assert: response contains "5", NOT "db.internal"
+
+**Turn 6:** "What was the very first question I asked you? Reply with the topic, not the answer."
+- Assert: response references "codename" or "notes.md" or "phoenix"
+- Validates: message structure — model sees full history in `<messages>` but
+  answers the current `<prompt>`. Earlier prompts are visible but not confused
+  with the active question.
+
+### Story 5: Unknown-driven investigation (ask, ~6 turns)
+
+User asks a question the model can't answer from bootstrapped context alone.
+Tests the unknown→investigate→resolve→answer cycle.
+
+**Turn 1:** "What test framework does this project use? What are the npm scripts?
+Register unknowns for anything you need to look up, then investigate."
+- Assert: run completes (model should read package.json or run env)
+
+**Turn 2:** "Now look at data/users.json and register an unknown about whether
+there's an API endpoint that serves this data."
+- Assert: unknown:// entry exists with a question about the API
+
+**Turn 3:** "Read src/app.js to try to resolve your unknown about the API."
+- Assert: run completes
+
+**Turn 4:** "Drop any unknowns you've resolved. What do you know for certain
+about this project's architecture?"
+- Assert: response references concrete facts from files read
+- Validates: unknowns created, investigated, resolved/dropped, model synthesizes
+
+### Story 6: Lite mode sustained session (ask, noContext, ~4 turns)
+
+No file context. Tests that multi-turn works without the engine, and that the
+model tracks conversation across turns purely from message history.
+
+**Turn 1:** "I'm going to give you three numbers across three messages. The first
+number is 17. Just acknowledge."
+- Assert: response acknowledges
+
+**Turn 2:** "The second number is 23."
+- Assert: response acknowledges
+
+**Turn 3:** "The third number is 41."
+- Assert: response acknowledges
+
+**Turn 4:** "What is the sum of all three numbers I gave you?"
+- Assert: response contains "81"
+- Validates: multi-turn memory works in lite mode, message history is coherent
+
+### Story 7: Abort mid-flight (ask)
+
+Starts a multi-turn task, aborts it, verifies clean termination.
+
+**Turn 1:** Start: "Carefully read every single file in this project one at a
+time, summarize each individually with extensive detail, then cross-reference
+all of them."
+- Immediately send `run/abort` via RPC
+- Assert: run status is `aborted`
+- Validates: abort signal reaches fetch, run terminates, no stuck state
+
+### Story 8: Rejection and recovery (act, ~6 turns)
+
+Tests that rejecting a proposal doesn't corrupt state, and the model recovers.
+
+**Turn 1:** "Delete notes.md"
+- Assert: proposed
+
+**Turn 2 (resolve reject):** Reject the deletion.
+- Assert: run resumes
+
+**Turn 3 (model responds to rejection):** assert run completes or continues
+
+**Turn 4:** "Is notes.md still in the project? What does it say?"
+- Assert: response contains "phoenix"
+- Validates: rejection preserved the file, model can still read it
+
+**Turn 5:** "Now write a new file called output.txt with the text 'test output'."
+- Assert: proposed (file write needs approval)
+- Resolve: accept
+
+**Turn 6 (auto-resumed):** assert run completes
+- Validates: accept works after a prior reject in the same run
 
 ---
 
