@@ -32,18 +32,18 @@ export default class ResponseHealer {
 	 *   neither present    → warn, increment stall counter, continue
 	 *   stall counter hits MAX_STALLS → force-complete
 	 */
-	assessProgress({ summaryText, updateText }) {
+	assessProgress({ summaryText, updateText, statusHealed }) {
 		if (summaryText) {
 			this.#stallCount = 0;
 			return { continue: false };
 		}
 
-		if (updateText) {
+		if (updateText && !statusHealed) {
 			this.#stallCount = 0;
 			return { continue: true };
 		}
 
-		// Neither — model is glitching
+		// Healed or neither — model is glitching
 		this.#stallCount++;
 
 		if (this.#stallCount >= MAX_STALLS) {

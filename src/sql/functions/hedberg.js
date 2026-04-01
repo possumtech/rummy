@@ -82,6 +82,11 @@ function detect(pattern) {
 		if (hasXPathPredicate(pattern)) return "xpath";
 	}
 
+	// Glob indicators: ** (globstar), unescaped * or ? not preceded by .
+	// These must be checked before regex since *.foo.* looks like regex .*
+	if (pattern.includes("**")) return "glob";
+	if (/(?:^|[^.\\])[*?]/.test(pattern)) return "glob";
+
 	if (UNAMBIGUOUS_REGEX.test(pattern)) return "regex";
 
 	return "glob";

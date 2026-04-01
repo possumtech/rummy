@@ -229,8 +229,10 @@ export default class TurnExecutor {
 		if (summaryText && updateText) updateText = null;
 
 		// If model sent neither, heal from content
+		let statusHealed = false;
 		if (!summaryText && !updateText) {
 			updateText = ResponseHealer.healUpdate(content, commands);
+			statusHealed = true;
 		}
 
 		// Commit usage
@@ -505,6 +507,7 @@ export default class TurnExecutor {
 			unknownCalls,
 			summaryText,
 			updateText,
+			statusHealed,
 			askUserCmd,
 			flags,
 			model: result.model || requestedModel,

@@ -49,6 +49,16 @@ describe("hedberg", () => {
 		it("non-numeric brace expansion stays glob", () => {
 			assert.equal(hedberg("log{a,b}.txt", "log{a,b}.txt"), 1);
 		});
+
+		it("globstar with dotted extensions stays glob", () => {
+			assert.equal(hedberg("**/*.test.*", "src/foo.test.js"), 1);
+			assert.equal(hedberg("**/*.test.*", "src/foo.js"), 0);
+		});
+
+		it("*.foo.* stays glob not regex", () => {
+			assert.equal(hedberg("*.foo.*", "bar.foo.baz"), 1);
+			assert.equal(hedberg("*.foo.*", "nope"), 0);
+		});
 	});
 
 	describe("regex patterns", () => {

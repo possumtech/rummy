@@ -265,6 +265,14 @@ export default class ContextAssembler {
 						state: meta?.state,
 					});
 					break;
+				case "structural":
+					messageEntries.push({
+						path: row.path,
+						scheme: row.scheme,
+						value: row.content,
+						state: row.scheme === "summary" ? "summary" : "info",
+					});
+					break;
 			}
 		}
 

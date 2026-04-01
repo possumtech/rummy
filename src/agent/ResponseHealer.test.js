@@ -111,5 +111,46 @@ describe("ResponseHealer", () => {
 			});
 			assert.strictEqual(result.continue, true);
 		});
+
+		it("healed update increments stall counter", () => {
+			const healer = new ResponseHealer();
+			for (let i = 0; i < 3; i++) {
+				healer.assessProgress({
+					summaryText: null,
+					updateText: "...",
+					statusHealed: true,
+				});
+			}
+			const result = healer.assessProgress({
+				summaryText: null,
+				updateText: "...",
+				statusHealed: true,
+			});
+			assert.strictEqual(result.continue, false);
+			assert.ok(result.reason);
+		});
+
+		it("genuine update resets stall counter from healed stalls", () => {
+			const healer = new ResponseHealer();
+			healer.assessProgress({
+				summaryText: null,
+				updateText: "...",
+				statusHealed: true,
+			});
+			healer.assessProgress({
+				summaryText: null,
+				updateText: "...",
+				statusHealed: true,
+			});
+			healer.assessProgress({ summaryText: null, updateText: "working" });
+			assert.strictEqual(
+				healer.assessProgress({
+					summaryText: null,
+					updateText: "...",
+					statusHealed: true,
+				}).continue,
+				true,
+			);
+		});
 	});
 });
