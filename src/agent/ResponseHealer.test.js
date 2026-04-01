@@ -3,31 +3,36 @@ import { describe, it } from "node:test";
 import ResponseHealer from "./ResponseHealer.js";
 
 describe("ResponseHealer", () => {
-	describe("healUpdate", () => {
-		it("uses plain text as update when no commands", () => {
-			const result = ResponseHealer.healUpdate("I did the thing.", []);
-			assert.strictEqual(result, "I did the thing.");
+	describe("healStatus", () => {
+		it("plain text with no commands becomes summary", () => {
+			const result = ResponseHealer.healStatus("I did the thing.", []);
+			assert.strictEqual(result.summaryText, "I did the thing.");
+			assert.strictEqual(result.updateText, null);
 		});
 
-		it("truncates long plain text to 500 chars", () => {
+		it("truncates long plain text summary to 500 chars", () => {
 			const long = "x".repeat(600);
-			const result = ResponseHealer.healUpdate(long, []);
-			assert.strictEqual(result.length, 500);
+			const result = ResponseHealer.healStatus(long, []);
+			assert.strictEqual(result.summaryText.length, 500);
+			assert.strictEqual(result.updateText, null);
 		});
 
-		it("injects placeholder when commands exist but no status tag", () => {
-			const result = ResponseHealer.healUpdate("", [{ name: "read" }]);
-			assert.strictEqual(result, "...");
+		it("commands with no status tag becomes update placeholder", () => {
+			const result = ResponseHealer.healStatus("", [{ name: "read" }]);
+			assert.strictEqual(result.summaryText, null);
+			assert.strictEqual(result.updateText, "...");
 		});
 
-		it("injects placeholder for empty content with no commands", () => {
-			const result = ResponseHealer.healUpdate("", []);
-			assert.strictEqual(result, "...");
+		it("empty content with no commands becomes update placeholder", () => {
+			const result = ResponseHealer.healStatus("", []);
+			assert.strictEqual(result.summaryText, null);
+			assert.strictEqual(result.updateText, "...");
 		});
 
-		it("injects placeholder for whitespace-only content", () => {
-			const result = ResponseHealer.healUpdate("   \n  ", []);
-			assert.strictEqual(result, "...");
+		it("whitespace-only content becomes update placeholder", () => {
+			const result = ResponseHealer.healStatus("   \n  ", []);
+			assert.strictEqual(result.summaryText, null);
+			assert.strictEqual(result.updateText, "...");
 		});
 	});
 

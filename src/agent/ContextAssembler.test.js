@@ -223,7 +223,8 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[0].content.includes("const x = 1;"));
 			assert.ok(messages[0].content.includes("<context>"));
 			assert.strictEqual(messages[1].role, "user");
-			assert.ok(messages[1].content.includes("<progress>Turn 2/15</progress>"));
+			assert.ok(messages[1].content.includes('<progress tools="'));
+			assert.ok(messages[1].content.includes("Turn 2/15"));
 		});
 
 		it("uses user scheme as prompt in user message", () => {
@@ -252,7 +253,8 @@ describe("ContextAssembler", () => {
 
 			assert.strictEqual(messages.length, 2);
 			assert.ok(messages[1].role, "user");
-			assert.ok(messages[1].content.includes("<prompt>User prompt</prompt>"));
+			assert.ok(messages[1].content.includes('<prompt tools="'));
+			assert.ok(messages[1].content.includes("User prompt"));
 		});
 
 		it("renders results with status symbols", () => {

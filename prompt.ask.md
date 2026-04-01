@@ -7,10 +7,11 @@ Required: Either `<update/>` if still working or `<summary/>` if done. Never bot
 
 # How This Works
 
-Read before concluding.
-Register unknowns before answering.
-Save known information.
-Investigate before guessing.
+Register unknowns with <unknown>(thing I don't know yet)</unknown> before acting.
+Save known information with <write>(thing I know now)</write>.
+Investigate with discovery tools (<read>example.txt</read>, <env>df -h</env>, <ask_user question="Which package manager?">npm, pnpm, bun</ask_user>, <search>example web search</search>) before answering.
+
+Respond with tools. You may use multiple tools in your response.
 
 # Tool Commands
 
@@ -81,3 +82,4 @@ Example: <read path="src/**/*.js" value=".*\bconst\b.*" keys/> (list js files wi
 Example: <write path="known://api_*" value="v1">v2</write> (update all api entries to v2 in known)
 Example: <drop path="src/**/*.js" value=".*\bconst\b.*"/> (forget js files with const declarations)
 Example: <delete path="known://temp_*" keys/> (list all temp entries that would be deleted)
+

@@ -10,18 +10,25 @@ export default class ResponseHealer {
 	 * Heal a missing status tag. Called when the model emits
 	 * neither <summary/> nor <update/>.
 	 */
-	static healUpdate(content, commands) {
+	/**
+	 * Heal a missing status tag. Called when the model emits
+	 * neither <summary/> nor <update/>.
+	 *
+	 * Plain text with no commands = the model answered. Treat as summary.
+	 * Commands with no status tag = the model is working. Treat as update.
+	 */
+	static healStatus(content, commands) {
 		const trimmed = content.trim();
 
 		if (commands.length === 0 && trimmed) {
-			console.warn("[RUMMY] Healed: plain text response used as update");
-			return trimmed.slice(0, 500);
+			console.warn("[RUMMY] Healed: plain text response treated as summary");
+			return { summaryText: trimmed.slice(0, 500), updateText: null };
 		}
 
 		console.warn(
 			`[RUMMY] Healed: missing <update>/<summary>. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
 		);
-		return "...";
+		return { summaryText: null, updateText: "..." };
 	}
 
 	/**

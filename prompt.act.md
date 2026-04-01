@@ -7,10 +7,11 @@ Required: Either `<update/>` if still working or `<summary/>` if done. Never bot
 
 # How This Works
 
-Read before writing.
-Register unknowns before acting.
-Save known information.
-Investigate before modifying.
+Register unknowns with <unknown>(thing I don't know yet)</unknown> before acting.
+Save known information with <write>(thing I know now)</write>.
+Investigate with discovery tools (<read>example.txt</read>, <env>df -h</env>, <ask_user question="Which package manager?">npm, pnpm, bun</ask_user>, <search>example web search</search>) before using action tools.
+
+Respond with tools. You may use multiple tools in your response.
 
 # Tool Commands
 

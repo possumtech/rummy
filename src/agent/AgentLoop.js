@@ -38,12 +38,13 @@ export default class AgentLoop {
 		return `${prefix}${row.next_seq}`;
 	}
 
-	#buildContinuationPrompt(type, turn, maxTurns, contextSize, report) {
-		const allowed =
-			type === "act"
-				? "<unknown/> <read/> <env/> <ask_user/> <search/> <write/> <move/> <copy/> <drop/> <delete/> <run/> <update/> <summary/>"
-				: "<unknown/> <read/> <env/> <ask_user/> <search/> <write/> <move/> <copy/> <drop/> <delete/> <update/> <summary/>";
+	static toolsForType(type) {
+		return type === "act"
+			? "unknown read env ask_user search write move copy drop delete run update summary"
+			: "unknown read env ask_user search write move copy drop delete update summary";
+	}
 
+	#buildContinuationPrompt(type, turn, maxTurns, contextSize, report) {
 		const parts = [];
 
 		if (report) {
@@ -64,7 +65,6 @@ export default class AgentLoop {
 			parts.push(`Turn ${turn}/${maxTurns}`);
 		}
 
-		parts.push(`Allowed: ${allowed}`);
 		parts.push(
 			"Required: <update/> if still working, <summary/> if done. Not both.",
 		);

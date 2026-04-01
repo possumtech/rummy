@@ -1,4 +1,5 @@
 import { extname } from "node:path";
+import AgentLoop from "./AgentLoop.js";
 
 const EXT_LANG = {
 	".js": "js",
@@ -185,7 +186,7 @@ export default class ContextAssembler {
 		return messages;
 	}
 
-	static assembleFromTurnContext(rows) {
+	static assembleFromTurnContext(rows, { type = "ask" } = {}) {
 		let instructions = "";
 		let continuation = null;
 
@@ -348,10 +349,11 @@ export default class ContextAssembler {
 			userParts.push(`<messages>\n${lines.join("\n")}\n</messages>`);
 		}
 
+		const tools = AgentLoop.toolsForType(type);
 		if (prompt) {
-			userParts.push(`<prompt>${prompt}</prompt>`);
+			userParts.push(`<prompt tools="${tools}">${prompt}</prompt>`);
 		} else if (continuation) {
-			userParts.push(`<progress>${continuation}</progress>`);
+			userParts.push(`<progress tools="${tools}">${continuation}</progress>`);
 		}
 
 		messages.push({

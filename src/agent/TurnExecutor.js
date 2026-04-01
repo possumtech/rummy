@@ -117,7 +117,7 @@ export default class TurnExecutor {
 			run_id: currentRunId,
 			turn,
 		});
-		const messages = ContextAssembler.assembleFromTurnContext(rows);
+		const messages = ContextAssembler.assembleFromTurnContext(rows, { type });
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
@@ -246,7 +246,9 @@ export default class TurnExecutor {
 		// If model sent neither, heal from content
 		let statusHealed = false;
 		if (!summaryText && !updateText) {
-			updateText = ResponseHealer.healUpdate(content, commands);
+			const healed = ResponseHealer.healStatus(content, commands);
+			summaryText = healed.summaryText;
+			updateText = healed.updateText;
 			statusHealed = true;
 		}
 
