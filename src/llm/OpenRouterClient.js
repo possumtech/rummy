@@ -29,6 +29,11 @@ export default class OpenRouterClient {
 			body.temperature = options.temperature;
 
 		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
+		const timeoutSignal = AbortSignal.timeout(timeout);
+		const signal = options.signal
+			? AbortSignal.any([options.signal, timeoutSignal])
+			: timeoutSignal;
+
 		const response = await fetch(`${this.#baseUrl}/chat/completions`, {
 			method: "POST",
 			headers: {
@@ -38,7 +43,7 @@ export default class OpenRouterClient {
 				"X-Title": process.env.RUMMY_X_TITLE,
 			},
 			body: JSON.stringify(body),
-			signal: AbortSignal.timeout(timeout),
+			signal,
 		});
 
 		if (!response.ok) {

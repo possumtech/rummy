@@ -15,6 +15,11 @@ export default class OpenAiClient {
 			body.temperature = options.temperature;
 
 		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
+		const timeoutSignal = AbortSignal.timeout(timeout);
+		const signal = options.signal
+			? AbortSignal.any([options.signal, timeoutSignal])
+			: timeoutSignal;
+
 		const headers = { "Content-Type": "application/json" };
 		if (this.#apiKey) headers.Authorization = `Bearer ${this.#apiKey}`;
 
@@ -22,7 +27,7 @@ export default class OpenAiClient {
 			method: "POST",
 			headers,
 			body: JSON.stringify(body),
-			signal: AbortSignal.timeout(timeout),
+			signal,
 		});
 
 		if (!response.ok) {

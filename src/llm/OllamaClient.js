@@ -15,11 +15,16 @@ export default class OllamaClient {
 			body.temperature = options.temperature;
 
 		const timeout = Number(process.env.RUMMY_FETCH_TIMEOUT) || 30_000;
+		const timeoutSignal = AbortSignal.timeout(timeout);
+		const signal = options.signal
+			? AbortSignal.any([options.signal, timeoutSignal])
+			: timeoutSignal;
+
 		const response = await fetch(`${this.#baseUrl}/v1/chat/completions`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
-			signal: AbortSignal.timeout(timeout),
+			signal,
 		});
 
 		if (!response.ok) {
