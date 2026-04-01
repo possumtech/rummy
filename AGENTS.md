@@ -2,15 +2,33 @@
 
 ## Current State
 
-URI-based K/V store (`known://`, `edit://`, `summary://`, bare paths for files).
-Pattern tools via glorp (glob/regex on `path`/`value`, `keys` flag for preview).
-ResponseHealer (forward motion, no unknowns gate). CHECK constraints per scheme.
+URI-based K/V store (`known://`, `write://`, `summary://`, bare paths for files).
+Pattern tools via hedberg (glob/regex/xpath/jsonpath on `path`/`value`, `keys` flag for preview).
+Termination protocol: `<update/>` continues, `<summary/>` terminates.
+ResponseHealer (stall counter, heal from content). CHECK constraints per scheme.
 Web search (SearXNG) and URL fetch (Playwright + Readability + Turndown).
-Move/copy across file and K/V namespaces. Edit search/replace attribute mode.
+Move/copy across file and K/V namespaces. Write with SEARCH/REPLACE mode.
 `turn_context` materialized view via `v_model_context` VIEW + SQL functions
-(`countTokens`, `schemeOf`, `langFor`, `tierOf`, `fidelityOf`). Generated `scheme`
-column. `file_constraints` table for client visibility (project-scoped).
-80 unit + 81 integration + 50 E2E.
+(`countTokens`, `schemeOf`, `langFor`, `tierOf`, `fidelityOf`, `hedberg`).
+Generated `scheme` column. `category` column on `turn_context`.
+`file_constraints` table for client visibility (project-scoped).
+Run state machine trigger on `runs.status`.
+Sacred prompts locked (2026-03-31).
+
+### E2E Testing Philosophy
+
+E2E tests are **story-driven**. Each test file begins with a narrative describing
+what the user is trying to accomplish — the story. The test succeeds if the story
+succeeds, regardless of implementation details.
+
+Assertions target outcomes ("the run completed," "the summary contains a relevant
+answer"), not mechanics ("the model used `<read>`," "the entry state is `pass`").
+This makes E2E tests immune to refactors that change tool names, schemes, or
+internal state — as long as the story still works, the test passes.
+
+When a refactor breaks an E2E test, ask: **did the story break, or did the
+assertion?** If the story still works but the assertion checks an implementation
+detail, fix the assertion. If the story broke, fix the implementation.
 
 ---
 
@@ -29,7 +47,7 @@ existing plugins (priority 10), before context assembly (reads `turn_context`).
 - [x] **Demotion report** — injects `inject://` info entry with budget percentages.
 - [x] **Schema: tokens split** — `tokens` (context cost) + `tokens_full` (raw value cost).
       All state-changing queries update `tokens`: promote restores to `tokens_full`,
-      demote sets to `length(path)/4`, setFileState(symbols) uses `meta.symbols` length.
+      demote sets to `countTokens(path)`, setFileState(symbols) uses `countTokens(meta.symbols)`.
 - [x] **Symbol file query fix** — `get_symbol_files` respects `turn > 0`.
       `get_stored_files` includes demoted symbols files.
 
