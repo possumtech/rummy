@@ -146,6 +146,14 @@ export default class AgentLoop {
 			currentRunId = existingRun.id;
 			currentAlias = existingRun.alias;
 
+			// If this run has an active loop, abort it first
+			const existing = this.#activeRuns.get(currentRunId);
+			if (existing) {
+				existing.abort();
+				// Give the aborted loop a moment to clean up
+				await new Promise((r) => setTimeout(r, 100));
+			}
+
 			const unresolved = await this.#knownStore.getUnresolved(currentRunId);
 			if (unresolved.length > 0) {
 				return {
@@ -156,10 +164,14 @@ export default class AgentLoop {
 				};
 			}
 
-			await this.#db.update_run_status.run({
-				id: currentRunId,
-				status: "running",
-			});
+			// Transition to running — may already be running (no-op) or
+			// aborted/completed from the previous loop's cleanup
+			if (existingRun.status !== "running") {
+				await this.#db.update_run_status.run({
+					id: currentRunId,
+					status: "running",
+				});
+			}
 		} else {
 			currentAlias = await this.#generateAlias(requestedModel);
 			const runRow = await this.#db.create_run.get({

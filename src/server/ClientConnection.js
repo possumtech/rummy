@@ -9,6 +9,7 @@ export default class ClientConnection {
 	#modelAgent;
 	#hooks;
 	#rpcRegistry;
+	#rpcLogPending = new Map();
 	#context = {
 		projectId: null,
 		sessionId: null,
@@ -114,6 +115,16 @@ export default class ClientConnection {
 				sessionId: this.#context.sessionId,
 			});
 
+			try {
+				const logRow = await this.#db.log_rpc_call.get({
+					session_id: this.#context.sessionId || null,
+					method,
+					rpc_id: id,
+					params: params ? JSON.stringify(params) : null,
+				});
+				if (logRow) this.#rpcLogPending.set(id, logRow.id);
+			} catch {}
+
 			// rpc/discover is an alias for discover
 			const resolvedMethod = method === "rpc/discover" ? "discover" : method;
 			const registration = this.#rpcRegistry.get(resolvedMethod);
@@ -167,6 +178,19 @@ export default class ClientConnection {
 				id,
 				result: finalResult,
 			});
+
+			const logId = this.#rpcLogPending.get(id);
+			if (logId) {
+				this.#rpcLogPending.delete(id);
+				try {
+					await this.#db.log_rpc_result.run({
+						id: logId,
+						result: finalResult
+							? JSON.stringify(finalResult).slice(0, 4096)
+							: null,
+					});
+				} catch {}
+			}
 		} catch (error) {
 			if (debug) {
 				console.error(`[SOCKET] ERR: ${error.message}`);
@@ -178,6 +202,17 @@ export default class ClientConnection {
 				id: id || null,
 			});
 			await this.#hooks.rpc.error.emit({ id, error });
+
+			const errLogId = this.#rpcLogPending.get(id);
+			if (errLogId) {
+				this.#rpcLogPending.delete(id);
+				try {
+					await this.#db.log_rpc_error.run({
+						id: errLogId,
+						error: error.message,
+					});
+				} catch {}
+			}
 		}
 	}
 

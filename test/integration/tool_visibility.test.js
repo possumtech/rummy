@@ -84,7 +84,6 @@ describe("Tool visibility: v_model_context content projection", () => {
 
 		// For each result scheme, insert an entry with known content
 		for (const { name: scheme, state } of contentSchemes) {
-
 			await store.upsert(
 				RUN_ID,
 				TURN,
@@ -113,16 +112,14 @@ describe("Tool visibility: v_model_context content projection", () => {
 		// For each result scheme, verify its content survived materialization
 		const failures = [];
 		for (const { name: scheme } of contentSchemes) {
-			const row = rows.find(
-				(r) => r.path === `${scheme}://${scheme}_test`,
-			);
+			const row = rows.find((r) => r.path === `${scheme}://${scheme}_test`);
 
 			if (!row) {
 				failures.push(`${scheme}: not in turn_context (filtered out by view)`);
 				continue;
 			}
 
-			if (!row.content || !row.content.includes(MARKER)) {
+			if (!row.content?.includes(MARKER)) {
 				failures.push(
 					`${scheme}: content is ${row.content ? `"${row.content.slice(0, 50)}"` : "EMPTY"} — expected "${MARKER}_${scheme}"`,
 				);

@@ -572,14 +572,21 @@ describe("E2E Stories", () => {
 			await new Promise((r) => setTimeout(r, 500));
 		}
 
-		if (runAlias) {
-			await client.call("run/abort", { run: runAlias });
-		}
+		assert.ok(runAlias, "S7: run should have started");
+		const abortResult = await client.call("run/abort", { run: runAlias });
+		assert.equal(abortResult.status, "ok", "S7: abort RPC should return ok");
 
 		const result = await askPromise;
 		assert.ok(
 			["aborted", "completed", "failed"].includes(result.status),
 			`S7: expected aborted/completed/failed, got ${result.status}`,
+		);
+
+		// Verify DB state — the run must not be stuck at 'running'
+		const runRow = await tdb.db.get_run_by_alias.get({ alias: runAlias });
+		assert.ok(
+			runRow.status !== "running",
+			`S7: run should not be stuck at running in DB, got ${runRow.status}`,
 		);
 
 		client.removeListener("run/progress", captureRun);

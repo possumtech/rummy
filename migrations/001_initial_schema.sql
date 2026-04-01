@@ -224,6 +224,20 @@ BEGIN
 	);
 END;
 
+-- RPC audit log. Every call recorded unconditionally.
+CREATE TABLE IF NOT EXISTS rpc_log (
+	id INTEGER PRIMARY KEY AUTOINCREMENT
+	, session_id INTEGER REFERENCES sessions (id) ON DELETE CASCADE
+	, method TEXT NOT NULL
+	, rpc_id INTEGER
+	, params JSON
+	, result JSON
+	, error TEXT
+	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_rpc_log_session ON rpc_log (session_id);
+CREATE INDEX IF NOT EXISTS idx_rpc_log_method ON rpc_log (method);
+
 -- Provider model catalog (cached from OpenRouter /models, etc.)
 CREATE TABLE IF NOT EXISTS provider_models (
 	id TEXT PRIMARY KEY
