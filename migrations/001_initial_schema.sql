@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 				THEN state IN ('full', 'symbols')
 			WHEN scheme IN ('known', 'unknown')
 				THEN state IN ('full', 'stored')
-			WHEN scheme IN ('edit')
+			WHEN scheme IN ('write')
 				THEN state IN ('proposed', 'pass', 'warn', 'error')
 			WHEN scheme IN ('run', 'env', 'delete', 'ask_user', 'move', 'copy')
 				THEN state IN ('proposed', 'pass', 'warn')

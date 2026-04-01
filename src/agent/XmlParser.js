@@ -4,8 +4,7 @@ const STORE_TOOLS = new Set([
 	"read",
 	"drop",
 	"delete",
-	"known",
-	"edit",
+	"write",
 	"move",
 	"copy",
 	"search",
@@ -16,6 +15,7 @@ const ALL_TOOLS = new Set([
 	"env",
 	"ask_user",
 	"summary",
+	"update",
 	"unknown",
 ]);
 
@@ -64,7 +64,18 @@ function resolveCommand(name, attrs, body) {
 	const a = normalizeAttrs(attrs);
 	const trimmed = body.trim();
 
-	if (name === "edit") {
+	if (name === "write") {
+		// SEARCH/REPLACE blocks in body → edit mode
+		if (
+			trimmed.includes("<<<<<<< SEARCH") ||
+			trimmed.includes(">>>>>>> REPLACE")
+		) {
+			const blocks = parseEditContent(body);
+			if (blocks.length > 0) {
+				return { name, path: a.path, value: a.value, keys: a.keys, blocks };
+			}
+		}
+		// search+replace attrs → attribute edit mode
 		if (a.search) {
 			const replace = a.replace ?? trimmed;
 			return {
@@ -76,13 +87,7 @@ function resolveCommand(name, attrs, body) {
 				replace,
 			};
 		}
-		const blocks = parseEditContent(body);
-		return { name, path: a.path, value: a.value, keys: a.keys, blocks };
-	}
-
-	if (name === "known") {
-		// Body is always the new content to write.
-		// value="" attr is a filter for pattern-based bulk updates.
+		// Body + value attr → bulk update (value filters, body replaces)
 		if (trimmed && a.value) {
 			return {
 				name,
@@ -92,11 +97,12 @@ function resolveCommand(name, attrs, body) {
 				keys: a.keys,
 			};
 		}
+		// Plain write → create/overwrite
 		const value = trimmed || a.value || "";
 		return { name, path: a.path, value, keys: a.keys };
 	}
 
-	if (name === "summary" || name === "unknown") {
+	if (name === "summary" || name === "update" || name === "unknown") {
 		// Canonical: text in body. Alt: value in attr.
 		const value = trimmed || a.value || "";
 		return { name, value };
@@ -127,9 +133,10 @@ function resolveCommand(name, attrs, body) {
 	}
 
 	if (name === "ask_user") {
-		// Canonical: question in attr. Alt: question in body.
-		const question = a.question || trimmed || null;
-		return { name, question, options: a.options };
+		// Canonical: question in attr, options in attr or body.
+		const question = a.question || null;
+		const options = a.options || trimmed || null;
+		return { name, question, options };
 	}
 
 	return { name, ...a, value: trimmed || a.value };

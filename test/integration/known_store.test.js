@@ -49,7 +49,7 @@ describe("KnownStore integration", () => {
 
 		it("tool schemes", () => {
 			assert.strictEqual(KnownStore.scheme("read://4"), "read");
-			assert.strictEqual(KnownStore.scheme("edit://7"), "edit");
+			assert.strictEqual(KnownStore.scheme("write://7"), "write");
 			assert.strictEqual(KnownStore.scheme("summary://1"), "summary");
 		});
 
@@ -62,7 +62,7 @@ describe("KnownStore integration", () => {
 	describe("toolFromPath", () => {
 		it("extracts tool name from result keys", () => {
 			assert.strictEqual(KnownStore.toolFromPath("read://4"), "read");
-			assert.strictEqual(KnownStore.toolFromPath("edit://7"), "edit");
+			assert.strictEqual(KnownStore.toolFromPath("write://7"), "write");
 			assert.strictEqual(KnownStore.toolFromPath("summary://1"), "summary");
 		});
 
@@ -146,19 +146,19 @@ describe("KnownStore integration", () => {
 
 	describe("resolve", () => {
 		it("changes proposed to pass with output", async () => {
-			await store.upsert(RUN_ID, 1, "edit://1", "", "proposed", {
+			await store.upsert(RUN_ID, 1, "write://1", "", "proposed", {
 				meta: { file: "src/app.js", search: "old", replace: "new" },
 			});
 			const unresolved = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(unresolved.length, 1);
-			assert.strictEqual(unresolved[0].path, "edit://1");
+			assert.strictEqual(unresolved[0].path, "write://1");
 
-			await store.resolve(RUN_ID, "edit://1", "pass", "edit applied");
+			await store.resolve(RUN_ID, "write://1", "pass", "edit applied");
 			const after = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(after.length, 0);
 
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "edit://1");
+			const entry = all.find((e) => e.path === "write://1");
 			assert.strictEqual(entry.state, "pass");
 			assert.strictEqual(entry.value, "edit applied");
 		});
@@ -207,11 +207,11 @@ describe("KnownStore integration", () => {
 	describe("result key generation", () => {
 		it("generates sequential keys", async () => {
 			const key1 = await store.nextResultPath(RUN_ID, "read");
-			const key2 = await store.nextResultPath(RUN_ID, "edit");
+			const key2 = await store.nextResultPath(RUN_ID, "write");
 			const key3 = await store.nextResultPath(RUN_ID, "read");
 
 			assert.strictEqual(key1, "read://1");
-			assert.strictEqual(key2, "edit://2");
+			assert.strictEqual(key2, "write://2");
 			assert.strictEqual(key3, "read://3");
 		});
 	});
@@ -251,7 +251,7 @@ describe("KnownStore integration", () => {
 
 		it("derives target from meta", async () => {
 			const log = await store.getLog(RUN_ID);
-			const editEntry = log.find((e) => e.path === "edit://1");
+			const editEntry = log.find((e) => e.path === "write://1");
 			assert.ok(editEntry);
 			assert.strictEqual(editEntry.target, "src/app.js");
 		});
@@ -324,7 +324,7 @@ describe("KnownStore integration", () => {
 
 		it("rejects invalid edit state", async () => {
 			await assert.rejects(
-				() => store.upsert(RUN_ID, 0, "edit://999", "", "full"),
+				() => store.upsert(RUN_ID, 0, "write://999", "", "full"),
 				/CHECK constraint/,
 			);
 		});

@@ -21,11 +21,11 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].value, "which session store");
 		});
 
-		it("parses known with path", () => {
+		it("parses write with path", () => {
 			const { commands } = XmlParser.parse(
-				'<known path="/:known:auth">OAuth2 PKCE</known>',
+				'<write path="/:known:auth">OAuth2 PKCE</write>',
 			);
-			assert.strictEqual(commands[0].name, "known");
+			assert.strictEqual(commands[0].name, "write");
 			assert.strictEqual(commands[0].path, "/:known:auth");
 			assert.strictEqual(commands[0].value, "OAuth2 PKCE");
 		});
@@ -69,24 +69,24 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].options, "PG, SQLite");
 		});
 
-		it("parses edit with search/replace block", () => {
-			const input = `<edit path="src/config.js">
+		it("parses write with search/replace block", () => {
+			const input = `<write path="src/config.js">
 <<<<<<< SEARCH
 const port = 3000;
 =======
 const port = 8080;
 >>>>>>> REPLACE
-</edit>`;
+</write>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].name, "edit");
+			assert.strictEqual(commands[0].name, "write");
 			assert.strictEqual(commands[0].path, "src/config.js");
 			assert.strictEqual(commands[0].blocks.length, 1);
 			assert.strictEqual(commands[0].blocks[0].search, "const port = 3000;");
 			assert.strictEqual(commands[0].blocks[0].replace, "const port = 8080;");
 		});
 
-		it("parses edit with multiple merge blocks", () => {
-			const input = `<edit path="src/config.js">
+		it("parses write with multiple merge blocks", () => {
+			const input = `<write path="src/config.js">
 <<<<<<< SEARCH
 const port = 3000;
 =======
@@ -97,17 +97,17 @@ const host = "localhost";
 =======
 const host = "0.0.0.0";
 >>>>>>> REPLACE
-</edit>`;
+</write>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].blocks.length, 2);
 		});
 
-		it("parses edit for new file (replace only)", () => {
-			const input = `<edit path="src/new.js">
+		it("parses write for new file (replace only)", () => {
+			const input = `<write path="src/new.js">
 =======
 export default {};
 >>>>>>> REPLACE
-</edit>`;
+</write>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].blocks[0].search, null);
 			assert.strictEqual(commands[0].blocks[0].replace, "export default {};");
@@ -116,13 +116,13 @@ export default {};
 		it("parses multiple commands in one response", () => {
 			const input = `<read path="src/config.js"/>
 <unknown>which database adapter</unknown>
-<known path="/:known:framework">Express with passport</known>
+<write path="/:known:framework">Express with passport</write>
 <summary>Reading config to check port.</summary>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 4);
 			assert.strictEqual(commands[0].name, "read");
 			assert.strictEqual(commands[1].name, "unknown");
-			assert.strictEqual(commands[2].name, "known");
+			assert.strictEqual(commands[2].name, "write");
 			assert.strictEqual(commands[3].name, "summary");
 		});
 
@@ -138,9 +138,9 @@ export default {};
 			assert.strictEqual(commands[0].keys, true);
 		});
 
-		it("parses edit with search/replace attributes", () => {
+		it("parses write with search/replace attributes", () => {
 			const { commands } = XmlParser.parse(
-				'<edit path="src/*.js" search="localhost" replace="0.0.0.0"/>',
+				'<write path="src/*.js" search="localhost" replace="0.0.0.0"/>',
 			);
 			assert.strictEqual(commands[0].search, "localhost");
 			assert.strictEqual(commands[0].replace, "0.0.0.0");
@@ -148,17 +148,17 @@ export default {};
 			assert.ok(!commands[0].blocks);
 		});
 
-		it("edit: search attr with body as replace", () => {
+		it("write: search attr with body as replace", () => {
 			const { commands } = XmlParser.parse(
-				'<edit path="config.js" search="3000">8080</edit>',
+				'<write path="config.js" search="3000">8080</write>',
 			);
 			assert.strictEqual(commands[0].search, "3000");
 			assert.strictEqual(commands[0].replace, "8080");
 		});
 
-		it("edit: search attr with replace attr takes precedence over body", () => {
+		it("write: search attr with replace attr takes precedence over body", () => {
 			const { commands } = XmlParser.parse(
-				'<edit path="x.js" search="old" replace="new">ignored</edit>',
+				'<write path="x.js" search="old" replace="new">ignored</write>',
 			);
 			assert.strictEqual(commands[0].replace, "new");
 		});
@@ -216,9 +216,9 @@ export default {};
 			assert.strictEqual(commands[0].path, "src/old.js");
 		});
 
-		it("known: value in attr (self-closing)", () => {
+		it("write: value in attr (self-closing)", () => {
 			const { commands } = XmlParser.parse(
-				'<known path="/:known:auth" value="OAuth2"/>',
+				'<write path="/:known:auth" value="OAuth2"/>',
 			);
 			assert.strictEqual(commands[0].path, "/:known:auth");
 			assert.strictEqual(commands[0].value, "OAuth2");
@@ -246,11 +246,12 @@ export default {};
 			assert.strictEqual(commands[0].command, "ls -la src/");
 		});
 
-		it("ask_user: body as question", () => {
+		it("ask_user: body as options", () => {
 			const { commands } = XmlParser.parse(
-				"<ask_user>Which database?</ask_user>",
+				'<ask_user question="Which database?">PG, SQLite, MySQL</ask_user>',
 			);
 			assert.strictEqual(commands[0].question, "Which database?");
+			assert.strictEqual(commands[0].options, "PG, SQLite, MySQL");
 		});
 
 		it("legacy key attr resolves to path", () => {
@@ -259,13 +260,13 @@ export default {};
 		});
 
 		it("legacy file attr resolves to path", () => {
-			const input = `<edit file="src/config.js">
+			const input = `<write file="src/config.js">
 <<<<<<< SEARCH
 old
 =======
 new
 >>>>>>> REPLACE
-</edit>`;
+</write>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].path, "src/config.js");
 		});
@@ -281,9 +282,9 @@ new
 			assert.ok(warnings.some((w) => w.includes("Unclosed")));
 		});
 
-		it("captures unclosed known", () => {
+		it("captures unclosed write", () => {
 			const { commands, warnings } = XmlParser.parse(
-				'<known path="/:known:x">some value',
+				'<write path="/:known:x">some value',
 			);
 			assert.strictEqual(commands[0].path, "/:known:x");
 			assert.strictEqual(commands[0].value, "some value");

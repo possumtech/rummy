@@ -131,7 +131,7 @@ describe("Engine integration", () => {
 
 		it("demotes results before files", async () => {
 			await store.upsert(RUN_ID, 1, "src/keep.js", pad(200), "full");
-			await store.upsert(RUN_ID, 1, "edit://1", pad(100), "pass");
+			await store.upsert(RUN_ID, 1, "write://1", pad(100), "pass");
 			await store.upsert(RUN_ID, 1, "run://1", pad(100), "pass");
 
 			const rummy = makeRummy(tdb.db, store, {
@@ -153,7 +153,7 @@ describe("Engine integration", () => {
 
 			const edit = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
-				path: "edit://1",
+				path: "write://1",
 			});
 			assert.strictEqual(edit.turn, 0, "result should be demoted");
 		});

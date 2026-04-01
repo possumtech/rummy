@@ -204,14 +204,16 @@ export default class TurnExecutor {
 		for (const cmd of commands) {
 			if (cmd.name === "summary") summaryText = cmd.value;
 			else if (cmd.name === "update") updateText = cmd.value;
-			else if (cmd.name === "known") writeCalls.push(cmd);
+			else if (cmd.name === "write" && (cmd.blocks || cmd.search))
+				actionCalls.push(cmd);
+			else if (cmd.name === "write") writeCalls.push(cmd);
 			else if (cmd.name === "unknown") unknownCalls.push(cmd);
 			else if (cmd.name === "ask_user") askUserCmd = cmd;
 			else actionCalls.push(cmd);
 		}
 
 		const hasAct = actionCalls.some((c) =>
-			["edit", "delete", "run", "move", "copy"].includes(c.name),
+			["write", "delete", "run", "move", "copy"].includes(c.name),
 		);
 		const hasReads = actionCalls.some((c) =>
 			["read", "env", "search"].includes(c.name),
@@ -295,7 +297,7 @@ export default class TurnExecutor {
 				continue;
 			}
 
-			if (cmd.name === "edit") {
+			if (cmd.name === "write") {
 				await this.#processEdit(currentRunId, turn, cmd);
 				continue;
 			}
@@ -372,7 +374,7 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Step 3: Known entries
+		// Step 3: Write entries (plain upsert or bulk update)
 		for (const cmd of writeCalls) {
 			if (!cmd.path) continue;
 
@@ -475,7 +477,7 @@ export default class TurnExecutor {
 		);
 
 		for (const entry of matches) {
-			const resultPath = await this.#knownStore.nextResultPath(runId, "edit");
+			const resultPath = await this.#knownStore.nextResultPath(runId, "write");
 			let patch = null;
 			let warning = null;
 			let error = null;

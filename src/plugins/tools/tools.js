@@ -6,19 +6,21 @@ export default class CoreToolsPlugin {
 		const { tools } = hooks;
 
 		// Structural
-		tools.register("write", { modes: BOTH, category: "structural" });
 		tools.register("summary", { modes: BOTH, category: "structural" });
 		tools.register("update", { modes: BOTH, category: "structural" });
 		tools.register("unknown", { modes: BOTH, category: "structural" });
 
-		// Ask tools (direct execution)
+		// Investigation (direct execution)
 		tools.register("read", { modes: BOTH, category: "ask" });
 		tools.register("drop", { modes: BOTH, category: "ask" });
 		tools.register("env", { modes: BOTH, category: "ask" });
+		tools.register("search", { modes: BOTH, category: "ask" });
 
-		// Act tools (proposed for client resolution)
-		tools.register("edit", { modes: ACT_ONLY, category: "act" });
-		tools.register("delete", { modes: ACT_ONLY, category: "act" });
+		// Mutation (proposed for client resolution)
+		tools.register("write", { modes: BOTH, category: "act" });
+		tools.register("move", { modes: BOTH, category: "act" });
+		tools.register("copy", { modes: BOTH, category: "act" });
+		tools.register("delete", { modes: BOTH, category: "act" });
 		tools.register("run", { modes: ACT_ONLY, category: "act" });
 		tools.register("ask_user", { modes: BOTH, category: "act" });
 	}

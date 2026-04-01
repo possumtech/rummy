@@ -2,17 +2,17 @@ import WebFetcher from "./WebFetcher.js";
 
 const TOOL_DOCS = `# Web Tools
 
-## <search path="[query]"/> - Search the web
+## <search>[query]</search> - Search the web
 
-* Example: <search path="node.js streams backpressure"/>
-* Example: <search path="SQLite WAL mode performance"/>
-* Results appear in context next turn. Use \`<read path="https://..."/>\` to fetch full content.
+* Example: <search>node.js streams backpressure</search>
+* Example: <search>SQLite WAL mode performance</search>
+* Results appear in context next turn. Use \`<read>\` to fetch full content.
 
 ## URL Fetch
 
 URLs are fetched and converted to markdown when read:
 
-* Example: <read path="https://docs.example.com/api"/>
+* Example: <read>https://docs.example.com/api</read>
 * Content is extracted, cleaned, and stored as markdown.`;
 
 export default class WebPlugin {
