@@ -123,6 +123,12 @@ async function main() {
 		console.warn(`[RUMMY] Hygiene skipped: ${err.message}`);
 	}
 
+	// 6b. Abort stuck runs (can't be running if the server just started)
+	const aborted = await db.abort_stuck_runs.run({});
+	if (aborted.changes > 0) {
+		console.log(`[RUMMY] Recovered ${aborted.changes} stuck run(s)`);
+	}
+
 	// 7. Prefetch provider catalog and validate aliases
 	if (process.env.OPENROUTER_API_KEY) {
 		try {

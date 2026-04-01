@@ -235,6 +235,7 @@ export default class AgentLoop {
 					noContext,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
+					signal: controller.signal,
 				});
 
 				// Build and emit run/state notification

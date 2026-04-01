@@ -32,6 +32,165 @@ detail, fix the assertion. If the story broke, fix the implementation.
 
 ---
 
+## Todo: E2E Story Suite
+
+Replace the current scattered E2E collection with a focused suite of multi-turn
+story tests. Each story runs on a **single run** with multiple turns, exercising
+tools, verifying model behavior relative to tools, and validating our response
+processing. Only Story 1 is single-turn.
+
+Every assertion targets **content and behavior**, not implementation details.
+If the model's answer is correct, the test passes — regardless of how many
+entries exist, what schemes were used, or what intermediate states occurred.
+
+### Test Infrastructure
+
+Shared `before()`: git-initialized temp project with known files:
+- `src/app.js` — Express app on port 8080, TODO comment
+- `src/config.json` — `{ "db": "postgres", "pool": 5, "host": "db.internal" }`
+- `src/utils.js` — 2 exported functions (`greet()`, `add(a, b)`)
+- `notes.md` — "The project codename is: phoenix"
+- `data/users.json` — `[{"name":"Alice","role":"admin"},{"name":"Bob","role":"viewer"}]`
+
+### Story 1: Baseline — single-turn factual answer (ask)
+
+**1 turn.** "What is the project codename in notes.md? Reply ONLY with the word."
+- Assert: summary/update contains "phoenix"
+
+### Story 2: Multi-turn knowledge building (ask, same run)
+
+**Turn 1:** "Read src/config.json and save the database type as a known entry."
+- Assert: run completed, known entry exists with value containing "postgres"
+
+**Turn 2 (continue):** "What database pool size did you find? Reply with the number."
+- Assert: response contains "5"
+- Validates: multi-turn memory, known entries persist across turns
+
+### Story 3: File editing with SEARCH/REPLACE (act)
+
+**Turn 1:** "In src/app.js, replace the TODO comment with an actual error handler.
+Use SEARCH/REPLACE to make the edit."
+- Assert: run reaches `proposed` status
+- Assert: proposed entry exists for a write:// path
+
+**Turn 2 (resolve accept):** Accept the proposed edit.
+- Assert: run resumes and completes
+- Assert: the write result has state `pass`
+
+### Story 4: Read → reason → write chain (act)
+
+**Turn 1:** "Read data/users.json. How many admin users are there? Write the count
+to known://admin_count."
+- Assert: run completes
+- Assert: known://admin_count exists with value containing "1"
+
+**Turn 2 (continue):** "Now read src/config.json. What's the database host?
+Save it to known://db_host."
+- Assert: known://db_host contains "db.internal"
+- Validates: model reads files, extracts specific data, writes to known entries
+
+### Story 5: Unknown → investigate → resolve (ask)
+
+**Turn 1:** "What testing framework does this project use? Don't guess — register
+what you don't know first."
+- Assert: run completes
+- Assert: at some point an unknown:// entry existed (or the model investigated)
+- Assert: the final response is reasonable (acknowledges uncertainty or investigates)
+
+### Story 6: Pattern operations — glob read (ask)
+
+**Turn 1:** "Read all .js files in src/ using a glob pattern. Which file contains
+the word 'express'? Reply with the filename."
+- Assert: response contains "app.js"
+
+**Turn 2 (continue):** "Now which file exports a function called 'add'?"
+- Assert: response contains "utils.js"
+- Validates: glob expansion, model reasoning over multiple file contents
+
+### Story 7: Move and copy (act)
+
+**Turn 1:** "Copy known://admin_count to known://admin_count_backup" (depends on
+Story 4's known entries — or seed it fresh)
+- Assert: run completes
+- Assert: known://admin_count_backup exists
+
+**Turn 2 (continue):** "Move known://admin_count_backup to known://archived_count"
+- Assert: known://archived_count exists
+- Assert: known://admin_count_backup is gone
+- Validates: copy creates duplicate, move removes source
+
+### Story 8: Delete operations (act)
+
+**Turn 1:** "Delete the file notes.md"
+- Assert: proposed (file deletion requires approval)
+
+**Turn 2 (resolve reject):** Reject the deletion.
+- Assert: run status becomes `resolved` or resumes
+- Assert: notes.md entry still exists in the store
+- Validates: reject flow, file survives rejection
+
+### Story 9: Env command (act)
+
+**Turn 1:** "Run `node --version` to check the Node.js version."
+- Assert: env entry has state `pass` (env auto-passes)
+- Assert: model reports the version
+
+**Turn 2 (continue):** "Now run `echo RUMMY_TEST_MARKER` and tell me what it prints."
+- Assert: response mentions "RUMMY_TEST_MARKER"
+- Validates: env execution, model reads output, multi-turn env
+
+### Story 10: Drop and re-read (ask)
+
+**Turn 1:** "Read src/config.json and tell me the pool size."
+- Assert: response contains "5"
+
+**Turn 2 (continue):** "Drop src/config.json from context, then re-read it and
+tell me the database host."
+- Assert: response contains "db.internal"
+- Validates: drop removes from context, re-read restores, model answers from fresh read
+
+### Story 11: Lite mode — no file context (ask)
+
+**Turn 1:** "What is 7 * 13? Reply ONLY with the number." (noContext: true)
+- Assert: response contains "91"
+
+**Turn 2 (continue on same run):** "What is the square root of 144? Reply ONLY
+with the number."
+- Assert: response contains "12"
+- Validates: lite mode works, multi-turn works without file context
+
+### Story 12: Abort mid-run (ask)
+
+**Turn 1:** Start a prompt that will take multiple turns: "Carefully read every
+file in the project, summarize each one individually, then provide a final summary."
+- Send `run/abort` via RPC while the run is active
+- Assert: run status transitions to `aborted`
+- Validates: abort signal reaches the LLM call, run terminates cleanly
+
+### Story 13: Second question on same run (ask)
+
+**Turn 1:** "What is the project codename? Reply ONLY with the word."
+- Assert: response contains "phoenix"
+
+**Turn 2 (new question, same run):** "What port does src/app.js use? Reply ONLY
+with the number."
+- Assert: response contains "8080" (NOT "phoenix")
+- Validates: model answers the NEW question, not the old one. Tests message
+  structure — the latest prompt is in `<prompt>`, not buried in history.
+
+### Story 14: Write with naked path (ask)
+
+**Turn 1:** "The answer to life is 42. Save that as a known entry."
+- Assert: a known:// entry exists with a slug-derived path
+- Assert: value contains "42"
+- Validates: naked `<write>content</write>` generates known:// slug path
+
+**Turn 2 (continue):** "What did you save about the answer to life?"
+- Assert: response contains "42"
+- Validates: model can recall its own known entries
+
+---
+
 ## Todo: Relevance Engine
 
 `src/plugins/engine/engine.js` — an `onTurn` hook (priority 20) that manages
@@ -145,34 +304,19 @@ Refactor to the two-message architecture documented in ARCHITECTURE.md §3.1:
 
 ---
 
-## Todo: Abort is broken — doom loop
+## Done: Abort Chain Fix ✓
 
-The abort signal never reaches the LLM call. `AbortController.signal` is checked
-at the top of the while loop in AgentLoop, but the loop blocks on
-`TurnExecutor.execute()` → LLM client → `fetch()`. The fetch uses its own
-`AbortSignal.timeout()` but never receives the run's abort signal. The model
-can loop indefinitely and the abort RPC does nothing until the current turn
-finishes — which may never happen if the model is stuck.
+AbortSignal now threads through the full call chain:
+`AgentLoop.controller.signal` → `TurnExecutor.execute({signal})` →
+`LlmProvider.completion(msgs, model, {signal})` → all 3 clients →
+`AbortSignal.any([runSignal, timeoutSignal])` → `fetch({signal})`.
 
-Additionally, when the server is killed mid-run, the run stays `running` forever
-in the database. No startup cleanup recovers stuck runs.
+Startup cleanup: `abort_stuck_runs` query sets all `running`/`queued` runs
+to `aborted` on boot. Called in `service.js` after DB hygiene.
 
-### E2E test: doom loop reproduction
-
-Write a story test that triggers a doom loop and verifies abort works:
-- Start an ask/act that will loop (e.g., a question that provokes repeated reads)
-- Send `run/abort` while the run is active
-- Verify the run status transitions to `aborted` within a reasonable timeout
-- Verify the LLM request is actually cancelled (not just the loop flag set)
-
-### Fixes needed
-
-- [ ] **Thread AbortSignal through the call chain** — AgentLoop passes
-      `controller.signal` to TurnExecutor, TurnExecutor passes to LLM client,
-      LLM client combines with its timeout signal via `AbortSignal.any()`
-- [ ] **Startup cleanup** — on boot, set all `running` runs to `aborted`.
-      They can't be running if the server just started.
-- [ ] **E2E test** — doom loop + abort story
+- [x] **Thread AbortSignal through the call chain**
+- [x] **Startup cleanup**
+- [ ] **E2E test** — doom loop + abort story (in E2E story suite below)
 
 ### Non-git project file scanner gap
 

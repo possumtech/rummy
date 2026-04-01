@@ -31,14 +31,7 @@ export default class Engine {
 						const names = demoted.map((d) => d.path).join(", ");
 						const report = `engine demoted: ${names} (budget: ${before}% → ${after}%)`;
 						const resultPath = await store.slugPath(runId, "inject", report);
-						await store.upsert(
-							runId,
-							sequence,
-							resultPath,
-							report,
-							"info",
-							{},
-						);
+						await store.upsert(runId, sequence, resultPath, report, "info", {});
 					}
 				}
 			}

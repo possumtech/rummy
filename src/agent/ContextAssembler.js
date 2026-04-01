@@ -250,7 +250,11 @@ export default class ContextAssembler {
 					if (row.scheme === "user") {
 						prompt = row.content;
 					}
-					messageEntries.push({ path: row.path, scheme: row.scheme, value: row.content });
+					messageEntries.push({
+						path: row.path,
+						scheme: row.scheme,
+						value: row.content,
+					});
 					break;
 				case "result":
 					messageEntries.push({
@@ -312,9 +316,7 @@ export default class ContextAssembler {
 			systemParts.push(`<context>\n${contextParts.join("\n\n")}\n</context>`);
 		}
 
-		const messages = [
-			{ role: "system", content: systemParts.join("\n\n") },
-		];
+		const messages = [{ role: "system", content: systemParts.join("\n\n") }];
 
 		// --- User message: messages + prompt/progress ---
 		const userParts = [];

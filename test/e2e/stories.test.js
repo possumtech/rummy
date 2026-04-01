@@ -15,9 +15,9 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
-import AuditClient from "../helpers/AuditClient.js";
 
 const model = process.env.RUMMY_MODEL_DEFAULT;
 const TIMEOUT = 120_000;
@@ -30,9 +30,11 @@ async function getLastStatus(db, runAlias) {
 	const runRow = await db.get_run_by_alias.get({ alias: runAlias });
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
 	const summaries = entries.filter((e) => e.scheme === "summary");
-	if (summaries.length > 0) return { type: "summary", value: summaries.at(-1).value };
+	if (summaries.length > 0)
+		return { type: "summary", value: summaries.at(-1).value };
 	const updates = entries.filter((e) => e.scheme === "update");
-	if (updates.length > 0) return { type: "update", value: updates.at(-1).value };
+	if (updates.length > 0)
+		return { type: "update", value: updates.at(-1).value };
 	return null;
 }
 
@@ -83,7 +85,8 @@ describe("E2E Stories", () => {
 	}, async () => {
 		const result = await client.call("ask", {
 			model,
-			prompt: "What port number is in config.json? Reply ONLY with the number, nothing else.",
+			prompt:
+				"What port number is in config.json? Reply ONLY with the number, nothing else.",
 		});
 		await client.assertRun(result, "completed", "factual answer");
 
@@ -155,14 +158,11 @@ describe("E2E Stories", () => {
 
 		const result = await client.call("act", {
 			model,
-			prompt: 'Create a file called "output.txt" with the text "hello world". Use exactly: <write path="output.txt">hello world</write>',
+			prompt:
+				'Create a file called "output.txt" with the text "hello world". Use exactly: <write path="output.txt">hello world</write>',
 		});
 
-		await client.assertRun(
-			result,
-			["completed", "proposed"],
-			"file write",
-		);
+		await client.assertRun(result, ["completed", "proposed"], "file write");
 
 		// Verify no bare file was written directly to store bypassing proposal
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: result.run });

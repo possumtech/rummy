@@ -35,6 +35,7 @@ export default class TurnExecutor {
 		noContext,
 		contextSize,
 		options,
+		signal,
 	}) {
 		const turn = await this.#knownStore.nextTurn(currentRunId);
 
@@ -145,7 +146,7 @@ export default class TurnExecutor {
 		const rawResult = await this.#llmProvider.completion(
 			filteredMessages,
 			requestedModel,
-			{ temperature: options?.temperature },
+			{ temperature: options?.temperature, signal },
 		);
 		const result = await this.#hooks.llm.response.filter(rawResult, {
 			model: requestedModel,
@@ -524,7 +525,11 @@ export default class TurnExecutor {
 		);
 
 		for (const entry of matches) {
-			const resultPath = await this.#knownStore.slugPath(runId, "write", entry.path);
+			const resultPath = await this.#knownStore.slugPath(
+				runId,
+				"write",
+				entry.path,
+			);
 			let patch = null;
 			let warning = null;
 			let error = null;
@@ -606,7 +611,11 @@ export default class TurnExecutor {
 		);
 
 		for (const entry of matches) {
-			const resultPath = await this.#knownStore.slugPath(runId, "delete", entry.path);
+			const resultPath = await this.#knownStore.slugPath(
+				runId,
+				"delete",
+				entry.path,
+			);
 
 			if (entry.scheme === null) {
 				// File → proposed (client confirms deletion)
@@ -640,7 +649,11 @@ export default class TurnExecutor {
 			warning = `Overwrote existing entry at ${cmd.to}`;
 		}
 
-		const resultPath = await this.#knownStore.slugPath(runId, cmd.name, cmd.path);
+		const resultPath = await this.#knownStore.slugPath(
+			runId,
+			cmd.name,
+			cmd.path,
+		);
 
 		// File destinations → proposed (client writes to disk)
 		// K/V destinations → pass (immediate)

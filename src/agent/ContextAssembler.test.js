@@ -299,9 +299,18 @@ describe("ContextAssembler", () => {
 			assert.strictEqual(messages.length, 2);
 			const userContent = messages[1].content;
 
-			assert.ok(userContent.includes("✓"), "pass result should have check mark");
-			assert.ok(userContent.includes("summary: Fixed it"), "summary should render");
-			assert.ok(userContent.includes("<messages>"), "results in messages block");
+			assert.ok(
+				userContent.includes("✓"),
+				"pass result should have check mark",
+			);
+			assert.ok(
+				userContent.includes("summary: Fixed it"),
+				"summary should render",
+			);
+			assert.ok(
+				userContent.includes("<messages>"),
+				"results in messages block",
+			);
 		});
 
 		it("renders empty context when no entries", () => {

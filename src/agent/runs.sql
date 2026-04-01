@@ -106,3 +106,8 @@ SELECT r.id
 FROM runs AS r
 JOIN sessions AS s ON r.session_id = s.id
 WHERE s.project_id = :project_id;
+
+-- PREP: abort_stuck_runs
+UPDATE runs
+SET status = 'aborted'
+WHERE status IN ('running', 'queued');
