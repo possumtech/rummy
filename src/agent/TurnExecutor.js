@@ -57,6 +57,19 @@ export default class TurnExecutor {
 			await this.#fileScanner.scan(project.path, project.id, files, turn);
 		}
 
+		// Store user/continuation prompt BEFORE context materialization
+		// so v_model_context includes the current prompt
+		if (loopPrompt) {
+			const scheme = options?.isContinuation ? "prompt" : "user";
+			await this.#knownStore.upsert(
+				currentRunId,
+				turn,
+				`${scheme}://${turn}`,
+				loopPrompt,
+				"info",
+			);
+		}
+
 		// Build system prompt before hooks (static for the turn)
 		const systemPrompt = await PromptManager.getSystemPrompt(type, {
 			db: this.#db,
@@ -111,7 +124,7 @@ export default class TurnExecutor {
 			runId: currentRunId,
 		});
 
-		// Store audit BEFORE LLM call
+		// Store system prompt audit entry
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
@@ -119,16 +132,6 @@ export default class TurnExecutor {
 			systemPrompt,
 			"info",
 		);
-		if (loopPrompt) {
-			const scheme = options?.isContinuation ? "prompt" : "user";
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				`${scheme}://${turn}`,
-				loopPrompt,
-				"info",
-			);
-		}
 
 		if (process.env.RUMMY_DEBUG === "true") {
 			console.log(
@@ -433,13 +436,34 @@ export default class TurnExecutor {
 					cmd.value,
 				);
 			} else {
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					cmd.path,
-					cmd.value,
-					"full",
-				);
+				const scheme = KnownStore.scheme(cmd.path);
+				if (scheme === null) {
+					// Bare file path → proposed for client review
+					const resultPath = await this.#knownStore.slugPath(
+						currentRunId,
+						"write",
+						cmd.path,
+					);
+					await this.#knownStore.upsert(
+						currentRunId,
+						turn,
+						resultPath,
+						cmd.value,
+						"proposed",
+						{
+							meta: { file: cmd.path },
+						},
+					);
+				} else {
+					// K/V entry → immediate upsert
+					await this.#knownStore.upsert(
+						currentRunId,
+						turn,
+						cmd.path,
+						cmd.value,
+						"full",
+					);
+				}
 			}
 		}
 
