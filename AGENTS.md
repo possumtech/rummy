@@ -145,6 +145,47 @@ Refactor to the two-message architecture documented in ARCHITECTURE.md §3.1:
 
 ---
 
+## Todo: Abort is broken — doom loop
+
+The abort signal never reaches the LLM call. `AbortController.signal` is checked
+at the top of the while loop in AgentLoop, but the loop blocks on
+`TurnExecutor.execute()` → LLM client → `fetch()`. The fetch uses its own
+`AbortSignal.timeout()` but never receives the run's abort signal. The model
+can loop indefinitely and the abort RPC does nothing until the current turn
+finishes — which may never happen if the model is stuck.
+
+Additionally, when the server is killed mid-run, the run stays `running` forever
+in the database. No startup cleanup recovers stuck runs.
+
+### E2E test: doom loop reproduction
+
+Write a story test that triggers a doom loop and verifies abort works:
+- Start an ask/act that will loop (e.g., a question that provokes repeated reads)
+- Send `run/abort` while the run is active
+- Verify the run status transitions to `aborted` within a reasonable timeout
+- Verify the LLM request is actually cancelled (not just the loop flag set)
+
+### Fixes needed
+
+- [ ] **Thread AbortSignal through the call chain** — AgentLoop passes
+      `controller.signal` to TurnExecutor, TurnExecutor passes to LLM client,
+      LLM client combines with its timeout signal via `AbortSignal.any()`
+- [ ] **Startup cleanup** — on boot, set all `running` runs to `aborted`.
+      They can't be running if the server just started.
+- [ ] **E2E test** — doom loop + abort story
+
+### Non-git project file scanner gap
+
+`ProjectContext.getMappableFiles()` returns nothing for non-git directories.
+The file scanner only discovers files via `git ls-files`. Non-git projects have
+zero files bootstrapped into context on the first run.
+
+- [ ] **Fallback file discovery** — when `isGit` is false, walk the directory
+      tree (respecting .gitignore-style patterns or a .rummyignore)
+- [ ] **E2E test** — story test with non-git project verifying files are in context
+
+---
+
 ## Done: Schemes Table ✓
 
 `schemes` table is the single source of truth. `fidelityOf.js` and `tierOf.js`
