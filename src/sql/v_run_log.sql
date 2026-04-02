@@ -3,14 +3,14 @@ CREATE VIEW IF NOT EXISTS v_run_log AS
 SELECT
 	ke.run_id
 	, ke.path
-	, ke.value
+	, ke.body
 	, ke.state AS status
 	, COALESCE(ke.scheme, ke.state) AS tool
 	, COALESCE(
-		json_extract(ke.meta, '$.command')
-		, json_extract(ke.meta, '$.file')
-		, json_extract(ke.meta, '$.path')
-		, json_extract(ke.meta, '$.question')
+		json_extract(ke.attributes, '$.command')
+		, json_extract(ke.attributes, '$.file')
+		, json_extract(ke.attributes, '$.path')
+		, json_extract(ke.attributes, '$.question')
 		, ''
 	) AS target
 FROM known_entries AS ke

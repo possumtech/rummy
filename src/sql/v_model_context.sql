@@ -6,11 +6,11 @@ classified AS (
 		ke.run_id
 		, ke.id
 		, ke.path
-		, ke.value
+		, ke.body
 		, ke.scheme
 		, ke.state
 		, ke.turn
-		, ke.meta
+		, ke.attributes
 		, ke.tokens AS tokens_full
 		, CASE
 			-- Proposed entries hidden until resolved
@@ -46,19 +46,19 @@ projected AS (
 		, state
 		, fidelity
 		, CASE
-			WHEN fidelity = 'full' THEN value
-			WHEN fidelity = 'summary' THEN COALESCE(json_extract(meta, '$.symbols'), value)
+			WHEN fidelity = 'full' THEN body
+			WHEN fidelity = 'summary' THEN COALESCE(json_extract(attributes, '$.symbols'), body)
 			ELSE ''
-		END AS content
+		END AS body
 		, CASE
 			WHEN scheme IS NULL AND fidelity = 'full'
 				THEN json_object(
-					'constraint', json_extract(meta, '$.constraint')
+					'constraint', json_extract(attributes, '$.constraint')
 					, 'tokens_full', tokens_full
 				)
 			WHEN scheme IN ('http', 'https') AND fidelity = 'full'
 				THEN json_object(
-					'constraint', json_extract(meta, '$.constraint')
+					'constraint', json_extract(attributes, '$.constraint')
 					, 'tokens_full', tokens_full
 				)
 			WHEN
@@ -70,16 +70,16 @@ projected AS (
 				THEN json_object(
 					'tool', COALESCE(scheme, state)
 					, 'target', COALESCE(
-						json_extract(meta, '$.command')
-						, json_extract(meta, '$.file')
-						, json_extract(meta, '$.path')
-						, json_extract(meta, '$.question')
+						json_extract(attributes, '$.command')
+						, json_extract(attributes, '$.file')
+						, json_extract(attributes, '$.path')
+						, json_extract(attributes, '$.question')
 						, ''
 					)
 					, 'state', state
 				)
 			ELSE NULL
-		END AS meta
+		END AS attributes
 		, CASE
 			WHEN scheme IS NULL AND state = 'full' THEN 'file'
 			WHEN scheme IS NULL AND state = 'summary' THEN 'file_summary'
@@ -104,8 +104,8 @@ SELECT
 	, path
 	, scheme
 	, fidelity
-	, content
-	, meta
+	, body
+	, attributes
 	, category
 	, ROW_NUMBER() OVER (
 		PARTITION BY run_id
@@ -124,5 +124,5 @@ SELECT
 			END
 			, id
 	) AS ordinal
-	, countTokens(content) AS tokens
+	, countTokens(body) AS tokens
 FROM projected;

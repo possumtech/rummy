@@ -131,11 +131,11 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
 	, path TEXT NOT NULL
-	, value TEXT NOT NULL DEFAULT ''
+	, body TEXT NOT NULL DEFAULT ''
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, state TEXT NOT NULL
 	, hash TEXT
-	, meta JSON
+	, attributes JSON
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, tokens_full INTEGER NOT NULL DEFAULT 0 CHECK (tokens_full >= 0)
 	, refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
@@ -186,8 +186,8 @@ CREATE VIEW IF NOT EXISTS v_unresolved AS
 SELECT
 	run_id
 	, path
-	, value
-	, meta
+	, body
+	, attributes
 	, turn
 FROM known_entries
 WHERE state = 'proposed';
@@ -202,9 +202,9 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, path TEXT NOT NULL
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, fidelity TEXT NOT NULL CHECK (fidelity IN ('full', 'summary', 'index'))
-	, content TEXT NOT NULL DEFAULT ''
+	, body TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
-	, meta JSON
+	, attributes JSON
 	, category TEXT NOT NULL DEFAULT 'result'
 );
 CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn

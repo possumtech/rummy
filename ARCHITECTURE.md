@@ -203,12 +203,21 @@ The parser accepts both attribute-style (`<read path="x"/>`) and body-style
 Every parsed command writes to the known store. The model sees results as
 entries in the context next turn. Pattern-based commands operate on all matches.
 
-**`<write>`** — the unified file + knowledge tool. Replaces old `<edit>` + `<known>`:
+**`<write>`** — the unified file + knowledge tool:
 - Plain body → create or overwrite the entry at `path`
-- SEARCH/REPLACE body → apply merge blocks via HeuristicMatcher
+- Structured edit body → auto-detected, applied via HeuristicMatcher
+- `search` + `replace` attrs → literal attribute edit mode
 - `path` + `value` attrs → bulk-update matching entries
 - File targets (scheme NULL): state `proposed` (client reviews)
 - K/V targets (known://, etc.): state `pass` (applied immediately)
+
+**Hedberg Editing Syntax** (auto-detects whatever format the model produces):
+1. Git merge conflict: `<<<<<<< SEARCH ... ======= ... >>>>>>> REPLACE`
+2. Unified diff: `@@ -1,3 +1,3 @@` with `-`/`+` lines
+3. Claude XML: `<old_text>old</old_text><new_text>new</new_text>`
+4. JSON body: `{"search": "old", "replace": "new"}`
+5. XML attributes: `<write search="old" replace="new"/>`
+6. Full replacement: anything else becomes the new content
 
 **`<unknown>`** — creates a sticky `unknown://N` entry (state `full`).
 Persists across turns until explicitly stored. Server deduplicates on insert.

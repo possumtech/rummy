@@ -1,22 +1,22 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
-	run_id, turn, path, value, state, hash, meta
+	run_id, turn, path, body, state, hash, attributes
 	, tokens, tokens_full, updated_at
 )
 VALUES (
-	:run_id, :turn, :path, :value, :state, :hash, :meta
-	, countTokens(:value)
-	, countTokens(:value)
+	:run_id, :turn, :path, :body, :state, :hash, :attributes
+	, countTokens(:body)
+	, countTokens(:body)
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
 ON CONFLICT (run_id, path) DO UPDATE SET
-	value = excluded.value
+	body = excluded.body
 	, state = excluded.state
 	, hash = COALESCE(excluded.hash, known_entries.hash)
-	, meta = COALESCE(excluded.meta, known_entries.meta)
+	, attributes = COALESCE(excluded.attributes, known_entries.attributes)
 	, turn = excluded.turn
-	, tokens = countTokens(excluded.value)
-	, tokens_full = countTokens(excluded.value)
+	, tokens = countTokens(excluded.body)
+	, tokens_full = countTokens(excluded.body)
 	, write_count = known_entries.write_count + 1
 	, updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
 
@@ -26,7 +26,7 @@ SET tokens = :tokens, tokens_full = :tokens
 WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_stale_tokens
-SELECT path, value
+SELECT path, body
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -44,7 +44,7 @@ WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL;
 UPDATE known_entries
 SET
 	state = :state
-	, value = :value
+	, body = :body
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
@@ -56,9 +56,9 @@ SET
 		WHEN :state = 'summary'
 			THEN CASE
 				WHEN
-					json_valid(meta)
-					AND json_extract(meta, '$.symbols') IS NOT NULL
-					THEN countTokens(json_extract(meta, '$.symbols'))
+					json_valid(attributes)
+					AND json_extract(attributes, '$.symbols') IS NOT NULL
+					THEN countTokens(json_extract(attributes, '$.symbols'))
 				ELSE countTokens(path)
 			END
 		ELSE tokens_full
@@ -83,8 +83,8 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
--- PREP: get_entry_value
-SELECT value
+-- PREP: get_entry_body
+SELECT body
 FROM known_entries
 WHERE run_id = :run_id AND path = :path;
 
@@ -99,8 +99,8 @@ FROM known_entries
 WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL
 ORDER BY path;
 
--- PREP: get_entry_meta
-SELECT meta
+-- PREP: get_entry_attributes
+SELECT attributes
 FROM known_entries
 WHERE run_id = :run_id AND path = :path;
 
@@ -114,7 +114,7 @@ SET
 WHERE
 	run_id = :run_id
 	AND hedberg(:path, path)
-	AND (:value IS NULL OR hedberg(:value, value));
+	AND (:body IS NULL OR hedberg(:body, body));
 
 -- PREP: demote_by_pattern
 UPDATE known_entries
@@ -125,15 +125,15 @@ SET
 WHERE
 	run_id = :run_id
 	AND hedberg(:path, path)
-	AND (:value IS NULL OR hedberg(:value, value));
+	AND (:body IS NULL OR hedberg(:body, body));
 
 -- PREP: get_entries_by_pattern
-SELECT path, value, scheme, state, tokens_full, meta
+SELECT path, body, scheme, state, tokens_full, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id
 	AND hedberg(:path, path)
-	AND (:value IS NULL OR hedberg(:value, value))
+	AND (:body IS NULL OR hedberg(:body, body))
 ORDER BY path;
 
 -- PREP: delete_entries_by_pattern
@@ -141,17 +141,17 @@ DELETE FROM known_entries
 WHERE
 	run_id = :run_id
 	AND hedberg(:path, path)
-	AND (:value IS NULL OR hedberg(:value, value));
+	AND (:body IS NULL OR hedberg(:body, body));
 
--- PREP: update_value_by_pattern
+-- PREP: update_body_by_pattern
 UPDATE known_entries
 SET
-	value = :new_value
-	, tokens = countTokens(:new_value)
-	, tokens_full = countTokens(:new_value)
+	body = :new_body
+	, tokens = countTokens(:new_body)
+	, tokens_full = countTokens(:new_body)
 	, write_count = write_count + 1
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
 	AND hedberg(:path, path)
-	AND (:value IS NULL OR hedberg(:value, value));
+	AND (:body IS NULL OR hedberg(:body, body));

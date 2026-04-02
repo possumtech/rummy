@@ -1,16 +1,16 @@
 -- PREP: get_known_entries
-SELECT path, scheme, state, value, turn, hash, meta
+SELECT path, scheme, state, body, turn, hash, attributes
 FROM known_entries
 WHERE run_id = :run_id
 ORDER BY path;
 
 -- PREP: get_results
-SELECT tool, target, status, path, value
+SELECT tool, target, status, path, body
 FROM v_run_log
 WHERE run_id = :run_id;
 
 -- PREP: get_unknowns
-SELECT path, value
+SELECT path, body
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -18,7 +18,7 @@ WHERE
 ORDER BY id;
 
 -- PREP: get_turn_audit
-SELECT path, scheme, state, turn, value, meta
+SELECT path, scheme, state, turn, body, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -26,7 +26,7 @@ WHERE
 ORDER BY id;
 
 -- PREP: get_reasoning
-SELECT path, value, turn
+SELECT path, body, turn
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -34,7 +34,7 @@ WHERE
 ORDER BY id;
 
 -- PREP: get_latest_user_prompt
-SELECT value
+SELECT body
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -43,7 +43,7 @@ ORDER BY id DESC
 LIMIT 1;
 
 -- PREP: get_latest_prompt
-SELECT path, scheme, value, meta
+SELECT path, scheme, body, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -52,7 +52,7 @@ ORDER BY id DESC
 LIMIT 1;
 
 -- PREP: get_latest_summary
-SELECT value
+SELECT body
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -61,7 +61,7 @@ ORDER BY id DESC
 LIMIT 1;
 
 -- PREP: get_history
-SELECT ke.path, ke.state AS status, ke.value, ke.meta, ke.turn
+SELECT ke.path, ke.state AS status, ke.body, ke.attributes, ke.turn
 FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
@@ -71,7 +71,7 @@ WHERE
 ORDER BY ke.id;
 
 -- PREP: get_content
-SELECT path, value, turn
+SELECT path, body, turn
 FROM known_entries
 WHERE
 	run_id = :run_id
