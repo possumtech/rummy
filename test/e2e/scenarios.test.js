@@ -366,10 +366,11 @@ describe("E2E: Client Scenarios", () => {
 
 		// Simulate yolo: auto-accept every proposed entry
 		let current = result;
-		let iterations = 0;
+		let resolves = 0;
 		const runAlias = result.run;
-		while (current.status === "proposed" && iterations < 10) {
+		while (current.status === "proposed" && resolves < 15) {
 			for (const p of current.proposed) {
+				if (resolves >= 15) break;
 				const type = p.path.match(/^(\w+):\/\//)?.[1];
 				const meta = typeof p.meta === "string" ? JSON.parse(p.meta) : p.meta;
 				let output = "ok";
@@ -406,8 +407,8 @@ describe("E2E: Client Scenarios", () => {
 					await client.dumpRun(runAlias);
 					throw err;
 				}
+				resolves++;
 			}
-			iterations++;
 		}
 
 		await client.assertRun(

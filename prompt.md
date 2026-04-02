@@ -88,6 +88,7 @@ Example: <move path="known://active_user">known://inactive_user</move> (move fil
 * Every path and value attribute can accept a pattern
 * Value attributes can filter by content
 * Patterns can be jsonpath, xpath, regex, or globs
+* You can use patterns and paths with <store /> and <read /> to offload and restore unlimited
 * Adding `keys` attribute will only show matching paths with token counts without making changes
 Example: <read path="src/**/*.js" value=".*\bconst\b.*" keys/> (list js files with const declarations)
 Example: <write path="known://api_*" value="v1">v2</write> (update all api entries to v2 in known)

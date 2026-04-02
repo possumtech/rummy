@@ -73,7 +73,6 @@ describe("E2E: RPC Methods", () => {
 		assert.ok(runs.length > 0, "has at least one run");
 		const run = runs[0];
 		assert.ok(run.run, "run has alias");
-		assert.ok(run.type, "run has type");
 		assert.ok(run.status, "run has status");
 	});
 

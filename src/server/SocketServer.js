@@ -34,6 +34,9 @@ export default class SocketServer {
 	close() {
 		return new Promise((resolve) => {
 			if (!this.#wss) return resolve();
+			for (const client of this.#wss.clients) {
+				client.terminate();
+			}
 			this.#wss.close(resolve);
 		});
 	}
