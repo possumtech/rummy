@@ -77,8 +77,14 @@ describe("Message assembly", () => {
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(user.content.includes("<ask tools="), "should have <ask> tag");
-		assert.ok(user.content.includes("What is the port?"), "should contain prompt text");
-		assert.ok(!user.content.includes("run "), "ask tools should not include run");
+		assert.ok(
+			user.content.includes("What is the port?"),
+			"should contain prompt text",
+		);
+		assert.ok(
+			!user.content.includes("run "),
+			"ask tools should not include run",
+		);
 	});
 
 	it("act prompt renders as <act> tag with run tool", async () => {
@@ -86,7 +92,9 @@ describe("Message assembly", () => {
 		const hooks = new HookRegistry();
 		Engine.register(hooks);
 		const hookRoot = {
-			tag: "turn", attrs: {}, content: null,
+			tag: "turn",
+			attrs: {},
+			content: null,
 			children: [
 				{ tag: "system", attrs: {}, content: null, children: [] },
 				{ tag: "context", attrs: {}, content: null, children: [] },
@@ -95,16 +103,26 @@ describe("Message assembly", () => {
 			],
 		};
 		const rummy = new RummyContext(hookRoot, {
-			db: tdb.db, store, project: PROJECT, type: "act", sequence: TURN,
-			runId: RUN_ID, turnId: 1, noContext: false, contextSize: 50000,
-			systemPrompt: "You are a test assistant.", loopPrompt: "test",
+			db: tdb.db,
+			store,
+			project: PROJECT,
+			type: "act",
+			sequence: TURN,
+			runId: RUN_ID,
+			turnId: 1,
+			noContext: false,
+			contextSize: 50000,
+			systemPrompt: "You are a test assistant.",
+			loopPrompt: "test",
 		});
 		await hooks.processTurn(rummy);
 		const rows = await tdb.db.get_turn_context.all({
 			run_id: RUN_ID,
 			turn: TURN,
 		});
-		const messages = ContextAssembler.assembleFromTurnContext(rows, { type: "act" });
+		const messages = ContextAssembler.assembleFromTurnContext(rows, {
+			type: "act",
+		});
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(user.content.includes("<act tools="), "should have <act> tag");
 		assert.ok(user.content.includes("run "), "act tools should include run");
@@ -114,7 +132,9 @@ describe("Message assembly", () => {
 		await store.upsert(RUN_ID, TURN, "src/app.js", "const x = 1;", "full");
 		await store.upsert(RUN_ID, TURN, "src/utils.js", "const y = 2;", "full");
 		await store.upsert(
-			RUN_ID, TURN, "read://src_js",
+			RUN_ID,
+			TURN,
+			"read://src_js",
 			'read path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
 			"pattern",
 		);
@@ -126,7 +146,9 @@ describe("Message assembly", () => {
 
 	it("preview result shows PREVIEW prefix", async () => {
 		await store.upsert(
-			RUN_ID, TURN, "read://preview_test",
+			RUN_ID,
+			TURN,
+			"read://preview_test",
 			'PREVIEW read path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
 			"pattern",
 		);
@@ -136,36 +158,96 @@ describe("Message assembly", () => {
 	});
 
 	it("tool result content is visible (not blank)", async () => {
-		await store.upsert(RUN_ID, TURN, "search://test_query", "10 results for test", "info");
-		await store.upsert(RUN_ID, TURN, "env://node_ver", "<env>node --version</env>", "pass");
-		await store.upsert(RUN_ID, TURN, "delete://rm_test", "rm src/old.js", "pass");
-		await store.upsert(RUN_ID, TURN, "move://mv_test", "mv known://a known://b", "pass");
-		await store.upsert(RUN_ID, TURN, "copy://cp_test", "cp known://x known://y", "pass");
+		await store.upsert(
+			RUN_ID,
+			TURN,
+			"search://test_query",
+			"10 results for test",
+			"info",
+		);
+		await store.upsert(
+			RUN_ID,
+			TURN,
+			"env://node_ver",
+			"<env>node --version</env>",
+			"pass",
+		);
+		await store.upsert(
+			RUN_ID,
+			TURN,
+			"delete://rm_test",
+			"rm src/old.js",
+			"pass",
+		);
+		await store.upsert(
+			RUN_ID,
+			TURN,
+			"move://mv_test",
+			"mv known://a known://b",
+			"pass",
+		);
+		await store.upsert(
+			RUN_ID,
+			TURN,
+			"copy://cp_test",
+			"cp known://x known://y",
+			"pass",
+		);
 
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
 
-		assert.ok(user.content.includes("10 results for test"), "search content visible");
-		assert.ok(user.content.includes("<env>node --version</env>"), "env content visible");
+		assert.ok(
+			user.content.includes("10 results for test"),
+			"search content visible",
+		);
+		assert.ok(
+			user.content.includes("<env>node --version</env>"),
+			"env content visible",
+		);
 		assert.ok(user.content.includes("rm src/old.js"), "delete content visible");
-		assert.ok(user.content.includes("mv known://a known://b"), "move content visible");
-		assert.ok(user.content.includes("cp known://x known://y"), "copy content visible");
+		assert.ok(
+			user.content.includes("mv known://a known://b"),
+			"move content visible",
+		);
+		assert.ok(
+			user.content.includes("cp known://x known://y"),
+			"copy content visible",
+		);
 	});
 
 	it("structural entries (summary/update) appear in messages", async () => {
-		await store.upsert(RUN_ID, TURN, "summary://test_sum", "The answer is 42", "summary");
+		await store.upsert(
+			RUN_ID,
+			TURN,
+			"summary://test_sum",
+			"The answer is 42",
+			"summary",
+		);
 		const messages = await assembleMessages(tdb, store);
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes("The answer is 42"), "summary visible in messages");
+		assert.ok(
+			user.content.includes("The answer is 42"),
+			"summary visible in messages",
+		);
 	});
 
 	it("context contains files and knowledge, not results", async () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
-		assert.ok(system.content.includes("<context>"), "should have context section");
+		assert.ok(
+			system.content.includes("<context>"),
+			"should have context section",
+		);
 		assert.ok(system.content.includes("src/app.js"), "files in context");
 		// Results should NOT be in the system message
-		assert.ok(!system.content.includes("10 results for test"), "search not in system");
-		assert.ok(!system.content.includes("rm src/old.js"), "delete not in system");
+		assert.ok(
+			!system.content.includes("10 results for test"),
+			"search not in system",
+		);
+		assert.ok(
+			!system.content.includes("rm src/old.js"),
+			"delete not in system",
+		);
 	});
 });

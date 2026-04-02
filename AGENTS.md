@@ -42,7 +42,14 @@ is not failure — isolate repeated failures as infrastructure bugs, not model d
       Successful writes update target value. Failed writes set target to
       `state = 'error'` with error as content. No `write://` entries.
 - [ ] **Write to file (error)** — target path: `state = error`, value = error + failed command
-- [ ] **E2E: search-then-answer** — already covered by Story 2 (Tom Petty)
+
+## Done: Bulk Operation Results ✓
+
+All pattern operations produce `pattern` state result entries with matched
+paths and token counts. Preview operations (dry-run via `preview` attribute)
+produce identical entries with `PREVIEW` prefix. Unified `#storeToolResult`
+method handles both. `keys` attribute renamed to `preview`, `keys` state
+replaced by `pattern`.
 
 ---
 
@@ -114,8 +121,9 @@ aborted   → running
 
 ---
 
-## Todo: Remove OpenRouter catalog bulk fetch
+## Done: OpenRouter Catalog Removed ✓
 
-- [ ] Replace `/models` bulk fetch with per-model lookup
-- [ ] Remove `provider_models` table or repurpose as cache
-- [ ] Remove `get_catalog_age` / `ensureCatalog` / `refreshCatalog`
+Bulk `/models` fetch eliminated. `provider_models` table, `ModelCapabilities`,
+`refreshCatalog`, `ensureCatalog`, `get_catalog_age` all deleted. Context size
+from `RUMMY_CONTEXT_SIZE` env var (default 131072). `include_reasoning: true`
+always sent. `getModels` RPC reads env vars only.
