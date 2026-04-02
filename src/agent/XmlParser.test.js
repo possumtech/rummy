@@ -138,9 +138,9 @@ export default {};
 			assert.strictEqual(commands[0].preview, true);
 		});
 
-		it("parses legacy keys flag as preview", () => {
+		it("ignores unknown keys attribute (no backward compat)", () => {
 			const { commands } = XmlParser.parse('<read path="src/*.js" keys/>');
-			assert.strictEqual(commands[0].preview, true);
+			assert.strictEqual(commands[0].preview, undefined);
 		});
 
 		it("parses write with search/replace attributes", () => {

@@ -42,15 +42,6 @@ FROM runs AS r
 WHERE r.session_id = :session_id
 ORDER BY r.created_at DESC;
 
--- PREP: get_next_run_alias
-SELECT
-	COALESCE(
-		MAX(CAST(REPLACE(alias, :prefix, '') AS INTEGER))
-		, 0
-	) + 1 AS next_seq
-FROM runs
-WHERE alias LIKE :prefix || '%';
-
 -- PREP: rename_run
 UPDATE runs
 SET alias = :new_alias
@@ -58,12 +49,6 @@ WHERE id = :id AND alias = :old_alias;
 
 -- PREP: update_run_status
 UPDATE runs SET status = :status WHERE id = :id;
-
--- PREP: next_result_key
-UPDATE runs
-SET next_result_seq = next_result_seq + 1
-WHERE id = :run_id
-RETURNING next_result_seq - 1 AS seq;
 
 -- PREP: next_turn
 UPDATE runs

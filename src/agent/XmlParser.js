@@ -42,17 +42,24 @@ function parseEditContent(content) {
  * Normalize legacy and alternative attribute names to canonical form.
  * key="" → path="", file="" → path="". Silent, no warnings.
  */
+const KNOWN_ATTRS = new Set([
+	"path", "value", "preview", "question", "options", "search", "replace",
+	"to", "results", "command", "warn",
+]);
+
 function normalizeAttrs(attrs) {
 	const out = { ...attrs };
-	if (out.key && !out.path) {
-		out.path = out.key;
-		delete out.key;
+	// If no path, treat first unrecognized attribute value as path
+	if (!out.path) {
+		for (const [k, v] of Object.entries(out)) {
+			if (!KNOWN_ATTRS.has(k) && v) {
+				out.path = v;
+				delete out[k];
+				break;
+			}
+		}
 	}
-	if (out.file && !out.path) {
-		out.path = out.file;
-		delete out.file;
-	}
-	if ("keys" in out || "preview" in out) out.preview = true;
+	if ("preview" in out) out.preview = true;
 	return out;
 }
 

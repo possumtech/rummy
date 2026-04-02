@@ -86,7 +86,6 @@ CREATE TABLE IF NOT EXISTS runs (
 	)
 	, config JSON
 	, alias TEXT NOT NULL UNIQUE
-	, next_result_seq INTEGER NOT NULL DEFAULT 1 CHECK (next_result_seq >= 1)
 	, next_turn INTEGER NOT NULL DEFAULT 1 CHECK (next_turn >= 1)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

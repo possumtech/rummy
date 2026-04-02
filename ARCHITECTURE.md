@@ -92,8 +92,8 @@ on the target entry itself (file or known://). Successful writes update the
 target's value. Failed writes set the target to `error` state with the error
 message as content. There is no `write://` scheme.
 
-**Internal** (`summary://`, `update://`, `system://`, `prompt://`, `ask://`, `act://`, `progress://`, `reasoning://`, `content://`, `model://`):
-- `summary://N` — state `summary` (run termination signal)
+**Internal** (`summarize://`, `update://`, `system://`, `prompt://`, `ask://`, `act://`, `progress://`, `reasoning://`, `content://`, `model://`):
+- `summarize://N` — state `summary` (run termination signal)
 - `update://N` — state `info` (run continuation signal)
 - `prompt://N` — state `info` (loop identity / mode via `meta.mode`)
 - `ask://N` — state `info` (ask payload)
@@ -108,7 +108,7 @@ message as content. There is no `write://` scheme.
 | bare path | File paths | `src/app.js`, `package.json` |
 | `known://` | Knowledge | `known://auth_flow`, `known://db_adapter` |
 | `unknown://` | Open questions | `unknown://1`, `unknown://42` |
-| `[tool]://` | Tool results | `env://node_version`, `run://npm_test`, `search://query`, `summary://answer` |
+| `[tool]://` | Tool results | `env://node_version`, `run://npm_test`, `search://query`, `summarize://answer` |
 | `prompt://` | Loop identity / mode | `prompt://1` (with `meta.mode`) |
 | `ask://` | Ask payloads | `ask://1`, `ask://2` |
 | `act://` | Act payloads | `act://1`, `act://2` |
@@ -247,7 +247,7 @@ split as move.
 **`<update>`** — stores as `update://N` info entry. Signals the model is still
 working. The run continues.
 
-**`<summarize>`** — stores as `summary://N` summary entry. Signals the model is
+**`<summarize>`** — stores as `summarize://N` summary entry. Signals the model is
 done. **The run terminates.**
 
 **`preview` flag** — any store-facing tool with `preview` resolves the pattern and stores
@@ -343,7 +343,7 @@ The server parses all XML commands from the response, then processes in strict o
 2. **Execute action commands** — `read` promotes, `store` demotes, `search` queries. `env`, `run`, `delete`, `write`, `ask_user`, `move`, `copy` generate result entries.
 3. **Process unknowns** — create `unknown://N` entries, deduplicated.
 4. **Process writes** — UPSERT each `<write>` tag's path/value (plain or SEARCH/REPLACE).
-5. **Store status** — create `summary://N` (from `<summarize>`) or `update://N` entry.
+5. **Store status** — create `summarize://N` (from `<summarize>`) or `update://N` entry.
 6. **Emit `run/state`** — send client notification with history, proposed, unknowns, and telemetry.
 
 ### 2.9 Tool Result Content Contract
@@ -634,7 +634,7 @@ defined via `RUMMY_MODEL_{alias}` env vars.
   "summary": "Latest one-liner status.",
   "history": [
     {"path": "env://1", "tool": "env", "target": "npm --version", "status": "pass"},
-    {"path": "summary://1", "tool": "summary", "status": "summary", "value": "Previous summary."},
+    {"path": "summarize://1", "tool": "summary", "status": "summary", "value": "Previous summary."},
     {"path": "write://3", "tool": "write", "target": "src/config.js", "status": "proposed"}
   ],
   "unknowns": [
