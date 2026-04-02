@@ -226,7 +226,7 @@ describe("Message assembly", () => {
 		await store.upsert(
 			RUN_ID,
 			TURN,
-			"summary://test_sum",
+			"summarize://test_sum",
 			"The answer is 42",
 			"summary",
 		);

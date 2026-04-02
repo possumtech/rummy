@@ -344,7 +344,7 @@ export default class CoreRpcPlugin {
 				};
 			},
 			description:
-				"Get full run detail: context (telemetry, reasoning, content, history), last_user_prompt, last_summary. History entries use scheme:// paths: prompt:// = human prompt, progress:// = automated continuation, content:// = assistant text, reasoning:// = model thinking, summary:// = turn summary, plus tool-specific schemes.",
+				"Get full run detail: context (telemetry, reasoning, content, history), last_user_prompt, last_summary. History entries use scheme:// paths: prompt:// = human prompt, progress:// = automated continuation, content:// = assistant text, reasoning:// = model thinking, summarize:// = turn summary, plus tool-specific schemes.",
 			params: { run: "string — run alias" },
 			requiresInit: true,
 		});

@@ -54,7 +54,7 @@ describe("turn_context distribution bucket correctness", () => {
 		await store.upsert(RUN_ID, 1, "readme.md", "# Hello", "index");
 		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", "full");
 		await store.upsert(RUN_ID, 1, "search://1", "search results", "info");
-		await store.upsert(RUN_ID, 1, "summary://1", "did a thing", "summary");
+		await store.upsert(RUN_ID, 1, "summarize://1", "did a thing", "summary");
 		await store.upsert(RUN_ID, 1, "unknown://1", "what is X?", "full");
 		await store.upsert(RUN_ID, 1, "ask://1", "test question", "info");
 

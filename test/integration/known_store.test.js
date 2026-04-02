@@ -32,7 +32,7 @@ describe("KnownStore integration", () => {
 		it("tool schemes", () => {
 			assert.strictEqual(KnownStore.scheme("search://4"), "search");
 			assert.strictEqual(KnownStore.scheme("write://7"), "write");
-			assert.strictEqual(KnownStore.scheme("summary://1"), "summary");
+			assert.strictEqual(KnownStore.scheme("summarize://1"), "summarize");
 		});
 
 		it("unknown:// scheme", () => {
@@ -45,7 +45,7 @@ describe("KnownStore integration", () => {
 		it("extracts tool name from result keys", () => {
 			assert.strictEqual(KnownStore.toolFromPath("search://4"), "search");
 			assert.strictEqual(KnownStore.toolFromPath("write://7"), "write");
-			assert.strictEqual(KnownStore.toolFromPath("summary://1"), "summary");
+			assert.strictEqual(KnownStore.toolFromPath("summarize://1"), "summarize");
 		});
 
 		it("returns null for bare file paths", () => {

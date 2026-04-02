@@ -151,14 +151,26 @@ export default class FileScanner {
 			for (const [relPath, symbols] of symbolMap) {
 				const symbolText = formatSymbols(symbols);
 				if (!symbolText) continue;
-				const entry = existing.find((e) => e.path === relPath);
+				const _entry = existing.find((e) => e.path === relPath);
 				const current = await this.#knownStore.getValue(runId, relPath);
 				if (current !== null) {
 					const constraint = constraints.get(relPath) || null;
-					const turn = constraint === "active" ? currentTurn : entry?.turn || 0;
-					await this.#knownStore.upsert(runId, turn, relPath, current, "full", {
-						meta: { symbols: symbolText, constraint },
+					const row = await this.#db.get_entry_state.get({
+						run_id: runId,
+						path: relPath,
 					});
+					const state =
+						constraint === "active" ? "full" : row?.state || "index";
+					await this.#knownStore.upsert(
+						runId,
+						currentTurn,
+						relPath,
+						current,
+						state,
+						{
+							meta: { symbols: symbolText, constraint },
+						},
+					);
 				}
 			}
 		}

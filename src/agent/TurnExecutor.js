@@ -594,7 +594,7 @@ export default class TurnExecutor {
 		if (summaryText) {
 			const summaryPath = await this.#knownStore.slugPath(
 				currentRunId,
-				"summary",
+				"summarize",
 				summaryText,
 			);
 			await this.#knownStore.upsert(

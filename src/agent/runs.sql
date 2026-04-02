@@ -34,7 +34,7 @@ SELECT
 		FROM known_entries AS ke
 		WHERE
 			ke.run_id = r.id
-			AND ke.scheme = 'summary'
+			AND ke.scheme = 'summarize'
 		ORDER BY ke.id DESC
 		LIMIT 1
 	) AS summary

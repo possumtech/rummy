@@ -56,7 +56,7 @@ SELECT value
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND scheme = 'summary'
+	AND scheme = 'summarize'
 ORDER BY id DESC
 LIMIT 1;
 

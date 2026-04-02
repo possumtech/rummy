@@ -92,7 +92,7 @@ projected AS (
 			WHEN scheme = 'known' THEN 'known_index'
 			WHEN scheme = 'unknown' THEN 'unknown'
 			WHEN scheme IN ('ask', 'act', 'progress') THEN 'prompt'
-			WHEN scheme = 'summary' THEN 'structural'
+			WHEN scheme = 'summarize' THEN 'structural'
 			WHEN scheme = 'update' THEN 'structural'
 			ELSE 'result'
 		END AS category

@@ -278,7 +278,7 @@ export default class ContextAssembler {
 						path: row.path,
 						scheme: row.scheme,
 						value: row.content,
-						state: row.scheme === "summary" ? "summary" : "info",
+						state: row.scheme === "summarize" ? "summary" : "info",
 					});
 					break;
 			}
