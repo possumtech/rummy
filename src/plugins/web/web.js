@@ -38,9 +38,11 @@ export default class WebPlugin {
 		hooks.action.search.addFilter(async (_result, { query, limit, rummy }) => {
 			const results = await getFetcher().search(query, { limit: limit || 12 });
 
-			// Create https:// entries at summary state for each result
+			// Create https:// entries at summary state (context-domain)
+			const urls = [];
 			for (const r of results) {
 				const url = WebFetcher.cleanUrl(r.url);
+				urls.push(url);
 				await rummy.write({
 					path: url,
 					value: `${r.title}\n${r.snippet}`,
@@ -49,9 +51,13 @@ export default class WebPlugin {
 				});
 			}
 
-			// Confirmation entry
+			// Confirmation with URL listing (result-domain, appears in messages)
+			const slugify = (await import("../../sql/functions/slugify.js")).default;
+			const listing = urls.join("\n");
 			await rummy.write({
-				value: `${results.length} results for "${query}"`,
+				path: `search://${slugify(query)}`,
+				value: `${results.length} results for "${query}"\n${listing}`,
+				state: "info",
 			});
 
 			return null;
