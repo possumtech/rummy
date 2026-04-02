@@ -1,10 +1,13 @@
 export default class ToolRegistry {
 	#tools = new Map();
+	#handlers = new Map();
 
 	register(name, definition) {
 		if (this.#tools.has(name))
 			throw new Error(`Tool '${name}' already registered.`);
-		this.#tools.set(name, Object.freeze(definition));
+		const { handler, ...rest } = definition;
+		this.#tools.set(name, Object.freeze(rest));
+		if (handler) this.onHandle(name, handler);
 	}
 
 	get(name) {
@@ -15,8 +18,30 @@ export default class ToolRegistry {
 		return this.#tools.has(name);
 	}
 
-	handler(name) {
-		return this.#tools.get(name)?.handler || null;
+	/**
+	 * Register a handler for a scheme. Multiple handlers per scheme,
+	 * executed in priority order (lower = first). Any plugin can hook
+	 * any scheme — core tools and third-party use the same interface.
+	 */
+	onHandle(scheme, handler, priority = 10) {
+		if (!this.#handlers.has(scheme)) this.#handlers.set(scheme, []);
+		const list = this.#handlers.get(scheme);
+		list.push({ handler, priority });
+		list.sort((a, b) => a.priority - b.priority);
+	}
+
+	/**
+	 * Run all handlers for a scheme in priority order.
+	 * Each handler receives (entry, rummy). If a handler returns false,
+	 * the chain stops (entry was fully handled).
+	 */
+	async dispatch(scheme, entry, rummy) {
+		const list = this.#handlers.get(scheme);
+		if (!list) return;
+		for (const { handler } of list) {
+			const result = await handler(entry, rummy);
+			if (result === false) break;
+		}
 	}
 
 	get actTools() {

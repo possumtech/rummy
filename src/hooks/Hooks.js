@@ -72,10 +72,7 @@ export default function createHooks(debug = false) {
 		entry: {
 			created: createEvent("entry.created"),
 		},
-		action: {
-			search: createFilter("action.search"),
-			fetch: createFilter("action.fetch"),
-		},
+		action: {},
 		ui: {
 			render: createEvent("ui.render"),
 			notify: createEvent("ui.notify"),

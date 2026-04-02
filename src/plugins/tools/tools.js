@@ -75,21 +75,6 @@ async function handleRead(entry, rummy) {
 	const target = attrs.path;
 	if (!target) return;
 
-	// URL fetch via hook
-	if (/^https?:\/\//.test(target)) {
-		const existing = await store.getBody(runId, target);
-		if (existing === null) {
-			const result = await rummy.hooks.action.fetch.filter(null, {
-				url: target,
-			});
-			if (result) {
-				await store.upsert(runId, turn, result.url, result.body, "full", {
-					attributes: result.attributes,
-				});
-			}
-		}
-	}
-
 	const bodyFilter = attrs.body || null;
 	const isPattern = bodyFilter || target.includes("*");
 	const matches = await store.getEntriesByPattern(runId, target, bodyFilter);

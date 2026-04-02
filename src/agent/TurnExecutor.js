@@ -319,10 +319,7 @@ export default class TurnExecutor {
 		// Handlers perform side effects: promote, demote, patch, propose.
 
 		for (const entry of recorded) {
-			const handler = this.#hooks.tools.handler(entry.scheme);
-			if (handler) {
-				await handler(entry, rummy);
-			}
+			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			await this.#hooks.entry.created.emit(entry);
 		}
 

@@ -15,11 +15,10 @@ Example: <read>https://docs.example.com/api</read>
 
 export default class WebPlugin {
 	static register(hooks) {
-		// Register search as a plugin tool with handler
+		// Register search tool (owns the scheme entirely)
 		hooks.tools.register("search", {
 			modes: new Set(["ask", "act"]),
 			category: "ask",
-			handler: handleSearch,
 		});
 
 		let fetcher = null;
@@ -35,29 +34,8 @@ export default class WebPlugin {
 			return sections;
 		});
 
-		// Handle URL fetch for <read> commands on http(s) URLs
-		hooks.action.fetch.addFilter(async (_result, { url }) => {
-			const clean = WebFetcher.cleanUrl(url);
-			const fetched = await getFetcher().fetch(clean);
-			if (fetched.error) {
-				console.warn(`[RUMMY] Fetch failed: ${clean} — ${fetched.error}`);
-				return null;
-			}
-			const header = fetched.title ? `# ${fetched.title}\n\n` : "";
-			return {
-				url: clean,
-				body: header + (fetched.content || ""),
-				attributes: {
-					title: fetched.title,
-					excerpt: fetched.excerpt,
-					byline: fetched.byline,
-					siteName: fetched.siteName,
-				},
-			};
-		});
-
-		// Search handler — called by ToolRegistry dispatch
-		async function handleSearch(entry, rummy) {
+		// Handle search:// entries
+		hooks.tools.onHandle("search", async (entry, rummy) => {
 			const attrs = entry.attributes || {};
 			const query = attrs.path || entry.body;
 			if (!query) return;
@@ -77,7 +55,6 @@ export default class WebPlugin {
 				});
 			}
 
-			const slugify = (await import("../../sql/functions/slugify.js")).default;
 			const listing = urls.join("\n");
 			await rummy.store.upsert(
 				rummy.runId,
@@ -86,6 +63,41 @@ export default class WebPlugin {
 				`${results.length} results for "${query}"\n${listing}`,
 				"info",
 			);
-		}
+		});
+
+		// Handle read:// entries with http(s) URLs — priority 5 (before core read at 10)
+		hooks.tools.onHandle("read", async (entry, rummy) => {
+			const attrs = entry.attributes || {};
+			const target = attrs.path;
+			if (!target || !/^https?:\/\//.test(target)) return;
+
+			const { store, sequence: turn, runId } = rummy;
+			const existing = await store.getBody(runId, target);
+			if (existing !== null) return;
+
+			const clean = WebFetcher.cleanUrl(target);
+			const fetched = await getFetcher().fetch(clean);
+			if (fetched.error) {
+				console.warn(`[RUMMY] Fetch failed: ${clean} — ${fetched.error}`);
+				return;
+			}
+
+			const header = fetched.title ? `# ${fetched.title}\n\n` : "";
+			await store.upsert(
+				runId,
+				turn,
+				clean,
+				header + (fetched.content || ""),
+				"full",
+				{
+					attributes: {
+						title: fetched.title,
+						excerpt: fetched.excerpt,
+						byline: fetched.byline,
+						siteName: fetched.siteName,
+					},
+				},
+			);
+		}, 5);
 	}
 }
