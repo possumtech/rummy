@@ -15,6 +15,10 @@ export default class ToolRegistry {
 		return this.#tools.has(name);
 	}
 
+	handler(name) {
+		return this.#tools.get(name)?.handler || null;
+	}
+
 	get actTools() {
 		return new Set(
 			[...this.#tools.entries()]

@@ -69,6 +69,9 @@ export default function createHooks(debug = false) {
 		prompt: {
 			tools: createFilter("prompt.tools"),
 		},
+		entry: {
+			created: createEvent("entry.created"),
+		},
 		action: {
 			search: createFilter("action.search"),
 			fetch: createFilter("action.fetch"),

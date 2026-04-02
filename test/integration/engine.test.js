@@ -115,7 +115,7 @@ describe("Engine integration", () => {
 
 		it("demotes by tier order: files downgraded before known entries", async () => {
 			await store.upsert(RUN_ID, 1, "src/big_file.js", pad(300), "full", {
-				meta: { symbols: pad(10) },
+				attributes: { symbols: pad(10) },
 			});
 			await store.upsert(RUN_ID, 1, "known://keep_note", pad(50), "full");
 
@@ -148,7 +148,7 @@ describe("Engine integration", () => {
 
 		it("downgrades files to summary before demoting known entries", async () => {
 			await store.upsert(RUN_ID, 1, "src/big.js", pad(400), "full", {
-				meta: { symbols: pad(20) },
+				attributes: { symbols: pad(20) },
 			});
 			await store.upsert(RUN_ID, 1, "known://important", pad(50), "full");
 
@@ -310,7 +310,7 @@ describe("Engine integration", () => {
 			});
 			await hooks.processTurn(rummy);
 
-			const row = await store.getValue(RUN_ID, "src/file.js");
+			const row = await store.getBody(RUN_ID, "src/file.js");
 			assert.ok(row !== null, "entry should still exist in store");
 		});
 
@@ -376,7 +376,7 @@ describe("Engine integration", () => {
 			await hooks.processTurn(rummy);
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const report = entries.find((e) => e.value?.includes("engine demoted"));
+			const report = entries.find((e) => e.body?.includes("engine demoted"));
 			assert.strictEqual(
 				report,
 				undefined,
@@ -388,7 +388,7 @@ describe("Engine integration", () => {
 	describe("symbol file fidelity via VIEW", () => {
 		it("files at state index have index fidelity", async () => {
 			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), "index", {
-				meta: { symbols: "function foo()" },
+				attributes: { symbols: "function foo()" },
 			});
 
 			const hooks2 = new HookRegistry();
@@ -414,7 +414,7 @@ describe("Engine integration", () => {
 
 		it("symbol files at turn > 0 have summary fidelity", async () => {
 			await store.upsert(RUN_ID, 3, "src/active.js", pad(100), "summary", {
-				meta: { symbols: "function bar()" },
+				attributes: { symbols: "function bar()" },
 			});
 
 			const hooks2 = new HookRegistry();
@@ -437,8 +437,8 @@ describe("Engine integration", () => {
 				"active symbols should have summary fidelity",
 			);
 			assert.ok(
-				active.content.includes("function bar()"),
-				"symbols content should come from meta",
+				active.body.includes("function bar()"),
+				"symbols body should come from attributes",
 			);
 		});
 	});

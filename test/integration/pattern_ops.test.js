@@ -168,15 +168,15 @@ describe("Pattern operations integration", () => {
 		});
 	});
 
-	describe("updateValueByPattern", () => {
+	describe("updateBodyByPattern", () => {
 		it("bulk updates matching values", async () => {
 			await store.upsert(RUN_ID, 0, "known://ver_a", "v1", "full");
 			await store.upsert(RUN_ID, 0, "known://ver_b", "v1", "full");
 
-			await store.updateValueByPattern(RUN_ID, "known://ver_*", null, "v2");
+			await store.updateBodyByPattern(RUN_ID, "known://ver_*", null, "v2");
 
-			const a = await store.getValue(RUN_ID, "known://ver_a");
-			const b = await store.getValue(RUN_ID, "known://ver_b");
+			const a = await store.getBody(RUN_ID, "known://ver_a");
+			const b = await store.getBody(RUN_ID, "known://ver_b");
 			assert.strictEqual(a, "v2");
 			assert.strictEqual(b, "v2");
 		});
@@ -185,15 +185,15 @@ describe("Pattern operations integration", () => {
 			await store.upsert(RUN_ID, 0, "known://status_a", "stale", "full");
 			await store.upsert(RUN_ID, 0, "known://status_b", "fresh", "full");
 
-			await store.updateValueByPattern(
+			await store.updateBodyByPattern(
 				RUN_ID,
 				"known://status_*",
 				"stale",
 				"refreshed",
 			);
 
-			const a = await store.getValue(RUN_ID, "known://status_a");
-			const b = await store.getValue(RUN_ID, "known://status_b");
+			const a = await store.getBody(RUN_ID, "known://status_a");
+			const b = await store.getBody(RUN_ID, "known://status_b");
 			assert.strictEqual(a, "refreshed");
 			assert.strictEqual(b, "fresh");
 		});
@@ -216,7 +216,7 @@ describe("Pattern operations integration", () => {
 			);
 			assert.strictEqual(matches.length, 1);
 			assert.strictEqual(matches[0].path, "search://1");
-			assert.ok(matches[0].value.includes("WAL"));
+			assert.ok(matches[0].body.includes("WAL"));
 		});
 	});
 
@@ -237,7 +237,7 @@ describe("Pattern operations integration", () => {
 			);
 			assert.strictEqual(entries.length, 1);
 
-			const content = entries[0].value;
+			const content = entries[0].body;
 			const patched = content.replaceAll("localhost", "0.0.0.0");
 			assert.ok(patched.includes("0.0.0.0"));
 			assert.ok(!patched.includes("localhost"));
@@ -249,7 +249,7 @@ describe("Pattern operations integration", () => {
 				"src/sr_test.js",
 				null,
 			);
-			const content = entries[0].value;
+			const content = entries[0].body;
 			const re = /\d{4}/g;
 			const patched = content.replace(re, "8080");
 			assert.ok(patched.includes("8080"));

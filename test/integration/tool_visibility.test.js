@@ -88,7 +88,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 				`${scheme}://${scheme}_test`,
 				`${MARKER}_${scheme}`,
 				state,
-				{ meta: { tool: scheme, target: "test" } },
+				{ attributes: { tool: scheme, target: "test" } },
 			);
 		}
 
@@ -117,9 +117,9 @@ describe("Tool visibility: v_model_context content projection", () => {
 				continue;
 			}
 
-			if (!row.content?.includes(MARKER)) {
+			if (!row.body?.includes(MARKER)) {
 				failures.push(
-					`${scheme}: content is ${row.content ? `"${row.content.slice(0, 50)}"` : "EMPTY"} — expected "${MARKER}_${scheme}"`,
+					`${scheme}: content is ${row.body ? `"${row.body.slice(0, 50)}"` : "EMPTY"} — expected "${MARKER}_${scheme}"`,
 				);
 			}
 		}
