@@ -487,7 +487,7 @@ export default class AgentLoop {
 
 		if (action === "accept") {
 			const meta = await this.#knownStore.getMeta(runId, path);
-			const resolvedValue = this.#composeResolvedContent(path, meta, output);
+			const resolvedValue = await this.#composeResolvedContent(runId, path, meta, output);
 			await this.#knownStore.resolve(runId, path, "pass", resolvedValue);
 
 			// If accepting a delete, erase the target path
@@ -557,7 +557,7 @@ export default class AgentLoop {
 		return { run: runAlias, status: "completed" };
 	}
 
-	#composeResolvedContent(path, meta, output) {
+	async #composeResolvedContent(runId, path, meta, output) {
 		const scheme = path.split("://")[0];
 		switch (scheme) {
 			case "env":
@@ -566,6 +566,11 @@ export default class AgentLoop {
 				return `<run>${meta?.command || ""}</run><output>${output || ""}</output>`;
 			case "ask_user":
 				return `${meta?.question || ""} Answered: ${output || ""}`;
+			case "write": {
+				// Preserve the SEARCH/REPLACE content from processEdit
+				const existing = await this.#knownStore.getValue(runId, path);
+				return existing || output || "";
+			}
 			default:
 				return output || "";
 		}
