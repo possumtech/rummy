@@ -28,7 +28,8 @@ is not failure — isolate repeated failures as infrastructure bugs, not model d
 ## Todo: Remaining from Unified Prompt Architecture
 
 - [ ] **Delete prompt.ask.md, prompt.act.md** — replaced by prompt.md
-- [ ] **Server-side mode enforcement** — reject file writes and `<run>` in ask mode
+- [x] **Server-side mode enforcement** — rejects file writes, file deletes, file
+      move/copy targets, and `<run>` in ask mode. K/V writes allowed.
 - [ ] **ARCHITECTURE.md full pass** — §2, §3, §5 need updating for new scheme names
 - [ ] **Prompt carries model** — `prompt://` meta should record model used;
       run has a current/default model that can change

@@ -132,10 +132,15 @@ export default {};
 			assert.strictEqual(commands[0].value, "TODO");
 		});
 
-		it("parses read with keys flag", () => {
-			const { commands } = XmlParser.parse('<read path="src/*.js" keys/>');
+		it("parses read with preview flag", () => {
+			const { commands } = XmlParser.parse('<read path="src/*.js" preview/>');
 			assert.strictEqual(commands[0].path, "src/*.js");
-			assert.strictEqual(commands[0].keys, true);
+			assert.strictEqual(commands[0].preview, true);
+		});
+
+		it("parses legacy keys flag as preview", () => {
+			const { commands } = XmlParser.parse('<read path="src/*.js" keys/>');
+			assert.strictEqual(commands[0].preview, true);
 		});
 
 		it("parses write with search/replace attributes", () => {

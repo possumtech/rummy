@@ -232,8 +232,8 @@ export default class TurnExecutor {
 		}
 
 		// Categorize commands
-		const actionCalls = [];
-		const writeCalls = [];
+		let actionCalls = [];
+		let writeCalls = [];
 		const unknownCalls = [];
 		let summaryText = null;
 		let updateText = null;
@@ -283,26 +283,71 @@ export default class TurnExecutor {
 
 		// --- SERVER EXECUTION ORDER ---
 
+		// Step 0: Mode enforcement — reject prohibited commands in ask mode
+		if (mode === "ask") {
+			for (const cmd of [...actionCalls, ...writeCalls]) {
+				if (cmd.name === "run") {
+					console.warn(`[RUMMY] Rejected <run> in ask mode`);
+					continue;
+				}
+				// File writes (scheme === null) are prohibited in ask mode
+				if (cmd.name === "write" && cmd.path) {
+					const scheme = KnownStore.scheme(cmd.path);
+					if (scheme === null) {
+						console.warn(
+							`[RUMMY] Rejected file write to ${cmd.path} in ask mode`,
+						);
+						cmd._rejected = true;
+					}
+				}
+				if (cmd.name === "delete" && cmd.path) {
+					const scheme = KnownStore.scheme(cmd.path);
+					if (scheme === null) {
+						console.warn(
+							`[RUMMY] Rejected file delete of ${cmd.path} in ask mode`,
+						);
+						cmd._rejected = true;
+					}
+				}
+				if ((cmd.name === "move" || cmd.name === "copy") && cmd.to) {
+					const destScheme = KnownStore.scheme(cmd.to);
+					if (destScheme === null) {
+						console.warn(
+							`[RUMMY] Rejected ${cmd.name} to file ${cmd.to} in ask mode`,
+						);
+						cmd._rejected = true;
+					}
+				}
+			}
+			actionCalls = actionCalls.filter((c) => c.name !== "run" && !c._rejected);
+			writeCalls = writeCalls.filter((c) => !c._rejected);
+		}
+
 		// Step 1: Action tools
 		for (const cmd of actionCalls) {
 			// keys flag — preview matches, no state change
-			if (cmd.keys && cmd.path) {
-				await this.#storeKeysPreview(currentRunId, turn, cmd);
+			if (cmd.preview && cmd.path) {
+				await this.#storeToolResult(currentRunId, turn, cmd, null, true);
 				continue;
 			}
 
 			if (cmd.name === "read") {
 				if (!cmd.path) continue;
-				// URL fetch via plugin hook — download and store, then promote
 				if (/^https?:\/\//.test(cmd.path)) {
 					await this.#fetchUrl(currentRunId, turn, cmd.path);
 				}
+				const matches = await this.#knownStore.getEntriesByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.value,
+				);
 				await this.#knownStore.promoteByPattern(
 					currentRunId,
 					cmd.path,
 					cmd.value,
 					turn,
 				);
+				await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				continue;
 			}
 			if (cmd.name === "search") {
@@ -312,11 +357,17 @@ export default class TurnExecutor {
 			}
 			if (cmd.name === "store") {
 				if (!cmd.path) continue;
+				const matches = await this.#knownStore.getEntriesByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.value,
+				);
 				await this.#knownStore.demoteByPattern(
 					currentRunId,
 					cmd.path,
 					cmd.value,
 				);
+				await this.#storeToolResult(currentRunId, turn, cmd, matches);
 				continue;
 			}
 
@@ -424,48 +475,53 @@ export default class TurnExecutor {
 			}
 
 			// keys flag — preview matches
-			if (cmd.keys) {
-				await this.#storeKeysPreview(currentRunId, turn, cmd);
+			if (cmd.preview) {
+				await this.#storeToolResult(currentRunId, turn, cmd, null, true);
 				continue;
 			}
 
-			// Pattern-based bulk update or single upsert
-			if (cmd.filter || /[*+?^${}()|[\]\\]/.test(cmd.path)) {
+			// Write to path — hedberg handles both literal and pattern paths
+			const scheme = KnownStore.scheme(cmd.path);
+			if (scheme === null) {
+				// Bare file path → proposed for client review
+				const resultPath = await this.#knownStore.slugPath(
+					currentRunId,
+					"write",
+					cmd.path,
+				);
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					resultPath,
+					cmd.value,
+					"proposed",
+					{
+						meta: { file: cmd.path },
+					},
+				);
+			} else if (cmd.filter || cmd.path.includes("*")) {
+				// Pattern with wildcards → bulk update via hedberg
+				const matches = await this.#knownStore.getEntriesByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.filter,
+				);
 				await this.#knownStore.updateValueByPattern(
 					currentRunId,
 					cmd.path,
 					cmd.filter || null,
 					cmd.value,
 				);
+				await this.#storeToolResult(currentRunId, turn, cmd, matches);
 			} else {
-				const scheme = KnownStore.scheme(cmd.path);
-				if (scheme === null) {
-					// Bare file path → proposed for client review
-					const resultPath = await this.#knownStore.slugPath(
-						currentRunId,
-						"write",
-						cmd.path,
-					);
-					await this.#knownStore.upsert(
-						currentRunId,
-						turn,
-						resultPath,
-						cmd.value,
-						"proposed",
-						{
-							meta: { file: cmd.path },
-						},
-					);
-				} else {
-					// K/V entry → immediate upsert
-					await this.#knownStore.upsert(
-						currentRunId,
-						turn,
-						cmd.path,
-						cmd.value,
-						"full",
-					);
-				}
+				// Literal K/V path → immediate upsert
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					cmd.path,
+					cmd.value,
+					"full",
+				);
 			}
 		}
 
@@ -519,26 +575,22 @@ export default class TurnExecutor {
 		};
 	}
 
-	async #storeKeysPreview(runId, turn, cmd) {
-		const matches = await this.#knownStore.getEntriesByPattern(
+	async #storeToolResult(runId, turn, cmd, matches, preview = false) {
+		matches ??= await this.#knownStore.getEntriesByPattern(
 			runId,
 			cmd.path,
 			cmd.value,
 		);
-		const total = matches.reduce((sum, m) => sum + m.tokens_full, 0);
+		const scheme = cmd.name || "write";
+		const slug = await this.#knownStore.slugPath(runId, scheme, cmd.path);
+		const filter = cmd.value ? ` value="${cmd.value}"` : "";
+		const total = matches.reduce((s, m) => s + m.tokens_full, 0);
 		const listing = matches
 			.map((m) => `${m.path} (${m.tokens_full})`)
 			.join("\n");
-		const scheme = cmd.name || "write";
-		const keysPath = await this.#knownStore.slugPath(runId, scheme, cmd.path);
-		const filter = cmd.value ? ` value="${cmd.value}"` : "";
-		await this.#knownStore.upsert(
-			runId,
-			turn,
-			keysPath,
-			`${cmd.name} path="${cmd.path}"${filter}: ${matches.length} matches (${total} tokens)\n${listing}`,
-			"keys",
-		);
+		const prefix = preview ? "PREVIEW " : "";
+		const content = `${prefix}${cmd.name} path="${cmd.path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
+		await this.#knownStore.upsert(runId, turn, slug, content, "pattern");
 	}
 
 	async #processEdit(runId, turn, cmd) {

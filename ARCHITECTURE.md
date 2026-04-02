@@ -91,10 +91,12 @@ on the target entry itself (file or known://). Successful writes update the
 target's value. Failed writes set the target to `error` state with the error
 message as content. There is no `write://` scheme.
 
-**Internal** (`summary://`, `update://`, `system://`, `prompt://`, `progress://`, `reasoning://`, `content://`, `model://`):
+**Internal** (`summary://`, `update://`, `system://`, `prompt://`, `ask://`, `act://`, `progress://`, `reasoning://`, `content://`, `model://`):
 - `summary://N` — state `summary` (run termination signal)
 - `update://N` — state `info` (run continuation signal)
-- `prompt://N` — state `info` (human prompt)
+- `prompt://N` — state `info` (loop identity / mode via `meta.mode`)
+- `ask://N` — state `info` (ask payload)
+- `act://N` — state `info` (act payload)
 - `progress://N` — state `info` (automated continuation)
 - `system://N`, `reasoning://N`, `content://N`, `model://N` — state `info` (audit)
 
@@ -106,7 +108,9 @@ message as content. There is no `write://` scheme.
 | `known://` | Knowledge | `known://auth_flow`, `known://db_adapter` |
 | `unknown://` | Open questions | `unknown://1`, `unknown://42` |
 | `[tool]://` | Tool results | `env://node_version`, `run://npm_test`, `search://query`, `summary://answer` |
-| `prompt://` | Human prompts | `prompt://1`, `prompt://2` |
+| `prompt://` | Loop identity / mode | `prompt://1` (with `meta.mode`) |
+| `ask://` | Ask payloads | `ask://1`, `ask://2` |
+| `act://` | Act payloads | `act://1`, `act://2` |
 | `progress://` | Continuations | `progress://2`, `progress://3` |
 | `http://`, `https://` | Fetched content | `https://docs.example.com/api` |
 
@@ -186,7 +190,7 @@ Every store-facing tool uses the same attribute set. Pattern matching is via
 |-----------|---------|-------|
 | `path` | Target path (hedberg pattern) | read, write, store, delete, move, copy |
 | `value` | Content filter (hedberg pattern) | read, write, store, delete |
-| `keys` | Preview mode — show matches, no changes | read, write, store, delete |
+| `keys` | Preview mode — show matches as `keys` state entry on tool's scheme, no changes | read, write, store, delete |
 | `question` | Question text | ask_user |
 
 The parser accepts both attribute-style (`<read path="x"/>`) and body-style
@@ -244,8 +248,9 @@ working. The run continues.
 done. **The run terminates.**
 
 **`keys` flag** — any store-facing tool with `keys` resolves the pattern and stores
-the matching list as a `keys://N` info entry. No state change occurs. The entry
-includes per-path token count and total:
+the matching list as an entry under the tool's own scheme with `state: "keys"`.
+No state change occurs on the matched entries. The result entry includes
+per-path token count and total:
 
 ```
 23 paths (4812 tokens total)
@@ -319,7 +324,7 @@ The server must never throw on model output.
 
 The server parses all XML commands from the response, then processes in strict order:
 
-1. **Store audit entries** — create `system://N`, `user://N` or `prompt://N`, `reasoning://N`, `content://N` entries.
+1. **Store audit entries** — create `system://N`, `prompt://N`, `ask://N` or `act://N`, `reasoning://N`, `content://N` entries.
 2. **Execute action commands** — `read` promotes, `store` demotes, `search` queries. `env`, `run`, `delete`, `write`, `ask_user`, `move`, `copy` generate result entries.
 3. **Process unknowns** — create `unknown://N` entries, deduplicated.
 4. **Process writes** — UPSERT each `<write>` tag's path/value (plain or SEARCH/REPLACE).
@@ -365,10 +370,10 @@ custom explanation framework.
 
 The `v_model_context` VIEW projects `content` from `known_entries.value` for
 each scheme. **Every result scheme must be explicitly listed in the content
-projection CASE statement.** The default `ELSE ''` silently drops content.
-This is the source of the search invisibility bug — if a scheme is added to
-the schemes table but not to the view's content projection, the model sees
-the tool invocation but not its output.
+projection CASE statement.** The default `ELSE value` passes content through
+for unlisted schemes. New schemes get their raw value by default — explicit
+CASE entries are only needed for schemes that compose content (e.g., wrapping
+output in XML tags).
 
 ---
 
@@ -384,7 +389,7 @@ last in user — the highest-attention position.
 
 ```
 system:
-  <instructions>prompt.ask.md or prompt.act.md</instructions>
+  <instructions>prompt.md</instructions>
   <context>files, knowledge, unknowns (rendered from turn_context)</context>
 
 user:
@@ -520,7 +525,7 @@ A server-side worker processes one prompt per run at a time in FIFO order.
 | Column | Purpose |
 |--------|---------|
 | `run_id` | Which run this prompt belongs to |
-| `type` | `ask` or `act` |
+| `mode` | `ask` or `act` |
 | `prompt` | The user's message |
 | `status` | `pending` → `active` → `completed` or `aborted` |
 | `result` | JSON result after completion |
@@ -552,7 +557,7 @@ JSON-RPC 2.0 over WebSockets. The `discover` RPC returns the live protocol refer
 | Method | Params | Description |
 |--------|--------|-------------|
 | `getModels` | — | List available model aliases |
-| `getModelInfo` | `model?` | Returns `{ alias, model, context_length, limit, effective, name, max_completion_tokens }` |
+| `getModelInfo` | `model?` | Returns `{ alias, model, context_size, limit, effective, name, max_completion_tokens }` |
 
 #### File Visibility (Project-Scoped)
 
@@ -614,15 +619,15 @@ defined via `RUMMY_MODEL_{alias}` env vars.
   "status": "running",
   "summary": "Latest one-liner status.",
   "history": [
-    {"path": "read://1", "tool": "read", "target": "src/auth.js", "status": "pass"},
+    {"path": "env://1", "tool": "env", "target": "npm --version", "status": "pass"},
     {"path": "summary://1", "tool": "summary", "status": "summary", "value": "Previous summary."},
-    {"path": "edit://3", "tool": "edit", "target": "src/config.js", "status": "proposed"}
+    {"path": "write://3", "tool": "write", "target": "src/config.js", "status": "proposed"}
   ],
   "unknowns": [
     {"path": "unknown://1", "value": "Which session store is configured"}
   ],
   "proposed": [
-    {"path": "edit://3", "type": "edit", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
+    {"path": "write://3", "type": "write", "meta": {"file": "src/config.js", "patch": "---unified diff---"}}
   ],
   "telemetry": {
     "modelAlias": "kimi",
@@ -691,7 +696,8 @@ Since tool commands are XML in the response content (not native tool calling),
 provider compatibility is straightforward. Any provider that returns text
 content works. No `strict: true`, `tool_choice`, or tool schema negotiation.
 
-The server sends `{model, messages}` and parses the response content. Reasoning
+The server sends `{model, messages, include_reasoning: true}` and parses the
+response content. `include_reasoning` is always sent to OpenRouter. Reasoning
 content (`reasoning_content` field) is captured when providers return it.
 
 ### 6.1 Provider Configuration
@@ -758,7 +764,7 @@ The model writes `<weather city="London"/>` in its response. The server parses
 the tag, creates a `weather://N` known entry as `proposed`, and the client
 resolves it.
 
-- `modes` — which run types this tool is available in.
+- `modes` — which modes this tool is available in (per-prompt via `prompt://` entry's `meta.mode`).
 - `category` — `"ask"` (direct execution), `"act"` (proposed for client), `"structural"` (metadata).
 
 **Methods**: `get(name)`, `has(name)`, `actTools` (getter), `names` (getter), `entries()`.
@@ -810,7 +816,7 @@ hooks.onTurn(async (rummy) => {
 | `db` | SqlRite | Database with all prepared queries |
 | `store` | KnownStore | K/V store API (promote, demote, upsert, getValue, etc.) |
 | `project` | Object | `{ id, path, name }` |
-| `type` | String | `"ask"` or `"act"` |
+| `mode` | String | `"ask"` or `"act"` (sourced from `prompt://` entry's `meta.mode`) |
 | `sessionId` | String | Current session ID |
 | `runId` | String | Current run ID |
 | `turnId` | Number | Current turn ID |
@@ -832,7 +838,7 @@ The `store` property provides the full KnownStore API: `upsert`, `promote`,
 The engine materializes `turn_context` from `known_entries` each turn via
 the `v_model_context` VIEW (`INSERT INTO turn_context SELECT FROM v_model_context`).
 Plugins read `turn_context` for the exact model view. The VIEW uses SQL
-functions (`fidelityOf`, `countTokens`, `schemeOf`) registered at startup from
+functions (`countTokens`, `schemeOf`, `slugify`) registered at startup from
 `src/sql/functions/`.
 
 ### 7.4 Events
@@ -851,7 +857,7 @@ hooks.run.step.completed.on(async (payload) => {
 | `project.init.completed` | `{ projectId, sessionId, projectPath, db }` | After project setup |
 | `project.files.update.started` | `{ projectId, pattern, constraint }` | Before file state change |
 | `project.files.update.completed` | `{ projectId, projectPath, pattern, constraint, db }` | After file state change |
-| `run.started` | `{ run, sessionId, type }` | Run created |
+| `run.started` | `{ run, sessionId, mode }` | Run created |
 | `run.progress` | `{ sessionId, run, turn, status }` | Turn progress: thinking, processing, retrying |
 | `run.state` | `{ sessionId, run, turn, status, summary, history, unknowns, proposed, telemetry }` | Turn state update (one per turn) |
 | `run.step.completed` | `{ sessionId, run, turn, flags }` | After each turn completes |
@@ -1003,9 +1009,9 @@ export default class MetricsPlugin {
 
 | Tier | Location | Runner | LLM required? |
 |------|----------|--------|---------------|
-| Unit | `src/**/*.test.js` | `node --test` | No |
-| Integration | `test/integration/**/*.test.js` | `node --test` | No |
-| E2E | `test/e2e/**/*.test.js` | `node --test` | **Yes** |
+| Unit | `src/**/*.test.js` | `node --test --test-force-exit` | No |
+| Integration | `test/integration/**/*.test.js` | `node --test --test-force-exit` | No |
+| E2E | `test/e2e/**/*.test.js` | `node --test --test-force-exit` | **Yes** |
 
 E2E tests execute real turns against a live LLM. **E2E tests must NEVER mock
 the LLM.** Coverage target: 80/80/80.
@@ -1034,7 +1040,7 @@ first place to look when debugging client-server communication failures (e.g.,
 "did the client send `run/abort`?" — check the log, don't guess).
 
 Console output mirrors the DB log: `[RPC] → method(id)` on arrival,
-`[RPC] ← method(id)` on completion, `[RPC] ✗ (id)` on error.
+`[RPC] ← method(id) elapsed_ms` on completion, `[RPC] ✗ (id) elapsed_ms` on error.
 
 ---
 
@@ -1047,13 +1053,13 @@ On every startup, the server runs cleanup:
 
 ### 9.1 Context Sizing
 
-The context window is resolved per-turn: `min(session_override, model_max)`.
+The context window is resolved per-turn: `min(session_override, RUMMY_CONTEXT_SIZE)`.
 
-- **Model max** — reported by the provider catalog (OpenRouter) or `/api/show` (Ollama).
-- **Session override** — set by the client via `setContextLimit({ limit: N })`. Stored in `sessions.context_limit`. Pass `null` to reset to model default.
+- **Context size** — `RUMMY_CONTEXT_SIZE` env var (default 131072). No provider catalog.
+- **Session override** — set by the client via `setContextLimit({ limit: N })`. Stored in `sessions.context_limit`. Pass `null` to reset to default.
 - **Effective size** — passed as `rummy.contextSize` to turn processors and the Relevance Engine. The engine uses this budget to decide what to promote/demote.
 
-The client retrieves sizing via `getContext({ model? })` → `{ model_max, limit, effective }`.
+The client retrieves sizing via `getContext({ model? })` → `{ context_size, limit, effective }`.
 
 Token distribution is computed from `turn_context` via `get_turn_distribution`
 and included in every `run/state` notification under
@@ -1063,9 +1069,11 @@ and included in every `run/state` notification under
 ### 9.2 Configuration
 
 ```env
+RUMMY_CONTEXT_SIZE=131072       # Default context window (tokens). No provider catalog.
 RUMMY_MAX_TURNS=15              # Max continuation turns per run
 RUMMY_MAX_UNKNOWN_WARNINGS=3    # Warnings before giving up on unknowns
-RUMMY_MAX_REPETITIONS=3         # Identical summaries before force-completing
+RUMMY_MAX_STALLS=3              # Tool-only responses (no update/summary) before force-completing
+RUMMY_MAX_REPETITIONS=3         # Repeated tool commands before force-completing
 RUMMY_RETENTION_DAYS=31         # Days to keep completed runs
 RUMMY_FETCH_TIMEOUT=120000      # LLM fetch timeout (ms)
 RUMMY_RPC_TIMEOUT=30000         # Non-long-running RPC timeout (ms)

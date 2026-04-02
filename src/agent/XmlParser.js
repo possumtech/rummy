@@ -52,7 +52,7 @@ function normalizeAttrs(attrs) {
 		out.path = out.file;
 		delete out.file;
 	}
-	if ("keys" in out) out.keys = true;
+	if ("keys" in out || "preview" in out) out.preview = true;
 	return out;
 }
 
@@ -72,7 +72,7 @@ function resolveCommand(name, attrs, body) {
 		) {
 			const blocks = parseEditContent(body);
 			if (blocks.length > 0) {
-				return { name, path: a.path, value: a.value, keys: a.keys, blocks };
+				return { name, path: a.path, value: a.value, preview: a.preview, blocks };
 			}
 		}
 		// search+replace attrs → attribute edit mode
@@ -82,7 +82,7 @@ function resolveCommand(name, attrs, body) {
 				name,
 				path: a.path,
 				value: a.value,
-				keys: a.keys,
+				preview: a.preview,
 				search: a.search,
 				replace,
 			};
@@ -94,12 +94,12 @@ function resolveCommand(name, attrs, body) {
 				path: a.path,
 				filter: a.value,
 				value: trimmed,
-				keys: a.keys,
+				preview: a.preview,
 			};
 		}
 		// Plain write → create/overwrite
 		const value = trimmed || a.value || "";
-		return { name, path: a.path, value, keys: a.keys };
+		return { name, path: a.path, value, preview: a.preview };
 	}
 
 	if (name === "summary" || name === "update" || name === "unknown") {
@@ -111,7 +111,7 @@ function resolveCommand(name, attrs, body) {
 	if (name === "read" || name === "store" || name === "delete") {
 		// Canonical: path in attr. Alt: path in body.
 		const path = a.path || trimmed || null;
-		return { name, path, value: a.value, keys: a.keys };
+		return { name, path, value: a.value, preview: a.preview };
 	}
 
 	if (name === "search") {
