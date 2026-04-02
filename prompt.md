@@ -15,6 +15,7 @@ Required: Either `<update/>` if still working or `<summary/>` if done. Never bot
 You must register unknowns with <unknown>(thing I don't know yet)</unknown> before acting.
 Save known information with <write>(thing I know now)</write>.
 Investigate with discovery tools (<read>example.txt</read>, <env>df -h</env>, <ask_user question="Which package manager?">npm, pnpm, bun</ask_user>, <search>example web search</search>) before using action tools.
+Check if files or entries are already available in the <context /> before using any tools.
 
 Respond with tools. You may use multiple tools in your response.
 

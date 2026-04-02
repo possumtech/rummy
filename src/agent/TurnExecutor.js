@@ -357,20 +357,28 @@ export default class TurnExecutor {
 					await this.#fetchUrl(currentRunId, turn, cmd.path);
 				}
 				const isPattern = cmd.value || cmd.path.includes("*");
-				if (isPattern) {
-					const matches = await this.#knownStore.getEntriesByPattern(
-						currentRunId,
-						cmd.path,
-						cmd.value,
-					);
-					await this.#storeToolResult(currentRunId, turn, cmd, matches);
-				}
+				const matches = await this.#knownStore.getEntriesByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.value,
+				);
 				await this.#knownStore.promoteByPattern(
 					currentRunId,
 					cmd.path,
 					cmd.value,
 					turn,
 				);
+				if (isPattern) {
+					await this.#storeToolResult(currentRunId, turn, cmd, matches);
+				} else {
+					const total = matches.reduce((s, m) => s + m.tokens_full, 0);
+					const slug = await this.#knownStore.slugPath(currentRunId, "read", cmd.path);
+					const paths = matches.map((m) => m.path).join(", ");
+					const content = matches.length > 0
+						? `${paths} loaded in context (${total} tokens)`
+						: `${cmd.path} not found`;
+					await this.#knownStore.upsert(currentRunId, turn, slug, content, "read");
+				}
 				continue;
 			}
 			if (cmd.name === "search") {
@@ -381,19 +389,26 @@ export default class TurnExecutor {
 			if (cmd.name === "store") {
 				if (!cmd.path) continue;
 				const isPattern = cmd.value || cmd.path.includes("*");
-				if (isPattern) {
-					const matches = await this.#knownStore.getEntriesByPattern(
-						currentRunId,
-						cmd.path,
-						cmd.value,
-					);
-					await this.#storeToolResult(currentRunId, turn, cmd, matches);
-				}
+				const matches = await this.#knownStore.getEntriesByPattern(
+					currentRunId,
+					cmd.path,
+					cmd.value,
+				);
 				await this.#knownStore.demoteByPattern(
 					currentRunId,
 					cmd.path,
 					cmd.value,
 				);
+				if (isPattern) {
+					await this.#storeToolResult(currentRunId, turn, cmd, matches);
+				} else {
+					const slug = await this.#knownStore.slugPath(currentRunId, "store", cmd.path);
+					const paths = matches.map((m) => m.path).join(", ");
+					const content = matches.length > 0
+						? `${paths} removed from context. Use <read> to restore.`
+						: `${cmd.path} not found`;
+					await this.#knownStore.upsert(currentRunId, turn, slug, content, "stored");
+				}
 				continue;
 			}
 
