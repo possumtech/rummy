@@ -22,16 +22,16 @@ const ALL_TOOLS = new Set([
 function parseEditContent(content) {
 	const blocks = [];
 
-	// Format 1: Git merge conflict style
+	// Format 1: Git merge conflict style (3-12 marker chars)
 	const mergeRe =
-		/<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
+		/<{3,12} SEARCH\n([\s\S]*?)\n={3,12}\n([\s\S]*?)\n>{3,12} REPLACE/g;
 	for (const m of content.matchAll(mergeRe)) {
 		blocks.push({ search: m[1], replace: m[2] });
 	}
 	if (blocks.length > 0) return blocks;
 
-	// Format 2: Replace-only (no search block)
-	const replaceOnly = /^=======\n([\s\S]*?)\n>>>>>>> REPLACE/gm;
+	// Format 2: Replace-only (no search block, 3-12 marker chars)
+	const replaceOnly = /^={3,12}\n([\s\S]*?)\n>{3,12} REPLACE/gm;
 	for (const m of content.matchAll(replaceOnly)) {
 		blocks.push({ search: null, replace: m[1] });
 	}
@@ -124,8 +124,8 @@ function resolveCommand(name, attrs, rawBody) {
 	if (name === "write") {
 		// Structured edit detection — merge conflict, udiff, Claude XML
 		const hasEdit =
-			trimmed.includes("<<<<<<< SEARCH") ||
-			trimmed.includes(">>>>>>> REPLACE") ||
+			/<{3,12} SEARCH/.test(trimmed) ||
+			/>{3,12} REPLACE/.test(trimmed) ||
 			(trimmed.includes("@@") &&
 				(trimmed.includes("\n-") || trimmed.includes("\n+"))) ||
 			trimmed.includes("<old_text>");

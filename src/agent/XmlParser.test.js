@@ -102,6 +102,20 @@ const host = "0.0.0.0";
 			assert.strictEqual(commands[0].blocks.length, 2);
 		});
 
+		it("parses merge with flexible marker length", () => {
+			const input = `<write path="src/app.js">
+<<<<< SEARCH
+old
+=====
+new
+>>>>> REPLACE
+</write>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands[0].blocks.length, 1);
+			assert.strictEqual(commands[0].blocks[0].search, "old");
+			assert.strictEqual(commands[0].blocks[0].replace, "new");
+		});
+
 		it("parses write for new file (replace only)", () => {
 			const input = `<write path="src/new.js">
 =======
