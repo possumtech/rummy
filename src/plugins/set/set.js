@@ -4,12 +4,12 @@ import HeuristicMatcher, { generatePatch } from "./HeuristicMatcher.js";
 
 const BOTH = new Set(["ask", "act"]);
 
-export default class WritePlugin {
+export default class SetPlugin {
 	static register(hooks) {
-		hooks.tools.register("write", {
+		hooks.tools.register("set", {
 			modes: BOTH,
 			category: "act",
-			handler: handleWrite,
+			handler: handleSet,
 			project: (entry) => {
 				const attrs = entry.attributes || {};
 				const file = attrs.file || entry.path;
@@ -25,7 +25,7 @@ export default class WritePlugin {
 	}
 }
 
-async function handleWrite(entry, rummy) {
+async function handleSet(entry, rummy) {
 	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 
@@ -44,7 +44,7 @@ async function handleWrite(entry, rummy) {
 			store,
 			runId,
 			turn,
-			"write",
+			"set",
 			attrs.path,
 			attrs.body,
 			matches,
@@ -80,7 +80,7 @@ async function handleWrite(entry, rummy) {
 			store,
 			runId,
 			turn,
-			"write",
+			"set",
 			target,
 			attrs.filter,
 			matches,
@@ -102,7 +102,7 @@ async function processEdit(store, runId, turn, entry, attrs) {
 	}
 
 	for (const match of matches) {
-		const resultPath = `write://${match.path}`;
+		const resultPath = `set://${match.path}`;
 		let patch = null;
 		let warning = null;
 		let error = null;

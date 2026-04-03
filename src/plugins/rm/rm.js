@@ -1,11 +1,11 @@
 const BOTH = new Set(["ask", "act"]);
 
-export default class DeletePlugin {
+export default class RmPlugin {
 	static register(hooks) {
-		hooks.tools.register("delete", {
+		hooks.tools.register("rm", {
 			modes: BOTH,
 			category: "act",
-			handler: handleDelete,
+			handler: handleRm,
 			project: (entry) => {
 				const attrs = entry.attributes || {};
 				return `# rm ${attrs.path || entry.path}`;
@@ -14,7 +14,7 @@ export default class DeletePlugin {
 	}
 }
 
-async function handleDelete(entry, rummy) {
+async function handleRm(entry, rummy) {
 	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 	const target = attrs.path;
@@ -23,7 +23,7 @@ async function handleDelete(entry, rummy) {
 	const matches = await store.getEntriesByPattern(runId, target, attrs.body);
 
 	for (const match of matches) {
-		const resultPath = `delete://${match.path}`;
+		const resultPath = `rm://${match.path}`;
 		const body = match.path;
 		if (match.scheme === null) {
 			await store.upsert(runId, turn, resultPath, body, "proposed", {

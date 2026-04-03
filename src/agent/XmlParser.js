@@ -1,17 +1,18 @@
 import { Parser } from "htmlparser2";
 
 const STORE_TOOLS = new Set([
-	"read",
+	"get",
 	"store",
-	"delete",
-	"write",
-	"move",
-	"copy",
+	"rm",
+	"set",
+	"mv",
+	"cp",
 	"search",
 ]);
 const ALL_TOOLS = new Set([
 	...STORE_TOOLS,
-	"run",
+	"known",
+	"sh",
 	"env",
 	"ask_user",
 	"summarize",
@@ -121,7 +122,7 @@ function resolveCommand(name, attrs, rawBody) {
 	const a = normalizeAttrs(attrs);
 	const trimmed = rawBody.trim();
 
-	if (name === "write") {
+	if (name === "set") {
 		// Structured edit detection — merge conflict, udiff, Claude XML
 		const hasEdit =
 			/<{3,12} SEARCH/.test(trimmed) ||
@@ -187,7 +188,13 @@ function resolveCommand(name, attrs, rawBody) {
 		return { name, body };
 	}
 
-	if (name === "read" || name === "store" || name === "delete") {
+	if (name === "known") {
+		const body = trimmed || a.body || "";
+		const path = a.path || null;
+		return { name, path, body };
+	}
+
+	if (name === "get" || name === "store" || name === "rm") {
 		const path = a.path || trimmed || null;
 		return { name, path, body: a.body, preview: a.preview };
 	}
@@ -198,12 +205,12 @@ function resolveCommand(name, attrs, rawBody) {
 		return { name, path, results };
 	}
 
-	if (name === "move" || name === "copy") {
+	if (name === "mv" || name === "cp") {
 		const to = a.to || trimmed || null;
 		return { name, path: a.path, to };
 	}
 
-	if (name === "run" || name === "env") {
+	if (name === "sh" || name === "env") {
 		const command = a.command || trimmed || null;
 		return { name, command };
 	}

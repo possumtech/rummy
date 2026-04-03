@@ -21,18 +21,18 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].body, "which session store");
 		});
 
-		it("parses write with path", () => {
+		it("parses set with path", () => {
 			const { commands } = XmlParser.parse(
-				'<write path="/:known:auth">OAuth2 PKCE</write>',
+				'<set path="/:known:auth">OAuth2 PKCE</set>',
 			);
-			assert.strictEqual(commands[0].name, "write");
+			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "/:known:auth");
 			assert.strictEqual(commands[0].body, "OAuth2 PKCE");
 		});
 
-		it("parses self-closing read", () => {
-			const { commands } = XmlParser.parse('<read path="src/config.js"/>');
-			assert.strictEqual(commands[0].name, "read");
+		it("parses self-closing get", () => {
+			const { commands } = XmlParser.parse('<get path="src/config.js"/>');
+			assert.strictEqual(commands[0].name, "get");
 			assert.strictEqual(commands[0].path, "src/config.js");
 		});
 
@@ -42,15 +42,15 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].path, "/:unknown:42");
 		});
 
-		it("parses self-closing delete", () => {
-			const { commands } = XmlParser.parse('<delete path="src/old.js"/>');
-			assert.strictEqual(commands[0].name, "delete");
+		it("parses self-closing rm", () => {
+			const { commands } = XmlParser.parse('<rm path="src/old.js"/>');
+			assert.strictEqual(commands[0].name, "rm");
 			assert.strictEqual(commands[0].path, "src/old.js");
 		});
 
-		it("parses run command", () => {
-			const { commands } = XmlParser.parse('<run command="npm test"/>');
-			assert.strictEqual(commands[0].name, "run");
+		it("parses sh command", () => {
+			const { commands } = XmlParser.parse('<sh command="npm test"/>');
+			assert.strictEqual(commands[0].name, "sh");
 			assert.strictEqual(commands[0].command, "npm test");
 		});
 
@@ -69,24 +69,24 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].options, "PG, SQLite");
 		});
 
-		it("parses write with search/replace block", () => {
-			const input = `<write path="src/config.js">
+		it("parses set with search/replace block", () => {
+			const input = `<set path="src/config.js">
 <<<<<<< SEARCH
 const port = 3000;
 =======
 const port = 8080;
 >>>>>>> REPLACE
-</write>`;
+</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].name, "write");
+			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "src/config.js");
 			assert.strictEqual(commands[0].blocks.length, 1);
 			assert.strictEqual(commands[0].blocks[0].search, "const port = 3000;");
 			assert.strictEqual(commands[0].blocks[0].replace, "const port = 8080;");
 		});
 
-		it("parses write with multiple merge blocks", () => {
-			const input = `<write path="src/config.js">
+		it("parses set with multiple merge blocks", () => {
+			const input = `<set path="src/config.js">
 <<<<<<< SEARCH
 const port = 3000;
 =======
@@ -97,69 +97,69 @@ const host = "localhost";
 =======
 const host = "0.0.0.0";
 >>>>>>> REPLACE
-</write>`;
+</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].blocks.length, 2);
 		});
 
 		it("parses merge with flexible marker length", () => {
-			const input = `<write path="src/app.js">
+			const input = `<set path="src/app.js">
 <<<<< SEARCH
 old
 =====
 new
 >>>>> REPLACE
-</write>`;
+</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].blocks.length, 1);
 			assert.strictEqual(commands[0].blocks[0].search, "old");
 			assert.strictEqual(commands[0].blocks[0].replace, "new");
 		});
 
-		it("parses write for new file (replace only)", () => {
-			const input = `<write path="src/new.js">
+		it("parses set for new file (replace only)", () => {
+			const input = `<set path="src/new.js">
 =======
 export default {};
 >>>>>>> REPLACE
-</write>`;
+</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].blocks[0].search, null);
 			assert.strictEqual(commands[0].blocks[0].replace, "export default {};");
 		});
 
 		it("parses multiple commands in one response", () => {
-			const input = `<read path="src/config.js"/>
+			const input = `<get path="src/config.js"/>
 <unknown>which database adapter</unknown>
-<write path="/:known:framework">Express with passport</write>
+<set path="/:known:framework">Express with passport</set>
 <summarize>Reading config to check port.</summarize>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 4);
-			assert.strictEqual(commands[0].name, "read");
+			assert.strictEqual(commands[0].name, "get");
 			assert.strictEqual(commands[1].name, "unknown");
-			assert.strictEqual(commands[2].name, "write");
+			assert.strictEqual(commands[2].name, "set");
 			assert.strictEqual(commands[3].name, "summarize");
 		});
 
-		it("parses read with body filter", () => {
-			const { commands } = XmlParser.parse('<read path="*.js" body="TODO"/>');
+		it("parses get with body filter", () => {
+			const { commands } = XmlParser.parse('<get path="*.js" body="TODO"/>');
 			assert.strictEqual(commands[0].path, "*.js");
 			assert.strictEqual(commands[0].body, "TODO");
 		});
 
-		it("parses read with preview flag", () => {
-			const { commands } = XmlParser.parse('<read path="src/*.js" preview/>');
+		it("parses get with preview flag", () => {
+			const { commands } = XmlParser.parse('<get path="src/*.js" preview/>');
 			assert.strictEqual(commands[0].path, "src/*.js");
 			assert.strictEqual(commands[0].preview, true);
 		});
 
 		it("ignores unknown keys attribute (no backward compat)", () => {
-			const { commands } = XmlParser.parse('<read path="src/*.js" keys/>');
+			const { commands } = XmlParser.parse('<get path="src/*.js" keys/>');
 			assert.strictEqual(commands[0].preview, undefined);
 		});
 
-		it("parses write with search/replace attributes", () => {
+		it("parses set with search/replace attributes", () => {
 			const { commands } = XmlParser.parse(
-				'<write path="src/*.js" search="localhost" replace="0.0.0.0"/>',
+				'<set path="src/*.js" search="localhost" replace="0.0.0.0"/>',
 			);
 			assert.strictEqual(commands[0].search, "localhost");
 			assert.strictEqual(commands[0].replace, "0.0.0.0");
@@ -167,50 +167,50 @@ export default {};
 			assert.ok(!commands[0].blocks);
 		});
 
-		it("write: search attr with body as replace", () => {
+		it("set: search attr with body as replace", () => {
 			const { commands } = XmlParser.parse(
-				'<write path="config.js" search="3000">8080</write>',
+				'<set path="config.js" search="3000">8080</set>',
 			);
 			assert.strictEqual(commands[0].search, "3000");
 			assert.strictEqual(commands[0].replace, "8080");
 		});
 
-		it("write: value attr healed to search/replace", () => {
+		it("set: value attr healed to search/replace", () => {
 			const { commands } = XmlParser.parse(
-				'<write path="app.js" value=":AI[]">new code</write>',
+				'<set path="app.js" value=":AI[]">new code</set>',
 			);
 			assert.strictEqual(commands[0].search, ":AI[]");
 			assert.strictEqual(commands[0].replace, "new code");
 		});
 
-		it("write: search attr with replace attr takes precedence over body", () => {
+		it("set: search attr with replace attr takes precedence over body", () => {
 			const { commands } = XmlParser.parse(
-				'<write path="x.js" search="old" replace="new">ignored</write>',
+				'<set path="x.js" search="old" replace="new">ignored</set>',
 			);
 			assert.strictEqual(commands[0].replace, "new");
 		});
 
-		it("parses move with from and to", () => {
+		it("parses mv with from and to", () => {
 			const { commands } = XmlParser.parse(
-				'<move path="known://env_vars" to=".env"/>',
+				'<mv path="known://env_vars" to=".env"/>',
 			);
-			assert.strictEqual(commands[0].name, "move");
+			assert.strictEqual(commands[0].name, "mv");
 			assert.strictEqual(commands[0].path, "known://env_vars");
 			assert.strictEqual(commands[0].to, ".env");
 		});
 
-		it("parses copy with from and to", () => {
+		it("parses cp with from and to", () => {
 			const { commands } = XmlParser.parse(
-				'<copy path=".env" to="known://env_snapshot"/>',
+				'<cp path=".env" to="known://env_snapshot"/>',
 			);
-			assert.strictEqual(commands[0].name, "copy");
+			assert.strictEqual(commands[0].name, "cp");
 			assert.strictEqual(commands[0].path, ".env");
 			assert.strictEqual(commands[0].to, "known://env_snapshot");
 		});
 
-		it("move: to in body", () => {
+		it("mv: to in body", () => {
 			const { commands } = XmlParser.parse(
-				'<move path="src/old.js">src/new.js</move>',
+				'<mv path="src/old.js">src/new.js</mv>',
 			);
 			assert.strictEqual(commands[0].to, "src/new.js");
 		});
@@ -228,8 +228,8 @@ export default {};
 	});
 
 	describe("alternative philosophies", () => {
-		it("read: body as path", () => {
-			const { commands } = XmlParser.parse("<read>src/app.js</read>");
+		it("get: body as path", () => {
+			const { commands } = XmlParser.parse("<get>src/app.js</get>");
 			assert.strictEqual(commands[0].path, "src/app.js");
 		});
 
@@ -238,14 +238,14 @@ export default {};
 			assert.strictEqual(commands[0].path, "/:unknown:42");
 		});
 
-		it("delete: body as path", () => {
-			const { commands } = XmlParser.parse("<delete>src/old.js</delete>");
+		it("rm: body as path", () => {
+			const { commands } = XmlParser.parse("<rm>src/old.js</rm>");
 			assert.strictEqual(commands[0].path, "src/old.js");
 		});
 
-		it("write: body in attr (self-closing)", () => {
+		it("set: body in attr (self-closing)", () => {
 			const { commands } = XmlParser.parse(
-				'<write path="/:known:auth" body="OAuth2"/>',
+				'<set path="/:known:auth" body="OAuth2"/>',
 			);
 			assert.strictEqual(commands[0].path, "/:known:auth");
 			assert.strictEqual(commands[0].body, "OAuth2");
@@ -263,8 +263,8 @@ export default {};
 			assert.strictEqual(commands[0].body, "did the thing");
 		});
 
-		it("run: body as command", () => {
-			const { commands } = XmlParser.parse("<run>npm test</run>");
+		it("sh: body as command", () => {
+			const { commands } = XmlParser.parse("<sh>npm test</sh>");
 			assert.strictEqual(commands[0].command, "npm test");
 		});
 
@@ -282,23 +282,23 @@ export default {};
 		});
 
 		it("legacy key attr resolves to path", () => {
-			const { commands } = XmlParser.parse('<read key="src/app.js"/>');
+			const { commands } = XmlParser.parse('<get key="src/app.js"/>');
 			assert.strictEqual(commands[0].path, "src/app.js");
 		});
 
 		it("legacy value attr healed to body", () => {
-			const { commands } = XmlParser.parse('<read path="*.js" value="TODO"/>');
+			const { commands } = XmlParser.parse('<get path="*.js" value="TODO"/>');
 			assert.strictEqual(commands[0].body, "TODO");
 		});
 
 		it("legacy file attr resolves to path", () => {
-			const input = `<write file="src/config.js">
+			const input = `<set file="src/config.js">
 <<<<<<< SEARCH
 old
 =======
 new
 >>>>>>> REPLACE
-</write>`;
+</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].path, "src/config.js");
 		});
@@ -314,24 +314,24 @@ new
 			assert.ok(warnings.some((w) => w.includes("Unclosed")));
 		});
 
-		it("captures unclosed write", () => {
+		it("captures unclosed set", () => {
 			const { commands, warnings } = XmlParser.parse(
-				'<write path="/:known:x">some value',
+				'<set path="/:known:x">some value',
 			);
 			assert.strictEqual(commands[0].path, "/:known:x");
 			assert.strictEqual(commands[0].body, "some value");
 			assert.ok(warnings.length > 0);
 		});
 
-		it("handles read without self-closing slash", () => {
-			const { commands } = XmlParser.parse('<read path="src/app.js">');
+		it("handles get without self-closing slash", () => {
+			const { commands } = XmlParser.parse('<get path="src/app.js">');
 			assert.strictEqual(commands.length, 1);
 			assert.strictEqual(commands[0].path, "src/app.js");
 		});
 
 		it("handles mixed text and commands", () => {
 			const input = `Let me think about this...
-<read path="src/config.js"/>
+<get path="src/config.js"/>
 I need to check the port.
 <summarize>Checking config.</summarize>`;
 			const { commands, unparsed } = XmlParser.parse(input);

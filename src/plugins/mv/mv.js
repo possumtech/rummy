@@ -2,21 +2,21 @@ import KnownStore from "../../agent/KnownStore.js";
 
 const BOTH = new Set(["ask", "act"]);
 
-export default class CopyPlugin {
+export default class MvPlugin {
 	static register(hooks) {
-		hooks.tools.register("copy", {
+		hooks.tools.register("mv", {
 			modes: BOTH,
 			category: "act",
-			handler: handleCopy,
+			handler: handleMv,
 			project: (entry) => {
 				const attrs = entry.attributes || {};
-				return `# cp ${attrs.from || ""} ${attrs.to || ""}`;
+				return `# mv ${attrs.from || ""} ${attrs.to || ""}`;
 			},
 		});
 	}
 }
 
-async function handleCopy(entry, rummy) {
+async function handleMv(entry, rummy) {
 	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 	if (!attrs.path || !attrs.to) return;
@@ -35,12 +35,13 @@ async function handleCopy(entry, rummy) {
 	const body = `${attrs.path} ${attrs.to}`;
 	if (destScheme === null) {
 		await store.upsert(runId, turn, entry.resultPath, body, "proposed", {
-			attributes: { from: attrs.path, to: attrs.to, isMove: false, warning },
+			attributes: { from: attrs.path, to: attrs.to, isMove: true, warning },
 		});
 	} else {
 		await store.upsert(runId, turn, attrs.to, source, "full");
+		await store.remove(runId, attrs.path);
 		await store.upsert(runId, turn, entry.resultPath, body, "pass", {
-			attributes: { from: attrs.path, to: attrs.to, isMove: false, warning },
+			attributes: { from: attrs.path, to: attrs.to, isMove: true, warning },
 		});
 	}
 }

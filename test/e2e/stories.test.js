@@ -167,7 +167,7 @@ describe("E2E Stories", () => {
 		});
 		const writes = entries.filter(
 			(e) =>
-				e.scheme === "write" && (e.state === "pass" || e.state === "proposed"),
+				e.scheme === "set" && (e.state === "pass" || e.state === "proposed"),
 		);
 		assert.ok(writes.length > 0, "should have a write result");
 	});

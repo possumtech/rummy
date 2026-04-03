@@ -38,15 +38,15 @@ describe("Tool visibility: v_model_context content projection", () => {
 		// Every tool result needs content the model can understand —
 		// what the tool did and what happened.
 		const contentSchemes = [
-			{ name: "write", state: "pass" },
-			{ name: "run", state: "pass" },
+			{ name: "set", state: "pass" },
+			{ name: "sh", state: "pass" },
 			{ name: "env", state: "pass" },
-			{ name: "delete", state: "pass" },
+			{ name: "rm", state: "pass" },
 			{ name: "ask_user", state: "pass" },
-			{ name: "move", state: "pass" },
-			{ name: "copy", state: "pass" },
+			{ name: "mv", state: "pass" },
+			{ name: "cp", state: "pass" },
 			{ name: "search", state: "info" },
-			{ name: "write", state: "pattern" },
+			{ name: "set", state: "pattern" },
 		];
 
 		// For each result scheme, insert an entry with known content

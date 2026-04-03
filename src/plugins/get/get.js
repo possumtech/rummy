@@ -2,21 +2,21 @@ import { storePatternResult } from "../helpers.js";
 
 const BOTH = new Set(["ask", "act"]);
 
-export default class ReadPlugin {
+export default class GetPlugin {
 	static register(hooks) {
-		hooks.tools.register("read", {
+		hooks.tools.register("get", {
 			modes: BOTH,
 			category: "ask",
-			handler: handleRead,
+			handler: handleGet,
 			project: (entry) => {
 				const attrs = entry.attributes || {};
-				return `# read ${attrs.path || entry.path}\n${entry.body}`;
+				return `# get ${attrs.path || entry.path}\n${entry.body}`;
 			},
 		});
 	}
 }
 
-async function handleRead(entry, rummy) {
+async function handleGet(entry, rummy) {
 	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 	const target = attrs.path;
@@ -32,7 +32,7 @@ async function handleRead(entry, rummy) {
 			store,
 			runId,
 			turn,
-			"read",
+			"get",
 			target,
 			bodyFilter,
 			matches,

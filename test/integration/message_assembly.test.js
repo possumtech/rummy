@@ -27,8 +27,7 @@ async function assembleMessages(tdb, _store) {
 	});
 	return ContextAssembler.assembleFromTurnContext(rows, {
 		type: "ask",
-		tools:
-			"unknown read env ask_user write move copy store delete update summary",
+		tools: "unknown get env ask_user set mv cp store rm update summary",
 	});
 }
 
@@ -55,10 +54,7 @@ describe("Message assembly", () => {
 			user.content.includes("What is the port?"),
 			"should contain prompt text",
 		);
-		assert.ok(
-			!user.content.includes("run "),
-			"ask tools should not include run",
-		);
+		assert.ok(!user.content.includes("sh "), "ask tools should not include sh");
 	});
 
 	it("act prompt renders as <act> tag with run tool", async () => {
@@ -74,12 +70,11 @@ describe("Message assembly", () => {
 		});
 		const messages = ContextAssembler.assembleFromTurnContext(rows, {
 			type: "act",
-			tools:
-				"unknown read env ask_user write move copy store delete run update summary",
+			tools: "unknown get env ask_user set mv cp store rm sh update summary",
 		});
 		const user = messages.find((m) => m.role === "user");
 		assert.ok(user.content.includes("<act tools="), "should have <act> tag");
-		assert.ok(user.content.includes("run "), "act tools should include run");
+		assert.ok(user.content.includes("sh "), "act tools should include sh");
 	});
 
 	it("pattern result appears in messages with matched paths", async () => {
@@ -88,8 +83,8 @@ describe("Message assembly", () => {
 		await store.upsert(
 			RUN_ID,
 			TURN,
-			"read://src_js",
-			'read path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
+			"get://src_js",
+			'get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
 			"pattern",
 		);
 		const messages = await assembleMessages(tdb, store);
@@ -102,8 +97,8 @@ describe("Message assembly", () => {
 		await store.upsert(
 			RUN_ID,
 			TURN,
-			"read://preview_test",
-			'PREVIEW read path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
+			"get://preview_test",
+			'PREVIEW get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
 			"pattern",
 		);
 		const messages = await assembleMessages(tdb, store);
@@ -126,24 +121,18 @@ describe("Message assembly", () => {
 			"<env>node --version</env>",
 			"pass",
 		);
+		await store.upsert(RUN_ID, TURN, "rm://rm_test", "rm src/old.js", "pass");
 		await store.upsert(
 			RUN_ID,
 			TURN,
-			"delete://rm_test",
-			"rm src/old.js",
-			"pass",
-		);
-		await store.upsert(
-			RUN_ID,
-			TURN,
-			"move://mv_test",
+			"mv://mv_test",
 			"mv known://a known://b",
 			"pass",
 		);
 		await store.upsert(
 			RUN_ID,
 			TURN,
-			"copy://cp_test",
+			"cp://cp_test",
 			"cp known://x known://y",
 			"pass",
 		);

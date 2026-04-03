@@ -175,7 +175,7 @@ export default class CoreRpcPlugin {
 				// Entry branch: dispatch through handler chain
 				if (!params.run) throw new Error("run is required");
 				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(hooks, rummy, "read", params.path, "", {
+				await dispatchTool(hooks, rummy, "get", params.path, "", {
 					path: params.path,
 				});
 				return { status: "ok" };
@@ -251,7 +251,7 @@ export default class CoreRpcPlugin {
 					await dispatchTool(
 						hooks,
 						rummy,
-						"write",
+						"set",
 						params.path,
 						params.body || "",
 						{ path: params.path, ...params.attributes },
@@ -276,7 +276,7 @@ export default class CoreRpcPlugin {
 				if (!params.path) throw new Error("path is required");
 				if (!params.run) throw new Error("run is required");
 				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(hooks, rummy, "delete", params.path, "", {
+				await dispatchTool(hooks, rummy, "rm", params.path, "", {
 					path: params.path,
 				});
 				return { status: "ok" };

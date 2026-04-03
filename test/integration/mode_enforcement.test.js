@@ -1,7 +1,7 @@
 /**
  * Mode enforcement integration test.
  *
- * Verifies that ask mode rejects file mutations and <run> while
+ * Verifies that ask mode rejects file mutations and <sh> while
  * allowing K/V operations.
  */
 import assert from "node:assert";
@@ -30,84 +30,84 @@ describe("Mode enforcement in ask mode", () => {
 		await tdb.cleanup();
 	});
 
-	it("rejects <run> in ask mode", () => {
-		const { commands } = XmlParser.parse("<run>npm test</run>");
+	it("rejects <sh> in ask mode", () => {
+		const { commands } = XmlParser.parse("<sh>npm test</sh>");
 		// Simulate the mode enforcement filter
-		const filtered = commands.filter((c) => c.name !== "run");
-		assert.equal(filtered.length, 0, "run should be filtered out");
+		const filtered = commands.filter((c) => c.name !== "sh");
+		assert.equal(filtered.length, 0, "sh should be filtered out");
 	});
 
-	it("rejects file write in ask mode", () => {
+	it("rejects file set in ask mode", () => {
 		const { commands } = XmlParser.parse(
-			'<write path="src/app.js">new content</write>',
+			'<set path="src/app.js">new content</set>',
 		);
 		for (const cmd of commands) {
-			if (cmd.name === "write" && cmd.path) {
+			if (cmd.name === "set" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) cmd._rejected = true;
 			}
 		}
-		assert.ok(commands[0]._rejected, "file write should be rejected");
+		assert.ok(commands[0]._rejected, "file set should be rejected");
 	});
 
-	it("allows known:// write in ask mode", () => {
+	it("allows known:// set in ask mode", () => {
 		const { commands } = XmlParser.parse(
-			'<write path="known://note">updated</write>',
+			'<set path="known://note">updated</set>',
 		);
 		for (const cmd of commands) {
-			if (cmd.name === "write" && cmd.path) {
+			if (cmd.name === "set" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) cmd._rejected = true;
 			}
 		}
-		assert.ok(!commands[0]._rejected, "known:// write should be allowed");
+		assert.ok(!commands[0]._rejected, "known:// set should be allowed");
 	});
 
-	it("rejects file delete in ask mode", () => {
-		const { commands } = XmlParser.parse('<delete path="src/app.js"/>');
+	it("rejects file rm in ask mode", () => {
+		const { commands } = XmlParser.parse('<rm path="src/app.js"/>');
 		for (const cmd of commands) {
-			if (cmd.name === "delete" && cmd.path) {
+			if (cmd.name === "rm" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) cmd._rejected = true;
 			}
 		}
-		assert.ok(commands[0]._rejected, "file delete should be rejected");
+		assert.ok(commands[0]._rejected, "file rm should be rejected");
 	});
 
-	it("allows known:// delete in ask mode", () => {
-		const { commands } = XmlParser.parse('<delete path="known://note"/>');
+	it("allows known:// rm in ask mode", () => {
+		const { commands } = XmlParser.parse('<rm path="known://note"/>');
 		for (const cmd of commands) {
-			if (cmd.name === "delete" && cmd.path) {
+			if (cmd.name === "rm" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) cmd._rejected = true;
 			}
 		}
-		assert.ok(!commands[0]._rejected, "known:// delete should be allowed");
+		assert.ok(!commands[0]._rejected, "known:// rm should be allowed");
 	});
 
-	it("rejects move to file target in ask mode", () => {
+	it("rejects mv to file target in ask mode", () => {
 		const { commands } = XmlParser.parse(
-			'<move path="known://note">src/output.txt</move>',
+			'<mv path="known://note">src/output.txt</mv>',
 		);
 		for (const cmd of commands) {
-			if (cmd.name === "move" && cmd.to) {
+			if (cmd.name === "mv" && cmd.to) {
 				const destScheme = KnownStore.scheme(cmd.to);
 				if (destScheme === null) cmd._rejected = true;
 			}
 		}
-		assert.ok(commands[0]._rejected, "move to file should be rejected");
+		assert.ok(commands[0]._rejected, "mv to file should be rejected");
 	});
 
-	it("allows move between known entries in ask mode", () => {
+	it("allows mv between known entries in ask mode", () => {
 		const { commands } = XmlParser.parse(
-			'<move path="known://note">known://archive</move>',
+			'<mv path="known://note">known://archive</mv>',
 		);
 		for (const cmd of commands) {
-			if (cmd.name === "move" && cmd.to) {
+			if (cmd.name === "mv" && cmd.to) {
 				const destScheme = KnownStore.scheme(cmd.to);
 				if (destScheme === null) cmd._rejected = true;
 			}
 		}
-		assert.ok(!commands[0]._rejected, "known:// move should be allowed");
+		assert.ok(!commands[0]._rejected, "known:// mv should be allowed");
 	});
 });

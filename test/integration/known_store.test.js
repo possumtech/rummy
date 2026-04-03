@@ -31,7 +31,7 @@ describe("KnownStore integration", () => {
 
 		it("tool schemes", () => {
 			assert.strictEqual(KnownStore.scheme("search://4"), "search");
-			assert.strictEqual(KnownStore.scheme("write://7"), "write");
+			assert.strictEqual(KnownStore.scheme("set://7"), "set");
 			assert.strictEqual(KnownStore.scheme("summarize://1"), "summarize");
 		});
 
@@ -44,7 +44,7 @@ describe("KnownStore integration", () => {
 	describe("toolFromPath", () => {
 		it("extracts tool name from result keys", () => {
 			assert.strictEqual(KnownStore.toolFromPath("search://4"), "search");
-			assert.strictEqual(KnownStore.toolFromPath("write://7"), "write");
+			assert.strictEqual(KnownStore.toolFromPath("set://7"), "set");
 			assert.strictEqual(KnownStore.toolFromPath("summarize://1"), "summarize");
 		});
 
@@ -131,31 +131,31 @@ describe("KnownStore integration", () => {
 
 	describe("resolve", () => {
 		it("changes proposed to pass with output", async () => {
-			await store.upsert(RUN_ID, 1, "write://1", "", "proposed", {
+			await store.upsert(RUN_ID, 1, "set://1", "", "proposed", {
 				attributes: { file: "src/app.js", search: "old", replace: "new" },
 			});
 			const unresolved = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(unresolved.length, 1);
-			assert.strictEqual(unresolved[0].path, "write://1");
+			assert.strictEqual(unresolved[0].path, "set://1");
 
-			await store.resolve(RUN_ID, "write://1", "pass", "edit applied");
+			await store.resolve(RUN_ID, "set://1", "pass", "edit applied");
 			const after = await store.getUnresolved(RUN_ID);
 			assert.strictEqual(after.length, 0);
 
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "write://1");
+			const entry = all.find((e) => e.path === "set://1");
 			assert.strictEqual(entry.state, "pass");
 			assert.strictEqual(entry.body, "edit applied");
 		});
 
 		it("changes proposed to rejected on rejection", async () => {
-			await store.upsert(RUN_ID, 1, "run://1", "", "proposed", {
+			await store.upsert(RUN_ID, 1, "sh://1", "", "proposed", {
 				attributes: { command: "npm test" },
 			});
-			await store.resolve(RUN_ID, "run://1", "rejected", "rejected by user");
+			await store.resolve(RUN_ID, "sh://1", "rejected", "rejected by user");
 
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const entry = all.find((e) => e.path === "run://1");
+			const entry = all.find((e) => e.path === "sh://1");
 			assert.strictEqual(entry.state, "rejected");
 		});
 	});
@@ -243,29 +243,29 @@ describe("KnownStore integration", () => {
 
 		it("derives target from meta", async () => {
 			const log = await store.getLog(RUN_ID);
-			const editEntry = log.find((e) => e.path === "write://1");
+			const editEntry = log.find((e) => e.path === "set://1");
 			assert.ok(editEntry);
 			assert.strictEqual(editEntry.target, "src/app.js");
 		});
 	});
 
-	describe("delete resolution", () => {
+	describe("rm resolution", () => {
 		it("accept erases the target file key from store", async () => {
 			// Setup: file exists in store
 			await store.upsert(RUN_ID, 1, "src/doomed.js", "content", "full");
 			const before = await store.getBody(RUN_ID, "src/doomed.js");
 			assert.strictEqual(before, "content");
 
-			// Setup: proposed delete entry targeting that file
-			await store.upsert(RUN_ID, 1, "delete://50", "", "proposed", {
+			// Setup: proposed rm entry targeting that file
+			await store.upsert(RUN_ID, 1, "rm://50", "", "proposed", {
 				attributes: { path: "src/doomed.js" },
 			});
 
-			// Resolve: accept the delete
-			await store.resolve(RUN_ID, "delete://50", "pass", "");
+			// Resolve: accept the rm
+			await store.resolve(RUN_ID, "rm://50", "pass", "");
 
 			// Verify: target file key is gone — use resolve to check meta, then remove
-			const attributes = await store.getAttributes(RUN_ID, "delete://50");
+			const attributes = await store.getAttributes(RUN_ID, "rm://50");
 			assert.strictEqual(attributes.path, "src/doomed.js");
 			await store.remove(RUN_ID, attributes.path);
 
@@ -281,13 +281,13 @@ describe("KnownStore integration", () => {
 			// Setup: file exists
 			await store.upsert(RUN_ID, 1, "src/survivor.js", "alive", "full");
 
-			// Setup: proposed delete
-			await store.upsert(RUN_ID, 1, "delete://51", "", "proposed", {
+			// Setup: proposed rm
+			await store.upsert(RUN_ID, 1, "rm://51", "", "proposed", {
 				attributes: { path: "src/survivor.js" },
 			});
 
 			// Resolve: reject
-			await store.resolve(RUN_ID, "delete://51", "rejected", "rejected");
+			await store.resolve(RUN_ID, "rm://51", "rejected", "rejected");
 
 			// Verify: file still exists
 			const value = await store.getBody(RUN_ID, "src/survivor.js");
@@ -316,7 +316,7 @@ describe("KnownStore integration", () => {
 
 		it("rejects invalid edit state", async () => {
 			await assert.rejects(
-				() => store.upsert(RUN_ID, 0, "write://999", "", "index"),
+				() => store.upsert(RUN_ID, 0, "set://999", "", "index"),
 				/invalid state for scheme/,
 			);
 		});

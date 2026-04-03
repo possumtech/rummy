@@ -417,32 +417,22 @@ export default class TurnExecutor {
 		// --- Classify for return value ---
 
 		const actionCalls = recorded.filter((e) =>
-			[
-				"read",
-				"store",
-				"write",
-				"delete",
-				"move",
-				"copy",
-				"run",
-				"env",
-				"search",
-			].includes(e.scheme),
+			["get", "store", "set", "rm", "mv", "cp", "sh", "env", "search"].includes(
+				e.scheme,
+			),
 		);
 		const writeCalls = recorded.filter(
 			(e) =>
 				e.scheme === "known" ||
-				(e.scheme === "write" &&
-					!e.attributes?.blocks &&
-					!e.attributes?.search),
+				(e.scheme === "set" && !e.attributes?.blocks && !e.attributes?.search),
 		);
 		const unknownCalls = recorded.filter((e) => e.scheme === "unknown");
 
 		const hasAct = actionCalls.some((c) =>
-			["write", "delete", "run", "move", "copy"].includes(c.scheme),
+			["set", "rm", "sh", "mv", "cp"].includes(c.scheme),
 		);
 		const hasReads = actionCalls.some((c) =>
-			["read", "env", "search"].includes(c.scheme),
+			["get", "env", "search"].includes(c.scheme),
 		);
 		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
 		const flags = { hasAct, hasReads, hasWrites };
@@ -477,29 +467,25 @@ export default class TurnExecutor {
 	async #record(runId, turn, mode, cmd) {
 		// Mode enforcement — reject prohibited commands in ask mode
 		if (mode === "ask") {
-			if (cmd.name === "run") {
-				console.warn("[RUMMY] Rejected <run> in ask mode");
+			if (cmd.name === "sh") {
+				console.warn("[RUMMY] Rejected <sh> in ask mode");
 				return null;
 			}
-			if (cmd.name === "write" && cmd.path) {
+			if (cmd.name === "set" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) {
-					console.warn(
-						`[RUMMY] Rejected file write to ${cmd.path} in ask mode`,
-					);
+					console.warn(`[RUMMY] Rejected file set to ${cmd.path} in ask mode`);
 					return null;
 				}
 			}
-			if (cmd.name === "delete" && cmd.path) {
+			if (cmd.name === "rm" && cmd.path) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) {
-					console.warn(
-						`[RUMMY] Rejected file delete of ${cmd.path} in ask mode`,
-					);
+					console.warn(`[RUMMY] Rejected file rm of ${cmd.path} in ask mode`);
 					return null;
 				}
 			}
-			if ((cmd.name === "move" || cmd.name === "copy") && cmd.to) {
+			if ((cmd.name === "mv" || cmd.name === "cp") && cmd.to) {
 				const destScheme = KnownStore.scheme(cmd.to);
 				if (destScheme === null) {
 					console.warn(
@@ -555,14 +541,11 @@ export default class TurnExecutor {
 		if (cmd.preview) attributes.preview = cmd.preview;
 		if (cmd.results) attributes.results = cmd.results;
 
-		// Naked write (no path) → known:// slug from body
-		if (scheme === "write" && !cmd.path) {
+		// known tool or naked write → known:// slug from body
+		if (scheme === "known" || (scheme === "set" && !cmd.path)) {
 			if (!cmd.body) return null;
-			const knownPath = await this.#knownStore.slugPath(
-				runId,
-				"known",
-				cmd.body,
-			);
+			const knownPath =
+				cmd.path || (await this.#knownStore.slugPath(runId, "known", cmd.body));
 			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, "full");
 			return {
 				scheme: "known",

@@ -429,13 +429,13 @@ export default class AgentLoop {
 			await this.#knownStore.resolve(runId, path, state, resolvedBody);
 
 			if (action === "accept") {
-				if (path.startsWith("delete://")) {
+				if (path.startsWith("rm://")) {
 					if (attrs?.path) {
 						await this.#knownStore.remove(runId, attrs.path);
 					}
 				}
 
-				if (path.startsWith("move://")) {
+				if (path.startsWith("mv://")) {
 					if (attrs?.isMove && attrs?.from) {
 						await this.#knownStore.remove(runId, attrs.from);
 					}
@@ -498,11 +498,11 @@ export default class AgentLoop {
 		switch (scheme) {
 			case "env":
 				return `<env>${attrs?.command || ""}</env><output>${output || ""}</output>`;
-			case "run":
-				return `<run>${attrs?.command || ""}</run><output>${output || ""}</output>`;
+			case "sh":
+				return `<sh>${attrs?.command || ""}</sh><output>${output || ""}</output>`;
 			case "ask_user":
 				return `${attrs?.question || ""} Answered: ${output || ""}`;
-			case "write": {
+			case "set": {
 				const existing = await this.#knownStore.getBody(runId, path);
 				return existing || output || "";
 			}

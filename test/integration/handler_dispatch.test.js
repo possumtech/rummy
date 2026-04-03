@@ -76,21 +76,21 @@ describe("Handler dispatch", () => {
 		await tdb.cleanup();
 	});
 
-	describe("read handler", () => {
+	describe("get handler", () => {
 		it("promotes target and writes confirmation", async () => {
 			await store.upsert(RUN_ID, 0, "src/target.js", "const x = 1;", "index");
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
-				scheme: "read",
-				path: "read://src%2Ftarget.js",
+				scheme: "get",
+				path: "get://src%2Ftarget.js",
 				body: "",
 				attributes: { path: "src/target.js" },
 				state: "full",
-				resultPath: "read://src%2Ftarget.js",
+				resultPath: "get://src%2Ftarget.js",
 			};
 
-			await hooks.tools.dispatch("read", entry, rummy);
+			await hooks.tools.dispatch("get", entry, rummy);
 
 			const state = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
@@ -103,7 +103,7 @@ describe("Handler dispatch", () => {
 		});
 	});
 
-	describe("write handler — edit mode", () => {
+	describe("set handler — edit mode", () => {
 		it("applies patch and sets proposed for files", async () => {
 			await store.upsert(
 				RUN_ID,
@@ -115,8 +115,8 @@ describe("Handler dispatch", () => {
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
-				scheme: "write",
-				path: "write://src%2Fedit_me.js",
+				scheme: "set",
+				path: "set://src%2Fedit_me.js",
 				body: "",
 				attributes: {
 					path: "src/edit_me.js",
@@ -125,20 +125,20 @@ describe("Handler dispatch", () => {
 					],
 				},
 				state: "full",
-				resultPath: "write://src%2Fedit_me.js",
+				resultPath: "set://src%2Fedit_me.js",
 			};
 
-			await hooks.tools.dispatch("write", entry, rummy);
+			await hooks.tools.dispatch("set", entry, rummy);
 
 			// body = original content
-			const resultBody = await store.getBody(RUN_ID, "write://src/edit_me.js");
+			const resultBody = await store.getBody(RUN_ID, "set://src/edit_me.js");
 			assert.ok(
 				resultBody.includes("const port = 3000"),
 				"body is original content",
 			);
 
 			// attributes.patch = udiff for client
-			const attrs = await store.getAttributes(RUN_ID, "write://src/edit_me.js");
+			const attrs = await store.getAttributes(RUN_ID, "set://src/edit_me.js");
 			assert.ok(
 				attrs.patch.includes("---") && attrs.patch.includes("+++"),
 				"attributes.patch is udiff",
@@ -155,7 +155,7 @@ describe("Handler dispatch", () => {
 			// File entries → proposed
 			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const writeResult = entries.find(
-				(e) => e.path === "write://src/edit_me.js",
+				(e) => e.path === "set://src/edit_me.js",
 			);
 			assert.strictEqual(
 				writeResult.state,
@@ -169,8 +169,8 @@ describe("Handler dispatch", () => {
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
-				scheme: "write",
-				path: "write://known%3A%2F%2Fconfig",
+				scheme: "set",
+				path: "set://known%3A%2F%2Fconfig",
 				body: "",
 				attributes: {
 					path: "known://config",
@@ -178,10 +178,10 @@ describe("Handler dispatch", () => {
 					replace: "8080",
 				},
 				state: "full",
-				resultPath: "write://known%3A%2F%2Fconfig",
+				resultPath: "set://known%3A%2F%2Fconfig",
 			};
 
-			await hooks.tools.dispatch("write", entry, rummy);
+			await hooks.tools.dispatch("set", entry, rummy);
 
 			const updated = await store.getBody(RUN_ID, "known://config");
 			assert.strictEqual(
@@ -192,16 +192,16 @@ describe("Handler dispatch", () => {
 		});
 	});
 
-	describe("run handler", () => {
+	describe("sh handler", () => {
 		it("sets entry to proposed", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
-			const resultPath = await store.slugPath(RUN_ID, "run", "npm test");
+			const resultPath = await store.slugPath(RUN_ID, "sh", "npm test");
 			await store.upsert(RUN_ID, 1, resultPath, "npm test", "full", {
 				attributes: { command: "npm test" },
 			});
 
 			const entry = {
-				scheme: "run",
+				scheme: "sh",
 				path: resultPath,
 				body: "npm test",
 				attributes: { command: "npm test" },
@@ -209,13 +209,13 @@ describe("Handler dispatch", () => {
 				resultPath,
 			};
 
-			await hooks.tools.dispatch("run", entry, rummy);
+			await hooks.tools.dispatch("sh", entry, rummy);
 
 			const row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: resultPath,
 			});
-			assert.strictEqual(row.state, "proposed", "run entry set to proposed");
+			assert.strictEqual(row.state, "proposed", "sh entry set to proposed");
 		});
 	});
 
@@ -270,24 +270,24 @@ describe("Handler dispatch", () => {
 		});
 	});
 
-	describe("delete handler", () => {
+	describe("rm handler", () => {
 		it("proposes deletion for files", async () => {
 			await store.upsert(RUN_ID, 1, "src/doomed.js", "content", "full");
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
-				scheme: "delete",
-				path: "delete://src%2Fdoomed.js",
+				scheme: "rm",
+				path: "rm://src%2Fdoomed.js",
 				body: "",
 				attributes: { path: "src/doomed.js" },
 				state: "full",
-				resultPath: "delete://src%2Fdoomed.js",
+				resultPath: "rm://src%2Fdoomed.js",
 			};
 
-			await hooks.tools.dispatch("delete", entry, rummy);
+			await hooks.tools.dispatch("rm", entry, rummy);
 
 			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const result = entries.find((e) => e.path === "delete://src/doomed.js");
+			const result = entries.find((e) => e.path === "rm://src/doomed.js");
 			assert.strictEqual(result.state, "proposed", "file delete is proposed");
 		});
 
@@ -296,15 +296,15 @@ describe("Handler dispatch", () => {
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
-				scheme: "delete",
-				path: "delete://known%3A%2F%2Fephemeral",
+				scheme: "rm",
+				path: "rm://known%3A%2F%2Fephemeral",
 				body: "",
 				attributes: { path: "known://ephemeral" },
 				state: "full",
-				resultPath: "delete://known%3A%2F%2Fephemeral",
+				resultPath: "rm://known%3A%2F%2Fephemeral",
 			};
 
-			await hooks.tools.dispatch("delete", entry, rummy);
+			await hooks.tools.dispatch("rm", entry, rummy);
 
 			const gone = await store.getBody(RUN_ID, "known://ephemeral");
 			assert.strictEqual(gone, null, "known entry removed immediately");
@@ -316,28 +316,28 @@ describe("Handler dispatch", () => {
 			const order = [];
 
 			hooks.tools.onHandle(
-				"read",
+				"get",
 				async () => {
 					order.push("plugin-at-5");
 				},
 				5,
 			);
 
-			// Core read handler is already at priority 10
+			// Core get handler is already at priority 10
 			// We just need to verify our priority-5 handler ran first
 			await store.upsert(RUN_ID, 1, "src/priority_test.js", "x", "index");
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
-				scheme: "read",
-				path: "read://priority_test",
+				scheme: "get",
+				path: "get://priority_test",
 				body: "",
 				attributes: { path: "src/priority_test.js" },
 				state: "full",
-				resultPath: "read://priority_test",
+				resultPath: "get://priority_test",
 			};
 
-			await hooks.tools.dispatch("read", entry, rummy);
+			await hooks.tools.dispatch("get", entry, rummy);
 			assert.strictEqual(order[0], "plugin-at-5", "priority 5 ran first");
 		});
 
@@ -383,12 +383,12 @@ describe("Handler dispatch", () => {
 			for (const e of entries) {
 				assert.ok(e.body.length > 0, `${e.path} should have docs body`);
 			}
-			// Core tools (read, write, etc.) should NOT have entries
-			const readTool = entries.find((e) => e.path === "tool://read");
+			// Core tools (get, set, etc.) should NOT have entries
+			const getTool = entries.find((e) => e.path === "tool://get");
 			assert.strictEqual(
-				readTool,
+				getTool,
 				undefined,
-				"tool://read should not exist (no docs)",
+				"tool://get should not exist (no docs)",
 			);
 		});
 	});
