@@ -106,7 +106,7 @@ export default class RummyContext {
 		await this.store.promoteByPattern(this.runId, path, null, this.sequence);
 	}
 
-	async storePath(path) {
+	async store(path) {
 		await this.store.demoteByPattern(this.runId, path, null);
 	}
 
