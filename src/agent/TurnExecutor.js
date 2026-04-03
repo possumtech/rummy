@@ -412,9 +412,25 @@ export default class TurnExecutor {
 		// --- PHASE 2: DISPATCH ---
 		// Handlers perform side effects: promote, demote, patch, propose.
 
+		let hasErrors = false;
 		for (const entry of recorded) {
 			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			await this.#hooks.entry.created.emit(entry);
+		}
+
+		// Check if any dispatched entries ended in error state
+		for (const entry of recorded) {
+			const row = await this.#db.get_entry_state.get({
+				run_id: currentRunId,
+				path: entry.resultPath || entry.path,
+			});
+			if (row?.state === "error") hasErrors = true;
+		}
+
+		// Errors override summarize — the model thinks it's done but it's not
+		if (hasErrors && summaryText) {
+			summaryText = null;
+			updateText = "Tool errors detected — retry or investigate.";
 		}
 
 		// --- Classify for return value ---
