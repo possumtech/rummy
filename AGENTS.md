@@ -81,21 +81,14 @@ Separate from the relevance engine (stochastic, model-assisted, separate project
 
 ---
 
-## Todo: Rip Out Orphaned Symbols Infrastructure
+## Todo: Repomap / Symbols Extraction (do not touch prematurely)
 
-Symbol extraction is orphaned repomap code. It should not be active in
-core. The symbols plugin (`src/plugins/symbols/`) is destined for its own
-repo. All symbol references outside that plugin must be removed:
-
-- [ ] `known_store.sql` — `json_extract(attributes, '$.symbols')` in set_file_state
-- [ ] `FileScanner.js` — symbol extraction hook call, `formatSymbols()`, attributes.symbols
-- [ ] `ContextAssembler.js` — `file_summary` category, `symbolFiles` array
-- [ ] `Hooks.js` — `file.symbols` filter hook
-- [ ] `CtagsExtractor.js` — entire file (moves to symbols plugin or deleted)
-- [ ] `v_model_context.sql` — `file_summary` category (dead without symbols)
-
-The summary state for files exists in theory but nothing produces it
-after symbol removal. Files are `full`, `index`, or `stored`.
+Orphaned repomap code exists throughout core (`CtagsExtractor.js`,
+`FileScanner.js` symbol hooks, `ContextAssembler.js` file_summary,
+`known_store.sql` symbols json_extract, `Hooks.js` file.symbols filter,
+`plugins/symbols/`). Leave it frozen until we extract the repomap into
+its own plugin/repo. Premature cleanup risks losing context about what
+it does and why. The extraction is the cleanup.
 
 ---
 
