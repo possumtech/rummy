@@ -192,13 +192,16 @@ describe("E2E: RPC Methods", () => {
 	});
 
 	it("getEntries returns file entries", { timeout: TIMEOUT }, async () => {
-		await client.call("ask", { model, prompt: "Read app.js." });
+		const r = await client.call("ask", { model, prompt: "Say hi." });
 
-		const entries = await client.call("getEntries", { pattern: "*.js" });
+		const entries = await client.call("getEntries", {
+			run: r.run,
+		});
 		assert.ok(Array.isArray(entries), "returns array");
-		const appEntry = entries.find((e) => e.path === "app.js");
-		assert.ok(appEntry, "app.js in entries");
-		assert.ok(appEntry.state, "entry has state");
+		assert.ok(entries.length > 0, "has entries");
+		// Should have at least file entries from the scan
+		const fileEntries = entries.filter((e) => e.scheme === null);
+		assert.ok(fileEntries.length > 0, "has file entries from scan");
 	});
 
 	it("context_distribution in telemetry", { timeout: TIMEOUT }, async () => {

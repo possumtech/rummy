@@ -51,10 +51,15 @@ export default class TurnExecutor {
 		}
 
 		// File scan
-		if (!noContext && project?.path) {
-			const ctx = await ProjectContext.open(project.path);
+		if (!noContext && project?.project_root) {
+			const ctx = await ProjectContext.open(project.project_root);
 			const files = await ctx.getMappableFiles();
-			await this.#fileScanner.scan(project.path, project.id, files, turn);
+			await this.#fileScanner.scan(
+				project.project_root,
+				project.id,
+				files,
+				turn,
+			);
 		}
 
 		// Store prompt entries BEFORE context materialization

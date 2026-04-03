@@ -144,9 +144,14 @@ export default class CoreRpcPlugin {
 
 		r.register("getEntries", {
 			handler: async (params, ctx) => {
-				const run = await ctx.db.get_latest_run.get({
-					project_id: ctx.projectId,
-				});
+				let run;
+				if (params.run) {
+					run = await ctx.db.get_run_by_alias.get({ alias: params.run });
+				} else {
+					run = await ctx.db.get_latest_run.get({
+						project_id: ctx.projectId,
+					});
+				}
 				if (!run) return [];
 				const store = ctx.projectAgent.store;
 				if (!store) return [];
