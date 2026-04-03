@@ -39,6 +39,7 @@ FROM known_entries
 WHERE
 	run_id = :run_id
 	AND scheme IN ('ask', 'act')
+	AND body != ''
 ORDER BY id DESC
 LIMIT 1;
 

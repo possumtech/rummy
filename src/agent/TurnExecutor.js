@@ -80,7 +80,7 @@ export default class TurnExecutor {
 
 		// Store prompt/progress entries BEFORE plugin hooks and materialization.
 		// Plugins can modify progress:// body before it reaches the model.
-		if (!options?.isContinuation) {
+		if (!options?.isContinuation && loopPrompt) {
 			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
@@ -93,7 +93,7 @@ export default class TurnExecutor {
 				currentRunId,
 				turn,
 				`${mode}://${turn}`,
-				loopPrompt || "",
+				loopPrompt,
 				"info",
 			);
 		} else {

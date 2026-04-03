@@ -124,7 +124,7 @@ async function processEdit(store, runId, turn, entry, attrs) {
 					attrs.search,
 					replaceText,
 				);
-				patch = matched.patch;
+				patch = matched.newContent;
 				warning = matched.warning;
 				error = matched.error;
 			}
@@ -141,7 +141,7 @@ async function processEdit(store, runId, turn, entry, attrs) {
 				block.search,
 				block.replace,
 			);
-			patch = matched.patch;
+			patch = matched.newContent;
 			warning = matched.warning;
 			error = matched.error;
 		}
