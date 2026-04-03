@@ -16,7 +16,21 @@ export default class AskUserPlugin {
 
 async function handleAskUser(entry, rummy) {
 	const { entries: store, sequence: turn, runId } = rummy;
+	const attrs = entry.attributes || {};
+
+	// Parse comma-separated options into array
+	const rawOptions = attrs.options || entry.body || "";
+	const options = rawOptions
+		? rawOptions
+				.split(",")
+				.map((o) => o.trim())
+				.filter(Boolean)
+		: [];
+
 	await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
-		attributes: entry.attributes,
+		attributes: {
+			question: attrs.question,
+			options,
+		},
 	});
 }
