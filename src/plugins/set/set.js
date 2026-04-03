@@ -1,5 +1,4 @@
 import KnownStore from "../../agent/KnownStore.js";
-import hedberg from "../../sql/functions/hedberg.js";
 import { storePatternResult } from "../helpers.js";
 import HeuristicMatcher, { generatePatch } from "./HeuristicMatcher.js";
 
@@ -113,24 +112,21 @@ async function processEdit(store, runId, turn, entry, attrs) {
 		if (attrs.search != null) {
 			searchText = attrs.search;
 			replaceText = attrs.replace ?? "";
-			if (hedberg(attrs.search, match.body)) {
-				// Hedberg matched — find the actual matching substring and replace
-				if (match.body.includes(attrs.search)) {
-					patch = match.body.replaceAll(attrs.search, replaceText);
-				} else {
-					// Hedberg matched via pattern (regex/glob) — use HeuristicMatcher
-					const matched = HeuristicMatcher.matchAndPatch(
-						match.path,
-						match.body,
-						attrs.search,
-						replaceText,
-					);
-					patch = matched.patch;
-					warning = matched.warning;
-					error = matched.error;
-				}
+			if (match.body.includes(attrs.search)) {
+				// Literal match
+				patch = match.body.replaceAll(attrs.search, replaceText);
 			} else {
-				error = `"${attrs.search}" not found in ${match.path}`;
+				// Literal failed — try HeuristicMatcher (handles whitespace,
+				// indentation differences, escaped characters)
+				const matched = HeuristicMatcher.matchAndPatch(
+					match.path,
+					match.body,
+					attrs.search,
+					replaceText,
+				);
+				patch = matched.patch;
+				warning = matched.warning;
+				error = matched.error;
 			}
 		} else if (attrs.blocks?.length > 0 && attrs.blocks[0].search === null) {
 			patch = attrs.blocks[0].replace;

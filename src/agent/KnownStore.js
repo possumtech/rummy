@@ -84,9 +84,7 @@ export default class KnownStore {
 	}
 
 	static #bodyPattern(body) {
-		if (!body) return null;
-		if (/[*+?^${}()|[\]\\]/.test(body)) return body;
-		return `*${body}*`;
+		return body || null;
 	}
 
 	async promoteByPattern(runId, path, body, turn) {

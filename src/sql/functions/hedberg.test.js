@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import hedberg from "./hedberg.js";
+import hedberg, { hedmatch, hedreplace, hedsearch } from "./hedberg.js";
 
 describe("hedberg", () => {
 	describe("glob patterns", () => {
@@ -61,39 +61,33 @@ describe("hedberg", () => {
 		});
 	});
 
-	describe("regex patterns", () => {
-		it("detects anchored regex", () => {
-			assert.equal(hedberg("^(index|utils)", "index.js"), 1);
-			assert.equal(hedberg("^(index|utils)", "readme.md"), 0);
+	describe("regex patterns (require /slashes/)", () => {
+		it("slash-delimited regex matches", () => {
+			assert.equal(hedberg("/^(index|utils)/", "index.js"), 1);
+			assert.equal(hedberg("/^(index|utils)/", "readme.md"), 0);
 		});
 
-		it("detects escape sequences", () => {
-			assert.equal(hedberg("\\.(js|ts)$", "test.ts"), 1);
-			assert.equal(hedberg("\\.(js|ts)$", "test.py"), 0);
+		it("regex with escape sequences", () => {
+			assert.equal(hedberg("/\\.(js|ts)$/", "test.ts"), 1);
+			assert.equal(hedberg("/\\.(js|ts)$/", "test.py"), 0);
 		});
 
-		it("detects dot-quantifiers", () => {
-			assert.equal(hedberg("foo.+bar", "foo123bar"), 1);
-			assert.equal(hedberg("foo.*bar", "foobar"), 1);
+		it("regex with quantifiers", () => {
+			assert.equal(hedberg("/foo.+bar/", "foo123bar"), 1);
+			assert.equal(hedberg("/\\d+/", "abc123"), 1);
+			assert.equal(hedberg("/\\d+/", "abcdef"), 0);
 		});
 
-		it("detects character class escapes", () => {
-			assert.equal(hedberg("\\d+", "abc123"), 1);
-			assert.equal(hedberg("\\d+", "abcdef"), 0);
-		});
-
-		it("detects numeric quantifiers", () => {
-			assert.equal(hedberg("a{3}", "aaa"), 1);
-			assert.equal(hedberg("a{3}", "aa"), 0);
+		it("unslashed patterns are literal, not regex", () => {
+			// Without slashes, these are literal text — no regex detection
+			assert.equal(hedberg("\\d+", "\\d+"), 1);
+			assert.equal(hedberg("\\d+", "abc123"), 0);
 		});
 	});
 
 	describe("regex NOT misdetected as jsonpath", () => {
-		it("$.+ is detected as regex not jsonpath", () => {
-			// $.+ as regex = end-of-string + one-or-more — never matches
-			assert.equal(hedberg("$.+", "anything"), 0);
-			// But it must NOT be treated as jsonpath (which would match $.name-like paths)
-			assert.equal(hedberg("$.+", '{"name":"test"}'), 0);
+		it("$.+ with slashes is regex not jsonpath", () => {
+			assert.equal(hedberg("/$.+/", "anything"), 0);
 		});
 	});
 
@@ -181,6 +175,94 @@ describe("hedberg", () => {
 
 		it("summary:// is glob", () => {
 			assert.equal(hedberg("summary://1", "summary://1"), 1);
+		});
+	});
+
+	describe("literal detection (default)", () => {
+		it("plain text without pattern chars is literal", () => {
+			assert.equal(hedmatch(":AI[]", ":AI[]"), true);
+			assert.equal(hedmatch(":AI[]", ":AI[x]"), false);
+		});
+
+		it("backslashes without /slashes/ are literal", () => {
+			assert.equal(hedmatch("\\d+", "\\d+"), true);
+			assert.equal(hedmatch("\\d+", "123"), false);
+		});
+	});
+
+	describe("hedsearch — substring", () => {
+		it("finds literal substring", () => {
+			const r = hedsearch("port = 3000", "const port = 3000;\n");
+			assert.equal(r.found, true);
+			assert.equal(r.match, "port = 3000");
+			assert.equal(r.index, 6);
+		});
+
+		it("finds :AI[] literally", () => {
+			const r = hedsearch(":AI[]", "function() {\n:AI[]\n}");
+			assert.equal(r.found, true);
+			assert.equal(r.match, ":AI[]");
+		});
+
+		it("regex search with /slashes/", () => {
+			const r = hedsearch("/\\d+/", "port = 3000");
+			assert.equal(r.found, true);
+			assert.equal(r.match, "3000");
+		});
+
+		it("glob search finds pattern in content", () => {
+			const r = hedsearch("*.js", "import from app.js");
+			assert.equal(r.found, true);
+		});
+
+		it("returns not found", () => {
+			const r = hedsearch("missing", "nothing here");
+			assert.equal(r.found, false);
+		});
+	});
+
+	describe("hedreplace", () => {
+		it("replaces literal", () => {
+			const r = hedreplace("3000", "8080", "port = 3000");
+			assert.equal(r, "port = 8080");
+		});
+
+		it("replaces with /regex/", () => {
+			const r = hedreplace("/\\d+/", "NUM", "port = 3000");
+			assert.equal(r, "port = NUM");
+		});
+
+		it("returns null when not found", () => {
+			assert.equal(hedreplace("missing", "x", "nothing"), null);
+		});
+	});
+
+	describe("sed syntax — s/search/replace/flags", () => {
+		it("literal sed replace", () => {
+			const r = hedreplace("s/3000/8080/", null, "port = 3000");
+			assert.equal(r, "port = 8080");
+		});
+
+		it("sed with global flag uses regex", () => {
+			const r = hedreplace("s/\\d+/NUM/g", null, "port = 3000, timeout = 5000");
+			assert.equal(r, "port = NUM, timeout = NUM");
+		});
+
+		it("sed with case insensitive flag", () => {
+			const r = hedreplace("s/hello/world/gi", null, "Hello hello HELLO");
+			assert.equal(r, "world world world");
+		});
+
+		it("sed search detects in content", () => {
+			const r = hedsearch("s/3000/8080/", "port = 3000");
+			assert.equal(r.found, true);
+			assert.equal(r.match, "3000");
+		});
+
+		it("sed match checks for search text in string", () => {
+			assert.equal(hedmatch("s/3000/8080/", "3000"), true);
+			assert.equal(hedmatch("s/3000/8080/", "port = 3000"), true);
+			assert.equal(hedmatch("s/3000/8080/", "no match"), false);
 		});
 	});
 });

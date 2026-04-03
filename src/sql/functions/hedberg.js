@@ -25,9 +25,6 @@ const XPATH_AXES = new Set([
 const XPATH_FUNCTIONS =
 	/\b(position|last|contains|starts-with|not|text|count|sum|name|local-name|string-length|normalize-space|concat|substring|translate|boolean|number|string|true|false|ceiling|floor|round|id|lang|comment|processing-instruction)\s*\(/;
 
-const UNAMBIGUOUS_REGEX =
-	/\\[dwsbBDWSn]|\(\?|^\^|\.\+|\.\*|\.\?|\([^)]*\|[^)]*\)|\{\d+\}|\{\d+,\d*\}/;
-
 function isPlausibleJsonPath(pattern) {
 	if (pattern.startsWith("$.")) {
 		const after = pattern[2];
@@ -59,7 +56,47 @@ function hasXPathPredicate(pattern) {
 	return false;
 }
 
+function parseSed(pattern) {
+	// s/search/replace/ or s/search/replace/flags
+	if (!pattern.startsWith("s/")) return null;
+	const parts = [];
+	let i = 2;
+	let current = "";
+	while (i < pattern.length) {
+		if (pattern[i] === "/" && pattern[i - 1] !== "\\") {
+			parts.push(current);
+			current = "";
+		} else {
+			current += pattern[i];
+		}
+		i++;
+	}
+	parts.push(current);
+	if (parts.length < 2) return null;
+	const search = parts[0];
+	const replace = parts[1];
+	const flags = parts[2] || "";
+	return { search, replace, flags };
+}
+
 function detect(pattern) {
+	// Sed-style: s/search/replace/flags
+	if (pattern.startsWith("s/")) {
+		const parsed = parseSed(pattern);
+		if (parsed) return "sed";
+	}
+
+	// Explicit regex: /pattern/ or /pattern/flags
+	if (
+		pattern.startsWith("/") &&
+		pattern.length > 2 &&
+		/\/[gimsuy]*$/.test(pattern.slice(1))
+	) {
+		const lastSlash = pattern.lastIndexOf("/");
+		if (lastSlash > 0) return "regex";
+	}
+
+	// JSONPath
 	if (
 		(pattern.startsWith("$.") ||
 			pattern.startsWith("$[") ||
@@ -69,6 +106,7 @@ function detect(pattern) {
 		return "jsonpath";
 	}
 
+	// XPath
 	if (
 		pattern.startsWith("//") &&
 		pattern.length > 2 &&
@@ -82,20 +120,18 @@ function detect(pattern) {
 		if (hasXPathPredicate(pattern)) return "xpath";
 	}
 
-	// Glob indicators: ** (globstar), unescaped * or ? not preceded by .
-	// These must be checked before regex since *.foo.* looks like regex .*
+	// Glob: ** or unescaped * ? not after .
 	if (pattern.includes("**")) return "glob";
 	if (/(?:^|[^.\\])[*?]/.test(pattern)) return "glob";
 
-	if (UNAMBIGUOUS_REGEX.test(pattern)) return "regex";
-
-	return "glob";
+	// Everything else is literal
+	return "literal";
 }
 
 // --- Compilation ---
 
 function globToRegex(glob) {
-	let result = "^";
+	let result = "";
 	for (let i = 0; i < glob.length; i++) {
 		const c = glob[i];
 		if (c === "*") result += ".*";
@@ -112,7 +148,14 @@ function globToRegex(glob) {
 			result += `\\${c}`;
 		} else result += c;
 	}
-	return `${result}$`;
+	return result;
+}
+
+function parseRegex(pattern) {
+	const lastSlash = pattern.lastIndexOf("/");
+	const body = pattern.slice(1, lastSlash);
+	const flags = pattern.slice(lastSlash + 1);
+	return { body, flags };
 }
 
 function parseJsonPath(path) {
@@ -124,7 +167,6 @@ function parseJsonPath(path) {
 			if (path[i + 1] === ".") {
 				segments.push({ type: "recursive" });
 				i += 2;
-				// Parse the key immediately after ..
 				const start = i;
 				while (i < path.length && path[i] !== "." && path[i] !== "[") i++;
 				const key = path.slice(start, i);
@@ -142,14 +184,14 @@ function parseJsonPath(path) {
 			i++;
 			if (path[i] === "*") {
 				segments.push({ type: "wildcard" });
-				i += 2; // skip *]
+				i += 2;
 			} else if (path[i] === "'" || path[i] === '"') {
 				const quote = path[i];
 				i++;
 				const start = i;
 				while (i < path.length && path[i] !== quote) i++;
 				segments.push({ type: "key", value: path.slice(start, i) });
-				i += 2; // skip quote]
+				i += 2;
 			} else {
 				const start = i;
 				while (i < path.length && path[i] !== "]") i++;
@@ -169,36 +211,64 @@ function parseJsonPath(path) {
 function compile(pattern) {
 	const type = detect(pattern);
 	switch (type) {
+		case "literal":
+			return { type, pattern };
 		case "glob":
-			return { type, re: new RegExp(globToRegex(pattern)) };
-		case "regex":
-			return { type, re: new RegExp(pattern) };
+			return {
+				type,
+				anchoredRe: new RegExp(`^${globToRegex(pattern)}$`),
+				searchRe: new RegExp(globToRegex(pattern)),
+			};
+		case "regex": {
+			const { body, flags } = parseRegex(pattern);
+			return {
+				type,
+				re: new RegExp(body, flags || undefined),
+				reGlobal: new RegExp(body, flags.includes("g") ? flags : `${flags}g`),
+			};
+		}
+		case "sed": {
+			const parsed = parseSed(pattern);
+			const isRegex = parsed.flags.length > 0;
+			return {
+				type,
+				search: parsed.search,
+				replace: parsed.replace,
+				flags: parsed.flags,
+				isRegex,
+				re: isRegex ? new RegExp(parsed.search, parsed.flags) : null,
+			};
+		}
 		case "xpath":
-			return { type, expr: pattern.startsWith("//") ? pattern : pattern };
+			return { type, expr: pattern };
 		case "jsonpath":
 			return { type, segments: parseJsonPath(pattern) };
 	}
 }
 
-// --- Matching ---
+// --- XPath evaluation ---
 
 function evalXpath(expr, string) {
 	try {
 		const dom = new JSDOM(string, { contentType: "text/xml" });
 		const doc = dom.window.document;
 		const result = doc.evaluate(expr, doc, null, 0, null);
-		return result.iterateNext() !== null;
+		const node = result.iterateNext();
+		if (!node) return null;
+		return { match: node.textContent, node };
 	} catch {
-		return false;
+		return null;
 	}
 }
+
+// --- JSONPath evaluation ---
 
 function evalJsonPath(segments, string) {
 	let current;
 	try {
 		current = [JSON.parse(string)];
 	} catch {
-		return false;
+		return null;
 	}
 
 	for (const seg of segments) {
@@ -226,10 +296,10 @@ function evalJsonPath(segments, string) {
 					break;
 			}
 		}
-		if (next.length === 0) return false;
+		if (next.length === 0) return null;
 		current = next;
 	}
-	return current.length > 0;
+	return current.length > 0 ? current : null;
 }
 
 function collectDescendants(node, out) {
@@ -243,10 +313,14 @@ function collectDescendants(node, out) {
 	}
 }
 
-// --- Entry point ---
+// --- Public API ---
 
-export default function hedberg(pattern, string) {
-	if (string === null) return 0;
+/**
+ * hedmatch — does the pattern match the ENTIRE string?
+ * For path matching, WHERE clauses, full-string comparison.
+ */
+export function hedmatch(pattern, string) {
+	if (string === null) return false;
 
 	let compiled = cache.get(pattern);
 	if (!compiled) {
@@ -255,13 +329,130 @@ export default function hedberg(pattern, string) {
 	}
 
 	switch (compiled.type) {
+		case "literal":
+			return string === compiled.pattern;
 		case "glob":
+			return compiled.anchoredRe.test(string);
 		case "regex":
-			return compiled.re.test(string) ? 1 : 0;
+			return compiled.re.test(string);
+		case "sed":
+			return compiled.isRegex
+				? compiled.re.test(string)
+				: string.includes(compiled.search);
 		case "xpath":
-			return evalXpath(compiled.expr, string) ? 1 : 0;
+			return evalXpath(compiled.expr, string) !== null;
 		case "jsonpath":
-			return evalJsonPath(compiled.segments, string) ? 1 : 0;
+			return evalJsonPath(compiled.segments, string) !== null;
 	}
-	return 0;
+	return false;
+}
+
+/**
+ * hedsearch — find the pattern anywhere IN the string.
+ * For substring search, content filtering, "does this text contain...".
+ * Returns { found, match, index } or { found: false }.
+ */
+export function hedsearch(pattern, string) {
+	if (string === null) return { found: false };
+
+	let compiled = cache.get(pattern);
+	if (!compiled) {
+		compiled = compile(pattern);
+		cache.set(pattern, compiled);
+	}
+
+	switch (compiled.type) {
+		case "literal": {
+			const idx = string.indexOf(compiled.pattern);
+			if (idx === -1) return { found: false };
+			return { found: true, match: compiled.pattern, index: idx };
+		}
+		case "glob": {
+			const m = compiled.searchRe.exec(string);
+			if (!m) return { found: false };
+			return { found: true, match: m[0], index: m.index };
+		}
+		case "regex": {
+			const m = compiled.re.exec(string);
+			if (!m) return { found: false };
+			return { found: true, match: m[0], index: m.index };
+		}
+		case "sed": {
+			if (compiled.isRegex) {
+				compiled.re.lastIndex = 0;
+				const m = compiled.re.exec(string);
+				if (!m) return { found: false };
+				return { found: true, match: m[0], index: m.index };
+			}
+			const idx = string.indexOf(compiled.search);
+			if (idx === -1) return { found: false };
+			return { found: true, match: compiled.search, index: idx };
+		}
+		case "xpath": {
+			const result = evalXpath(compiled.expr, string);
+			if (!result) return { found: false };
+			return { found: true, match: result.match, index: 0 };
+		}
+		case "jsonpath": {
+			const result = evalJsonPath(compiled.segments, string);
+			if (!result) return { found: false };
+			return { found: true, match: result[0], index: 0 };
+		}
+	}
+	return { found: false };
+}
+
+/**
+ * hedreplace — find pattern in string, replace with replacement.
+ * Returns the new string, or null if pattern not found.
+ */
+export function hedreplace(pattern, replacement, string) {
+	if (string === null) return null;
+
+	let compiled = cache.get(pattern);
+	if (!compiled) {
+		compiled = compile(pattern);
+		cache.set(pattern, compiled);
+	}
+
+	switch (compiled.type) {
+		case "literal": {
+			if (!string.includes(compiled.pattern)) return null;
+			return string.replaceAll(compiled.pattern, replacement);
+		}
+		case "glob": {
+			if (!compiled.searchRe.test(string)) return null;
+			return string.replace(compiled.searchRe, replacement);
+		}
+		case "regex": {
+			if (!compiled.re.test(string)) return null;
+			compiled.re.lastIndex = 0;
+			compiled.reGlobal.lastIndex = 0;
+			return string.replace(compiled.reGlobal, replacement);
+		}
+		case "sed": {
+			// For sed, replacement is embedded in the pattern. Ignore the argument.
+			if (compiled.isRegex) {
+				compiled.re.lastIndex = 0;
+				if (!compiled.re.test(string)) return null;
+				compiled.re.lastIndex = 0;
+				return string.replace(compiled.re, compiled.replace);
+			}
+			if (!string.includes(compiled.search)) return null;
+			return string.replaceAll(compiled.search, compiled.replace);
+		}
+		case "xpath":
+		case "jsonpath":
+			return null;
+	}
+	return null;
+}
+
+// SQL functions are in separate files (hedmatch.js, hedsearch.js)
+// that import from this library. Filename = SQL function name.
+
+// Legacy default export for backward compat during transition.
+export default function hedberg(pattern, string) {
+	if (string === null) return 0;
+	return hedmatch(pattern, string) ? 1 : 0;
 }

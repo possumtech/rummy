@@ -33,11 +33,16 @@ export function generatePatch(filePath, oldContent, newContent) {
 
 export default class HeuristicMatcher {
 	static matchAndPatch(filePath, fileContent, searchBlock, replaceBlock) {
+		// Unescape common regex escapes (models often escape brackets, parens, etc.)
+		const unescaped = searchBlock.replace(/\\([[\](){}.*+?^$|\\])/g, "$1");
+		if (unescaped !== searchBlock && fileContent.includes(unescaped)) {
+			searchBlock = unescaped;
+		}
+
 		const searchLines = searchBlock.split(/\r?\n/);
 		const fileLines = fileContent.split(/\r?\n/);
 
 		// 1. Exact Match Attempt (line-boundary substring search)
-		// Find all exact matches at line boundaries
 		let exactIdx = fileContent.indexOf(searchBlock);
 		let lastExactIdx = -1;
 		let exactCount = 0;

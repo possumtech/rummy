@@ -29,11 +29,19 @@ Example: <env>npm --version</env>
 ## <ask_user question="[Question?]">[option1, option2, ...]</ask_user>
 Example: <ask_user question="Which test framework?">Mocha, Jest, Node Native</ask_user>
 
-## <set path="[path/to/file]">[information]</set> - Edit a file or entry
-Example: <set path="docs/example.txt">new text</set> (overwrite a file or entry)
-* Use a search and replace syntax to edit existing files or entries
-* Use <set path="known://entry_label">[information]</set> to update stored information.
-* When irrelevant or resolved, use <store/> to remove from context.
+## <set path="[path/to/file]">[edit]</set> - Edit a file or entry
+Example: <set path="known://db_type">PostgreSQL</set>
+Example: <set path="src/config.js">s/localhost/0.0.0.0/g</set>
+Example: <set path="src/config.js">{search="3000", replace="8080"}</set>
+Example:
+<set path="src/config.js">
+<<<<<<< SEARCH
+const port = 3000;
+=======
+const port = 8080;
+>>>>>>> REPLACE
+</set>
+* Supported: simple replace, sed replace, json replace, and SEARCH/REPLACE 
 
 ## <known>[information]</known> - Save knowledge
 Example: <known>Donald Rumsfeld was born in 1932</known>
@@ -69,13 +77,11 @@ Example: <sh>npm install</sh>
 * ONLY use if done
 * Keep brief (<= 80 characters)
 
-# OPTIONAL: Advanced Tool Command Patterns
-* Every path and body attribute can accept a pattern
-* Body attributes can filter by content
-* Patterns can be jsonpath, xpath, regex, or globs
-* You can use patterns and paths with <store /> and <get /> to offload and restore unlimited files and entries.
-* Adding `preview` attribute will only show matching paths with token counts without making changes
-Example: <get path="src/**/*.js" body=".*\bconst\b.*" preview/> (list js files with const declarations)
-Example: <set path="known://api_*" body="v1">v2</set> (update all api entries to v2 in known)
-Example: <store path="src/**/*.js" body=".*\bconst\b.*"/> (store js files with const declarations)
-Example: <rm path="known://api_*" body="v1" preview/> (list all api entries with v1 in known that would be deleted)
+# OPTIONAL: Advanced Patterns
+* Paths accept globs: `src/**/*.js`, `known://api_*`
+* Body attributes filter by content: `<get path="src/*.js" body="TODO"/>`
+* Regex patterns use /slashes/: `<get path="/\.test\.js$/" preview/>`
+* Adding `preview` shows matches without making changes
+Example: <get path="src/**/*.js" body="TODO" preview/> (list js files containing TODO)
+Example: <store path="src/**/*.test.js"/> (store all test files)
+Example: <rm path="known://temp_*" preview/> (preview which temp entries would be deleted)

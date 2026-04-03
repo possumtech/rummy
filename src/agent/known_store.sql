@@ -38,7 +38,7 @@ WHERE run_id = :run_id AND path = :path;
 
 -- PREP: delete_file_entries_by_pattern
 DELETE FROM known_entries
-WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL;
+WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL;
 
 -- PREP: resolve_known_entry
 UPDATE known_entries
@@ -64,7 +64,7 @@ SET
 		ELSE tokens_full
 	END
 	, updated_at = CURRENT_TIMESTAMP
-WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL;
+WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL;
 
 -- PREP: promote_path
 UPDATE known_entries
@@ -96,7 +96,7 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: get_file_states_by_pattern
 SELECT path, state, turn
 FROM known_entries
-WHERE run_id = :run_id AND hedberg(:pattern, path) AND scheme IS NULL
+WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL
 ORDER BY path;
 
 -- PREP: get_entry_attributes
@@ -113,8 +113,8 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
-	AND hedberg(:path, path)
-	AND (:body IS NULL OR hedberg(:body, body));
+	AND hedmatch(:path, path)
+	AND (:body IS NULL OR hedsearch(:body, body));
 
 -- PREP: demote_by_pattern
 UPDATE known_entries
@@ -124,16 +124,16 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
-	AND hedberg(:path, path)
-	AND (:body IS NULL OR hedberg(:body, body));
+	AND hedmatch(:path, path)
+	AND (:body IS NULL OR hedsearch(:body, body));
 
 -- PREP: get_entries_by_pattern
 SELECT path, body, scheme, state, tokens_full, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND hedberg(:path, path)
-	AND (:body IS NULL OR hedberg(:body, body))
+	AND hedmatch(:path, path)
+	AND (:body IS NULL OR hedsearch(:body, body))
 ORDER BY path
 LIMIT
 	COALESCE(:limit, -1)
@@ -144,8 +144,8 @@ LIMIT
 DELETE FROM known_entries
 WHERE
 	run_id = :run_id
-	AND hedberg(:path, path)
-	AND (:body IS NULL OR hedberg(:body, body));
+	AND hedmatch(:path, path)
+	AND (:body IS NULL OR hedsearch(:body, body));
 
 -- PREP: update_body_by_pattern
 UPDATE known_entries
@@ -157,5 +157,5 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
-	AND hedberg(:path, path)
-	AND (:body IS NULL OR hedberg(:body, body));
+	AND hedmatch(:path, path)
+	AND (:body IS NULL OR hedsearch(:body, body));
