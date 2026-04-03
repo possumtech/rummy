@@ -12,15 +12,15 @@ const TIMEOUT = 120_000;
 
 describe("E2E: run/state notification shape", () => {
 	let tdb, tserver, client;
-	const projectPath = join(tmpdir(), `rummy-state-${Date.now()}`);
+	const projectRoot = join(tmpdir(), `rummy-state-${Date.now()}`);
 
 	before(async () => {
-		await fs.mkdir(projectPath, { recursive: true });
-		await fs.writeFile(join(projectPath, "index.js"), "export const x = 1;\n");
+		await fs.mkdir(projectRoot, { recursive: true });
+		await fs.writeFile(join(projectRoot, "index.js"), "export const x = 1;\n");
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
-			{ cwd: projectPath },
+			{ cwd: projectRoot },
 		);
 
 		tdb = await TestDb.create();
@@ -28,9 +28,8 @@ describe("E2E: run/state notification shape", () => {
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {
-			projectPath,
-			projectName: "StateTest",
-			clientId: "c-state",
+			name: "StateTest",
+			projectRoot,
 		});
 	});
 
@@ -38,7 +37,7 @@ describe("E2E: run/state notification shape", () => {
 		client.close();
 		await tserver.stop();
 		await tdb.cleanup();
-		await fs.rm(projectPath, { recursive: true, force: true });
+		await fs.rm(projectRoot, { recursive: true, force: true });
 	});
 
 	it("run/state has correct top-level shape", {
@@ -47,10 +46,7 @@ describe("E2E: run/state notification shape", () => {
 		const states = [];
 		client.on("run/state", (p) => states.push(p));
 
-		await client.call("ask", {
-			model,
-			prompt: "What is 2 + 2?",
-		});
+		await client.call("ask", { model, prompt: "What is 2 + 2?" });
 
 		assert.ok(states.length > 0, "Should receive run/state notification");
 		const state = states.at(-1);
@@ -83,26 +79,16 @@ describe("E2E: run/state notification shape", () => {
 		assert.ok(state.history.length > 0, "history should have entries");
 
 		for (const entry of state.history) {
-			assert.ok(entry.path, `history entry has key: ${JSON.stringify(entry)}`);
-			assert.ok(
-				entry.status,
-				`history entry has status: ${JSON.stringify(entry)}`,
-			);
-			assert.ok(
-				"tool" in entry,
-				`history entry has tool: ${JSON.stringify(entry)}`,
-			);
+			assert.ok(entry.path, `entry has path: ${JSON.stringify(entry)}`);
+			assert.ok(entry.status, `entry has status: ${JSON.stringify(entry)}`);
+			assert.ok("tool" in entry, `entry has tool: ${JSON.stringify(entry)}`);
 			assert.ok(
 				"target" in entry,
-				`history entry has target: ${JSON.stringify(entry)}`,
+				`entry has target: ${JSON.stringify(entry)}`,
 			);
-			assert.ok(
-				"body" in entry,
-				`history entry has body: ${JSON.stringify(entry)}`,
-			);
+			assert.ok("body" in entry, `entry has body: ${JSON.stringify(entry)}`);
 		}
 
-		// Should have at least one summary
 		const summaries = state.history.filter((e) => e.status === "summary");
 		assert.ok(summaries.length > 0, "history should contain summaries");
 		assert.ok(summaries[0].body.length > 0, "summary should have text");
@@ -112,10 +98,7 @@ describe("E2E: run/state notification shape", () => {
 		const states = [];
 		client.on("run/state", (p) => states.push(p));
 
-		await client.call("ask", {
-			model,
-			prompt: "Say hello.",
-		});
+		await client.call("ask", { model, prompt: "Say hello." });
 
 		const t = states.at(-1).telemetry;
 		assert.ok(t.modelAlias, "modelAlias");
@@ -142,12 +125,11 @@ describe("E2E: run/state notification shape", () => {
 			prompt: "Run the command: echo hello",
 		});
 
-		// If the model proposed a command, check the shape
 		if (result.status === "proposed") {
 			const state = states.at(-1);
 			assert.ok(state.proposed.length > 0, "should have proposed entries");
 			for (const p of state.proposed) {
-				assert.ok(p.path, "proposed has key");
+				assert.ok(p.path, "proposed has path");
 				assert.ok(p.type, `proposed has type: ${JSON.stringify(p)}`);
 				assert.ok(
 					p.attributes,

@@ -21,6 +21,18 @@ export default class TestServer {
 		const pluginsDir = join(__dirname, "../../src/plugins");
 		await registerPlugins([pluginsDir], hooks);
 
+		// Bootstrap models from env vars (same as service.js)
+		for (const key of Object.keys(process.env)) {
+			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_MODEL_DEFAULT")
+				continue;
+			const alias = key.replace("RUMMY_MODEL_", "");
+			await db.upsert_model.get({
+				alias,
+				actual: process.env[key],
+				context_length: null,
+			});
+		}
+
 		const server = new SocketServer(db, { port: 0, hooks });
 		const addr = server.address();
 		const url = `ws://localhost:${addr.port}`;

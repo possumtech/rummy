@@ -66,7 +66,7 @@ export default class AgentLoop {
 			const runRow = await this.#db.create_run.get({
 				project_id: projectId,
 				parent_run_id: existingRun.id,
-				model_id: requestedModel,
+				model: requestedModel,
 				alias,
 				temperature: options?.temperature ?? null,
 				persona: options?.persona ?? null,
@@ -103,7 +103,7 @@ export default class AgentLoop {
 		const runRow = await this.#db.create_run.get({
 			project_id: projectId,
 			parent_run_id: null,
-			model_id: requestedModel,
+			model: requestedModel,
 			alias,
 			temperature: options?.temperature ?? null,
 			persona: options?.persona ?? null,
@@ -152,7 +152,7 @@ export default class AgentLoop {
 		await this.#db.enqueue_prompt.get({
 			run_id: currentRunId,
 			mode,
-			model_id: requestedModel,
+			model: requestedModel,
 			prompt: prompt || "",
 			config: JSON.stringify({ noContext, temperature: options?.temperature }),
 		});
@@ -184,7 +184,7 @@ export default class AgentLoop {
 				projectId,
 				currentRunId,
 				currentAlias,
-				requestedModel: queued.model_id || process.env.RUMMY_MODEL_DEFAULT,
+				requestedModel: queued.model || process.env.RUMMY_MODEL_DEFAULT,
 				prompt: queued.prompt,
 				noContext: promptConfig.noContext || false,
 				options: { ...options, temperature: promptConfig.temperature },
@@ -514,7 +514,7 @@ export default class AgentLoop {
 		await this.#db.enqueue_prompt.get({
 			run_id: runId,
 			mode: resumeMode,
-			model_id: null,
+			model: null,
 			prompt: "",
 			config: "{}",
 		});
@@ -569,7 +569,7 @@ export default class AgentLoop {
 		await this.#db.enqueue_prompt.get({
 			run_id: runRow.id,
 			mode: "ask",
-			model_id: null,
+			model: null,
 			prompt: message,
 			config: "{}",
 		});

@@ -323,7 +323,7 @@ export default class CoreRpcPlugin {
 					temperature: params.temperature ?? null,
 					persona: params.persona ?? null,
 					context_limit: params.contextLimit ?? null,
-					model_id: params.model ?? null,
+					model: params.model ?? null,
 				});
 				return { status: "ok" };
 			},
@@ -380,7 +380,7 @@ export default class CoreRpcPlugin {
 					run: run.alias,
 					turn: run.next_turn - 1,
 					status: run.status,
-					model: run.model_id,
+					model: run.model,
 					temperature: run.temperature,
 					persona: run.persona,
 					context_limit: run.context_limit,

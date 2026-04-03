@@ -12,18 +12,18 @@ const TIMEOUT = 120_000;
 
 describe("E2E: Persona & Fork", () => {
 	let tdb, tserver, client;
-	const projectPath = join(tmpdir(), `rummy-persona-${Date.now()}`);
+	const projectRoot = join(tmpdir(), `rummy-persona-${Date.now()}`);
 
 	before(async () => {
-		await fs.mkdir(projectPath, { recursive: true });
+		await fs.mkdir(projectRoot, { recursive: true });
 		await fs.writeFile(
-			join(projectPath, "main.py"),
+			join(projectRoot, "main.py"),
 			"def hello(): return 'hi'\n",
 		);
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
-			{ cwd: projectPath },
+			{ cwd: projectRoot },
 		);
 
 		tdb = await TestDb.create();
@@ -31,9 +31,8 @@ describe("E2E: Persona & Fork", () => {
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {
-			projectPath,
-			projectName: "PersonaTest",
-			clientId: "c-persona",
+			name: "PersonaTest",
+			projectRoot,
 		});
 	});
 
@@ -41,47 +40,40 @@ describe("E2E: Persona & Fork", () => {
 		client.close();
 		await tserver.stop();
 		await tdb.cleanup();
-		await fs.rm(projectPath, { recursive: true, force: true });
+		await fs.rm(projectRoot, { recursive: true, force: true });
 	});
 
-	it("persona is stored and applied to session", {
+	it("persona on ask creates run with persona", {
 		timeout: TIMEOUT,
 	}, async () => {
-		await client.call("persona", {
-			text: "You are a grumpy senior Python developer who hates JavaScript.",
-		});
-
-		// Verify persona is stored
-		const temp = await client.call("getTemperature");
-		assert.ok(temp !== undefined, "session exists");
-
-		// Run a turn — the model should receive the persona
 		const result = await client.call("ask", {
 			model,
 			prompt: "What language is main.py written in?",
+			persona: "You are a grumpy senior Python developer.",
 		});
 
 		assert.strictEqual(result.status, "completed");
+
+		// Verify persona stored on the run
+		const runDetail = await client.call("getRun", { run: result.run });
+		assert.strictEqual(
+			runDetail.persona,
+			"You are a grumpy senior Python developer.",
+		);
 	});
 
 	it("fork preserves parent known store", { timeout: TIMEOUT }, async () => {
-		// First run: establish some knowledge
 		const run1 = await client.call("ask", {
 			model,
 			prompt: "What does the hello function do in main.py?",
 		});
 		assert.strictEqual(run1.status, "completed");
 
-		// Check parent run has entries
 		const parentRow = await tdb.db.get_run_by_alias.get({ alias: run1.run });
 		const parentEntries = await tdb.db.get_known_entries.all({
 			run_id: parentRow.id,
 		});
-		const _parentKnowns = parentEntries.filter((e) =>
-			e.path.startsWith("known://"),
-		);
 
-		// Fork from the parent run
 		const run2 = await client.call("ask", {
 			model,
 			prompt: "Based on what you already know, summarize.",
@@ -91,13 +83,11 @@ describe("E2E: Persona & Fork", () => {
 
 		assert.ok(run2.run !== run1.run, "fork should create a new run");
 
-		// Check forked run has parent's entries
 		const forkRow = await tdb.db.get_run_by_alias.get({ alias: run2.run });
 		const forkEntries = await tdb.db.get_known_entries.all({
 			run_id: forkRow.id,
 		});
 
-		// Fork should have at least as many file entries as parent
 		const parentFiles = parentEntries.filter((e) => e.scheme === null);
 		const forkFiles = forkEntries.filter((e) => e.scheme === null);
 		assert.ok(

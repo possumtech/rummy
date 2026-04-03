@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS runs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, project_id INTEGER NOT NULL REFERENCES projects (id) ON DELETE CASCADE
 	, parent_run_id INTEGER REFERENCES runs (id) ON DELETE SET NULL
-	, model_id INTEGER REFERENCES models (id) ON DELETE SET NULL
+	, model TEXT
 	, status TEXT NOT NULL DEFAULT 'queued' CHECK (
 		status IN ('queued', 'running', 'proposed', 'completed', 'failed', 'aborted')
 	)
@@ -226,7 +226,7 @@ CREATE TABLE IF NOT EXISTS prompt_queue (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, mode TEXT NOT NULL CHECK (mode IN ('ask', 'act'))
-	, model_id INTEGER REFERENCES models (id) ON DELETE SET NULL
+	, model TEXT
 	, prompt TEXT NOT NULL
 	, config JSON
 	, status TEXT NOT NULL DEFAULT 'pending'

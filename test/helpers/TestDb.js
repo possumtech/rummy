@@ -44,7 +44,7 @@ export default class TestDb {
 		const run = await this.db.create_run.get({
 			project_id: project.id,
 			parent_run_id: null,
-			model_id: null,
+			model: null,
 			alias,
 			temperature: null,
 			persona: null,

@@ -63,30 +63,30 @@ async function acceptAll(client, result) {
 
 describe("E2E Stories", () => {
 	let tdb, tserver, client;
-	const projectPath = join(tmpdir(), `rummy-stories-${Date.now()}`);
+	const projectRoot = join(tmpdir(), `rummy-stories-${Date.now()}`);
 
 	before(async () => {
-		await fs.mkdir(join(projectPath, "src"), { recursive: true });
-		await fs.mkdir(join(projectPath, "data"), { recursive: true });
+		await fs.mkdir(join(projectRoot, "src"), { recursive: true });
+		await fs.mkdir(join(projectRoot, "data"), { recursive: true });
 
 		await fs.writeFile(
-			join(projectPath, "src/app.js"),
+			join(projectRoot, "src/app.js"),
 			"const express = require('express');\nconst app = express();\napp.listen(8080);\n// TODO: add error handling\n",
 		);
 		await fs.writeFile(
-			join(projectPath, "src/config.json"),
+			join(projectRoot, "src/config.json"),
 			JSON.stringify({ db: "postgres", pool: 5, host: "db.internal" }, null, 2),
 		);
 		await fs.writeFile(
-			join(projectPath, "src/utils.js"),
+			join(projectRoot, "src/utils.js"),
 			"export function greet() { return 'hello'; }\nexport function add(a, b) { return a + b; }\n",
 		);
 		await fs.writeFile(
-			join(projectPath, "notes.md"),
+			join(projectRoot, "notes.md"),
 			"The project codename is: phoenix\n",
 		);
 		await fs.writeFile(
-			join(projectPath, "data/users.json"),
+			join(projectRoot, "data/users.json"),
 			JSON.stringify(
 				[
 					{ name: "Alice", role: "admin" },
@@ -100,7 +100,7 @@ describe("E2E Stories", () => {
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
-			{ cwd: projectPath },
+			{ cwd: projectRoot },
 		);
 
 		tdb = await TestDb.create();
@@ -108,9 +108,8 @@ describe("E2E Stories", () => {
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {
-			projectPath,
-			projectName: "StoriesTest",
-			clientId: "c-stories",
+			name: "StoriesTest",
+			projectRoot,
 		});
 	});
 
@@ -118,7 +117,7 @@ describe("E2E Stories", () => {
 		await client?.close();
 		await tserver?.stop();
 		await tdb?.cleanup();
-		await fs.rm(projectPath, { recursive: true, force: true });
+		await fs.rm(projectRoot, { recursive: true, force: true });
 	});
 
 	// Story 1: Simple factual answer from file content.

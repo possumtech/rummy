@@ -2,7 +2,7 @@
 INSERT INTO runs (
 	project_id
 	, parent_run_id
-	, model_id
+	, model
 	, alias
 	, temperature
 	, persona
@@ -11,7 +11,7 @@ INSERT INTO runs (
 VALUES (
 	:project_id
 	, :parent_run_id
-	, :model_id
+	, :model
 	, :alias
 	, :temperature
 	, :persona
@@ -21,14 +21,14 @@ RETURNING id;
 
 -- PREP: get_run_by_alias
 SELECT
-	id, project_id, parent_run_id, model_id, status, alias
+	id, project_id, parent_run_id, model, status, alias
 	, temperature, persona, context_limit, next_turn, created_at
 FROM runs
 WHERE alias = :alias;
 
 -- PREP: get_run_by_id
 SELECT
-	id, project_id, parent_run_id, model_id, status, alias
+	id, project_id, parent_run_id, model, status, alias
 	, temperature, persona, context_limit, next_turn, created_at
 FROM runs
 WHERE id = :id;
@@ -65,7 +65,7 @@ UPDATE runs SET
 	temperature = COALESCE(:temperature, temperature)
 	, persona = COALESCE(:persona, persona)
 	, context_limit = COALESCE(:context_limit, context_limit)
-	, model_id = COALESCE(:model_id, model_id)
+	, model = COALESCE(:model, model)
 WHERE id = :id;
 
 -- PREP: next_turn

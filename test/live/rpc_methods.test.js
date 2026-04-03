@@ -12,15 +12,15 @@ const TIMEOUT = 120_000;
 
 describe("E2E: RPC Methods", () => {
 	let tdb, tserver, client;
-	const projectPath = join(tmpdir(), `rummy-rpc-${Date.now()}`);
+	const projectRoot = join(tmpdir(), `rummy-rpc-${Date.now()}`);
 
 	before(async () => {
-		await fs.mkdir(projectPath, { recursive: true });
-		await fs.writeFile(join(projectPath, "app.js"), "const app = 1;\n");
+		await fs.mkdir(projectRoot, { recursive: true });
+		await fs.writeFile(join(projectRoot, "app.js"), "const app = 1;\n");
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
-			{ cwd: projectPath },
+			{ cwd: projectRoot },
 		);
 
 		tdb = await TestDb.create();
@@ -28,9 +28,8 @@ describe("E2E: RPC Methods", () => {
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {
-			projectPath,
-			projectName: "RpcTest",
-			clientId: "c-rpc",
+			name: "RpcTest",
+			projectRoot,
 		});
 	});
 
@@ -38,7 +37,7 @@ describe("E2E: RPC Methods", () => {
 		client.close();
 		await tserver.stop();
 		await tdb.cleanup();
-		await fs.rm(projectPath, { recursive: true, force: true });
+		await fs.rm(projectRoot, { recursive: true, force: true });
 	});
 
 	it("discover returns methods and notifications", async () => {
@@ -48,14 +47,14 @@ describe("E2E: RPC Methods", () => {
 		assert.ok(result.methods.ask, "has ask method");
 		assert.ok(result.methods.act, "has act method");
 		assert.ok(result.methods["run/resolve"], "has run/resolve method");
+		assert.ok(result.methods.read, "has read method");
+		assert.ok(result.methods.store, "has store method");
+		assert.ok(result.methods.getEntries, "has getEntries method");
+		assert.ok(result.methods.addModel, "has addModel method");
 		assert.ok(result.notifications["run/state"], "has run/state notification");
-		assert.ok(
-			result.notifications["run/progress"],
-			"has run/progress notification",
-		);
 	});
 
-	it("getModels returns aliases", async () => {
+	it("getModels returns model list from DB", async () => {
 		const result = await client.call("getModels");
 		assert.ok(Array.isArray(result), "returns array");
 		assert.ok(result.length > 0, "has at least one model");
@@ -64,8 +63,27 @@ describe("E2E: RPC Methods", () => {
 		assert.ok(first.actual, "model has actual");
 	});
 
-	it("getRuns returns runs for session", { timeout: TIMEOUT }, async () => {
-		// Create a run first
+	it("addModel and removeModel round-trip", async () => {
+		const added = await client.call("addModel", {
+			alias: "potato",
+			actual: "openai/potato-3000",
+			contextLength: 16000,
+		});
+		assert.ok(added.id, "returns model id");
+		assert.strictEqual(added.alias, "potato");
+
+		const models = await client.call("getModels");
+		const potato = models.find((m) => m.alias === "potato");
+		assert.ok(potato, "potato in model list");
+		assert.strictEqual(potato.actual, "openai/potato-3000");
+		assert.strictEqual(potato.context_length, 16000);
+
+		await client.call("removeModel", { alias: "potato" });
+		const after = await client.call("getModels");
+		assert.ok(!after.find((m) => m.alias === "potato"), "potato removed");
+	});
+
+	it("getRuns returns runs for project", { timeout: TIMEOUT }, async () => {
 		await client.call("ask", { model, prompt: "Hi." });
 
 		const runs = await client.call("getRuns");
@@ -86,89 +104,37 @@ describe("E2E: RPC Methods", () => {
 		assert.strictEqual(aborted.status, "aborted");
 	});
 
-	it("run/inject creates info entry and resumes idle run", {
-		timeout: TIMEOUT,
-	}, async () => {
+	it("run/inject resumes idle run", { timeout: TIMEOUT }, async () => {
 		const askResult = await client.call("ask", { model, prompt: "Hi." });
 
-		// Inject a message into the completed run
 		const injectResult = await client.call("run/inject", {
 			run: askResult.run,
-			message: "Additional context for you.",
+			message: "Additional context.",
 		});
 
-		// The run should have resumed or queued
 		assert.ok(
 			["completed", "running", "proposed"].includes(injectResult.status),
 			`Expected valid status, got ${injectResult.status}`,
 		);
 	});
 
-	it("setTemperature and getTemperature round-trip", async () => {
-		const setResult = await client.call("setTemperature", { temperature: 0.3 });
-		assert.strictEqual(setResult.temperature, 0.3);
+	it("run/config updates run settings", { timeout: TIMEOUT }, async () => {
+		const askResult = await client.call("ask", { model, prompt: "Hi." });
 
-		const getResult = await client.call("getTemperature");
-		assert.strictEqual(getResult.temperature, 0.3);
-	});
+		await client.call("run/config", {
+			run: askResult.run,
+			temperature: 0.3,
+			persona: "You are a pirate.",
+		});
 
-	it("skill/add and getSkills round-trip", async () => {
-		await client.call("skill/add", { name: "test_skill" });
-		const skills = await client.call("getSkills");
-		assert.ok(skills.includes("test_skill"));
-
-		await client.call("skill/remove", { name: "test_skill" });
-		const after = await client.call("getSkills");
-		assert.ok(!after.includes("test_skill"));
+		const runDetail = await client.call("getRun", { run: askResult.run });
+		assert.strictEqual(runDetail.temperature, 0.3);
+		assert.strictEqual(runDetail.persona, "You are a pirate.");
 	});
 
 	it("ping returns empty object", async () => {
 		const result = await client.call("ping");
-		assert.ok(result !== undefined, "ping should return a result");
-	});
-
-	it("setContextLimit and getContext round-trip", async () => {
-		const setResult = await client.call("setContextLimit", { limit: 16384 });
-		assert.strictEqual(setResult.context_limit, 16384);
-
-		const ctx = await client.call("getContext", { model });
-		assert.strictEqual(ctx.limit, 16384);
-		assert.ok(ctx.effective <= 16384, "effective should respect limit");
-		assert.ok(ctx.model_max, "should have model_max");
-
-		// Reset
-		const resetResult = await client.call("setContextLimit", { limit: null });
-		assert.strictEqual(resetResult.context_limit, null);
-
-		const after = await client.call("getContext", { model });
-		assert.strictEqual(after.limit, null);
-		assert.strictEqual(after.effective, after.model_max);
-	});
-
-	it("persona round-trip", async () => {
-		await client.call("persona", { text: "You are a pirate." });
-		const _session = await tdb.db.get_session_by_id.all({ id: "" });
-		// Persona is session-level — verify via DB since no getPersona RPC
-		const _sessions = await tdb.db.get_session_by_id.all({
-			id: String(client.sessionId || ""),
-		});
-		// We can't easily get sessionId from client, verify by asking
-		const result = await client.call("ask", {
-			model,
-			prompt: "Say ahoy.",
-			noContext: true,
-		});
-		assert.strictEqual(result.status, "completed");
-	});
-
-	it("systemPrompt round-trip", async () => {
-		await client.call("systemPrompt", { text: "You are a test assistant." });
-		const result = await client.call("ask", {
-			model,
-			prompt: "What are you?",
-			noContext: true,
-		});
-		assert.strictEqual(result.status, "completed");
+		assert.ok(result !== undefined, "ping returns result");
 	});
 
 	it("run/rename changes run alias", { timeout: TIMEOUT }, async () => {
@@ -182,17 +148,57 @@ describe("E2E: RPC Methods", () => {
 		assert.strictEqual(renameResult.run, "custom_name");
 
 		const runs = await client.call("getRuns");
-		const renamed = runs.find((r) => r.run === "custom_name");
-		assert.ok(renamed, "renamed run should appear in getRuns");
-		const old = runs.find((r) => r.run === oldAlias);
-		assert.ok(!old, "old alias should not appear");
+		assert.ok(
+			runs.find((r) => r.run === "custom_name"),
+			"renamed run in getRuns",
+		);
+		assert.ok(!runs.find((r) => r.run === oldAlias), "old alias gone");
 	});
 
-	it("getFiles returns project file list", async () => {
-		const files = await client.call("getFiles");
-		assert.ok(Array.isArray(files), "returns array");
-		const appJs = files.find((f) => f.path === "app.js" || f === "app.js");
-		assert.ok(appJs, "app.js should be in file list");
+	it("read with persist activates file", async () => {
+		const result = await client.call("read", {
+			path: "app.js",
+			persist: true,
+		});
+		assert.strictEqual(result.status, "ok");
+	});
+
+	it("read with persist + readonly sets readonly", async () => {
+		const result = await client.call("read", {
+			path: "app.js",
+			persist: true,
+			readonly: true,
+		});
+		assert.strictEqual(result.status, "ok");
+	});
+
+	it("store with persist + ignore excludes file", async () => {
+		const result = await client.call("store", {
+			path: "app.js",
+			persist: true,
+			ignore: true,
+		});
+		assert.strictEqual(result.status, "ok");
+	});
+
+	it("store with persist + clear removes constraint", async () => {
+		await client.call("read", { path: "app.js", persist: true });
+		const result = await client.call("store", {
+			path: "app.js",
+			persist: true,
+			clear: true,
+		});
+		assert.strictEqual(result.status, "ok");
+	});
+
+	it("getEntries returns file entries", { timeout: TIMEOUT }, async () => {
+		await client.call("ask", { model, prompt: "Read app.js." });
+
+		const entries = await client.call("getEntries", { pattern: "*.js" });
+		assert.ok(Array.isArray(entries), "returns array");
+		const appEntry = entries.find((e) => e.path === "app.js");
+		assert.ok(appEntry, "app.js in entries");
+		assert.ok(appEntry.state, "entry has state");
 	});
 
 	it("context_distribution in telemetry", { timeout: TIMEOUT }, async () => {
@@ -202,10 +208,10 @@ describe("E2E: RPC Methods", () => {
 		await client.call("ask", { model, prompt: "What is 1+1?" });
 
 		const lastState = states.at(-1);
-		assert.ok(lastState?.telemetry, "should have telemetry");
+		assert.ok(lastState?.telemetry, "has telemetry");
 		assert.ok(
 			Array.isArray(lastState.telemetry.context_distribution),
-			"should have context_distribution array",
+			"has context_distribution array",
 		);
 		const dist = lastState.telemetry.context_distribution;
 		for (const bucket of dist) {
@@ -215,75 +221,10 @@ describe("E2E: RPC Methods", () => {
 		}
 	});
 
-	it("activate sets file state to active", async () => {
-		const result = await client.call("activate", { pattern: "app.js" });
-		assert.strictEqual(result.status, "ok");
-
-		const status = await client.call("fileStatus", { pattern: "app.js" });
-		assert.strictEqual(status.length, 1);
-		assert.strictEqual(status[0].path, "app.js");
-		assert.strictEqual(status[0].state, "active");
-	});
-
-	it("readOnly sets file state to readonly", async () => {
-		const result = await client.call("readOnly", { pattern: "app.js" });
-		assert.strictEqual(result.status, "ok");
-
-		const status = await client.call("fileStatus", { pattern: "app.js" });
-		assert.strictEqual(status[0].state, "readonly");
-	});
-
-	it("ignore sets file state to ignore", async () => {
-		const result = await client.call("ignore", { pattern: "app.js" });
-		assert.strictEqual(result.status, "ok");
-
-		const status = await client.call("fileStatus", { pattern: "app.js" });
-		assert.strictEqual(status[0].state, "ignore");
-	});
-
-	it("drop removes file state override", async () => {
-		// First set a state
-		await client.call("activate", { pattern: "app.js" });
-		const before = await client.call("fileStatus", { pattern: "app.js" });
-		assert.strictEqual(before[0].state, "active");
-
-		// Drop it
-		const result = await client.call("drop", { pattern: "app.js" });
-		assert.strictEqual(result.status, "ok");
-	});
-
-	it("fileStatus returns empty for unknown file", async () => {
-		const status = await client.call("fileStatus", {
-			pattern: "nonexistent.js",
-		});
-		assert.strictEqual(status.length, 0);
-	});
-
-	it("fileStatus supports regex patterns", async () => {
-		const status = await client.call("fileStatus", { pattern: "\\.js$" });
-		assert.ok(Array.isArray(status), "returns array");
-		for (const entry of status) {
-			assert.ok(entry.path.endsWith(".js"), "matches regex");
-		}
-	});
-
-	it("getModelInfo returns model metadata", async () => {
-		const info = await client.call("getModelInfo", { model });
-		assert.ok(info.alias, "has alias");
-		assert.ok(info.model, "has resolved model");
-		assert.ok(typeof info.context_length === "number", "has context_length");
-		assert.ok(typeof info.effective === "number", "has effective");
-	});
-
-	it("activate preserves file content in known store", {
-		timeout: TIMEOUT,
-	}, async () => {
-		// Run an ask so the file gets bootstrapped into the known store
-		await client.call("ask", { model, prompt: "Read app.js." });
-
-		// Now activate — should NOT overwrite the file's value
-		await client.call("activate", { pattern: "app.js" });
-		const status = await client.call("fileStatus", { pattern: "app.js" });
-		assert.strictEqual(status[0].state, "active");
+	it("ask requires model param", async () => {
+		await assert.rejects(
+			() => client.call("ask", { prompt: "Hi." }),
+			/model is required/,
+		);
 	});
 });

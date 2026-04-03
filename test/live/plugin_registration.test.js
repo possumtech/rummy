@@ -9,42 +9,38 @@ import TestServer from "../helpers/TestServer.js";
 
 describe("E2E: Custom Plugin Registration", () => {
 	let tdb, tserver, client;
-	const projectPath = join(tmpdir(), `rummy-plugin-${Date.now()}`);
+	const projectRoot = join(tmpdir(), `rummy-plugin-${Date.now()}`);
 
 	before(async () => {
-		await fs.mkdir(projectPath, { recursive: true });
-		await fs.writeFile(join(projectPath, "app.js"), "const x = 1;\n");
+		await fs.mkdir(projectRoot, { recursive: true });
+		await fs.writeFile(join(projectRoot, "app.js"), "const x = 1;\n");
 		const { execSync } = await import("node:child_process");
 		execSync(
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
-			{ cwd: projectPath },
+			{ cwd: projectRoot },
 		);
 
 		tdb = await TestDb.create();
 		tserver = await TestServer.start(tdb.db);
 
-		// Register a custom RPC method via plugin contract
 		tserver.hooks.rpc.registry.register("test/echo", {
 			handler: async (params) => ({ echo: params }),
 			description: "Echo params back for testing.",
 		});
 
-		// Register a custom RPC method that requires init
 		tserver.hooks.rpc.registry.register("test/projectInfo", {
 			handler: async (_params, ctx) => ({
 				projectId: ctx.projectId,
-				sessionId: ctx.sessionId,
 			}),
-			description: "Return session context for testing.",
+			description: "Return project context for testing.",
 			requiresInit: true,
 		});
 
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();
 		await client.call("init", {
-			projectPath,
-			projectName: "PluginTest",
-			clientId: "c-plugin",
+			name: "PluginTest",
+			projectRoot,
 		});
 	});
 
@@ -52,7 +48,7 @@ describe("E2E: Custom Plugin Registration", () => {
 		client.close();
 		await tserver.stop();
 		await tdb.cleanup();
-		await fs.rm(projectPath, { recursive: true, force: true });
+		await fs.rm(projectRoot, { recursive: true, force: true });
 	});
 
 	it("custom RPC method is callable", async () => {
@@ -72,6 +68,5 @@ describe("E2E: Custom Plugin Registration", () => {
 	it("custom RPC method with requiresInit receives context", async () => {
 		const result = await client.call("test/projectInfo");
 		assert.ok(result.projectId, "has projectId");
-		assert.ok(result.sessionId, "has sessionId");
 	});
 });
