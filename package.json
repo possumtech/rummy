@@ -45,7 +45,7 @@
 		"ws": "^8.19.0"
 	},
 	"optionalDependencies": {
-		"@possumtech/antlrmap": "^0.0.8",
+		"@possumtech/rummy.repo": "^0.0.1",
 		"@possumtech/rummy.web": "^0.0.4"
 	}
 }

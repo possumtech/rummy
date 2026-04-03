@@ -49,7 +49,6 @@ export default class ContextAssembler {
 
 		// Context buckets (system message)
 		const files = [];
-		const symbolFiles = [];
 		const storedFiles = [];
 		const activeKnown = [];
 		const storedKnown = [];
@@ -87,9 +86,6 @@ export default class ContextAssembler {
 					});
 					break;
 				}
-				case "file_summary":
-					symbolFiles.push({ path: row.path, body: row.body });
-					break;
 				case "file_index":
 					storedFiles.push({ path: row.path });
 					break;
@@ -158,13 +154,6 @@ export default class ContextAssembler {
 			contextParts.push(
 				`### Index\n${storedFiles.map((f) => f.path).join(", ")}`,
 			);
-		}
-
-		if (symbolFiles.length > 0) {
-			const symBlocks = symbolFiles.map(
-				(f) => `#### ${f.path} (summary)\n${f.body}`,
-			);
-			contextParts.push(symBlocks.join("\n\n"));
 		}
 
 		if (files.length > 0) {

@@ -7,27 +7,6 @@ function hashContent(content) {
 	return crypto.createHash("sha256").update(content).digest("hex");
 }
 
-export function formatSymbols(symbols) {
-	const sorted = symbols.toSorted((a, b) => (a.line || 0) - (b.line || 0));
-	const stack = [];
-	const lines = [];
-
-	for (const s of sorted) {
-		while (stack.length > 0 && s.line > stack.at(-1).endLine) stack.pop();
-		const depth = stack.length;
-		const indent = "  ".repeat(depth);
-		const kind = s.kind ? `${s.kind} ` : "";
-		const line = s.line ? ` L${s.line}` : "";
-		const p = s.params
-			? `(${Array.isArray(s.params) ? s.params.join(", ") : s.params})`
-			: "";
-		lines.push(`${indent}${kind}${s.name}${p}${line}`);
-		if (s.endLine && s.endLine > s.line) stack.push(s);
-	}
-
-	return lines.join("\n");
-}
-
 export default class FileScanner {
 	#knownStore;
 	#db;
@@ -99,7 +78,7 @@ export default class FileScanner {
 		}
 	}
 
-	async #syncRun(runId, projectPath, diskStats, currentTurn, constraints) {
+	async #syncRun(runId, _projectPath, diskStats, currentTurn, constraints) {
 		const existing = await this.#knownStore.getFileEntries(runId);
 		const fileKeys = new Map();
 		for (const entry of existing) {
@@ -149,37 +128,13 @@ export default class FileScanner {
 			);
 		}
 
-		// Extract symbols via plugin hook
-		if (changedPaths.length > 0 && this.#hooks?.file?.symbols) {
-			const symbolMap = await this.#hooks.file.symbols.filter(new Map(), {
+		// Emit entry.changed for all changed files
+		if (changedPaths.length > 0 && this.#hooks?.entry?.changed) {
+			await this.#hooks.entry.changed.emit({
+				runId,
+				turn: currentTurn,
 				paths: changedPaths,
-				projectPath,
 			});
-			for (const [relPath, symbols] of symbolMap) {
-				const symbolText = formatSymbols(symbols);
-				if (!symbolText) continue;
-				const _entry = existing.find((e) => e.path === relPath);
-				const current = await this.#knownStore.getBody(runId, relPath);
-				if (current !== null) {
-					const constraint = constraints.get(relPath) || null;
-					const row = await this.#db.get_entry_state.get({
-						run_id: runId,
-						path: relPath,
-					});
-					const state =
-						constraint === "active" ? "full" : row?.state || "index";
-					await this.#knownStore.upsert(
-						runId,
-						currentTurn,
-						relPath,
-						current,
-						state,
-						{
-							attributes: { symbols: symbolText, constraint },
-						},
-					);
-				}
-			}
 		}
 
 		// New files that aren't in the store yet

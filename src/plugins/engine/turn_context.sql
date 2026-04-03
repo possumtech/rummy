@@ -14,7 +14,8 @@ INSERT INTO turn_context (
 	run_id, turn, ordinal, path, fidelity, state, body, tokens, attributes, category
 )
 VALUES (
-	:run_id, :turn, :ordinal, :path, :fidelity, :state, :body, :tokens, :attributes, :category
+	:run_id, :turn, :ordinal, :path, :fidelity, :state, :body, :tokens
+	, COALESCE(:attributes, '{}'), :category
 );
 
 -- PREP: get_turn_context

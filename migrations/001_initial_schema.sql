@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, state TEXT NOT NULL
 	, hash TEXT
-	, attributes JSON CHECK (attributes IS NULL OR json_valid(attributes))
+	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
 	, tokens_full INTEGER NOT NULL DEFAULT 0 CHECK (tokens_full >= 0)
 	, refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS turn_context (
 	, state TEXT NOT NULL DEFAULT 'full'
 	, body TEXT NOT NULL DEFAULT ''
 	, tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0)
-	, attributes JSON CHECK (attributes IS NULL OR json_valid(attributes))
+	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, category TEXT NOT NULL DEFAULT 'result'
 );
 CREATE INDEX IF NOT EXISTS idx_turn_context_run_turn

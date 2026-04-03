@@ -133,6 +133,10 @@ export default class RummyContext {
 		return this.entries.getAttributes(this.runId, path);
 	}
 
+	async setAttributes(path, attrs) {
+		return this.entries.setAttributes(this.runId, path, attrs);
+	}
+
 	async getEntries(pattern, bodyFilter) {
 		return this.entries.getEntriesByPattern(this.runId, pattern, bodyFilter);
 	}

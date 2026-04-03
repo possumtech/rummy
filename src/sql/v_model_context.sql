@@ -51,12 +51,9 @@ projected AS (
 			ELSE ''
 		END AS body
 		, CASE
-			WHEN scheme IS NULL AND state = 'full' THEN 'file'
-			WHEN scheme IS NULL AND state = 'summary' THEN 'file_summary'
-			WHEN scheme IS NULL AND state = 'index' THEN 'file_index'
+			WHEN scheme IS NULL AND state IN ('full', 'summary') THEN 'file'
 			WHEN scheme IS NULL THEN 'file_index'
-			WHEN scheme IN ('http', 'https') AND state = 'full' THEN 'file'
-			WHEN scheme IN ('http', 'https') AND state = 'summary' THEN 'file_summary'
+			WHEN scheme IN ('http', 'https') AND state IN ('full', 'summary') THEN 'file'
 			WHEN scheme IN ('http', 'https') THEN 'file_index'
 			WHEN scheme = 'known' AND state = 'full' THEN 'known'
 			WHEN scheme = 'known' THEN 'known_index'

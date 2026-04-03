@@ -63,14 +63,13 @@ export default function createHooks(debug = false) {
 			messages: createFilter("llm.messages"),
 			response: createFilter("llm.response"),
 		},
-		file: {
-			symbols: createFilter("file.symbols"),
-		},
+		file: {},
 		prompt: {
 			tools: createFilter("prompt.tools"),
 		},
 		entry: {
 			created: createEvent("entry.created"),
+			changed: createEvent("entry.changed"),
 		},
 		action: {},
 		ui: {

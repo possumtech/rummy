@@ -207,6 +207,14 @@ export default class KnownStore {
 		return row?.body ?? null;
 	}
 
+	async setAttributes(runId, path, attrs) {
+		await this.#db.update_entry_attributes.run({
+			run_id: runId,
+			path: KnownStore.normalizePath(path),
+			attributes: JSON.stringify(attrs),
+		});
+	}
+
 	async getAttributes(runId, path) {
 		const row = await this.#db.get_entry_attributes.get({
 			run_id: runId,

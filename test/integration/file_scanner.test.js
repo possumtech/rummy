@@ -93,31 +93,6 @@ describe("FileScanner integration", () => {
 		);
 	});
 
-	it("calls symbol extraction hook for changed files", async () => {
-		const symbolCalls = [];
-		const hooks = {
-			file: {
-				symbols: {
-					filter: async (_map, { paths }) => {
-						symbolCalls.push(paths);
-						const result = new Map();
-						for (const p of paths) {
-							result.set(p, [{ name: "main", kind: "function", line: 1 }]);
-						}
-						return result;
-					},
-				},
-			},
-		};
-
-		await fs.writeFile(join(projectPath, "sym.js"), "function main() {}\n");
-		const hookScanner = new FileScanner(store, tdb.db, hooks);
-		await hookScanner.scan(projectPath, PROJECT_ID, ["sym.js"], 6);
-
-		assert.strictEqual(symbolCalls.length, 1, "symbols hook called once");
-		assert.ok(symbolCalls[0].includes("sym.js"), "hook received changed path");
-	});
-
 	it("only active-constrained files get full state, all others get index", async () => {
 		await fs.mkdir(join(projectPath, "src"), { recursive: true });
 		await fs.writeFile(join(projectPath, "root.js"), "// root\n");

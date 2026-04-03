@@ -4,7 +4,7 @@ INSERT INTO known_entries (
 	, tokens, tokens_full, updated_at
 )
 VALUES (
-	:run_id, :turn, :path, :body, :state, :hash, :attributes
+	:run_id, :turn, :path, :body, :state, :hash, COALESCE(:attributes, '{}')
 	, countTokens(:body)
 	, countTokens(:body)
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
@@ -53,14 +53,7 @@ UPDATE known_entries
 SET
 	state = :state
 	, tokens = CASE
-		WHEN :state = 'summary'
-			THEN CASE
-				WHEN
-					json_valid(attributes)
-					AND json_extract(attributes, '$.symbols') IS NOT NULL
-					THEN countTokens(json_extract(attributes, '$.symbols'))
-				ELSE countTokens(path)
-			END
+		WHEN :state = 'summary' THEN countTokens(body)
 		ELSE tokens_full
 	END
 	, updated_at = CURRENT_TIMESTAMP
@@ -98,6 +91,13 @@ SELECT path, state, turn
 FROM known_entries
 WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL
 ORDER BY path;
+
+-- PREP: update_entry_attributes
+UPDATE known_entries
+SET
+	attributes = json_patch(attributes, :attributes)
+	, updated_at = CURRENT_TIMESTAMP
+WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_entry_attributes
 SELECT attributes
