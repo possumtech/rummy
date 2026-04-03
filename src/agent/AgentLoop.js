@@ -1,8 +1,8 @@
 import { join } from "node:path";
+import RunDumper from "../plugins/telemetry/RunDumper.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
-import RunDumper from "./RunDumper.js";
 
 export default class AgentLoop {
 	#db;

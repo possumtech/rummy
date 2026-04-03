@@ -1,6 +1,6 @@
-import HeuristicMatcher from "../../agent/HeuristicMatcher.js";
 import KnownStore from "../../agent/KnownStore.js";
 import { storePatternResult } from "../helpers.js";
+import HeuristicMatcher from "./HeuristicMatcher.js";
 
 const BOTH = new Set(["ask", "act"]);
 

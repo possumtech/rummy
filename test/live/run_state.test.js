@@ -8,7 +8,7 @@ import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
 const model = process.env.RUMMY_MODEL_DEFAULT;
-const TIMEOUT = 120_000;
+const TIMEOUT = 180_000;
 
 describe("E2E: run/state notification shape", () => {
 	let tdb, tserver, client;

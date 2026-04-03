@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import ProjectContext from "../fs/ProjectContext.js";
 import RummyContext from "../hooks/RummyContext.js";
+import FileScanner from "../plugins/file/FileScanner.js";
+import ProjectContext from "../plugins/file/ProjectContext.js";
 import ContextAssembler from "./ContextAssembler.js";
-import FileScanner from "./FileScanner.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";

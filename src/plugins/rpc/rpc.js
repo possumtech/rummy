@@ -1,6 +1,7 @@
 import KnownStore from "../../agent/KnownStore.js";
 import msg from "../../agent/messages.js";
 import RummyContext from "../../hooks/RummyContext.js";
+import FilePlugin from "../file/file.js";
 
 /**
  * Build a RummyContext for a run, suitable for dispatching tool operations.
@@ -162,7 +163,9 @@ export default class CoreRpcPlugin {
 				// Persist branch: project-level file constraint (operator privilege)
 				if (params.persist) {
 					const visibility = params.readonly ? "readonly" : "active";
-					return ctx.projectAgent.activate(
+					return FilePlugin.activate(
+						ctx.db,
+						ctx.projectAgent.entries,
 						ctx.projectId,
 						params.path,
 						visibility,
@@ -194,13 +197,18 @@ export default class CoreRpcPlugin {
 
 				// Persist branch: project-level constraint
 				if (params.clear) {
-					return ctx.projectAgent.drop(ctx.projectId, params.path);
+					return FilePlugin.drop(ctx.db, ctx.projectId, params.path);
 				}
 				if (params.persist) {
 					if (params.ignore) {
-						return ctx.projectAgent.ignore(ctx.projectId, params.path);
+						return FilePlugin.ignore(
+							ctx.db,
+							ctx.projectAgent.entries,
+							ctx.projectId,
+							params.path,
+						);
 					}
-					return ctx.projectAgent.drop(ctx.projectId, params.path);
+					return FilePlugin.drop(ctx.db, ctx.projectId, params.path);
 				}
 
 				// Entry branch: dispatch through handler chain
