@@ -48,7 +48,7 @@ describe("State lock: proposed entries block execution", () => {
 	});
 
 	it("resolving all entries clears the lock", async () => {
-		await store.resolve(RUN_ID, "run://1", "warn", "rejected");
+		await store.resolve(RUN_ID, "run://1", "rejected", "rejected");
 
 		const unresolved = await store.getUnresolved(RUN_ID);
 		assert.strictEqual(unresolved.length, 0);

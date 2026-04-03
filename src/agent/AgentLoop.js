@@ -417,7 +417,7 @@ export default class AgentLoop {
 
 		const { path, action, output } = resolution;
 
-		if (action === "accept") {
+		if (action === "accept" || action === "error") {
 			const attrs = await this.#knownStore.getAttributes(runId, path);
 			const resolvedBody = await this.#composeResolvedContent(
 				runId,
@@ -425,21 +425,29 @@ export default class AgentLoop {
 				attrs,
 				output,
 			);
-			await this.#knownStore.resolve(runId, path, "pass", resolvedBody);
+			const state = action === "error" ? "error" : "pass";
+			await this.#knownStore.resolve(runId, path, state, resolvedBody);
 
-			if (path.startsWith("delete://")) {
-				if (attrs?.path) {
-					await this.#knownStore.remove(runId, attrs.path);
+			if (action === "accept") {
+				if (path.startsWith("delete://")) {
+					if (attrs?.path) {
+						await this.#knownStore.remove(runId, attrs.path);
+					}
 				}
-			}
 
-			if (path.startsWith("move://")) {
-				if (attrs?.isMove && attrs?.from) {
-					await this.#knownStore.remove(runId, attrs.from);
+				if (path.startsWith("move://")) {
+					if (attrs?.isMove && attrs?.from) {
+						await this.#knownStore.remove(runId, attrs.from);
+					}
 				}
 			}
 		} else if (action === "reject") {
-			await this.#knownStore.resolve(runId, path, "warn", output || "rejected");
+			await this.#knownStore.resolve(
+				runId,
+				path,
+				"rejected",
+				output || "rejected",
+			);
 		} else {
 			throw new Error(msg("error.resolution_invalid", { action }));
 		}

@@ -24,7 +24,7 @@ SELECT COUNT(*) AS count
 FROM known_entries
 WHERE
 	run_id = :run_id
-	AND state = 'warn';
+	AND state = 'rejected';
 
 -- PREP: has_accepted_actions
 SELECT COUNT(*) AS count

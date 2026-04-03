@@ -201,7 +201,7 @@ export default class ContextAssembler {
 				const check =
 					e.state === "pass" || e.state === "summary"
 						? "✓"
-						: e.state === "warn" || e.state === "error"
+						: e.state === "rejected" || e.state === "error"
 							? "✗"
 							: "·";
 				if (e.state === "summary") return `* summary: ${e.body}`;

@@ -148,15 +148,15 @@ describe("KnownStore integration", () => {
 			assert.strictEqual(entry.body, "edit applied");
 		});
 
-		it("changes proposed to warn on rejection", async () => {
+		it("changes proposed to rejected on rejection", async () => {
 			await store.upsert(RUN_ID, 1, "run://1", "", "proposed", {
 				attributes: { command: "npm test" },
 			});
-			await store.resolve(RUN_ID, "run://1", "warn", "rejected by user");
+			await store.resolve(RUN_ID, "run://1", "rejected", "rejected by user");
 
 			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const entry = all.find((e) => e.path === "run://1");
-			assert.strictEqual(entry.state, "warn");
+			assert.strictEqual(entry.state, "rejected");
 		});
 	});
 
@@ -287,7 +287,7 @@ describe("KnownStore integration", () => {
 			});
 
 			// Resolve: reject
-			await store.resolve(RUN_ID, "delete://51", "warn", "rejected");
+			await store.resolve(RUN_ID, "delete://51", "rejected", "rejected");
 
 			// Verify: file still exists
 			const value = await store.getBody(RUN_ID, "src/survivor.js");
