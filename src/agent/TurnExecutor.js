@@ -66,18 +66,6 @@ export default class TurnExecutor {
 			);
 		}
 
-		// File scan
-		if (!noContext && project?.project_root) {
-			const ctx = await ProjectContext.open(project.project_root);
-			const files = await ctx.getMappableFiles();
-			await this.#fileScanner.scan(
-				project.project_root,
-				project.id,
-				files,
-				turn,
-			);
-		}
-
 		// Store prompt/progress entries BEFORE plugin hooks and materialization.
 		// Plugins can modify progress:// body before it reaches the model.
 		if (!options?.isContinuation && loopPrompt) {
@@ -160,6 +148,19 @@ export default class TurnExecutor {
 				loopPrompt,
 			},
 		);
+		// File scan (after rummy so entry.changed receives context)
+		if (!noContext && project?.project_root) {
+			const ctx = await ProjectContext.open(project.project_root);
+			const files = await ctx.getMappableFiles();
+			await this.#fileScanner.scan(
+				project.project_root,
+				project.id,
+				files,
+				turn,
+				rummy,
+			);
+		}
+
 		await this.#hooks.processTurn(rummy);
 
 		// Project instructions://system through the instructions tool's projection

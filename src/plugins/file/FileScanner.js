@@ -22,7 +22,13 @@ export default class FileScanner {
 	 * Scan the project and sync file entries across all active runs.
 	 * Uses filesystem mtime to skip unchanged files (no read, no hash).
 	 */
-	async scan(projectPath, projectId, mappableFiles, currentTurn = 0) {
+	async scan(
+		projectPath,
+		projectId,
+		mappableFiles,
+		currentTurn = 0,
+		rummy = null,
+	) {
 		const activeRuns = await this.#db.get_active_runs.all({
 			project_id: projectId,
 		});
@@ -74,11 +80,19 @@ export default class FileScanner {
 				diskStats,
 				currentTurn,
 				constraints,
+				rummy,
 			);
 		}
 	}
 
-	async #syncRun(runId, _projectPath, diskStats, currentTurn, constraints) {
+	async #syncRun(
+		runId,
+		_projectPath,
+		diskStats,
+		currentTurn,
+		constraints,
+		rummy,
+	) {
 		const existing = await this.#knownStore.getFileEntries(runId);
 		const fileKeys = new Map();
 		for (const entry of existing) {
@@ -131,6 +145,7 @@ export default class FileScanner {
 		// Emit entry.changed for all changed files
 		if (changedPaths.length > 0 && this.#hooks?.entry?.changed) {
 			await this.#hooks.entry.changed.emit({
+				rummy,
 				runId,
 				turn: currentTurn,
 				paths: changedPaths,

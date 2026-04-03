@@ -129,8 +129,26 @@ export default class RummyContext {
 
 	// --- Plugin-only methods (superset) ---
 
+	async getBody(path) {
+		return this.entries.getBody(this.runId, path);
+	}
+
 	async getAttributes(path) {
 		return this.entries.getAttributes(this.runId, path);
+	}
+
+	async getState(path) {
+		const row = await this.entries.getState(this.runId, path);
+		return row?.state ?? null;
+	}
+
+	async getEntry(path) {
+		const results = await this.entries.getEntriesByPattern(
+			this.runId,
+			path,
+			null,
+		);
+		return results[0] || null;
 	}
 
 	async setAttributes(path, attrs) {
