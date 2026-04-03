@@ -1,4 +1,74 @@
+import KnownStore from "../../agent/KnownStore.js";
 import msg from "../../agent/messages.js";
+import RummyContext from "../../hooks/RummyContext.js";
+
+/**
+ * Build a RummyContext for a run, suitable for dispatching tool operations.
+ * Client operations go through the same handler chain as model operations.
+ */
+async function buildRunContext(hooks, ctx, runAlias) {
+	const runRow = await ctx.db.get_run_by_alias.get({ alias: runAlias });
+	if (!runRow) throw new Error(msg("error.run_not_found", { runId: runAlias }));
+	const project = await ctx.db.get_project_by_id.get({
+		id: runRow.project_id,
+	});
+	return {
+		runRow,
+		rummy: new RummyContext(
+			{ tag: "rpc", attrs: {}, content: null, children: [] },
+			{
+				hooks,
+				db: ctx.db,
+				store: ctx.projectAgent.entries,
+				project,
+				type: null,
+				sequence: runRow.next_turn,
+				runId: runRow.id,
+				turnId: null,
+				noContext: false,
+				contextSize: null,
+				systemPrompt: "",
+				loopPrompt: "",
+			},
+		),
+	};
+}
+
+/**
+ * Dispatch a client tool operation through the handler chain.
+ * Same path as model operations, minus mode enforcement.
+ */
+async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
+	const store = rummy.entries;
+	const resultPath = await store.slugPath(rummy.runId, scheme, path || "");
+
+	// Record the entry at full state
+	await store.upsert(
+		rummy.runId,
+		rummy.sequence,
+		resultPath,
+		body || "",
+		"full",
+		{
+			attributes: attributes || null,
+		},
+	);
+
+	const entry = {
+		scheme,
+		path: resultPath,
+		body: body || "",
+		attributes: attributes || {},
+		state: "full",
+		resultPath,
+	};
+
+	// Dispatch through handler chain — same as model commands
+	await hooks.tools.dispatch(scheme, entry, rummy);
+	await hooks.entry.created.emit(entry);
+
+	return entry;
+}
 
 export default class CoreRpcPlugin {
 	static register(hooks) {
@@ -83,10 +153,13 @@ export default class CoreRpcPlugin {
 			params: { alias: "string — model alias to remove" },
 		});
 
-		// --- File constraints ---
+		// --- Entry operations (same dispatch as model) ---
 
 		r.register("read", {
 			handler: async (params, ctx) => {
+				if (!params.path) throw new Error("path is required");
+
+				// Persist branch: project-level file constraint (operator privilege)
 				if (params.persist) {
 					const visibility = params.readonly ? "readonly" : "active";
 					return ctx.projectAgent.activate(
@@ -95,21 +168,20 @@ export default class CoreRpcPlugin {
 						visibility,
 					);
 				}
-				// Non-persistent read: promote in latest run only
-				const run = await ctx.db.get_latest_run.get({
-					project_id: ctx.projectId,
+
+				// Entry branch: dispatch through handler chain
+				if (!params.run) throw new Error("run is required");
+				const { rummy } = await buildRunContext(hooks, ctx, params.run);
+				await dispatchTool(hooks, rummy, "read", params.path, "", {
+					path: params.path,
 				});
-				if (!run) return { status: "ok" };
-				const store = ctx.projectAgent.store;
-				if (store) {
-					await store.promoteByPattern(run.id, params.path, null, 0);
-				}
 				return { status: "ok" };
 			},
 			description:
-				"Promote entry to full state. With persist, sets file constraint.",
+				"Promote entry to full state. With persist, sets file constraint. Without persist, dispatches through handler chain.",
 			params: {
 				path: "string — file path or glob pattern",
+				run: "string? — run alias (required without persist)",
 				persist: "boolean? — create file constraint (survives across turns)",
 				readonly: "boolean? — with persist, set readonly instead of active",
 			},
@@ -118,6 +190,9 @@ export default class CoreRpcPlugin {
 
 		r.register("store", {
 			handler: async (params, ctx) => {
+				if (!params.path) throw new Error("path is required");
+
+				// Persist branch: project-level constraint
 				if (params.clear) {
 					return ctx.projectAgent.drop(ctx.projectId, params.path);
 				}
@@ -127,24 +202,82 @@ export default class CoreRpcPlugin {
 					}
 					return ctx.projectAgent.drop(ctx.projectId, params.path);
 				}
-				// Non-persistent store: demote in latest run only
-				const run = await ctx.db.get_latest_run.get({
-					project_id: ctx.projectId,
+
+				// Entry branch: dispatch through handler chain
+				if (!params.run) throw new Error("run is required");
+				const { rummy } = await buildRunContext(hooks, ctx, params.run);
+				await dispatchTool(hooks, rummy, "store", params.path, "", {
+					path: params.path,
 				});
-				if (!run) return { status: "ok" };
-				const store = ctx.projectAgent.store;
-				if (store) {
-					await store.demoteByPattern(run.id, params.path, null);
-				}
 				return { status: "ok" };
 			},
 			description:
 				"Demote entry to stored state. With persist, sets file constraint.",
 			params: {
 				path: "string — file path or glob pattern",
+				run: "string? — run alias (required without persist)",
 				persist: "boolean? — create file constraint",
 				ignore: "boolean? — with persist, exclude from scan entirely",
 				clear: "boolean? — remove existing constraint",
+			},
+			requiresInit: true,
+		});
+
+		r.register("write", {
+			handler: async (params, ctx) => {
+				if (!params.path) throw new Error("path is required");
+				if (!params.run) throw new Error("run is required");
+				const { rummy } = await buildRunContext(hooks, ctx, params.run);
+
+				// If it's a known:// or other K/V path, write directly
+				const scheme = KnownStore.scheme(params.path);
+				if (scheme) {
+					await rummy.write({
+						path: params.path,
+						body: params.body || "",
+						state: params.state || "full",
+						attributes: params.attributes,
+					});
+				} else {
+					// File path — dispatch through write handler (may propose)
+					await dispatchTool(
+						hooks,
+						rummy,
+						"write",
+						params.path,
+						params.body || "",
+						{ path: params.path, ...params.attributes },
+					);
+				}
+				return { status: "ok" };
+			},
+			description:
+				"Create or update an entry. K/V paths write directly. File paths dispatch through handlers.",
+			params: {
+				run: "string — run alias",
+				path: "string — entry path (e.g. known://my_note, src/file.js)",
+				body: "string? — entry content",
+				state: "string? — entry state (default: full)",
+				attributes: "object? — JSON attributes",
+			},
+			requiresInit: true,
+		});
+
+		r.register("delete", {
+			handler: async (params, ctx) => {
+				if (!params.path) throw new Error("path is required");
+				if (!params.run) throw new Error("run is required");
+				const { rummy } = await buildRunContext(hooks, ctx, params.run);
+				await dispatchTool(hooks, rummy, "delete", params.path, "", {
+					path: params.path,
+				});
+				return { status: "ok" };
+			},
+			description:
+				"Remove an entry. Dispatches through handler chain (files may propose).",
+			params: {
+				run: "string — run alias",
+				path: "string — entry path",
 			},
 			requiresInit: true,
 		});
@@ -153,16 +286,16 @@ export default class CoreRpcPlugin {
 			handler: async (params, ctx) => {
 				let run;
 				if (params.run) {
-					run = await ctx.db.get_run_by_alias.get({ alias: params.run });
+					run = await ctx.db.get_run_by_alias.get({
+						alias: params.run,
+					});
 				} else {
 					run = await ctx.db.get_latest_run.get({
 						project_id: ctx.projectId,
 					});
 				}
 				if (!run) return [];
-				const store = ctx.projectAgent.store;
-				if (!store) return [];
-				const entries = await store.getEntriesByPattern(
+				const entries = await ctx.projectAgent.entries.getEntriesByPattern(
 					run.id,
 					params.pattern || "*",
 					params.body || null,
@@ -296,7 +429,9 @@ export default class CoreRpcPlugin {
 
 		r.register("run/abort", {
 			handler: async (params, ctx) => {
-				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
+				const runRow = await ctx.db.get_run_by_alias.get({
+					alias: params.run,
+				});
 				if (!runRow)
 					throw new Error(msg("error.run_not_found", { runId: params.run }));
 				ctx.projectAgent.abortRun(runRow.id);
@@ -357,7 +492,9 @@ export default class CoreRpcPlugin {
 
 		r.register("run/config", {
 			handler: async (params, ctx) => {
-				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
+				const runRow = await ctx.db.get_run_by_alias.get({
+					alias: params.run,
+				});
 				if (!runRow)
 					throw new Error(msg("error.run_not_found", { runId: params.run }));
 				await ctx.db.update_run_config.run({

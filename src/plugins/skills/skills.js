@@ -22,7 +22,7 @@ export default class SkillsPlugin {
 				});
 
 				const body = await loadFile(project, "skills", params.name);
-				const store = ctx.projectAgent.store;
+				const store = ctx.projectAgent.entries;
 				await store.upsert(
 					runRow.id,
 					runRow.next_turn,
@@ -57,7 +57,7 @@ export default class SkillsPlugin {
 				});
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 
-				const store = ctx.projectAgent.store;
+				const store = ctx.projectAgent.entries;
 				await store.remove(runRow.id, `skill://${params.name}`);
 
 				return { status: "ok" };
@@ -79,7 +79,7 @@ export default class SkillsPlugin {
 				});
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 
-				const store = ctx.projectAgent.store;
+				const store = ctx.projectAgent.entries;
 				const entries = await store.getEntriesByPattern(
 					runRow.id,
 					"skill://*",

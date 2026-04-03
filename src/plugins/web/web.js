@@ -49,7 +49,7 @@ export default class WebPlugin {
 			}
 
 			const listing = urls.join("\n");
-			await rummy.store.upsert(
+			await rummy.entries.upsert(
 				rummy.runId,
 				rummy.sequence,
 				entry.resultPath,

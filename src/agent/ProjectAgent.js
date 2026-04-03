@@ -63,7 +63,7 @@ export default class ProjectAgent {
 		return result;
 	}
 
-	get store() {
+	get entries() {
 		return this.#knownStore;
 	}
 

@@ -19,7 +19,7 @@ export default class RummyContext {
 		return this.#context.db;
 	}
 
-	get store() {
+	get entries() {
 		return this.#context.store || null;
 	}
 
@@ -91,7 +91,7 @@ export default class RummyContext {
 			const base = slugify(body || "");
 			path = `known://${base || Date.now()}`;
 		}
-		await this.store.upsert(
+		await this.entries.upsert(
 			this.runId,
 			this.sequence,
 			path,
@@ -103,43 +103,43 @@ export default class RummyContext {
 	}
 
 	async read(path) {
-		await this.store.promoteByPattern(this.runId, path, null, this.sequence);
+		await this.entries.promoteByPattern(this.runId, path, null, this.sequence);
 	}
 
 	async store(path) {
-		await this.store.demoteByPattern(this.runId, path, null);
+		await this.entries.demoteByPattern(this.runId, path, null);
 	}
 
 	async delete(path) {
-		await this.store.remove(this.runId, path);
+		await this.entries.remove(this.runId, path);
 	}
 
 	async move(from, to) {
-		const body = await this.store.getBody(this.runId, from);
+		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.store.upsert(this.runId, this.sequence, to, body, "full");
-		await this.store.remove(this.runId, from);
+		await this.entries.upsert(this.runId, this.sequence, to, body, "full");
+		await this.entries.remove(this.runId, from);
 	}
 
 	async copy(from, to) {
-		const body = await this.store.getBody(this.runId, from);
+		const body = await this.entries.getBody(this.runId, from);
 		if (body === null) return;
-		await this.store.upsert(this.runId, this.sequence, to, body, "full");
+		await this.entries.upsert(this.runId, this.sequence, to, body, "full");
 	}
 
 	// --- Plugin-only methods (superset) ---
 
 	async getAttributes(path) {
-		return this.store.getAttributes(this.runId, path);
+		return this.entries.getAttributes(this.runId, path);
 	}
 
 	async getEntries(pattern, bodyFilter) {
-		return this.store.getEntriesByPattern(this.runId, pattern, bodyFilter);
+		return this.entries.getEntriesByPattern(this.runId, pattern, bodyFilter);
 	}
 
 	async log(message) {
 		const path = `content://${Date.now()}`;
-		await this.store.upsert(this.runId, this.sequence, path, message, "info");
+		await this.entries.upsert(this.runId, this.sequence, path, message, "info");
 	}
 
 	// --- Node tree methods ---

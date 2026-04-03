@@ -67,10 +67,10 @@ export default class CoreToolsPlugin {
 // --- Handlers ---
 // Each handler receives (entry, rummy) where entry is the recorded row:
 //   { path, scheme, body, attributes, state, resultPath }
-// The handler performs side effects and updates the entry via rummy.store.
+// The handler performs side effects and updates the entry via rummy.entries.
 
 async function handleRead(entry, rummy) {
-	const { store, sequence: turn, runId } = rummy;
+	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 	const target = attrs.path;
 	if (!target) return;
@@ -102,7 +102,7 @@ async function handleRead(entry, rummy) {
 }
 
 async function handleStore(entry, rummy) {
-	const { store, sequence: turn, runId } = rummy;
+	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 	const target = attrs.path;
 	if (!target) return;
@@ -133,7 +133,7 @@ async function handleStore(entry, rummy) {
 }
 
 async function handleWrite(entry, rummy) {
-	const { store, sequence: turn, runId } = rummy;
+	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 
 	// Edit mode: blocks or search/replace
@@ -301,7 +301,7 @@ async function processEdit(store, runId, turn, entry, attrs) {
 }
 
 async function handleDelete(entry, rummy) {
-	const { store, sequence: turn, runId } = rummy;
+	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 	const target = attrs.path;
 	if (!target) return;
@@ -325,7 +325,7 @@ async function handleDelete(entry, rummy) {
 }
 
 async function handleMoveCopy(entry, rummy) {
-	const { store, sequence: turn, runId } = rummy;
+	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 	if (!attrs.path || !attrs.to) return;
 
@@ -359,7 +359,7 @@ async function handleMoveCopy(entry, rummy) {
 }
 
 async function handleRun(entry, rummy) {
-	const { store, sequence: turn, runId } = rummy;
+	const { entries: store, sequence: turn, runId } = rummy;
 	// run → proposed for client resolution
 	await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
 		attributes: entry.attributes,
@@ -367,7 +367,7 @@ async function handleRun(entry, rummy) {
 }
 
 async function handleEnv(entry, rummy) {
-	const { store, sequence: turn, runId } = rummy;
+	const { entries: store, sequence: turn, runId } = rummy;
 	// env → pass (client provides output via resolve)
 	await store.upsert(runId, turn, entry.resultPath, entry.body, "pass", {
 		attributes: entry.attributes,
@@ -375,7 +375,7 @@ async function handleEnv(entry, rummy) {
 }
 
 async function handleAskUser(entry, rummy) {
-	const { store, sequence: turn, runId } = rummy;
+	const { entries: store, sequence: turn, runId } = rummy;
 	// ask_user → proposed for client resolution
 	await store.upsert(runId, turn, entry.resultPath, entry.body, "proposed", {
 		attributes: entry.attributes,
