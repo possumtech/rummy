@@ -23,12 +23,12 @@ const TIMEOUT = 300_000;
 async function lastResponse(db, runAlias) {
 	const runRow = await db.get_run_by_alias.get({ alias: runAlias });
 	const summary = await db.get_latest_summary.get({ run_id: runRow.id });
-	if (summary?.value) return summary.value;
+	if (summary?.body) return summary.body;
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
 	const content = entries
 		.filter((e) => e.scheme === "content")
 		.toSorted((a, b) => b.turn - a.turn);
-	if (content.length > 0) return content[0].value;
+	if (content.length > 0) return content[0].body;
 	return "";
 }
 

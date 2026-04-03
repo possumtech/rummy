@@ -45,10 +45,10 @@ export default class AuditClient extends RpcClient {
 			const turnEntries = entries.filter((e) => e.turn === t);
 			console.log(`\n  Turn ${t}:`);
 			for (const e of turnEntries) {
-				const meta = e.meta ? JSON.parse(e.meta) : null;
-				const val = (e.value || "").slice(0, 120).replace(/\n/g, "\\n");
-				const metaStr = meta ? ` ${JSON.stringify(meta).slice(0, 60)}` : "";
-				console.log(`    ${e.domain}:${e.state} ${e.key}${metaStr}`);
+				const attrs = e.attributes ? JSON.parse(e.attributes) : null;
+				const val = (e.body || "").slice(0, 120).replace(/\n/g, "\\n");
+				const attrsStr = attrs ? ` ${JSON.stringify(attrs).slice(0, 60)}` : "";
+				console.log(`    ${e.scheme}:${e.state} ${e.path}${attrsStr}`);
 				if (val) console.log(`      ${val}`);
 			}
 		}

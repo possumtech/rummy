@@ -97,15 +97,15 @@ describe("E2E: run/state notification shape", () => {
 				`history entry has target: ${JSON.stringify(entry)}`,
 			);
 			assert.ok(
-				"value" in entry,
-				`history entry has value: ${JSON.stringify(entry)}`,
+				"body" in entry,
+				`history entry has body: ${JSON.stringify(entry)}`,
 			);
 		}
 
 		// Should have at least one summary
 		const summaries = state.history.filter((e) => e.status === "summary");
 		assert.ok(summaries.length > 0, "history should contain summaries");
-		assert.ok(summaries[0].value.length > 0, "summary should have text");
+		assert.ok(summaries[0].body.length > 0, "summary should have text");
 	});
 
 	it("run/state.telemetry has model info", { timeout: TIMEOUT }, async () => {
@@ -149,7 +149,7 @@ describe("E2E: run/state notification shape", () => {
 			for (const p of state.proposed) {
 				assert.ok(p.path, "proposed has key");
 				assert.ok(p.type, `proposed has type: ${JSON.stringify(p)}`);
-				assert.ok(p.meta, `proposed has meta: ${JSON.stringify(p)}`);
+				assert.ok(p.attributes, `proposed has attributes: ${JSON.stringify(p)}`);
 			}
 		}
 	});
