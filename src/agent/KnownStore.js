@@ -12,6 +12,19 @@ export default class KnownStore {
 		return idx > 0 ? path.slice(0, idx) : null;
 	}
 
+	static normalizePath(path) {
+		if (!path?.includes("://")) return path;
+		return path.replace(/:\/\/(.*)$/, (_, rest) => {
+			try {
+				// Decode first (idempotent), then encode — but preserve slashes
+				const decoded = decodeURIComponent(rest);
+				return `://${decoded.split("/").map(encodeURIComponent).join("/")}`;
+			} catch {
+				return `://${rest.split("/").map(encodeURIComponent).join("/")}`;
+			}
+		});
+	}
+
 	async nextTurn(runId) {
 		const row = await this.#db.next_turn.get({ run_id: runId });
 		return row.turn;
@@ -44,7 +57,7 @@ export default class KnownStore {
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
 			turn,
-			path,
+			path: KnownStore.normalizePath(path),
 			body,
 			state,
 			hash,
@@ -54,7 +67,11 @@ export default class KnownStore {
 	}
 
 	async promote(runId, path, turn) {
-		await this.#db.promote_path.run({ run_id: runId, path, turn });
+		await this.#db.promote_path.run({
+			run_id: runId,
+			path: KnownStore.normalizePath(path),
+			turn,
+		});
 	}
 
 	async setFileState(runId, pattern, state) {
@@ -69,11 +86,17 @@ export default class KnownStore {
 	}
 
 	async demote(runId, path) {
-		await this.#db.demote_path.run({ run_id: runId, path });
+		await this.#db.demote_path.run({
+			run_id: runId,
+			path: KnownStore.normalizePath(path),
+		});
 	}
 
 	async remove(runId, path) {
-		await this.#db.delete_known_entry.run({ run_id: runId, path });
+		await this.#db.delete_known_entry.run({
+			run_id: runId,
+			path: KnownStore.normalizePath(path),
+		});
 	}
 
 	async removeFilesByPattern(runId, pattern) {
@@ -134,7 +157,7 @@ export default class KnownStore {
 	async resolve(runId, path, state, body) {
 		await this.#db.resolve_known_entry.run({
 			run_id: runId,
-			path,
+			path: KnownStore.normalizePath(path),
 			state,
 			body,
 		});
@@ -177,14 +200,17 @@ export default class KnownStore {
 	}
 
 	async getBody(runId, path) {
-		const row = await this.#db.get_entry_body.get({ run_id: runId, path });
+		const row = await this.#db.get_entry_body.get({
+			run_id: runId,
+			path: KnownStore.normalizePath(path),
+		});
 		return row?.body ?? null;
 	}
 
 	async getAttributes(runId, path) {
 		const row = await this.#db.get_entry_attributes.get({
 			run_id: runId,
-			path,
+			path: KnownStore.normalizePath(path),
 		});
 		return row?.attributes ? JSON.parse(row.attributes) : null;
 	}
