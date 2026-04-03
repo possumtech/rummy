@@ -17,11 +17,7 @@ export default class SkillsPlugin {
 				});
 				if (!runRow) throw new Error(`Run not found: ${params.run}`);
 
-				const project = await ctx.db.get_project_by_id.get({
-					id: runRow.project_id,
-				});
-
-				const body = await loadFile(project, "skills", params.name);
+				const body = await loadFile("skills", params.name);
 				const store = ctx.projectAgent.entries;
 				await store.upsert(
 					runRow.id,
@@ -32,7 +28,7 @@ export default class SkillsPlugin {
 					{
 						attributes: {
 							name: params.name,
-							source: filePath(project, "skills", params.name),
+							source: filePath("skills", params.name),
 						},
 					},
 				);
@@ -96,12 +92,7 @@ export default class SkillsPlugin {
 		});
 
 		r.register("listSkills", {
-			handler: async (_params, ctx) => {
-				const project = await ctx.db.get_project_by_id.get({
-					id: ctx.projectId,
-				});
-				return listAvailable(project, "skills");
-			},
+			handler: async () => listAvailable("skills"),
 			description: "List available skill files. Returns [{ name, path }].",
 			requiresInit: true,
 		});
@@ -119,10 +110,7 @@ export default class SkillsPlugin {
 
 				let text = params.text;
 				if (params.name && !text) {
-					const project = await ctx.db.get_project_by_id.get({
-						id: runRow.project_id,
-					});
-					text = await loadFile(project, "personas", params.name);
+					text = await loadFile("personas", params.name);
 				}
 
 				await ctx.db.update_run_config.run({
@@ -146,12 +134,7 @@ export default class SkillsPlugin {
 		});
 
 		r.register("listPersonas", {
-			handler: async (_params, ctx) => {
-				const project = await ctx.db.get_project_by_id.get({
-					id: ctx.projectId,
-				});
-				return listAvailable(project, "personas");
-			},
+			handler: async () => listAvailable("personas"),
 			description: "List available persona files. Returns [{ name, path }].",
 			requiresInit: true,
 		});

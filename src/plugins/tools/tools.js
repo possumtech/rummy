@@ -86,11 +86,7 @@ export default class CoreToolsPlugin {
 		// Instructions — assembled from body (prompt.md) + attributes
 		tools.onProject("instructions", (entry) => {
 			const attrs = entry.attributes || {};
-			const toolNames = hooks.tools
-				.namesForMode("act")
-				.map((t) => `\`<${t}/>\``)
-				.join(" ");
-			let prompt = (entry.body || "").replace("[%TOOLS%]", toolNames);
+			let prompt = (entry.body || "").replace("[%TOOLS%]", attrs.tools || "");
 			for (const doc of attrs.toolDescriptions || []) {
 				prompt += `\n\n${doc}`;
 			}

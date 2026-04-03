@@ -110,6 +110,10 @@ export default class TurnExecutor {
 		// Plugins modify attributes during onTurn (e.g., push toolDescriptions).
 		const promptBody = await this.#loadPrompt();
 		const runRow2 = await this.#db.get_run_by_id.get({ id: currentRunId });
+		const toolNames = this.#hooks.tools
+			.namesForMode(mode)
+			.map((t) => `\`<${t}/>\``)
+			.join(" ");
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
@@ -118,6 +122,7 @@ export default class TurnExecutor {
 			"info",
 			{
 				attributes: {
+					tools: toolNames,
 					toolDescriptions: [],
 					persona: runRow2?.persona || null,
 				},
