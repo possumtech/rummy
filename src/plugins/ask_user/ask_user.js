@@ -8,7 +8,10 @@ export default class AskUserPlugin {
 			handler: handleAskUser,
 			project: (entry) => {
 				const attrs = entry.attributes || {};
-				return `# ask_user ${attrs.question || ""}\n${entry.body}`;
+				const lines = [`# ask_user`];
+				if (attrs.question) lines.push(`# Question: ${attrs.question}`);
+				if (attrs.answer) lines.push(`# Answer: ${attrs.answer}`);
+				return lines.join("\n");
 			},
 		});
 	}
@@ -18,11 +21,13 @@ async function handleAskUser(entry, rummy) {
 	const { entries: store, sequence: turn, runId } = rummy;
 	const attrs = entry.attributes || {};
 
-	// Parse comma-separated options into array
+	// Parse options — semicolon-delimited to avoid breaking on commas in text.
+	// Fall back to comma if no semicolons present.
 	const rawOptions = attrs.options || entry.body || "";
+	const delimiter = rawOptions.includes(";") ? ";" : ",";
 	const options = rawOptions
 		? rawOptions
-				.split(",")
+				.split(delimiter)
 				.map((o) => o.trim())
 				.filter(Boolean)
 		: [];

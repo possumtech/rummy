@@ -428,6 +428,15 @@ export default class AgentLoop {
 			const state = action === "error" ? "error" : "pass";
 			await this.#knownStore.resolve(runId, path, state, resolvedBody);
 
+			// Store answer in attributes for ask_user
+			if (path.startsWith("ask_user://") && output) {
+				const turn = (await this.#db.get_run_by_id.get({ id: runId }))
+					.next_turn;
+				await this.#knownStore.upsert(runId, turn, path, resolvedBody, state, {
+					attributes: { ...attrs, answer: output },
+				});
+			}
+
 			if (action === "accept") {
 				if (path.startsWith("rm://")) {
 					if (attrs?.path) {

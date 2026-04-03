@@ -26,8 +26,8 @@ Example: <get>known://auth_flow</get>
 ## <env>[command]</env> - Run an exploratory shell command
 Example: <env>npm --version</env>
 
-## <ask_user question="[Question?]">[option1, option2, ...]</ask_user>
-Example: <ask_user question="Which test framework?">Mocha, Jest, Node Native</ask_user>
+## <ask_user question="[Question?]">[option1; option2; ...]</ask_user>
+Example: <ask_user question="Which test framework?">Mocha; Jest; Node Native</ask_user>
 
 ## <set path="[path/to/file]">[edit]</set> - Edit a file or entry
 Example: <set path="known://db_type">PostgreSQL</set>
