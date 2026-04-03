@@ -167,13 +167,13 @@ function resolveCommand(name, attrs, rawBody) {
 				replace,
 			};
 		}
-		// Body + body attr → bulk update (body filters, trimmed replaces)
+		// Body attr + body content → search/replace (attr is search, body is replace)
 		if (trimmed && a.body) {
 			return {
 				name,
 				path: a.path,
-				filter: a.body,
-				body: trimmed,
+				search: a.body,
+				replace: trimmed,
 				preview: a.preview,
 			};
 		}

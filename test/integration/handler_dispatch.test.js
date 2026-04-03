@@ -132,10 +132,10 @@ describe("Handler dispatch", () => {
 
 			const resultBody = await store.getBody(RUN_ID, "write://src/edit_me.js");
 			assert.ok(
-				resultBody.includes("SEARCH"),
-				"result has SEARCH/REPLACE block",
+				resultBody.includes("---") && resultBody.includes("+++"),
+				"result is a patch",
 			);
-			assert.ok(resultBody.includes("8080"), "result shows new content");
+			assert.ok(resultBody.includes("8080"), "patch shows new content");
 
 			// File entries → proposed
 			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });

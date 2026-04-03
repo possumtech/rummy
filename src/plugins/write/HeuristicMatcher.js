@@ -3,7 +3,7 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export function generateUnifiedDiff(filePath, oldContent, newContent) {
+export function generatePatch(filePath, oldContent, newContent) {
 	const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 	const oldPath = join(tmpdir(), `rummy_diff_old_${id}`);
 	const newPath = join(tmpdir(), `rummy_diff_new_${id}`);
@@ -57,7 +57,7 @@ export default class HeuristicMatcher {
 				fileContent.slice(0, useIdx) +
 				replaceBlock +
 				fileContent.slice(useIdx + searchBlock.length);
-			const patch = generateUnifiedDiff(filePath, fileContent, newContent);
+			const patch = generatePatch(filePath, fileContent, newContent);
 			const warning =
 				exactCount > 1
 					? `SEARCH block matched ${exactCount} locations. Edit was applied to the last occurrence. Use more surrounding context in future edits to avoid ambiguity.`
@@ -75,7 +75,7 @@ export default class HeuristicMatcher {
 			// Empty SEARCH = append REPLACE to end of file
 			const trailing = fileContent.endsWith("\n") ? "" : "\n";
 			const newContent = `${fileContent + trailing + replaceBlock}\n`;
-			const patch = generateUnifiedDiff(filePath, fileContent, newContent);
+			const patch = generatePatch(filePath, fileContent, newContent);
 			return { patch, newContent, warning: null, error: null };
 		}
 
@@ -163,7 +163,7 @@ export default class HeuristicMatcher {
 		];
 		const newContent = newFileLines.join("\n");
 
-		const patch = generateUnifiedDiff(filePath, fileContent, newContent);
+		const patch = generatePatch(filePath, fileContent, newContent);
 
 		if (fuzzyAmbiguous) {
 			warning =

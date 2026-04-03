@@ -161,6 +161,14 @@ export default {};
 			assert.strictEqual(commands[0].replace, "8080");
 		});
 
+		it("write: value attr healed to search/replace", () => {
+			const { commands } = XmlParser.parse(
+				'<write path="app.js" value=":AI[]">new code</write>',
+			);
+			assert.strictEqual(commands[0].search, ":AI[]");
+			assert.strictEqual(commands[0].replace, "new code");
+		});
+
 		it("write: search attr with replace attr takes precedence over body", () => {
 			const { commands } = XmlParser.parse(
 				'<write path="x.js" search="old" replace="new">ignored</write>',

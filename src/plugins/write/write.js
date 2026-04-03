@@ -1,6 +1,6 @@
 import KnownStore from "../../agent/KnownStore.js";
 import { storePatternResult } from "../helpers.js";
-import HeuristicMatcher from "./HeuristicMatcher.js";
+import HeuristicMatcher, { generatePatch } from "./HeuristicMatcher.js";
 
 const BOTH = new Set(["ask", "act"]);
 
@@ -48,15 +48,10 @@ async function handleWrite(entry, rummy) {
 
 	const scheme = KnownStore.scheme(target);
 	if (scheme === null) {
-		const tokenEst = ((entry.body?.length || 0) / 4) | 0;
-		await store.upsert(
-			runId,
-			turn,
-			entry.resultPath,
-			`${target} (new file, ${tokenEst} tokens)`,
-			"proposed",
-			{ attributes: { file: target, content: entry.body } },
-		);
+		const udiff = generatePatch(target, "", entry.body || "");
+		await store.upsert(runId, turn, entry.resultPath, udiff, "proposed", {
+			attributes: { file: target, patch: udiff },
+		});
 	} else if (attrs.filter || target.includes("*")) {
 		const matches = await store.getEntriesByPattern(
 			runId,
@@ -104,21 +99,13 @@ async function processEdit(store, runId, turn, entry, attrs) {
 		let patch = null;
 		let warning = null;
 		let error = null;
-		let searchText = null;
+		let _searchText = null;
 		let replaceText = null;
 
 		if (attrs.search != null) {
-			searchText = attrs.search;
+			_searchText = attrs.search;
 			replaceText = attrs.replace ?? "";
-			const isRegex = /[+(){}|\\$^*?[\]]/.test(attrs.search);
-			if (isRegex) {
-				const re = new RegExp(attrs.search, "g");
-				if (re.test(match.body)) {
-					patch = match.body.replace(re, replaceText);
-				} else {
-					error = `Search pattern not found in ${match.path}`;
-				}
-			} else if (match.body.includes(attrs.search)) {
+			if (match.body.includes(attrs.search)) {
 				patch = match.body.replaceAll(attrs.search, replaceText);
 			} else {
 				error = `"${attrs.search}" not found in ${match.path}`;
@@ -128,7 +115,7 @@ async function processEdit(store, runId, turn, entry, attrs) {
 			replaceText = attrs.blocks[0].replace;
 		} else if (match.body && attrs.blocks?.length > 0) {
 			const block = attrs.blocks[0];
-			searchText = block.search;
+			_searchText = block.search;
 			replaceText = block.replace;
 			const matched = HeuristicMatcher.matchAndPatch(
 				match.path,
@@ -143,31 +130,23 @@ async function processEdit(store, runId, turn, entry, attrs) {
 
 		const state = error ? "error" : match.scheme === null ? "proposed" : "pass";
 
-		const beforeTokens = match.tokens_full || 0;
-		const afterTokens = patch ? (patch.length / 4) | 0 : beforeTokens;
-		let body;
-		if (error) {
-			const block = searchText
-				? `\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
-				: "";
-			body = `${match.path} — ${error}${block}`;
-		} else if (searchText) {
-			body = `${match.path} (${beforeTokens} → ${afterTokens} tokens)\n<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`;
-		} else {
-			body = `${match.path} (${beforeTokens} → ${afterTokens} tokens)`;
-		}
+		const udiff = patch ? generatePatch(match.path, match.body, patch) : null;
 
-		await store.upsert(runId, turn, resultPath, body, state, {
-			attributes: {
-				file: match.path,
-				search: attrs.search,
-				replace: attrs.replace,
-				blocks: attrs.blocks,
-				patch,
-				warning,
-				error,
+		await store.upsert(
+			runId,
+			turn,
+			resultPath,
+			udiff || `${match.path} — ${error}`,
+			state,
+			{
+				attributes: {
+					file: match.path,
+					patch: udiff,
+					warning,
+					error,
+				},
 			},
-		});
+		);
 
 		if (state === "pass" && patch) {
 			await store.upsert(runId, turn, match.path, patch, match.state);

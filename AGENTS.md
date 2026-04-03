@@ -92,10 +92,70 @@ it does and why. The extraction is the cleanup.
 
 ---
 
+## Todo: Tool Rename — Lean Into Training Data
+
+Rename core tools to align with unix/programming primitives the model
+has deep training on. The tag name is in the model's output token
+stream — training synergy matters here because we use XML tags, not
+native tool calling.
+
+| Current | New | Why |
+|---------|-----|-----|
+| `read` | `get` | Universal primitive. `get src/app.js` = load into context |
+| `write` | `set` | Universal primitive. `set src/app.js` = modify this entry |
+| `write` (naked) | `known` | Explicit knowledge save. `<known>OAuth2 PKCE</known>` |
+| `delete` | `rm` | Unix. Unambiguous |
+| `move` | `mv` | Unix |
+| `copy` | `cp` | Unix |
+| `run` | `sh` | Unix. Models know `sh` = shell execution |
+| `store` | `store` | No better analog |
+| `env` | `env` | Already unix |
+| `search` | `search` | No better analog |
+| `ask_user` | `ask_user` | No better analog |
+| `summarize` | `summarize` | No better analog |
+| `update` | `update` | No better analog |
+| `unknown` | `unknown` | No better analog |
+
+Breaking change: schemes table, XmlParser ALL_TOOLS, every plugin
+registration, sacred prompt, tool header format, RPC, client, all tests.
+
+### Tool result header format
+
+Consistent unix-style header on every tool result projection:
+
+```
+set src/app.js pass 3/45 lines 120→125 tokens
+<<<<<<< SEARCH
+const port = 3000;
+=======
+const port = 8080;
+>>>>>>> REPLACE
+```
+
+```
+get src/app.js loaded 120 tokens
+rm src/old.js proposed
+mv known://draft known://final pass
+cp .env known://env_snapshot pass
+sh npm test proposed
+env node --version pass
+store src/app.js stored
+search "query" 10 results
+known OAuth2 PKCE pass
+```
+
+### Write entry contract
+
+- `body` = original content (reconstructable with attributes.patch)
+- `attributes.patch` = udiff for client (unix patch format)
+- `attributes.merge` = git conflict for model view (SEARCH/REPLACE)
+- Projection = header + merge block
+- Input: accept all formats (hedbergian). Output: always udiff to client, always git conflict to model.
+
+---
+
 ## Todo: Cleanup
 
-- [ ] Delete `PromptManager.js` (replaced by system tool)
-- [ ] Audit all imports for dead references
 - [ ] Rename `continuation` to `progress` throughout ContextAssembler
 - [ ] Remove "bucket" terminology from code comments
 
