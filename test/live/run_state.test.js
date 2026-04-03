@@ -149,7 +149,10 @@ describe("E2E: run/state notification shape", () => {
 			for (const p of state.proposed) {
 				assert.ok(p.path, "proposed has key");
 				assert.ok(p.type, `proposed has type: ${JSON.stringify(p)}`);
-				assert.ok(p.attributes, `proposed has attributes: ${JSON.stringify(p)}`);
+				assert.ok(
+					p.attributes,
+					`proposed has attributes: ${JSON.stringify(p)}`,
+				);
 			}
 		}
 	});

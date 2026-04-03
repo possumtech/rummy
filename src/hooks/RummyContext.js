@@ -35,8 +35,8 @@ export default class RummyContext {
 		return this.#context.type;
 	}
 
-	get sessionId() {
-		return this.#context.sessionId;
+	get projectId() {
+		return this.#context.projectId;
 	}
 
 	get sequence() {

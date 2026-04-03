@@ -12,8 +12,7 @@ export default class ClientConnection {
 	#rpcLogPending = new Map();
 	#context = {
 		projectId: null,
-		sessionId: null,
-		projectPath: null,
+		projectRoot: null,
 	};
 
 	constructor(ws, db, hooks) {
@@ -31,7 +30,7 @@ export default class ClientConnection {
 
 	#setupNotifications() {
 		this.#hooks.run.progress.on((payload) => {
-			if (payload.sessionId === this.#context.sessionId) {
+			if (payload.projectId === this.#context.projectId) {
 				this.#sendNotification("run/progress", {
 					run: payload.run,
 					turn: payload.turn,
@@ -41,7 +40,7 @@ export default class ClientConnection {
 		});
 
 		this.#hooks.ui.render.on((payload) => {
-			if (payload.sessionId === this.#context.sessionId) {
+			if (payload.projectId === this.#context.projectId) {
 				this.#sendNotification("ui/render", {
 					text: payload.text,
 					append: payload.append,
@@ -50,7 +49,7 @@ export default class ClientConnection {
 		});
 
 		this.#hooks.ui.notify.on((payload) => {
-			if (payload.sessionId === this.#context.sessionId) {
+			if (payload.projectId === this.#context.projectId) {
 				this.#sendNotification("ui/notify", {
 					text: payload.text,
 					level: payload.level,
@@ -59,7 +58,7 @@ export default class ClientConnection {
 		});
 
 		this.#hooks.run.state.on((payload) => {
-			if (payload.sessionId === this.#context.sessionId) {
+			if (payload.projectId === this.#context.projectId) {
 				this.#sendNotification("run/state", {
 					run: payload.run,
 					turn: payload.turn,
@@ -81,12 +80,10 @@ export default class ClientConnection {
 			db: this.#db,
 			rpcRegistry: this.#rpcRegistry,
 			projectId: this.#context.projectId,
-			sessionId: this.#context.sessionId,
-			projectPath: this.#context.projectPath,
-			setContext: (projectId, sessionId, projectPath) => {
+			projectRoot: this.#context.projectRoot,
+			setContext: (projectId, projectRoot) => {
 				this.#context.projectId = projectId;
-				this.#context.sessionId = sessionId;
-				this.#context.projectPath = projectPath;
+				this.#context.projectRoot = projectRoot;
 			},
 		};
 	}
@@ -112,12 +109,12 @@ export default class ClientConnection {
 				method,
 				params,
 				id,
-				sessionId: this.#context.sessionId,
+				projectId: this.#context.projectId,
 			});
 
 			try {
 				const logRow = await this.#db.log_rpc_call.get({
-					session_id: this.#context.sessionId || null,
+					project_id: this.#context.projectId || null,
 					method,
 					rpc_id: id,
 					params: params ? JSON.stringify(params) : null,
@@ -125,13 +122,12 @@ export default class ClientConnection {
 				if (logRow) this.#rpcLogPending.set(id, logRow.id);
 			} catch {}
 
-			// rpc/discover is an alias for discover
 			const resolvedMethod = method === "rpc/discover" ? "discover" : method;
 			const registration = this.#rpcRegistry.get(resolvedMethod);
 			if (!registration)
 				throw new Error(msg("error.method_not_found", { method }));
 
-			if (registration.requiresInit && !this.#context.sessionId) {
+			if (registration.requiresInit && !this.#context.projectId) {
 				throw new Error(msg("error.not_initialized"));
 			}
 

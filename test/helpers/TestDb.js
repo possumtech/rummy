@@ -32,23 +32,34 @@ export default class TestDb {
 	}
 
 	async seedRun({
-		path = "/tmp/test",
 		name = "Test",
-		clientId = "c1",
+		projectRoot = "/tmp/test",
 		alias = "test_1",
 	} = {}) {
-		const project = await this.db.upsert_project.get({ path, name });
-		const session = await this.db.create_session.get({
-			project_id: project.id,
-			client_id: clientId,
+		const project = await this.db.upsert_project.get({
+			name,
+			project_root: projectRoot,
+			config_path: null,
 		});
 		const run = await this.db.create_run.get({
-			session_id: session.id,
+			project_id: project.id,
 			parent_run_id: null,
-			config: "{}",
+			model_id: null,
 			alias,
+			temperature: null,
+			persona: null,
+			context_limit: null,
 		});
-		return { projectId: project.id, sessionId: session.id, runId: run.id };
+		return { projectId: project.id, runId: run.id };
+	}
+
+	async seedModel({ alias = "test_model", actual = "test/model" } = {}) {
+		const model = await this.db.upsert_model.get({
+			alias,
+			actual,
+			context_length: 32000,
+		});
+		return { modelId: model.id };
 	}
 
 	async cleanup() {

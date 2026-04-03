@@ -1,6 +1,6 @@
 -- PREP: log_rpc_call
-INSERT INTO rpc_log (session_id, method, rpc_id, params)
-VALUES (:session_id, :method, :rpc_id, :params)
+INSERT INTO rpc_log (project_id, method, rpc_id, params)
+VALUES (:project_id, :method, :rpc_id, :params)
 RETURNING id;
 
 -- PREP: log_rpc_result
@@ -14,15 +14,15 @@ SET error = :error
 WHERE id = :id;
 
 -- PREP: get_rpc_log
-SELECT id, session_id, method, rpc_id, params, result, error, created_at
+SELECT id, project_id, method, rpc_id, params, result, error, created_at
 FROM rpc_log
-WHERE session_id = :session_id
+WHERE project_id = :project_id
 ORDER BY id DESC
 LIMIT :limit;
 
 -- PREP: get_rpc_log_by_method
-SELECT id, session_id, method, rpc_id, params, result, error, created_at
+SELECT id, project_id, method, rpc_id, params, result, error, created_at
 FROM rpc_log
-WHERE session_id = :session_id AND method = :method
+WHERE project_id = :project_id AND method = :method
 ORDER BY id DESC
 LIMIT :limit;

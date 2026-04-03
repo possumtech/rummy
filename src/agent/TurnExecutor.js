@@ -26,7 +26,7 @@ export default class TurnExecutor {
 	async execute({
 		mode,
 		project,
-		sessionId,
+		projectId,
 		currentRunId,
 		currentAlias,
 		requestedModel,
@@ -87,7 +87,7 @@ export default class TurnExecutor {
 		// Build system prompt before hooks (static for the turn)
 		const systemPrompt = await PromptManager.getSystemPrompt(mode, {
 			db: this.#db,
-			sessionId,
+			runId: currentRunId,
 			hooks: this.#hooks,
 		});
 
@@ -120,7 +120,7 @@ export default class TurnExecutor {
 		await this.#hooks.processTurn(rummy);
 
 		await this.#hooks.run.progress.emit({
-			sessionId,
+			projectId,
 			run: currentAlias,
 			turn,
 			status: "thinking",
@@ -139,7 +139,7 @@ export default class TurnExecutor {
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
-			sessionId,
+			projectId,
 			runId: currentRunId,
 		});
 
@@ -179,7 +179,7 @@ export default class TurnExecutor {
 		);
 		const result = await this.#hooks.llm.response.filter(rawResult, {
 			model: requestedModel,
-			sessionId,
+			projectId,
 			runId: currentRunId,
 		});
 		await this.#hooks.llm.request.completed.emit({
@@ -204,7 +204,7 @@ export default class TurnExecutor {
 		);
 
 		await this.#hooks.run.progress.emit({
-			sessionId,
+			projectId,
 			run: currentAlias,
 			turn,
 			status: "processing",

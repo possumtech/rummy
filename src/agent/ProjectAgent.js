@@ -1,139 +1,161 @@
+import { isAbsolute, relative } from "node:path";
+import ProjectContext from "../fs/ProjectContext.js";
 import LlmProvider from "../llm/LlmProvider.js";
 import AgentLoop from "./AgentLoop.js";
 import KnownStore from "./KnownStore.js";
-import SessionManager from "./SessionManager.js";
 import TurnExecutor from "./TurnExecutor.js";
 
 export default class ProjectAgent {
 	#db;
 	#hooks;
-	#sessionManager;
 	#agentLoop;
+	#knownStore;
 	#llm;
 
 	constructor(db, hooks) {
 		this.#db = db;
 		this.#hooks = hooks;
-		this.#sessionManager = new SessionManager(db, hooks);
-
 		this.#llm = new LlmProvider();
-		const knownStore = new KnownStore(db);
+		this.#knownStore = new KnownStore(db);
 
-		const turnExecutor = new TurnExecutor(db, this.#llm, hooks, knownStore);
-
+		const turnExecutor = new TurnExecutor(
+			db,
+			this.#llm,
+			hooks,
+			this.#knownStore,
+		);
 		this.#agentLoop = new AgentLoop(
 			db,
 			this.#llm,
 			hooks,
 			turnExecutor,
-			knownStore,
-			this.#sessionManager,
+			this.#knownStore,
 		);
 	}
 
-	async init(projectPath, projectName, clientId, projectBufferFiles = []) {
-		return this.#sessionManager.init(
-			projectPath,
+	async init(projectName, projectRoot, configPath) {
+		await this.#hooks.project.init.started.emit({
 			projectName,
-			clientId,
-			projectBufferFiles,
-		);
+			projectRoot,
+		});
+
+		const projectRow = await this.#db.upsert_project.get({
+			name: projectName,
+			project_root: projectRoot,
+			config_path: configPath || null,
+		});
+		const projectId = projectRow.id;
+
+		const { default: GitProvider } = await import("../fs/GitProvider.js");
+		const gitRoot = await GitProvider.detectRoot(projectRoot);
+		const headHash = gitRoot ? await GitProvider.getHeadHash(gitRoot) : null;
+
+		const result = {
+			projectId,
+			context: { gitRoot, headHash },
+		};
+
+		await this.#hooks.project.init.completed.emit({
+			...result,
+			projectRoot,
+			db: this.#db,
+		});
+		return result;
 	}
+
+	// --- File constraints ---
 
 	async syncBuffered(projectId, files) {
-		return this.#sessionManager.syncBuffered(projectId, files);
+		for (const path of files) {
+			await this.#db.upsert_file_constraint.run({
+				project_id: projectId,
+				pattern: path,
+				visibility: "active",
+			});
+		}
 	}
 
-	async getFiles(projectPath) {
-		return this.#sessionManager.getFiles(projectPath);
+	async getFiles(projectRoot) {
+		const ctx = await ProjectContext.open(projectRoot);
+		const mappable = await ctx.getMappableFiles();
+		return mappable.map((path) => ({ path }));
 	}
 
-	async fileStatus(projectId, path) {
-		return this.#sessionManager.fileStatus(projectId, path);
-	}
-
-	async drop(projectId, pattern) {
-		return this.#sessionManager.drop(projectId, pattern);
+	async fileStatus(projectId, pattern) {
+		const path = await this.#normalizePath(projectId, pattern);
+		const run = await this.#db.get_latest_run.get({ project_id: projectId });
+		if (!run) return [];
+		const rows = await this.#knownStore.getFileStatesByPattern(run.id, path);
+		const constraints = await this.#db.get_file_constraints.all({
+			project_id: projectId,
+		});
+		const constraintMap = new Map(
+			constraints.map((c) => [c.pattern, c.visibility]),
+		);
+		return rows.map((r) => ({
+			path: r.path,
+			state: constraintMap.get(r.path) || r.state,
+			turn: r.turn,
+		}));
 	}
 
 	async activate(projectId, pattern) {
-		return this.#sessionManager.activate(projectId, pattern);
+		return this.#setConstraint(projectId, pattern, "active");
 	}
 
 	async readOnly(projectId, pattern) {
-		return this.#sessionManager.readOnly(projectId, pattern);
+		return this.#setConstraint(projectId, pattern, "readonly");
 	}
 
 	async ignore(projectId, pattern) {
-		return this.#sessionManager.ignore(projectId, pattern);
+		return this.#setConstraint(projectId, pattern, "ignore");
 	}
 
-	async startRun(sessionId, config) {
-		return this.#sessionManager.startRun(sessionId, config);
+	async drop(projectId, pattern) {
+		const path = await this.#normalizePath(projectId, pattern);
+		if (!path) return { status: "ok" };
+
+		await this.#db.delete_file_constraint.run({
+			project_id: projectId,
+			pattern: path,
+		});
+
+		return { status: "ok" };
 	}
 
-	async setSystemPrompt(sessionId, text) {
-		return this.#sessionManager.setSystemPrompt(sessionId, text);
+	async #normalizePath(projectId, path) {
+		if (!isAbsolute(path)) return path;
+		const project = await this.#db.get_project_by_id.get({ id: projectId });
+		if (!project) return path;
+		return relative(project.project_root, path);
 	}
 
-	async setPersona(sessionId, text) {
-		return this.#sessionManager.setPersona(sessionId, text);
+	async #setConstraint(projectId, pattern, constraint) {
+		const path = await this.#normalizePath(projectId, pattern);
+		if (!path) return { status: "ok" };
+
+		await this.#db.upsert_file_constraint.run({
+			project_id: projectId,
+			pattern: path,
+			visibility: constraint,
+		});
+
+		if (constraint === "ignore") {
+			const runs = await this.#db.get_all_runs.all({ project_id: projectId });
+			for (const run of runs) {
+				await this.#knownStore.demoteByPattern(run.id, path, null);
+			}
+		}
+
+		return { status: "ok" };
 	}
 
-	async addSkill(sessionId, name) {
-		return this.#sessionManager.addSkill(sessionId, name);
-	}
+	// --- Run operations ---
 
-	async removeSkill(sessionId, name) {
-		return this.#sessionManager.removeSkill(sessionId, name);
-	}
-
-	async getSkills(sessionId) {
-		return this.#sessionManager.getSkills(sessionId);
-	}
-
-	async setTemperature(sessionId, temperature) {
-		return this.#sessionManager.setTemperature(sessionId, temperature);
-	}
-
-	async getTemperature(sessionId) {
-		return this.#sessionManager.getTemperature(sessionId);
-	}
-
-	async setContextLimit(sessionId, limit) {
-		return this.#sessionManager.setContextLimit(sessionId, limit);
-	}
-
-	async getContextLimit(sessionId) {
-		return this.#sessionManager.getContextLimit(sessionId);
-	}
-
-	async getModelContextSize(model) {
-		return this.#llm.getContextSize(model);
-	}
-
-	async getModelInfo(sessionId, alias) {
-		const resolved = LlmProvider.resolve(alias);
-		const contextSize = await this.#llm.getContextSize(alias);
-		const limit = sessionId
-			? await this.#sessionManager.getContextLimit(sessionId)
-			: null;
-		const effective = limit
-			? Math.min(limit, contextSize || limit)
-			: contextSize;
-		return {
-			alias,
-			model: resolved,
-			context_length: contextSize,
-			limit,
-			effective,
-		};
-	}
-
-	async ask(sessionId, model, prompt, run = null, options = {}) {
+	async ask(projectId, model, prompt, run = null, options = {}) {
 		return this.#agentLoop.run(
 			"ask",
-			sessionId,
+			projectId,
 			model,
 			prompt,
 			null,
@@ -142,10 +164,10 @@ export default class ProjectAgent {
 		);
 	}
 
-	async act(sessionId, model, prompt, run = null, options = {}) {
+	async act(projectId, model, prompt, run = null, options = {}) {
 		return this.#agentLoop.run(
 			"act",
-			sessionId,
+			projectId,
 			model,
 			prompt,
 			null,
@@ -168,5 +190,21 @@ export default class ProjectAgent {
 
 	abortRun(runId) {
 		this.#agentLoop.abort(runId);
+	}
+
+	// --- Model info ---
+
+	async getModelContextSize(model) {
+		return this.#llm.getContextSize(model);
+	}
+
+	async getModelInfo(alias) {
+		const resolved = LlmProvider.resolve(alias);
+		const contextSize = await this.#llm.getContextSize(alias);
+		return {
+			alias,
+			model: resolved,
+			context_length: contextSize,
+		};
 	}
 }

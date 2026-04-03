@@ -1,67 +1,44 @@
 -- PREP: upsert_project
-INSERT INTO projects (path, name)
-VALUES (:path, :name)
-ON CONFLICT (path) DO UPDATE SET
-	name = COALESCE(excluded.name, projects.name)
+INSERT INTO projects (name, project_root, config_path)
+VALUES (:name, :project_root, :config_path)
+ON CONFLICT (name) DO UPDATE SET
+	project_root = COALESCE(excluded.project_root, projects.project_root)
+	, config_path = COALESCE(excluded.config_path, projects.config_path)
 RETURNING id;
 
 -- PREP: get_project_by_id
-SELECT id, path, name, last_git_hash, last_indexed_at, created_at
+SELECT id, name, project_root, config_path, created_at
 FROM projects
 WHERE id = :id;
 
--- PREP: get_project_by_path
-SELECT id, path, name, last_git_hash, last_indexed_at, created_at
+-- PREP: get_project_by_name
+SELECT id, name, project_root, config_path, created_at
 FROM projects
-WHERE path = :path;
+WHERE name = :name;
 
--- PREP: create_session
-INSERT INTO sessions (project_id, client_id)
-VALUES (:project_id, :client_id)
+-- PREP: upsert_model
+INSERT INTO models (alias, actual, context_length)
+VALUES (:alias, :actual, :context_length)
+ON CONFLICT (alias) DO UPDATE SET
+	actual = excluded.actual
+	, context_length = COALESCE(excluded.context_length, models.context_length)
 RETURNING id;
 
--- PREP: get_session_by_id
-SELECT
-	id, project_id, client_id, persona
-	, system_prompt, temperature, context_limit, created_at
-FROM sessions
-WHERE id = :id;
+-- PREP: get_model_by_alias
+SELECT id, alias, actual, context_length
+FROM models
+WHERE alias = :alias;
 
--- PREP: get_session_temperature
-SELECT temperature FROM sessions WHERE id = :id;
+-- PREP: get_models
+SELECT id, alias, actual, context_length
+FROM models
+ORDER BY alias;
 
--- PREP: update_session_temperature
-UPDATE sessions SET temperature = :temperature WHERE id = :id;
-
--- PREP: get_session_context_limit
-SELECT context_limit FROM sessions WHERE id = :id;
-
--- PREP: update_session_context_limit
-UPDATE sessions SET context_limit = :context_limit WHERE id = :id;
-
--- PREP: update_session_system_prompt
-UPDATE sessions SET system_prompt = :system_prompt WHERE id = :id;
-
--- PREP: update_session_persona
-UPDATE sessions SET persona = :persona WHERE id = :id;
-
--- PREP: insert_session_skill
-INSERT OR IGNORE INTO session_skills (session_id, name)
-VALUES (:session_id, :name);
-
--- PREP: delete_session_skill
-DELETE FROM session_skills WHERE session_id = :session_id AND name = :name;
-
--- PREP: get_session_skills
-SELECT name FROM session_skills WHERE session_id = :session_id;
+-- PREP: update_model_context_length
+UPDATE models SET context_length = :context_length WHERE alias = :alias;
 
 -- PREP: purge_old_runs
--- Cascades handle turns and known_entries.
 DELETE FROM runs
 WHERE
 	status IN ('completed', 'aborted')
 	AND created_at < datetime('now', '-' || :retention_days || ' days');
-
--- PREP: purge_stale_sessions
-DELETE FROM sessions
-WHERE id NOT IN (SELECT DISTINCT session_id FROM runs);

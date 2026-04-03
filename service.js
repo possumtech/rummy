@@ -101,13 +101,31 @@ async function main() {
 		functions: sqlFunctions,
 	});
 
-	// 6. Database Hygiene (run on startup)
+	// 6. Bootstrap models from env vars
+	{
+		const modelAliases = [];
+		for (const key of Object.keys(process.env)) {
+			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_MODEL_DEFAULT") continue;
+			const alias = key.replace("RUMMY_MODEL_", "");
+			const actual = process.env[key];
+			await db.upsert_model.get({
+				alias,
+				actual,
+				context_length: null,
+			});
+			modelAliases.push(alias);
+		}
+		if (modelAliases.length > 0) {
+			console.log(`[RUMMY] Models: ${modelAliases.join(", ")}`);
+		}
+	}
+
+	// 6b. Database Hygiene
 	const { statSync } = await import("node:fs");
 	try {
 		const dbSizeBefore = statSync(dbPath).size;
 		const retentionDays = Number.parseInt(process.env.RUMMY_RETENTION_DAYS || "31", 10);
 		await db.purge_old_runs.run({ retention_days: retentionDays });
-		await db.purge_stale_sessions.run({});
 		const dbSizeAfter = statSync(dbPath).size;
 		const dbSizeMB = (dbSizeAfter / 1024 / 1024).toFixed(2);
 		const freed = dbSizeBefore - dbSizeAfter;
@@ -130,20 +148,7 @@ async function main() {
 		console.log(`[RUMMY] Recovered ${aborted.changes} stuck run(s)`);
 	}
 
-	// 7. Validate model aliases
-	{
-		const aliases = [];
-		for (const key of Object.keys(process.env)) {
-			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_MODEL_DEFAULT") continue;
-			const alias = key.replace("RUMMY_MODEL_", "");
-			aliases.push(`${alias} → ${process.env[key]}`);
-		}
-		if (aliases.length > 0) {
-			console.log(`[RUMMY] Models: ${aliases.join(", ")}`);
-		}
-	}
-
-	// 8. Start RPC Server
+	// 7. Start RPC Server
 	const port = Number.parseInt(process.env.PORT);
 	const server = new SocketServer(db, { port, hooks });
 

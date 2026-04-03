@@ -10,23 +10,14 @@ export default class AgentLoop {
 	#hooks;
 	#turnExecutor;
 	#knownStore;
-	#sessionManager;
 	#activeRuns = new Map();
 
-	constructor(
-		db,
-		llmProvider,
-		hooks,
-		turnExecutor,
-		knownStore,
-		sessionManager,
-	) {
+	constructor(db, llmProvider, hooks, turnExecutor, knownStore) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#turnExecutor = turnExecutor;
 		this.#knownStore = knownStore;
-		this.#sessionManager = sessionManager;
 	}
 
 	abort(runId) {
@@ -62,8 +53,8 @@ export default class AgentLoop {
 		return parts.join("\n");
 	}
 
-	async #ensureRun(sessionId, model, run, options) {
-		const noContext = options?.noContext === true;
+	async #ensureRun(projectId, model, run, options) {
+		const _noContext = options?.noContext === true;
 		const isFork = options?.fork === true;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 
@@ -73,10 +64,13 @@ export default class AgentLoop {
 				throw new Error(msg("error.run_not_found", { runId: run }));
 			const alias = await this.#generateAlias(requestedModel);
 			const runRow = await this.#db.create_run.get({
-				session_id: sessionId,
+				project_id: projectId,
 				parent_run_id: existingRun.id,
-				config: JSON.stringify({ model: requestedModel, noContext }),
+				model_id: requestedModel,
 				alias,
+				temperature: options?.temperature ?? null,
+				persona: options?.persona ?? null,
+				context_limit: options?.contextLimit ?? null,
 			});
 			await this.#db.fork_known_entries.run({
 				new_run_id: runRow.id,
@@ -107,17 +101,20 @@ export default class AgentLoop {
 
 		const alias = await this.#generateAlias(requestedModel);
 		const runRow = await this.#db.create_run.get({
-			session_id: sessionId,
+			project_id: projectId,
 			parent_run_id: null,
-			config: JSON.stringify({ model: requestedModel, noContext }),
+			model_id: requestedModel,
 			alias,
+			temperature: options?.temperature ?? null,
+			persona: options?.persona ?? null,
+			context_limit: options?.contextLimit ?? null,
 		});
 		return { runId: runRow.id, alias };
 	}
 
 	async run(
 		mode,
-		sessionId,
+		projectId,
 		model,
 		prompt,
 		projectBufferFiles = null,
@@ -126,17 +123,13 @@ export default class AgentLoop {
 	) {
 		const hook = mode === "ask" ? this.#hooks.ask : this.#hooks.act;
 		await hook.started.emit({
-			sessionId,
+			projectId,
 			model,
 			prompt,
 			projectBufferFiles,
 			run,
 		});
 
-		const sessions = await this.#db.get_session_by_id.all({ id: sessionId });
-		if (!sessions || sessions.length === 0)
-			throw new Error(msg("error.session_not_found", { sessionId }));
-		const projectId = sessions[0].project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 		if (!project)
 			throw new Error(msg("error.project_not_found", { projectId }));
@@ -144,16 +137,7 @@ export default class AgentLoop {
 		const noContext = options?.noContext === true;
 		const requestedModel = model || process.env.RUMMY_MODEL_DEFAULT;
 
-		if (options?.temperature === undefined) {
-			const tempRow = await this.#db.get_session_temperature.get({
-				id: sessionId,
-			});
-			if (tempRow?.temperature !== null && tempRow?.temperature !== undefined) {
-				options = { ...options, temperature: tempRow.temperature };
-			}
-		}
-
-		const runInfo = await this.#ensureRun(sessionId, model, run, options);
+		const runInfo = await this.#ensureRun(projectId, model, run, options);
 		if (runInfo.blocked) {
 			return {
 				run: runInfo.alias,
@@ -165,32 +149,28 @@ export default class AgentLoop {
 
 		const { runId: currentRunId, alias: currentAlias } = runInfo;
 
-		// Enqueue the prompt
 		await this.#db.enqueue_prompt.get({
 			run_id: currentRunId,
-			session_id: sessionId,
 			mode,
-			model: requestedModel,
+			model_id: requestedModel,
 			prompt: prompt || "",
 			config: JSON.stringify({ noContext, temperature: options?.temperature }),
 		});
 
-		// If another loop is active for this run, the prompt is queued — return
 		if (this.#activeRuns.has(currentRunId)) {
 			return { run: currentAlias, status: "queued" };
 		}
 
-		// Process the queue
 		return this.#drainQueue(
 			currentRunId,
 			currentAlias,
-			sessionId,
+			projectId,
 			project,
 			options,
 		);
 	}
 
-	async #drainQueue(currentRunId, currentAlias, sessionId, project, options) {
+	async #drainQueue(currentRunId, currentAlias, projectId, project, options) {
 		while (true) {
 			const queued = await this.#db.claim_next_prompt.get({
 				run_id: currentRunId,
@@ -201,10 +181,10 @@ export default class AgentLoop {
 			const result = await this.#executeLoop({
 				mode: queued.mode,
 				project,
-				sessionId,
+				projectId,
 				currentRunId,
 				currentAlias,
-				requestedModel: queued.model || process.env.RUMMY_MODEL_DEFAULT,
+				requestedModel: queued.model_id || process.env.RUMMY_MODEL_DEFAULT,
 				prompt: queued.prompt,
 				noContext: promptConfig.noContext || false,
 				options: { ...options, temperature: promptConfig.temperature },
@@ -216,11 +196,9 @@ export default class AgentLoop {
 				result: JSON.stringify(result),
 			});
 
-			// If the loop ended with proposals, stop draining — client must resolve first
 			if (result.status === "proposed") return result;
 		}
 
-		// No more prompts — return last state
 		const runRow = await this.#db.get_run_by_alias.get({ alias: currentAlias });
 		return { run: currentAlias, status: runRow?.status || "completed" };
 	}
@@ -228,7 +206,7 @@ export default class AgentLoop {
 	async #executeLoop({
 		mode,
 		project,
-		sessionId,
+		projectId,
 		currentRunId,
 		currentAlias,
 		requestedModel,
@@ -247,11 +225,8 @@ export default class AgentLoop {
 
 		const modelContextSize =
 			await this.#llmProvider.getContextSize(requestedModel);
-		const limitRow = await this.#db.get_session_context_limit.get({
-			id: sessionId,
-		});
-		const contextSize = limitRow?.context_limit
-			? Math.min(limitRow.context_limit, modelContextSize)
+		const contextSize = runRow.context_limit
+			? Math.min(runRow.context_limit, modelContextSize)
 			: modelContextSize;
 
 		let loopIteration = 0;
@@ -274,12 +249,11 @@ export default class AgentLoop {
 						status: "aborted",
 						turn: loopIteration,
 					};
-					await hook.completed.emit({ sessionId, ...out });
+					await hook.completed.emit({ projectId, ...out });
 					return out;
 				}
 				loopIteration++;
 
-				// Build turn prompt
 				let turnPrompt;
 				if (loopIteration === 1) {
 					turnPrompt = prompt;
@@ -296,7 +270,7 @@ export default class AgentLoop {
 				const result = await this.#turnExecutor.execute({
 					mode,
 					project,
-					sessionId,
+					projectId,
 					currentRunId,
 					currentAlias,
 					requestedModel,
@@ -307,7 +281,6 @@ export default class AgentLoop {
 					signal: controller.signal,
 				});
 
-				// Build and emit run/state notification
 				const runUsage = await this.#db.get_run_usage.get({
 					run_id: currentRunId,
 				});
@@ -322,7 +295,7 @@ export default class AgentLoop {
 					.at(-1);
 
 				await this.#hooks.run.state.emit({
-					sessionId,
+					projectId,
 					run: currentAlias,
 					turn: result.turn,
 					status: unresolved.length > 0 ? "proposed" : "running",
@@ -360,12 +333,12 @@ export default class AgentLoop {
 						turn: result.turn,
 						proposed: unresolved,
 					};
-					await hook.completed.emit({ sessionId, ...out });
+					await hook.completed.emit({ projectId, ...out });
 					return out;
 				}
 
 				await this.#hooks.run.step.completed.emit({
-					sessionId,
+					projectId,
 					run: currentAlias,
 					turn: result.turn,
 					flags: result.flags,
@@ -395,14 +368,13 @@ export default class AgentLoop {
 						turn: result.turn,
 						reason: repetition.reason,
 					};
-					await hook.completed.emit({ sessionId, ...out });
+					await hook.completed.emit({ projectId, ...out });
 					return out;
 				}
 
 				const progress = healer.assessProgress(result);
 				if (progress.continue) continue;
 
-				// Stalled — force complete
 				await this.#db.update_run_status.run({
 					id: currentRunId,
 					status: "completed",
@@ -412,7 +384,7 @@ export default class AgentLoop {
 					status: "completed",
 					turn: result.turn,
 				};
-				await hook.completed.emit({ sessionId, ...out });
+				await hook.completed.emit({ projectId, ...out });
 				return out;
 			}
 
@@ -425,7 +397,7 @@ export default class AgentLoop {
 				status: "completed",
 				turn: loopIteration,
 			};
-			await hook.completed.emit({ sessionId, ...out });
+			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} catch (err) {
 			if (controller.signal.aborted) {
@@ -441,7 +413,6 @@ export default class AgentLoop {
 				id: currentRunId,
 				status: "failed",
 			});
-			// Log the error to known_entries so it's queryable
 			try {
 				await this.#knownStore.upsert(
 					currentRunId,
@@ -457,7 +428,7 @@ export default class AgentLoop {
 				turn: loopIteration,
 				error: err.message,
 			};
-			await hook.completed.emit({ sessionId, ...out });
+			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} finally {
 			this.#activeRuns.delete(currentRunId);
@@ -492,14 +463,12 @@ export default class AgentLoop {
 			);
 			await this.#knownStore.resolve(runId, path, "pass", resolvedBody);
 
-			// If accepting a delete, erase the target path
 			if (path.startsWith("delete://")) {
 				if (attrs?.path) {
 					await this.#knownStore.remove(runId, attrs.path);
 				}
 			}
 
-			// If accepting a move to file, remove the source entry
 			if (path.startsWith("move://")) {
 				if (attrs?.isMove && attrs?.from) {
 					await this.#knownStore.remove(runId, attrs.from);
@@ -521,20 +490,17 @@ export default class AgentLoop {
 			};
 		}
 
-		// Any rejection stops the bus
 		if (await this.#knownStore.hasRejections(runId)) {
 			await this.#db.update_run_status.run({ id: runId, status: "completed" });
 			return { run: runAlias, status: "completed" };
 		}
 
-		// All accepted — check if model said it's done
 		const hasSummary = await this.#db.get_latest_summary.get({ run_id: runId });
 		if (hasSummary?.body) {
 			await this.#db.update_run_status.run({ id: runId, status: "completed" });
 			return { run: runAlias, status: "completed" };
 		}
 
-		// Model has more work — auto-resume
 		const latestPrompt = await this.#db.get_latest_prompt.get({
 			run_id: runId,
 		});
@@ -542,21 +508,17 @@ export default class AgentLoop {
 			? JSON.parse(latestPrompt.attributes).mode
 			: "ask";
 
-		const sessions = await this.#db.get_session_by_id.all({
-			id: runRow.session_id,
-		});
-		const projectId = sessions[0].project_id;
+		const projectId = runRow.project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
 
 		await this.#db.enqueue_prompt.get({
 			run_id: runId,
-			session_id: runRow.session_id,
 			mode: resumeMode,
-			model: null,
+			model_id: null,
 			prompt: "",
 			config: "{}",
 		});
-		return this.#drainQueue(runId, runAlias, runRow.session_id, project, {});
+		return this.#drainQueue(runId, runAlias, projectId, project, {});
 	}
 
 	async #composeResolvedContent(runId, path, attrs, output) {
@@ -569,7 +531,6 @@ export default class AgentLoop {
 			case "ask_user":
 				return `${attrs?.question || ""} Answered: ${output || ""}`;
 			case "write": {
-				// Preserve the SEARCH/REPLACE content from processEdit
 				const existing = await this.#knownStore.getBody(runId, path);
 				return existing || output || "";
 			}
@@ -585,7 +546,6 @@ export default class AgentLoop {
 
 		const nextTurn = runRow.next_turn;
 
-		// Write directly to known_entries so the next turn picks it up
 		await this.#knownStore.upsert(
 			runRow.id,
 			nextTurn,
@@ -602,33 +562,21 @@ export default class AgentLoop {
 			"info",
 		);
 
-		// If active, the next turn will see the ask:// and render <ask> instead of <progress>
 		if (this.#activeRuns.has(runRow.id)) {
 			return { run: runAlias, status: runRow.status, injected: "next_turn" };
 		}
 
-		// If idle, enqueue and drain to start a new loop
 		await this.#db.enqueue_prompt.get({
 			run_id: runRow.id,
-			session_id: runRow.session_id,
 			mode: "ask",
-			model: null,
+			model_id: null,
 			prompt: message,
 			config: "{}",
 		});
 
-		const sessions = await this.#db.get_session_by_id.all({
-			id: runRow.session_id,
-		});
-		const projectId = sessions[0].project_id;
+		const projectId = runRow.project_id;
 		const project = await this.#db.get_project_by_id.get({ id: projectId });
-		return this.#drainQueue(
-			runRow.id,
-			runAlias,
-			runRow.session_id,
-			project,
-			{},
-		);
+		return this.#drainQueue(runRow.id, runAlias, projectId, project, {});
 	}
 
 	async getRunHistory(runAlias) {

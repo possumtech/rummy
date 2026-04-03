@@ -1,29 +1,39 @@
 -- PREP: create_run
 INSERT INTO runs (
-	session_id
+	project_id
 	, parent_run_id
-	, config
+	, model_id
 	, alias
+	, temperature
+	, persona
+	, context_limit
 )
 VALUES (
-	:session_id
+	:project_id
 	, :parent_run_id
-	, :config
+	, :model_id
 	, :alias
+	, :temperature
+	, :persona
+	, :context_limit
 )
 RETURNING id;
 
 -- PREP: get_run_by_alias
-SELECT id, session_id, parent_run_id, status, config, alias, next_turn, created_at
+SELECT
+	id, project_id, parent_run_id, model_id, status, alias
+	, temperature, persona, context_limit, next_turn, created_at
 FROM runs
 WHERE alias = :alias;
 
 -- PREP: get_run_by_id
-SELECT id, session_id, parent_run_id, status, config, alias, next_turn, created_at
+SELECT
+	id, project_id, parent_run_id, model_id, status, alias
+	, temperature, persona, context_limit, next_turn, created_at
 FROM runs
 WHERE id = :id;
 
--- PREP: get_runs_by_session
+-- PREP: get_runs_by_project
 SELECT
 	r.alias
 	, r.status
@@ -39,7 +49,7 @@ SELECT
 		LIMIT 1
 	) AS summary
 FROM runs AS r
-WHERE r.session_id = :session_id
+WHERE r.project_id = :project_id
 ORDER BY r.created_at DESC;
 
 -- PREP: rename_run
@@ -49,6 +59,14 @@ WHERE id = :id AND alias = :old_alias;
 
 -- PREP: update_run_status
 UPDATE runs SET status = :status WHERE id = :id;
+
+-- PREP: update_run_config
+UPDATE runs SET
+	temperature = COALESCE(:temperature, temperature)
+	, persona = COALESCE(:persona, persona)
+	, context_limit = COALESCE(:context_limit, context_limit)
+	, model_id = COALESCE(:model_id, model_id)
+WHERE id = :id;
 
 -- PREP: next_turn
 UPDATE runs
@@ -70,24 +88,21 @@ WHERE run_id = :parent_run_id;
 -- PREP: get_active_runs
 SELECT r.id
 FROM runs AS r
-JOIN sessions AS s ON r.session_id = s.id
 WHERE
-	s.project_id = :project_id
+	r.project_id = :project_id
 	AND r.status IN ('queued', 'running', 'proposed');
 
 -- PREP: get_latest_run
 SELECT r.id
 FROM runs AS r
-JOIN sessions AS s ON r.session_id = s.id
-WHERE s.project_id = :project_id
+WHERE r.project_id = :project_id
 ORDER BY r.created_at DESC
 LIMIT 1;
 
 -- PREP: get_all_runs
 SELECT r.id
 FROM runs AS r
-JOIN sessions AS s ON r.session_id = s.id
-WHERE s.project_id = :project_id;
+WHERE r.project_id = :project_id;
 
 -- PREP: abort_stuck_runs
 UPDATE runs

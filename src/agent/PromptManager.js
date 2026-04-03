@@ -10,9 +10,8 @@ const promptCache = new Map();
 export default class PromptManager {
 	static async getSystemPrompt(
 		_mode,
-		{ db = null, sessionId = null, hooks = null } = {},
+		{ db = null, runId = null, hooks = null } = {},
 	) {
-		// Base system prompt from file (cached — single prompt.md for all modes)
 		let base = promptCache.get("system");
 		if (!base) {
 			try {
@@ -25,7 +24,6 @@ export default class PromptManager {
 
 		let prompt = base;
 
-		// Replace [%TOOLS%] with registered tool names
 		if (hooks?.tools) {
 			const toolNames = [...hooks.tools.names]
 				.map((t) => `\`<${t}/>\``)
@@ -33,11 +31,10 @@ export default class PromptManager {
 			prompt = prompt.replace("[%TOOLS%]", toolNames);
 		}
 
-		// Persona injection from session
-		if (db && sessionId) {
-			const session = await db.get_session_by_id.get({ id: sessionId });
-			if (session?.persona) {
-				return `${prompt}\n\n## Persona\n\n${session.persona}`;
+		if (db && runId) {
+			const runRow = await db.get_run_by_id.get({ id: runId });
+			if (runRow?.persona) {
+				return `${prompt}\n\n## Persona\n\n${runRow.persona}`;
 			}
 		}
 

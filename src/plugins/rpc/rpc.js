@@ -22,16 +22,19 @@ export default class CoreRpcPlugin {
 					params.clientId,
 					params.projectBufferFiles || [],
 				);
-				ctx.setContext(result.projectId, result.sessionId, params.projectPath);
+				ctx.setContext(
+					result.projectId,
+					params.projectRoot || params.projectPath,
+				);
 				return result;
 			},
-			description:
-				"Initialize project session. Returns { projectId, sessionId, context }.",
+			description: "Initialize project. Returns { projectId, context }.",
 			params: {
 				projectPath: "string — absolute path",
 				projectName: "string — display name",
 				clientId: "string — unique client ID",
 				projectBufferFiles: "string[] — open files in IDE (optional)",
+				projectRoot: "string? — override project root path",
 			},
 		});
 
@@ -44,7 +47,7 @@ export default class CoreRpcPlugin {
 		r.register("getModelInfo", {
 			handler: async (params, ctx) => {
 				return ctx.projectAgent.getModelInfo(
-					ctx.sessionId,
+					ctx.projectId,
 					params.model || process.env.RUMMY_MODEL_DEFAULT,
 				);
 			},
@@ -58,7 +61,7 @@ export default class CoreRpcPlugin {
 
 		r.register("getFiles", {
 			handler: async (_params, ctx) =>
-				ctx.projectAgent.getFiles(ctx.projectPath),
+				ctx.projectAgent.getFiles(ctx.projectRoot),
 			description:
 				"List project files with fidelity. Returns [{ path, fidelity, size }].",
 			requiresInit: true,
@@ -107,27 +110,20 @@ export default class CoreRpcPlugin {
 
 		r.register("startRun", {
 			handler: async (params, ctx) => {
-				const result = await ctx.projectAgent.startRun(ctx.sessionId, params);
+				const result = await ctx.projectAgent.startRun(ctx.projectId, params);
 				return { run: result.alias };
 			},
 			description: "Pre-create a run. Returns { run }.",
 			params: {
 				model: "string — optional model override",
-				projectBufferFiles: "string[] — open files in IDE",
 			},
 			requiresInit: true,
 		});
 
 		r.register("ask", {
 			handler: async (params, ctx) => {
-				if (params.projectBufferFiles && ctx.projectId) {
-					await ctx.projectAgent.syncBuffered(
-						ctx.projectId,
-						params.projectBufferFiles,
-					);
-				}
 				return ctx.projectAgent.ask(
-					ctx.sessionId,
+					ctx.projectId,
 					params.model,
 					params.prompt,
 					params.run,
@@ -152,14 +148,8 @@ export default class CoreRpcPlugin {
 
 		r.register("act", {
 			handler: async (params, ctx) => {
-				if (params.projectBufferFiles && ctx.projectId) {
-					await ctx.projectAgent.syncBuffered(
-						ctx.projectId,
-						params.projectBufferFiles,
-					);
-				}
 				return ctx.projectAgent.act(
-					ctx.sessionId,
+					ctx.projectId,
 					params.model,
 					params.prompt,
 					params.run,
@@ -201,7 +191,6 @@ export default class CoreRpcPlugin {
 				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
 				if (!runRow)
 					throw new Error(msg("error.run_not_found", { runId: params.run }));
-				// Signal the in-flight loop to stop
 				ctx.projectAgent.abortRun(runRow.id);
 				await ctx.db.update_run_status.run({
 					id: runRow.id,
@@ -258,10 +247,36 @@ export default class CoreRpcPlugin {
 			requiresInit: true,
 		});
 
+		r.register("run/config", {
+			handler: async (params, ctx) => {
+				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
+				if (!runRow)
+					throw new Error(msg("error.run_not_found", { runId: params.run }));
+				await ctx.db.update_run_config.run({
+					id: runRow.id,
+					temperature: params.temperature ?? null,
+					persona: params.persona ?? null,
+					context_limit: params.contextLimit ?? null,
+					model_id: params.model ?? null,
+				});
+				return { status: "ok" };
+			},
+			description:
+				"Update run configuration (temperature, persona, context_limit, model).",
+			params: {
+				run: "string — run alias",
+				temperature: "number? — 0 to 2",
+				persona: "string? — agent persona",
+				contextLimit: "number? — token count",
+				model: "string? — model alias",
+			},
+			requiresInit: true,
+		});
+
 		r.register("getRuns", {
 			handler: async (_params, ctx) => {
-				const rows = await ctx.db.get_runs_by_session.all({
-					session_id: ctx.sessionId,
+				const rows = await ctx.db.get_runs_by_project.all({
+					project_id: ctx.projectId,
 				});
 				return rows.map((r) => ({
 					run: r.alias,
@@ -272,7 +287,7 @@ export default class CoreRpcPlugin {
 				}));
 			},
 			description:
-				"List all runs for the current session with turn count and latest summary.",
+				"List all runs for the current project with turn count and latest summary.",
 			requiresInit: true,
 		});
 
@@ -310,6 +325,10 @@ export default class CoreRpcPlugin {
 					turn: run.next_turn - 1,
 					mode: promptAttrs?.mode || null,
 					status: run.status,
+					temperature: run.temperature,
+					persona: run.persona,
+					context_limit: run.context_limit,
+					model: run.model_id,
 					context: {
 						telemetry: {
 							prompt_tokens: telemetry.prompt_tokens,
@@ -344,119 +363,15 @@ export default class CoreRpcPlugin {
 				};
 			},
 			description:
-				"Get full run detail: context (telemetry, reasoning, content, history), last_user_prompt, last_summary. History entries use scheme:// paths: prompt:// = human prompt, progress:// = automated continuation, content:// = assistant text, reasoning:// = model thinking, summarize:// = turn summary, plus tool-specific schemes.",
+				"Get full run detail: config (temperature, persona, context_limit, model), context (telemetry, reasoning, content, history), last_user_prompt, last_summary.",
 			params: { run: "string — run alias" },
-			requiresInit: true,
-		});
-
-		r.register("systemPrompt", {
-			handler: async (params, ctx) => {
-				await ctx.projectAgent.setSystemPrompt(ctx.sessionId, params.text);
-				return { status: "ok" };
-			},
-			description: "Override the base system prompt for this session.",
-			params: { text: "string" },
-			requiresInit: true,
-		});
-
-		r.register("persona", {
-			handler: async (params, ctx) => {
-				await ctx.projectAgent.setPersona(ctx.sessionId, params.text);
-				return { status: "ok" };
-			},
-			description: "Set agent persona for this session.",
-			params: { text: "string" },
-			requiresInit: true,
-		});
-
-		r.register("skill/add", {
-			handler: async (params, ctx) => {
-				await ctx.projectAgent.addSkill(ctx.sessionId, params.name);
-				return { status: "ok" };
-			},
-			description: "Enable a named skill.",
-			params: { name: "string" },
-			requiresInit: true,
-		});
-
-		r.register("skill/remove", {
-			handler: async (params, ctx) => {
-				await ctx.projectAgent.removeSkill(ctx.sessionId, params.name);
-				return { status: "ok" };
-			},
-			description: "Disable a named skill.",
-			params: { name: "string" },
-			requiresInit: true,
-		});
-
-		r.register("getSkills", {
-			handler: async (_params, ctx) =>
-				ctx.projectAgent.getSkills(ctx.sessionId),
-			description: "List active skills. Returns string[].",
-			requiresInit: true,
-		});
-
-		r.register("setTemperature", {
-			handler: async (params, ctx) => {
-				const value = await ctx.projectAgent.setTemperature(
-					ctx.sessionId,
-					Number(params.temperature),
-				);
-				return { temperature: value };
-			},
-			description:
-				"Set session temperature (clamped 0-2). Returns { temperature }.",
-			params: { temperature: "number — 0 to 2" },
-			requiresInit: true,
-		});
-
-		r.register("getTemperature", {
-			handler: async (_params, ctx) => {
-				const value = await ctx.projectAgent.getTemperature(ctx.sessionId);
-				return { temperature: value };
-			},
-			description:
-				"Get session temperature. Returns { temperature } (null = env default).",
-			requiresInit: true,
-		});
-
-		r.register("setContextLimit", {
-			handler: async (params, ctx) => {
-				const value = await ctx.projectAgent.setContextLimit(
-					ctx.sessionId,
-					params.limit ? Number(params.limit) : null,
-				);
-				return { context_limit: value };
-			},
-			description:
-				"Override context window size (tokens). Clamps to min 1024. Pass null to reset to model default. Returns { context_limit }.",
-			params: { limit: "number | null — token count, or null to reset" },
-			requiresInit: true,
-		});
-
-		r.register("getContext", {
-			handler: async (params, ctx) => {
-				const model = params?.model || process.env.RUMMY_MODEL_DEFAULT;
-				const limit = await ctx.projectAgent.getContextLimit(ctx.sessionId);
-				let modelMax = null;
-				try {
-					modelMax = await ctx.projectAgent.getModelContextSize(model);
-				} catch {}
-				const effective = limit ? Math.min(limit, modelMax || limit) : modelMax;
-				return { model_max: modelMax, limit, effective };
-			},
-			description:
-				"Get context sizing. Returns { model_max (from provider), limit (session override or null), effective (actual size used) }.",
-			params: {
-				model: "string? — model alias, defaults to RUMMY_MODEL_DEFAULT",
-			},
 			requiresInit: true,
 		});
 
 		// Notifications
 		r.registerNotification(
 			"run/state",
-			"Turn state update. Payload: { run, turn, status, summary, history[], unknowns[], proposed[], telemetry: { modelAlias, model, temperature, context_size, prompt_tokens, completion_tokens, total_tokens, cost, context_distribution[] } }. Schemes: prompt:// = human prompt, progress:// = automated continuation, content:// = assistant text, reasoning:// = model thinking.",
+			"Turn state update. Payload: { run, turn, status, summary, history[], unknowns[], proposed[], telemetry: { modelAlias, model, temperature, context_size, prompt_tokens, completion_tokens, total_tokens, cost, context_distribution[] } }.",
 		);
 		r.registerNotification(
 			"run/progress",

@@ -47,51 +47,47 @@ INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier
 ('http', 'turn', 1, '["full","summary","stored"]', 1, 'file'),
 ('https', 'turn', 1, '["full","summary","stored"]', 1, 'file');
 
+-- Projects: top-level organizational unit.
 CREATE TABLE IF NOT EXISTS projects (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, path TEXT UNIQUE NOT NULL
-	, name TEXT
-	, last_git_hash TEXT
-	, last_indexed_at DATETIME
+	, name TEXT UNIQUE NOT NULL
+	, project_root TEXT
+	, config_path TEXT
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS sessions (
+-- Models: available LLM configurations.
+-- Populated from RUMMY_MODEL_* env vars at startup.
+CREATE TABLE IF NOT EXISTS models (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, project_id INTEGER NOT NULL REFERENCES projects (id) ON DELETE CASCADE
-	, client_id TEXT
-	, persona TEXT
-	, system_prompt TEXT
-	, temperature REAL CHECK (
-		temperature IS NULL OR (temperature >= 0 AND temperature <= 2)
-	)
-	, context_limit INTEGER CHECK (context_limit IS NULL OR context_limit >= 1024)
+	, alias TEXT UNIQUE NOT NULL
+	, actual TEXT NOT NULL
+	, context_length INTEGER
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS session_skills (
-	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
-	, name TEXT NOT NULL
-	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	, UNIQUE (session_id, name)
-);
-
+-- Runs: execution units belonging to a project.
+-- Each run has its own config (temperature, persona, context_limit).
 CREATE TABLE IF NOT EXISTS runs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
+	, project_id INTEGER NOT NULL REFERENCES projects (id) ON DELETE CASCADE
 	, parent_run_id INTEGER REFERENCES runs (id) ON DELETE SET NULL
-	, type TEXT
+	, model_id INTEGER REFERENCES models (id) ON DELETE SET NULL
 	, status TEXT NOT NULL DEFAULT 'queued' CHECK (
 		status IN ('queued', 'running', 'proposed', 'completed', 'failed', 'aborted')
 	)
-	, config JSON
 	, alias TEXT NOT NULL UNIQUE
+	, temperature REAL CHECK (
+		temperature IS NULL OR (temperature >= 0 AND temperature <= 2)
+	)
+	, persona TEXT
+	, context_limit INTEGER CHECK (context_limit IS NULL OR context_limit >= 1024)
 	, next_turn INTEGER NOT NULL DEFAULT 1 CHECK (next_turn >= 1)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_runs_alias ON runs (alias);
+CREATE INDEX IF NOT EXISTS idx_runs_project ON runs (project_id);
 
 -- Turns: usage stats and sequencing (operational, not model-facing)
 CREATE TABLE IF NOT EXISTS turns (
@@ -105,10 +101,6 @@ CREATE TABLE IF NOT EXISTS turns (
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
-
--- INDEXES
-CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions (project_id);
-CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs (session_id);
 
 -- File constraints: client-set visibility rules, project-scoped.
 -- Persists across runs. Orthogonal to fidelity.
@@ -233,9 +225,8 @@ END;
 CREATE TABLE IF NOT EXISTS prompt_queue (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, session_id INTEGER NOT NULL REFERENCES sessions (id) ON DELETE CASCADE
 	, mode TEXT NOT NULL CHECK (mode IN ('ask', 'act'))
-	, model TEXT
+	, model_id INTEGER REFERENCES models (id) ON DELETE SET NULL
 	, prompt TEXT NOT NULL
 	, config JSON
 	, status TEXT NOT NULL DEFAULT 'pending'
@@ -249,7 +240,7 @@ CREATE INDEX IF NOT EXISTS idx_prompt_queue_run ON prompt_queue (run_id, status)
 -- RPC audit log. Every call recorded unconditionally.
 CREATE TABLE IF NOT EXISTS rpc_log (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
-	, session_id INTEGER REFERENCES sessions (id) ON DELETE CASCADE
+	, project_id INTEGER REFERENCES projects (id) ON DELETE CASCADE
 	, method TEXT NOT NULL
 	, rpc_id INTEGER
 	, params JSON
@@ -257,6 +248,5 @@ CREATE TABLE IF NOT EXISTS rpc_log (
 	, error TEXT
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_rpc_log_session ON rpc_log (session_id);
+CREATE INDEX IF NOT EXISTS idx_rpc_log_project ON rpc_log (project_id);
 CREATE INDEX IF NOT EXISTS idx_rpc_log_method ON rpc_log (method);
-

@@ -221,38 +221,197 @@ in the VIEW — which defeats the plugin architecture.
 
 ---
 
-## Todo: Unified RPC Interface
+## Todo: Schema Restructure — Kill Sessions, Normalize Tables
 
-The client RPC interface should share the same verbs and semantics as
-the model and plugin tool interface.
+### Problem
 
+The `sessions` table is a WebSocket connection artifact. Runs belong to
+sessions, sessions belong to projects. Closing neovim and reopening creates
+a new session, orphaning previous runs. Accessing `run42` from a different
+client requires finding the old session ID. The indirection adds no value.
+
+Meanwhile, models are configured via env vars (`RUMMY_MODEL_turboqwen=openai/...`),
+run config (temperature, persona) lives on the session instead of the run,
+and `ProjectAgent` / `SessionManager` are a redundant delegation layer.
+
+### Target Schema
+
+```sql
+projects (
+  id, name, project_root, config_path, created_at
+)
+
+models (
+  id, alias TEXT UNIQUE, actual TEXT, context_length INTEGER,
+  is_default BOOLEAN, created_at
+)
+
+runs (
+  id, project_id, parent_run_id, alias TEXT UNIQUE, status,
+  model_id, temperature, persona, context_limit,
+  next_turn, created_at
+)
+
+file_constraints (
+  id, project_id, pattern, visibility, created_at
+)
+
+turns (
+  id, run_id, sequence, prompt_tokens, completion_tokens,
+  total_tokens, cost, created_at
+)
+
+known_entries (
+  id, run_id, turn, path, body, scheme, state, hash,
+  attributes, tokens, tokens_full, refs, write_count,
+  created_at, updated_at
+)
+
+prompt_queue (
+  id, run_id, mode, model_id, prompt, config, status, result, created_at
+)
+
+rpc_log (
+  id, project_id, method, rpc_id, params, result, error, created_at
+)
 ```
-Client:  { method: "read", params: { path: "src/app.js", persist: true } }
-Plugin:  rummy.read("src/app.js")
-Model:   <read>src/app.js</read>
+
+### What Dies
+
+- `sessions` table
+- `session_skills` table
+- `SessionManager` class (absorbed into ProjectAgent or deleted)
+- `sessionId` parameter threading through AgentLoop, TurnExecutor, hooks
+- `projectBufferFiles` on ask/act (use `read` with `persist` instead)
+
+### What Moves
+
+| From | To |
+|------|----|
+| `sessions.temperature` | `runs.temperature` |
+| `sessions.persona` | `runs.persona` |
+| `sessions.context_limit` | `runs.context_limit` |
+| `sessions.system_prompt` | removed (persona covers it) |
+| `session_skills` | `project_skills` or removed |
+| `runs.session_id` | `runs.project_id` |
+| `prompt_queue.session_id` | removed (run_id is sufficient) |
+| `rpc_log.session_id` | `rpc_log.project_id` |
+
+### Models Table
+
+Replaces env var configuration. Populated at startup from env (migration
+path) or managed via RPC.
+
+```js
+// Env vars still work as bootstrap:
+// RUMMY_MODEL_turboqwen=openai/Qwen3-14B-TQ-custom
+// → INSERT INTO models (alias, actual) VALUES ('turboqwen', 'openai/Qwen3-14B-TQ-custom')
 ```
 
-| Current RPC | Becomes | Options |
-|------------|---------|---------|
-| `activate` | `read` | `{ persist: true }` |
-| `readOnly` | `read` | `{ persist: true, readonly: true }` |
-| `ignore` | `store` | `{ persist: true, ignore: true }` |
-| `drop` | `store` | `{ persist: true, clear: true }` |
+Provider routing (`openai/`, `anthropic/`, etc.) parsed from `actual` column.
+Context length fetched from provider on first use and cached in the row.
 
-The `persist` option sets a file constraint that survives across turns.
-Breaking client change — neovim client migrates once.
+### RPC Changes
+
+| Old | New | Notes |
+|-----|-----|-------|
+| `init` | `init` | Returns `{ projectId }`, no sessionId |
+| `activate` | `read` | `{ path, persist: true }` |
+| `readOnly` | `read` | `{ path, persist: true, readonly: true }` |
+| `ignore` | `store` | `{ path, persist: true, ignore: true }` |
+| `drop` | `store` | `{ path, persist: true, clear: true }` |
+| `getFiles` | `getEntries` | `{ pattern: "*", scheme: null }` |
+| `fileStatus` | `getEntries` | `{ pattern }` |
+| `setTemperature` | run config | Set on run creation or `run/config` |
+| `getTemperature` | `getRun` | Temperature is a run property |
+| `setContextLimit` | run config | Set on run creation or `run/config` |
+| `getContext` | `getRun` + `getModels` | Derived from run's model |
+| `systemPrompt` | `persona` on run | One concept, not two |
+| `skill/*` | TBD | May move to project level |
+| `ask` / `act` | `ask` / `act` | `projectId` context, no sessionId |
+
+### Connection Context
+
+```js
+// Old: { projectId, sessionId, projectPath }
+// New: { projectId, projectRoot }
+```
+
+The WebSocket connection holds project context from `init`. No session
+identity. Any client connecting to the same project sees the same runs.
+Notifications filter by `projectId` instead of `sessionId`.
+
+### Implementation Order
+
+1. Schema: new migration, nuke DB
+2. Models table + env var bootstrap
+3. Runs: project_id FK, config columns
+4. Kill sessions/SessionManager
+5. ProjectAgent absorbs remaining session logic
+6. RPC: update init, kill session methods, add run/config
+7. ClientConnection: projectId filtering
+8. Tests
 
 ---
 
-## Todo: File Constraint Security
+## Todo: Unified Client Interface
 
-Blocked on RPC unification — constraints through the unified interface.
+See CLIENT.md for the full mapping from old to new RPC interface.
 
-| Constraint | Behavior | Status |
-|-----------|----------|--------|
-| `active` | Full fidelity, included even if not in git | ✓ working |
-| `readonly` | Full fidelity, writes rejected | ⚠ not enforced |
-| `ignore` | Excluded from scan, `<read>` blocked | ⚠ scan works, read not blocked |
+The client speaks the same verbs as the model and plugins:
+- `read` / `store` for file visibility (with `persist` flag for constraints)
+- `getEntries` for queries
+- Run config on run creation, not session-level
+
+---
+
+## Todo: Fidelity Projection Hooks
+
+### Problem
+
+The `v_model_context` VIEW hardcodes how entries project at each fidelity
+level:
+
+```sql
+WHEN fidelity = 'full' THEN body
+WHEN fidelity = 'summary' THEN COALESCE(json_extract(attributes, '$.symbols'), body)
+```
+
+This means the system decides what `summary` looks like for every entry type.
+A file at `summary` shows symbols from attributes. An `https://` entry at
+`summary` shows the snippet body. But what about a plugin's custom scheme?
+The VIEW has no way to know what `summary` means for `jira://PROJ-123` or
+`slack://channel`.
+
+More fundamentally: `attributes` is the handler's workspace. The system
+reaching into attributes with `json_extract(attributes, '$.symbols')` to
+build the model's view is the system trespassing on plugin-private data.
+
+### Design
+
+Plugins define projection functions for their schemes:
+
+```js
+hooks.tools.onProject("myscheme", {
+    full: (entry) => entry.body,
+    summary: (entry) => entry.attributes?.excerpt || entry.body.slice(0, 200),
+    index: (entry) => "",  // path only
+});
+```
+
+Core schemes register projections the same way. The file scheme's `summary`
+projection reads `attributes.symbols`. The https scheme's `summary`
+projection returns the snippet body. No hardcoded `json_extract` in the VIEW.
+
+### Recommendation
+
+Option B: materialization-time projection. The engine calls projection
+functions in JS before INSERT into turn_context. The VIEW stays a simple
+SELECT. The `attributes` column remains handler-private.
+
+### Dependency
+
+This blocks full use of the `attributes` column for plugin-private data.
 
 ---
 
@@ -260,8 +419,6 @@ Blocked on RPC unification — constraints through the unified interface.
 
 Heavy subsystems as separate services via RPC:
 - Web (Playwright, SearXNG) → `rummy.web` repo
-- Registers tools at startup via handshake
-- Receives commands via RPC, responds with write/read/store calls back
 - Same `tools.register()` / `tools.onHandle()` contract, different transport
 
 ---
@@ -269,10 +426,8 @@ Heavy subsystems as separate services via RPC:
 ## Todo: Remaining Cleanup
 
 - [ ] Delete `prompt.ask.md`, `prompt.act.md` — replaced by `prompt.md`
-- [ ] Prompt carries model — `prompt://` attributes records model used
 - [ ] Non-git file scanner fallback
 - [ ] ARCHITECTURE.md update for new column names and dispatch architecture
-- [ ] E2E tests against real model with new dispatch loop
 
 ---
 
@@ -289,6 +444,6 @@ Heavy subsystems as separate services via RPC:
 
 ## Testing
 
-263 unit + integration tests, 0 failures.
+303 unit + integration + live + E2E tests, 0 failures.
 Handler dispatch, priority ordering, tool:// materialization all covered.
-E2E against real model pending.
+40 E2E tests pass against real models.
