@@ -69,7 +69,7 @@ export default class WebPlugin {
 				const target = attrs.path;
 				if (!target || !/^https?:\/\//.test(target)) return;
 
-				const { store, sequence: turn, runId } = rummy;
+				const { entries: store, sequence: turn, runId } = rummy;
 				const existing = await store.getBody(runId, target);
 				if (existing !== null) return;
 
@@ -103,7 +103,7 @@ export default class WebPlugin {
 		// Append fetch docs to the read tool's tool:// entry
 		// (read is registered by core, we add our docs to it)
 		hooks.onTurn(async (rummy) => {
-			const { store, runId, sequence } = rummy;
+			const { entries: store, runId, sequence } = rummy;
 			const readPath = "tool://read";
 			const existing = await store.getBody(runId, readPath);
 			if (existing?.includes("Fetch a web page")) return;
