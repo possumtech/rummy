@@ -1,9 +1,17 @@
 import assert from "node:assert";
+import { dirname, join } from "node:path";
 import { after, before, beforeEach, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import KnownStore from "../../src/agent/KnownStore.js";
 import createHooks from "../../src/hooks/Hooks.js";
-import CoreToolsPlugin from "../../src/plugins/tools/tools.js";
+import { registerPlugins } from "../../src/plugins/index.js";
 import materialize from "../helpers/materialize.js";
+
+const pluginsDir = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"../../src/plugins",
+);
+
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
@@ -170,7 +178,7 @@ describe("Engine integration", () => {
 	describe("tool:// materialization", () => {
 		it("only materializes tools with docs", async () => {
 			const hooks = createHooks();
-			CoreToolsPlugin.register(hooks);
+			await registerPlugins([pluginsDir], hooks);
 			// Core tools have no docs — nothing should be materialized
 			await hooks.tools.materialize(store, RUN_ID, 1);
 

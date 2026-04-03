@@ -13,7 +13,7 @@ import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
 import createHooks from "../../src/hooks/Hooks.js";
 import RummyContext from "../../src/hooks/RummyContext.js";
-import CoreToolsPlugin from "../../src/plugins/tools/tools.js";
+import { registerPlugins } from "../../src/plugins/index.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
@@ -63,7 +63,13 @@ describe("Handler dispatch", () => {
 		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
 
 		hooks = createHooks();
-		CoreToolsPlugin.register(hooks);
+		const { dirname, join } = await import("node:path");
+		const { fileURLToPath } = await import("node:url");
+		const pluginsDir = join(
+			dirname(fileURLToPath(import.meta.url)),
+			"../../src/plugins",
+		);
+		await registerPlugins([pluginsDir], hooks);
 	});
 
 	after(async () => {
@@ -357,12 +363,17 @@ describe("Handler dispatch", () => {
 		it("only materializes tools with docs", async () => {
 			await hooks.tools.materialize(store, RUN_ID, 2);
 
-			// Core tools have no docs — nothing materialized
 			const entries = await store.getEntriesByPattern(RUN_ID, "tool://*", null);
+			// Only tools with docs get entries (e.g., search from web plugin)
+			for (const e of entries) {
+				assert.ok(e.body.length > 0, `${e.path} should have docs body`);
+			}
+			// Core tools (read, write, etc.) should NOT have entries
+			const readTool = entries.find((e) => e.path === "tool://read");
 			assert.strictEqual(
-				entries.length,
-				0,
-				"no tool:// entries for docless tools",
+				readTool,
+				undefined,
+				"tool://read should not exist (no docs)",
 			);
 		});
 	});
