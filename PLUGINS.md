@@ -128,53 +128,80 @@ hooks.onTurn(async (rummy) => {
 }, priority);
 ```
 
-## Events
+## Events & Filters
 
-Fire-and-forget. All handlers run. Return values ignored.
+**Events** are fire-and-forget. All handlers run. Return values ignored.
 
 ```js
 hooks.entry.changed.on(async ({ rummy, runId, turn, paths }) => {
-    // paths: string[] of entries that changed
-    // rummy: full RummyContext for this turn
-});
+    // React to file changes
+}, priority);
 ```
 
-| Event | Payload |
-|-------|---------|
-| `entry.created` | `{ scheme, path, body, attributes, state, resultPath }` |
-| `entry.changed` | `{ rummy, runId, turn, paths }` |
-| `project.init.started` | `{ projectName, projectRoot }` |
-| `project.init.completed` | `{ projectId, projectRoot, db }` |
-| `run.started` | `{ run, projectId, mode }` |
-| `run.progress` | `{ run, turn, status }` |
-| `run.state` | `{ run, turn, status, summary, history, unknowns, proposed, telemetry }` |
-| `run.step.completed` | `{ run, turn, flags }` |
-| `ask.started/completed` | `{ projectId, run, ... }` |
-| `act.started/completed` | `{ projectId, run, ... }` |
-| `llm.request.started/completed` | `{ model, turn, usage? }` |
-| `ui.render` | `{ text, append }` |
-| `ui.notify` | `{ text, level }` |
-| `rpc.started/completed/error` | `{ method, id, ... }` |
-
-## Filters
-
-Transform data through a chain. Each handler receives the value and context,
-returns the (possibly modified) value. Priority controls order.
+**Filters** transform data through a chain. Each handler receives the value
+and context, returns the (possibly modified) value.
 
 ```js
 hooks.llm.messages.addFilter(async (messages, context) => {
     return [{ role: "system", content: "Extra" }, ...messages];
-}, 5);
+}, priority);
 ```
 
-| Filter | Value | Context |
-|--------|-------|---------|
-| `llm.messages` | Message array | `{ model, projectId, runId }` |
-| `llm.response` | Response object | `{ model, projectId, runId }` |
-| `run.config` | Config object | `{ projectId }` |
-| `socket.message.raw` | Raw buffer | — |
-| `rpc.request` | Parsed request | — |
-| `rpc.response.result` | Result object | `{ method, id }` |
+Lower priority runs first. All hooks are async.
+
+### Project Lifecycle
+
+| Hook | Type | Payload | When |
+|------|------|---------|------|
+| `project.init.started` | event | `{ projectName, projectRoot }` | Before project DB upsert |
+| `project.init.completed` | event | `{ projectId, projectRoot, db }` | After project created |
+
+### RPC Pipeline
+
+| Hook | Type | Payload | When |
+|------|------|---------|------|
+| `socket.message.raw` | filter | Raw buffer | Before JSON parse |
+| `rpc.request` | filter | `{ method, params, id }` | Before handler lookup |
+| `rpc.started` | event | `{ method, params, id, projectId }` | Before handler execution |
+| `rpc.response.result` | filter | `result, { method, id }` | Before sending response |
+| `rpc.completed` | event | `{ method, id, result }` | After response sent |
+| `rpc.error` | event | `{ id, error }` | On handler error |
+
+### Run Lifecycle
+
+| Hook | Type | Payload | When |
+|------|------|---------|------|
+| `ask.started` | event | `{ projectId, model, prompt, run }` | Run requested in ask mode |
+| `act.started` | event | `{ projectId, model, prompt, run }` | Run requested in act mode |
+| `run.config` | filter | Config object, `{ projectId }` | Before run config applied |
+| `run.progress` | event | `{ run, turn, status }` | Status change (thinking, processing) |
+| `run.state` | event | `{ run, turn, status, summary, history, unknowns, proposed, telemetry }` | After each turn — full state snapshot |
+| `run.step.completed` | event | `{ run, turn, flags }` | Turn resolved, no proposals pending |
+| `ask.completed` | event | `{ projectId, run, status, turn }` | Ask run finished |
+| `act.completed` | event | `{ projectId, run, status, turn }` | Act run finished |
+
+### Turn Pipeline
+
+Hooks fire in this order every turn:
+
+| Hook | Type | Payload | When |
+|------|------|---------|------|
+| `entry.changed` | event | `{ rummy, runId, turn, paths }` | Files changed on disk since last turn |
+| `onTurn` | processor | `(rummy)` | Plugin turn setup, before context assembly |
+| `llm.messages` | filter | `messages[], { model, projectId, runId }` | Before LLM call — modify system/user messages |
+| `llm.request.started` | event | `{ model, turn }` | LLM call about to fire |
+| `llm.response` | filter | `response, { model, projectId, runId }` | Raw LLM response — normalize, transform |
+| `llm.request.completed` | event | `{ model, turn, usage }` | LLM call finished |
+| `tools.dispatch` | handler | `(entry, rummy)` | Per command — handler chain executes |
+| `entry.created` | event | `{ scheme, path, body, attributes, state, resultPath }` | After each command dispatched |
+| `turn.proposing` | event | `{ rummy, recorded }` | All dispatches done — materialize proposals |
+
+### Client Notifications
+
+| Hook | Type | Payload | When |
+|------|------|---------|------|
+| `ui.render` | event | `{ text, append }` | Text for client display |
+| `ui.notify` | event | `{ text, level }` | Status notification |
 
 ## RPC Registration
 

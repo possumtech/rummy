@@ -110,12 +110,18 @@ async function processEdit(rummy, entry, attrs) {
 
 		if (scheme === null) {
 			// File target — append revision, defer patching to turn.proposing
+			// Always use canonical path set://<file> so multiple edits accumulate
+			const canonicalPath = `set://${match.path}`;
 			const revision = buildRevision(attrs);
-			const existing = await getRevisions(rummy, entry.resultPath);
+			const existing = await getRevisions(rummy, canonicalPath);
 			existing.push(revision);
-			await store.upsert(runId, turn, entry.resultPath, "", "full", {
+			await store.upsert(runId, turn, canonicalPath, "", "full", {
 				attributes: { file: match.path, revisions: existing },
 			});
+			// Remove the deduped recorded entry if it differs from canonical
+			if (KnownStore.normalizePath(entry.resultPath) !== canonicalPath) {
+				await store.remove(runId, entry.resultPath);
+			}
 			return;
 		}
 

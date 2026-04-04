@@ -165,6 +165,60 @@ describe("Handler dispatch", () => {
 			);
 		});
 
+		it("merges multiple edits to the same file into one proposal", async () => {
+			await store.upsert(
+				RUN_ID,
+				1,
+				"src/math.txt",
+				"a + 4 = 6\n7 - a = \nb / 4 = 3\na + b = \n",
+				"full",
+			);
+
+			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+
+			const entry1 = {
+				scheme: "set",
+				path: "set://src/math.txt",
+				body: "",
+				attributes: {
+					path: "src/math.txt",
+					search: "7 - a = ",
+					replace: "7 - a = 5",
+				},
+				state: "full",
+				resultPath: "set://src/math.txt",
+			};
+			await hooks.tools.dispatch("set", entry1, rummy);
+
+			const entry2 = {
+				scheme: "set",
+				path: "set://src/math.txt",
+				body: "",
+				attributes: {
+					path: "src/math.txt",
+					search: "a + b = ",
+					replace: "a + b = 14",
+				},
+				state: "full",
+				resultPath: "set://src/math.txt",
+			};
+			await hooks.tools.dispatch("set", entry2, rummy);
+
+			await hooks.turn.proposing.emit({ rummy, recorded: [entry1, entry2] });
+
+			const body = await store.getBody(RUN_ID, "set://src/math.txt");
+			assert.ok(body.includes("a + 4 = 6"), "body is original content");
+
+			const attrs = await store.getAttributes(RUN_ID, "set://src/math.txt");
+			assert.ok(attrs.patch.includes("7 - a = 5"), "patch has first edit");
+			assert.ok(attrs.patch.includes("a + b = 14"), "patch has second edit");
+			assert.ok(attrs.merge.includes("7 - a = 5"), "merge has first block");
+			assert.ok(attrs.merge.includes("a + b = 14"), "merge has second block");
+
+			const row = await store.getState(RUN_ID, "set://src/math.txt");
+			assert.strictEqual(row.state, "proposed", "merged result is proposed");
+		});
+
 		it("applies patch immediately for known:// entries", async () => {
 			await store.upsert(RUN_ID, 1, "known://config", "port=3000", "full");
 

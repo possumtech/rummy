@@ -188,9 +188,66 @@ move/copy targets, `<sh>`. K/V operations are allowed in both modes.
 
 ## 4. Message Structure
 
-Two messages per turn. System = stable truth. User = conversation.
+Two messages per turn. System = stable truth. User = active task.
 
-### 4.1 Key Entries
+### 4.1 Packet Structure
+
+```
+[system]
+    [instructions]
+        [sacred_prompt/]
+        [toolDescriptions/]
+        [persona/]
+        [skills/]
+    [/instructions]
+    <knowledge>
+        ...entries sorted by fidelity (index, summary, full), then by scheme
+    </knowledge>
+    <previous>
+        (pre-loop user prompt, model responses, agent warnings, and tools used, in order)
+    </previous>
+    <unknowns></unknowns>
+[/system]
+[user]
+    <current>
+        (current loop model responses, agent warnings, and tools used, in order)
+    </current>
+    <progress>the above actions have been performed on this user prompt:</progress>
+    <ask tools="..." warn="...">user prompt</ask>
+    — OR —
+    <act tools="...">user prompt</act>
+[/user]
+```
+
+**System** contains everything the model needs to know.
+**User** contains everything the model needs to do.
+
+The `<ask>`/`<act>` tag is present on every turn — first turn and
+continuations alike. The model always sees its task. The active prompt
+is extracted from its chronological position and placed last for maximum
+recency. `<progress>` bridges the gap, narrating the causal relationship
+between `<current>` (the work) and the prompt (the cause).
+
+### 4.2 Loops, Previous, and Current
+
+A **loop** is one `ask` or `act` invocation and all its continuation
+turns until summarize, fail, or abort.
+
+**Previous** = all completed loops on this run. The user prompt, model
+responses, tool results, agent warnings — the full chronicle in order.
+Lives in the system message as established history. Omitted on the
+first turn of the first loop.
+
+**Current** = the active loop's work so far. Model responses, tool
+results, agent warnings — in order. Does NOT include the user prompt
+(one per loop, extracted to `<ask>`/`<act>`). Lives in the user
+message as immediate context. Empty on the first turn of a loop.
+
+When a new prompt arrives on an existing run, the prior loop's
+`<current>` content plus its prompt move to `<previous>`. When a loop
+continues (next turn), new results append to `<current>`.
+
+### 4.3 Key Entries
 
 | Path | Lifetime | Body | Attributes |
 |------|----------|------|-----------|
@@ -204,52 +261,20 @@ framework auto-populates `toolDescriptions` from tool registrations
 that include `docs`. The instructions projection assembles the final
 text from body + attributes.
 
-### 4.2 System Message
-
-```
-instructions://system projection:
-  prompt.md body (with [%TOOLS%] replaced from registry)
-  + each toolDescriptions[] entry
-  + persona
-
-<context>
-  skills (skill:// bodies)
-  knowledge (known:// at full)
-  stored keys (known:// at stored)
-  file index (files at index)
-  files (files at full)
-  unknowns (unknown://)
-</context>
-```
-
-The instructions come from the projected `instructions://system` entry.
-The context comes from turn_context rows rendered by ContextAssembler.
-They concatenate into the system message, stored as `system://N` audit.
-
-### 4.3 User Message
-
-```
-<messages>
-  tool results, updates, summaries (chronological)
-</messages>
-<ask tools="..." warn="...">question</ask>           ← first turn
-<progress tools="..." warn="...">Turn N/M</progress>  ← continuation
-```
-
-Rendered from turn_context rows. Stored as `user://N` audit.
-
 ### 4.4 Materialization
 
 Each turn:
 
 1. Write `instructions://system` (body = prompt.md, attributes = { toolDescriptions, persona })
 2. Run plugin hooks (`onTurn`) — plugins modify instructions attributes and store entries
-3. Project `instructions://system` → system prompt text
+3. Project `instructions://system` → instructions text
 4. Query `v_model_context` VIEW → visible entries
 5. Project each entry through its tool's projection function
 6. Insert projected rows into `turn_context`
-7. ContextAssembler renders system prompt + turn_context → two LLM messages
-8. Store as `system://N` and `user://N` audit entries
+7. ContextAssembler splits turn_context into previous/current by prompt boundary
+8. Assemble system message: instructions + context + previous
+9. Assemble user message: unknowns + current + progress + ask/act
+10. Store as `system://N` and `user://N` audit entries
 
 The VIEW determines visibility. State IS fidelity:
 - `full` → body visible
