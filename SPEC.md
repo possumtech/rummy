@@ -6,6 +6,32 @@ everything else.
 
 ---
 
+## 0. Design Philosophy: Events & Filters
+
+Rummy is a hooks-and-filters system. Every structural seam in the
+pipeline is a hookable checkpoint. Plugins subscribe to events
+(fire-and-forget side effects) and filters (transformation chains
+that thread a value through subscribers in priority order).
+
+**Every `<tag>` the model sees is a plugin.** The `<known>` section
+of the system message is rendered by the known plugin. The `<progress>`
+section is rendered by the progress plugin. The `<ask>` tag is rendered
+by the prompt plugin. No monolithic assembler decides what goes where.
+Each plugin filters for its own data from the shared row set, renders
+its section, and returns.
+
+**Plugins compose, they don't coordinate.** A plugin subscribes to a
+filter at a priority. It receives the accumulator value, appends its
+contribution, and returns. It doesn't know what other plugins exist.
+Priority determines ordering. Lower numbers run first.
+
+**The core is a filter chain invocation.** The TurnExecutor computes
+`loopStartTurn` (one value from one row), then calls
+`assembly.system.filter(instructions, ctx)` and
+`assembly.user.filter("", ctx)`. Everything else is plugins.
+
+---
+
 ## 1. The Known Store
 
 All model-facing state lives in `known_entries`. Files, knowledge, tool

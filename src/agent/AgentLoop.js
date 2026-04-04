@@ -1,5 +1,3 @@
-import { join } from "node:path";
-import RunDumper from "../plugins/telemetry/RunDumper.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
@@ -398,16 +396,6 @@ export default class AgentLoop {
 			return out;
 		} finally {
 			this.#activeRuns.delete(currentRunId);
-			if (process.env.RUMMY_DEBUG === "true") {
-				const rummyHome = process.env.RUMMY_HOME || ".";
-				try {
-					await RunDumper.dump(
-						this.#db,
-						currentRunId,
-						join(rummyHome, "last_run.txt"),
-					);
-				} catch {}
-			}
 		}
 	}
 

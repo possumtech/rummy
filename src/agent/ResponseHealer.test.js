@@ -18,7 +18,7 @@ describe("ResponseHealer", () => {
 		});
 
 		it("commands with no status tag becomes update placeholder", () => {
-			const result = ResponseHealer.healStatus("", [{ name: "read" }]);
+			const result = ResponseHealer.healStatus("", [{ name: "get" }]);
 			assert.strictEqual(result.summaryText, null);
 			assert.strictEqual(result.updateText, "...");
 		});

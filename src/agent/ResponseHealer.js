@@ -29,7 +29,7 @@ export default class ResponseHealer {
 		// Only write/unknown commands + no investigation tools = completed action.
 		// The model did the thing without saying <summarize>. Treat as summary.
 		const hasInvestigation = commands.some((c) =>
-			["read", "env", "search", "ask_user"].includes(c.name),
+			["get", "env", "search", "ask_user"].includes(c.name),
 		);
 		if (!hasInvestigation && commands.length > 0) {
 			const names = commands.map((c) => c.name).join(", ");

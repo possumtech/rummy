@@ -175,10 +175,9 @@ export default class ContextAssembler {
 				? ' warn="File and system modification prohibited on this turn."'
 				: "";
 
-		const progressText =
-			progressBody ||
-			(currentEntries.length > 0
-				? "The above actions have been performed in response to the following prompt:"
+		const progressText = progressBody
+			|| (currentEntries.length > 0
+				? "The above actions were performed in response to the following prompt:"
 				: "Begin.");
 		userParts.push(`<progress>${progressText}</progress>`);
 
@@ -237,3 +236,4 @@ function renderHistoryEntry(entry) {
 	const detail = entry.body ? ` — ${entry.body.slice(0, 120)}` : "";
 	return `* ${tool} ${target} ${check}${detail}`;
 }
+
