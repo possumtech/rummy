@@ -563,7 +563,7 @@ export default class TurnExecutor {
 					(_, rest) => `://${encodeURIComponent(decodeURIComponent(rest))}`,
 				)
 			: rawTarget;
-		const resultPath = await this.#knownStore.slugPath(runId, scheme, target);
+		const resultPath = await this.#knownStore.dedup(runId, scheme, target);
 
 		// Build attributes from the command's parsed fields
 		const attributes = {};

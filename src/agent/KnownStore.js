@@ -30,6 +30,16 @@ export default class KnownStore {
 		return row.turn;
 	}
 
+	async dedup(runId, scheme, target) {
+		const candidate = `${scheme}://${target}`;
+		const existing = await this.#db.get_entry_body.get({
+			run_id: runId,
+			path: KnownStore.normalizePath(candidate),
+		});
+		if (!existing) return candidate;
+		return `${candidate}_${Date.now()}`;
+	}
+
 	async slugPath(runId, scheme, content) {
 		const base = slugify(content || "");
 		const prefix = `${scheme}://`;

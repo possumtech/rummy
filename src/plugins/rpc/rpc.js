@@ -41,7 +41,7 @@ async function buildRunContext(hooks, ctx, runAlias) {
  */
 async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
 	const store = rummy.entries;
-	const resultPath = await store.slugPath(rummy.runId, scheme, path || "");
+	const resultPath = await store.dedup(rummy.runId, scheme, path || "");
 
 	// Record the entry at full state
 	await store.upsert(
