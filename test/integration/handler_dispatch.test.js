@@ -129,6 +129,7 @@ describe("Handler dispatch", () => {
 			};
 
 			await hooks.tools.dispatch("set", entry, rummy);
+			await hooks.turn.proposing.emit({ rummy, recorded: [entry] });
 
 			// body = original content
 			const resultBody = await store.getBody(RUN_ID, "set://src/edit_me.js");

@@ -432,6 +432,9 @@ export default class TurnExecutor {
 			await this.#hooks.entry.created.emit(entry);
 		}
 
+		// Materialize proposals (e.g. file plugin applies accumulated revisions)
+		await this.#hooks.turn.proposing.emit({ rummy, recorded });
+
 		// Check if any dispatched entries ended in error state
 		for (const entry of recorded) {
 			const row = await this.#db.get_entry_state.get({

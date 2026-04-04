@@ -47,6 +47,9 @@ export default function createHooks(debug = false) {
 				completed: createEvent("run.step.completed"),
 			},
 		},
+		turn: {
+			proposing: createEvent("turn.proposing"),
+		},
 		ask: {
 			started: createEvent("ask.started"),
 			completed: createEvent("ask.completed"),
