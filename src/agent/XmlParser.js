@@ -168,16 +168,28 @@ function resolveCommand(name, attrs, rawBody) {
 				};
 			}
 		}
-		// Sed syntax: s/search/replace/flags — split on delimiter, pass through
+		// Sed syntax: s/search/replace/flags — supports chained commands
 		if (trimmed.startsWith("s/")) {
-			const parts = trimmed.slice(2).split("/");
-			if (parts.length >= 2) {
+			const blocks = [];
+			let remaining = trimmed;
+			while (remaining.startsWith("s/")) {
+				const parts = remaining.slice(2).split("/");
+				if (parts.length < 2) break;
+				blocks.push({ search: parts[0], replace: parts[1] });
+				const rest = parts.slice(2).join("/");
+				const next = rest.indexOf("s/");
+				remaining = next >= 0 ? rest.slice(next) : "";
+			}
+			if (blocks.length === 1) {
 				return {
 					name,
 					path: a.path,
-					search: parts[0],
-					replace: parts[1],
+					search: blocks[0].search,
+					replace: blocks[0].replace,
 				};
+			}
+			if (blocks.length > 1) {
+				return { name, path: a.path, blocks };
 			}
 		}
 		// search+replace attrs → attribute edit mode

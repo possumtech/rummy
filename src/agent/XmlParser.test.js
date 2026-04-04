@@ -409,5 +409,36 @@ I need to check the port.
 			assert.strictEqual(commands[0].search, "debugger;");
 			assert.strictEqual(commands[0].replace, "");
 		});
+
+		it("parses chained seds with semicolon", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="f.js">s/foo/bar/g;s/baz/qux/g</set>',
+			);
+			assert.strictEqual(commands[0].blocks.length, 2);
+			assert.strictEqual(commands[0].blocks[0].search, "foo");
+			assert.strictEqual(commands[0].blocks[0].replace, "bar");
+			assert.strictEqual(commands[0].blocks[1].search, "baz");
+			assert.strictEqual(commands[0].blocks[1].replace, "qux");
+		});
+
+		it("parses chained seds with space separator", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="f.js">s/old/new/ s/foo/bar/</set>',
+			);
+			assert.strictEqual(commands[0].blocks.length, 2);
+			assert.strictEqual(commands[0].blocks[0].search, "old");
+			assert.strictEqual(commands[0].blocks[0].replace, "new");
+			assert.strictEqual(commands[0].blocks[1].search, "foo");
+			assert.strictEqual(commands[0].blocks[1].replace, "bar");
+		});
+
+		it("parses chained seds with newline separator", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="f.js">s/a/b/\ns/c/d/</set>',
+			);
+			assert.strictEqual(commands[0].blocks.length, 2);
+			assert.strictEqual(commands[0].blocks[0].search, "a");
+			assert.strictEqual(commands[0].blocks[1].search, "c");
+		});
 	});
 });

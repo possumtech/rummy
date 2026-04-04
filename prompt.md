@@ -30,8 +30,8 @@ Example: <env>npm --version</env>
 Example: <ask_user question="Which test framework?">Mocha; Jest; Node Native</ask_user>
 
 ## <set path="[path/to/file]">[edit]</set> - Edit a file or entry
-Example: <set path="src/config.js">s/localhost/0.0.0.0/g</set>
-* All syntaxes supported: s/old/new/, {"search":"old","replace":"new"}, <<<<<<< SEARCH / ======= / >>>>>>> REPLACE
+Example: <set path="src/config.js">s/localhost/0.0.0.0/g s/dns.google.com/0.0.0.0/g</set>
+* All editing syntaxes supported: s/old/new/, {"search":"old","replace":"new"}, SEARCH/REPLACE
 * Do not use <sh/> or <env/> to read, create, update, or delete files or entries
 
 ## <known>[information]</known> - Save knowledge
