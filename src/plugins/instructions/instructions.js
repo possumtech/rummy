@@ -11,6 +11,15 @@ export default class Instructions {
 	constructor(core) {
 		this.#core = core;
 		core.on("full", this.full.bind(this));
+		core.on("turn.started", this.onTurnStarted.bind(this));
+	}
+
+	async onTurnStarted({ rummy }) {
+		const { entries: store, sequence: turn, runId } = rummy;
+		const runRow = await rummy.db.get_run_by_id.get({ id: runId });
+		await store.upsert(runId, turn, "instructions://system", "", "info", {
+			attributes: { persona: runRow?.persona || null },
+		});
 	}
 
 	async full(entry) {

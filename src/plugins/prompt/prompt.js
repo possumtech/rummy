@@ -3,7 +3,27 @@ export default class Prompt {
 
 	constructor(core) {
 		this.#core = core;
+		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.filter("assembly.user", this.assemblePrompt.bind(this), 300);
+	}
+
+	async onTurnStarted({ rummy, mode, prompt, isContinuation }) {
+		const { entries: store, sequence: turn, runId } = rummy;
+
+		if (!isContinuation && prompt) {
+			await store.upsert(runId, turn, `prompt://${turn}`, "", "info", {
+				attributes: { mode },
+			});
+			await store.upsert(runId, turn, `${mode}://${turn}`, prompt, "info");
+		} else {
+			await store.upsert(
+				runId,
+				turn,
+				`progress://${turn}`,
+				prompt || "",
+				"info",
+			);
+		}
 	}
 
 	async assemblePrompt(content, ctx) {

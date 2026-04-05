@@ -50,50 +50,7 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Store prompt/progress entries BEFORE plugin hooks and materialization.
-		// Plugins can modify progress:// body before it reaches the model.
-		if (!options?.isContinuation && loopPrompt) {
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				`prompt://${turn}`,
-				"",
-				"info",
-				{ attributes: { mode } },
-			);
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				`${mode}://${turn}`,
-				loopPrompt,
-				"info",
-			);
-		} else {
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				`progress://${turn}`,
-				loopPrompt || "",
-				"info",
-			);
-		}
-
-		// Write instructions entry — body empty, projection builds from preamble + plugins.
-		const runRow2 = await this.#db.get_run_by_id.get({ id: currentRunId });
-		await this.#knownStore.upsert(
-			currentRunId,
-			turn,
-			"instructions://system",
-			"",
-			"info",
-			{
-				attributes: {
-					persona: runRow2?.persona || null,
-				},
-			},
-		);
-
-		// Run plugin hooks (janitor, relevance engine, web plugin amendments, etc.)
+		// Build RummyContext before turn.started so plugins can write entries
 		const rummy = new RummyContext(
 			{
 				tag: "turn",
@@ -121,6 +78,14 @@ export default class TurnExecutor {
 				loopPrompt,
 			},
 		);
+		// Plugins write prompt/progress/instructions entries
+		await this.#hooks.turn.started.emit({
+			rummy,
+			mode,
+			prompt: loopPrompt,
+			isContinuation: options?.isContinuation,
+		});
+
 		// File scan (after rummy so entry.changed receives context)
 		if (!noContext && project?.project_root) {
 			const ctx = await ProjectContext.open(project.project_root);
@@ -217,32 +182,6 @@ export default class TurnExecutor {
 		});
 
 		// Store assembled messages as audit
-		const systemMsg = filteredMessages.find((m) => m.role === "system");
-		const userMsg = filteredMessages.find((m) => m.role === "user");
-		await this.#knownStore.upsert(
-			currentRunId,
-			turn,
-			`system://${turn}`,
-			systemMsg?.content || systemPrompt,
-			"info",
-		);
-		if (userMsg) {
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				`user://${turn}`,
-				userMsg.content,
-				"info",
-			);
-		}
-
-		if (process.env.RUMMY_DEBUG === "true") {
-			console.log(
-				"[DEBUG] Messages:",
-				JSON.stringify(filteredMessages, null, 2),
-			);
-		}
-
 		// Call LLM
 		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
 		const rawResult = await this.#llmProvider.completion(
@@ -263,19 +202,6 @@ export default class TurnExecutor {
 		const responseMessage = result.choices?.[0]?.message;
 		const content = responseMessage?.content || "";
 
-		if (process.env.RUMMY_DEBUG === "true") {
-			console.log("[DEBUG] Response content:", content.slice(0, 500));
-		}
-
-		// Store full assistant response as audit
-		await this.#knownStore.upsert(
-			currentRunId,
-			turn,
-			`assistant://${turn}`,
-			content,
-			"info",
-		);
-
 		await this.#hooks.run.progress.emit({
 			projectId,
 			run: currentAlias,
@@ -283,65 +209,21 @@ export default class TurnExecutor {
 			status: "processing",
 		});
 
-		// Parse XML commands from content
+		// Parse and emit — plugins handle audit storage
 		const { commands, unparsed } = XmlParser.parse(content);
 
-		// Store raw API response diagnostics
-		await this.#knownStore.upsert(
-			currentRunId,
+		const systemMsg = filteredMessages.find((m) => m.role === "system");
+		const userMsg = filteredMessages.find((m) => m.role === "user");
+		await this.#hooks.turn.response.emit({
+			rummy,
 			turn,
-			`model://${turn}`,
-			JSON.stringify({
-				keys: responseMessage ? Object.keys(responseMessage) : [],
-				reasoning_content: responseMessage?.reasoning_content || null,
-				content: content.slice(0, 4096),
-				usage: result.usage || null,
-				model: result.model || requestedModel,
-			}),
-			"info",
-		);
-
-		if (responseMessage?.reasoning_content) {
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				`reasoning://${turn}`,
-				responseMessage.reasoning_content,
-				"info",
-			);
-		}
-
-		if (unparsed) {
-			await this.#knownStore.upsert(
-				currentRunId,
-				turn,
-				`content://${turn}`,
-				unparsed,
-				"info",
-			);
-		}
-
-		// Commit usage
-		const usage = result.usage || {};
-		const cachedTokens =
-			usage.cached_tokens ||
-			usage.prompt_tokens_details?.cached_tokens ||
-			usage.input_tokens_details?.cached_tokens ||
-			usage.cache_read_input_tokens ||
-			0;
-		const reasoningTokens =
-			usage.reasoning_tokens ||
-			usage.completion_tokens_details?.reasoning_tokens ||
-			usage.output_tokens_details?.reasoning_tokens ||
-			0;
-		await this.#db.update_turn_stats.run({
-			id: turnRow.id,
-			prompt_tokens: Number(usage.prompt_tokens || 0),
-			cached_tokens: Number(cachedTokens),
-			completion_tokens: Number(usage.completion_tokens || 0),
-			reasoning_tokens: Number(reasoningTokens),
-			total_tokens: Number(usage.total_tokens || 0),
-			cost: Number(usage.cost || 0),
+			result,
+			responseMessage,
+			content,
+			commands,
+			unparsed,
+			systemMsg: systemMsg?.content,
+			userMsg: userMsg?.content,
 		});
 
 		// --- PHASE 1: RECORD ---

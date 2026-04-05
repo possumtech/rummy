@@ -17,6 +17,7 @@ export default class Telemetry {
 		core.on("rpc.completed", this.#onRpcCompleted.bind(this));
 		core.on("rpc.error", this.#onRpcError.bind(this));
 		core.on("run.step.completed", this.#onStepCompleted.bind(this));
+		core.on("turn.response", this.#onTurnResponse.bind(this));
 		core.filter("llm.messages", this.#logMessages.bind(this), 999);
 		core.filter("llm.response", this.#logResponse.bind(this), 999);
 	}
@@ -66,6 +67,85 @@ export default class Telemetry {
 		console.log(
 			`[DEBUG] Turn ${payload.turn} completed for run ${payload.run}`,
 		);
+	}
+
+	async #onTurnResponse({
+		rummy,
+		turn,
+		result,
+		responseMessage,
+		content,
+		commands,
+		unparsed,
+		systemMsg,
+		userMsg,
+	}) {
+		const { entries: store, runId } = rummy;
+
+		// assistant://N — the model's raw response
+		await store.upsert(runId, turn, `assistant://${turn}`, content, "info");
+
+		// system://N, user://N — assembled messages as audit
+		if (systemMsg) {
+			await store.upsert(runId, turn, `system://${turn}`, systemMsg, "info");
+		}
+		if (userMsg) {
+			await store.upsert(runId, turn, `user://${turn}`, userMsg, "info");
+		}
+
+		// model://N — raw API response diagnostics
+		await store.upsert(
+			runId,
+			turn,
+			`model://${turn}`,
+			JSON.stringify({
+				keys: responseMessage ? Object.keys(responseMessage) : [],
+				reasoning_content: responseMessage?.reasoning_content || null,
+				content: content.slice(0, 4096),
+				usage: result.usage || null,
+				model: result.model || null,
+			}),
+			"info",
+		);
+
+		// reasoning://N
+		if (responseMessage?.reasoning_content) {
+			await store.upsert(
+				runId,
+				turn,
+				`reasoning://${turn}`,
+				responseMessage.reasoning_content,
+				"info",
+			);
+		}
+
+		// content://N — unparsed text
+		if (unparsed) {
+			await store.upsert(runId, turn, `content://${turn}`, unparsed, "info");
+		}
+
+		// Commit usage stats
+		const usage = result.usage || {};
+		const cachedTokens =
+			usage.cached_tokens ||
+			usage.prompt_tokens_details?.cached_tokens ||
+			usage.input_tokens_details?.cached_tokens ||
+			usage.cache_read_input_tokens ||
+			0;
+		const reasoningTokens =
+			usage.reasoning_tokens ||
+			usage.completion_tokens_details?.reasoning_tokens ||
+			usage.output_tokens_details?.reasoning_tokens ||
+			0;
+		await rummy.db.update_turn_stats.run({
+			id: rummy.turnId,
+			prompt_tokens: usage.prompt_tokens ?? 0,
+			cached_tokens: cachedTokens ?? 0,
+			completion_tokens: usage.completion_tokens ?? 0,
+			reasoning_tokens: reasoningTokens ?? 0,
+			total_tokens: usage.total_tokens ?? 0,
+			cost: usage.cost ?? 0,
+		});
 	}
 
 	async #logMessages(messages, context) {

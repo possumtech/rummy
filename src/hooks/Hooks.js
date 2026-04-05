@@ -48,6 +48,8 @@ export default function createHooks(debug = false) {
 			},
 		},
 		turn: {
+			started: createEvent("turn.started"),
+			response: createEvent("turn.response"),
 			proposing: createEvent("turn.proposing"),
 		},
 		assembly: {
