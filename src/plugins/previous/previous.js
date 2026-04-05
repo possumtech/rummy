@@ -1,5 +1,3 @@
-import { renderHistoryEntry } from "../helpers.js";
-
 export default class Previous {
 	#core;
 
@@ -18,7 +16,35 @@ export default class Previous {
 		);
 		if (entries.length === 0) return content;
 
-		const lines = entries.map((e) => renderHistoryEntry(e));
+		const lines = await Promise.all(
+			entries.map((e) => renderToolTag(e, "summary", this.#core)),
+		);
 		return `${content}\n\n<previous>\n${lines.join("\n")}\n</previous>`;
 	}
+}
+
+async function renderToolTag(entry, fidelity, core) {
+	const attrs =
+		typeof entry.attributes === "string"
+			? JSON.parse(entry.attributes)
+			: entry.attributes;
+
+	const path = `${entry.scheme}://${attrs?.path || attrs?.file || attrs?.command || ""}`;
+	const status = entry.state ? ` status="${entry.state}"` : "";
+
+	let body;
+	try {
+		body = await core.hooks.tools.view(entry.scheme, {
+			...entry,
+			fidelity,
+			attributes: attrs,
+		});
+	} catch {
+		body = entry.body;
+	}
+
+	if (body) {
+		return `<tool path="${path}"${status}>${body}</tool>`;
+	}
+	return `<tool path="${path}"${status}/>`;
 }

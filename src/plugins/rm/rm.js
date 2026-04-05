@@ -10,6 +10,7 @@ export default class Rm {
 		});
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
+		core.on("summary", this.summary.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
 			content ? `${content}\n\n${docs}` : docs,
@@ -42,5 +43,9 @@ export default class Rm {
 
 	full(entry) {
 		return `# rm ${entry.attributes.path || entry.path}`;
+	}
+
+	summary(entry) {
+		return this.full(entry);
 	}
 }

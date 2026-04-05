@@ -14,6 +14,7 @@ export default class Set {
 		});
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
+		core.on("summary", this.summary.bind(this));
 		core.on("turn.proposing", this.#materializeRevisions.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
@@ -95,6 +96,10 @@ export default class Set {
 				: "";
 		if (!attrs.merge) return `# set ${file}${tokens}`;
 		return `# set ${file}${tokens}\n${attrs.merge}`;
+	}
+
+	summary(entry) {
+		return entry.attributes.merge || "";
 	}
 
 	async #processEdit(rummy, entry, attrs) {

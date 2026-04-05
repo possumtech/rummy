@@ -11,6 +11,7 @@ export default class Mv {
 		});
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
+		core.on("summary", this.summary.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
 			content ? `${content}\n\n${docs}` : docs,
@@ -47,5 +48,9 @@ export default class Mv {
 
 	full(entry) {
 		return `# mv ${entry.attributes.from || ""} ${entry.attributes.to || ""}`;
+	}
+
+	summary(entry) {
+		return this.full(entry);
 	}
 }

@@ -7,6 +7,7 @@ export default class Update {
 		this.#core = core;
 		core.registerScheme({ validStates: ["info"], category: "structural" });
 		core.on("full", this.full.bind(this));
+		core.on("summary", this.summary.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
 			content ? `${content}\n\n${docs}` : docs,
@@ -15,5 +16,9 @@ export default class Update {
 
 	full(entry) {
 		return `# update\n${entry.body}`;
+	}
+
+	summary(entry) {
+		return this.full(entry);
 	}
 }

@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { langFor } from "../helpers.js";
 
 export default class Known {
 	#core;
@@ -49,15 +48,6 @@ export default class Known {
 function renderKnownTag(entry) {
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const state = entry.state ? ` state="${entry.state}"` : "";
-
-	if (entry.state === "index") {
-		return `<known path="${entry.path}"${state}${tokens}/>`;
-	}
-
-	const lang = langFor(entry.path);
-	if (lang && entry.body) {
-		return `<known path="${entry.path}"${state}${tokens}>\`\`\`${lang}\n${entry.body}\n\`\`\`</known>`;
-	}
 
 	if (entry.body) {
 		return `<known path="${entry.path}"${state}${tokens}>${entry.body}</known>`;

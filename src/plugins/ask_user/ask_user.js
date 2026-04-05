@@ -8,6 +8,7 @@ export default class AskUser {
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
+		core.on("summary", this.summary.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
 			content ? `${content}\n\n${docs}` : docs,
@@ -38,5 +39,10 @@ export default class AskUser {
 		if (question) lines.push(`# Question: ${question}`);
 		if (answer) lines.push(`# Answer: ${answer}`);
 		return lines.join("\n");
+	}
+
+	summary(entry) {
+		const { question, answer } = entry.attributes;
+		return answer ? `${question} → ${answer}` : question || "";
 	}
 }

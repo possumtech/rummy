@@ -160,11 +160,11 @@ describe("ContextAssembler", () => {
 			const system = messages[0].content;
 			const user = messages[1].content;
 			assert.ok(system.includes("<previous>"), "system has previous");
-			assert.ok(system.includes("old result"), "old result in previous");
-			assert.ok(!system.includes("new result"), "new result not in previous");
+			assert.ok(system.includes("get://old.js"), "old get in previous");
+			assert.ok(!system.includes("get://new.js"), "new get not in previous");
 			assert.ok(user.includes("<current>"), "user has current");
-			assert.ok(user.includes("new result"), "new result in current");
-			assert.ok(!user.includes("old result"), "old result not in current");
+			assert.ok(user.includes("get://new.js"), "new get in current");
+			assert.ok(!user.includes("get://old.js"), "old get not in current");
 		});
 
 		it("omits previous on first loop", async () => {
@@ -235,9 +235,10 @@ describe("ContextAssembler", () => {
 			);
 			const user = messages[1].content;
 
-			assert.ok(user.includes("✓"), "pass result has check mark");
-			assert.ok(user.includes("summary: Fixed it"), "summary renders");
+			assert.ok(user.includes('status="pass"'), "pass result has status");
+			assert.ok(user.includes("Fixed it"), "summary renders");
 			assert.ok(user.includes("<current>"), "results in current block");
+			assert.ok(user.includes("<tool path="), "tool tags in current");
 		});
 
 		it("renders empty context when no entries", async () => {
