@@ -1,6 +1,3 @@
--- INIT: enable_mmap
-PRAGMA mmap_size = 274877906944;
-
 -- INIT: initial_schema
 
 -- Scheme registry: single source of truth for all scheme metadata.

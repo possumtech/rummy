@@ -5,6 +5,9 @@ export default class Rm {
 
 	constructor(core) {
 		this.#core = core;
+		core.registerScheme({
+			validStates: ["full", "proposed", "pass", "rejected", "error", "pattern"],
+		});
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");

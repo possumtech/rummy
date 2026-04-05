@@ -21,15 +21,25 @@ export async function registerPlugins(dirs = [], hooks) {
 }
 
 const AUDIT_SCHEMES = [
-	"instructions", "system", "prompt", "ask", "act", "progress",
-	"reasoning", "model", "error", "user", "assistant", "content",
+	"instructions",
+	"system",
+	"prompt",
+	"ask",
+	"act",
+	"progress",
+	"reasoning",
+	"model",
+	"error",
+	"user",
+	"assistant",
+	"content",
 ];
 
 /**
  * After DB is ready, inject db and store into all PluginContext instances,
  * upsert declared schemes, and bootstrap audit schemes.
  */
-export async function initPlugins(db, store) {
+export async function initPlugins(db, store, hooks) {
 	for (const name of AUDIT_SCHEMES) {
 		const scheme = {
 			name,
@@ -44,8 +54,35 @@ export async function initPlugins(db, store) {
 	for (const ctx of instances.values()) {
 		ctx.db = db;
 		ctx.entries = store;
-		if (ctx.scheme) {
-			await db.upsert_scheme.run(ctx.scheme);
+		for (const scheme of ctx.schemes) {
+			await db.upsert_scheme.run(scheme);
+		}
+	}
+
+	// Register default schemes for tools that plugins ensured but didn't registerScheme for
+	if (hooks) {
+		const registered = new Set();
+		for (const ctx of instances.values()) {
+			for (const s of ctx.schemes) registered.add(s.name);
+		}
+		for (const name of AUDIT_SCHEMES) registered.add(name);
+
+		for (const toolName of hooks.tools.names) {
+			if (registered.has(toolName)) continue;
+			await db.upsert_scheme.run({
+				name: toolName,
+				fidelity: "full",
+				model_visible: 1,
+				valid_states: JSON.stringify([
+					"full",
+					"proposed",
+					"pass",
+					"rejected",
+					"error",
+					"info",
+				]),
+				category: "result",
+			});
 		}
 	}
 }

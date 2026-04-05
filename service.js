@@ -24,6 +24,7 @@ try {
 	SocketServer = (await import("./src/server/SocketServer.js")).default;
 	const pluginIndex = await import("./src/plugins/index.js");
 	registerPlugins = pluginIndex.registerPlugins;
+	var initPlugins = pluginIndex.initPlugins;
 	createHooks = (await import("./src/hooks/Hooks.js")).default;
 	RpcRegistry = (await import("./src/server/RpcRegistry.js")).default;
 } catch (err) {
@@ -64,7 +65,16 @@ async function main() {
 		functions: sqlFunctions,
 	});
 
-	// 6. Bootstrap models from env vars
+	// 6. Configure SQLite
+	if (process.env.RUMMY_MMAP_MB) {
+		const bytes = Number.parseInt(process.env.RUMMY_MMAP_MB, 10) * 1024 * 1024;
+		await db.exec(`PRAGMA mmap_size = ${bytes}`);
+	}
+
+	// 7. Initialize plugins (inject DB, register schemes)
+	await initPlugins(db, null, hooks);
+
+	// 7. Bootstrap models from env vars
 	{
 		const modelAliases = [];
 		for (const key of Object.keys(process.env)) {

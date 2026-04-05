@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import KnownStore from "../../agent/KnownStore.js";
 import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
@@ -8,7 +9,9 @@ export default class Set {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({ validStates: ["full", "proposed", "pass", "rejected", "error", "pattern"] });
+		core.registerScheme({
+			validStates: ["full", "proposed", "pass", "rejected", "error", "pattern"],
+		});
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.on("turn.proposing", this.#materializeRevisions.bind(this));

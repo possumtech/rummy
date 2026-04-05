@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { FIDELITY_ORDER, langFor } from "../helpers.js";
 
 export default class Known {
@@ -5,6 +6,11 @@ export default class Known {
 
 	constructor(core) {
 		this.#core = core;
+		core.registerScheme({
+			fidelity: "turn",
+			validStates: ["full", "stored"],
+			category: "knowledge",
+		});
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleKnown.bind(this), 100);

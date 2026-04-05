@@ -1,230 +1,154 @@
 # AGENTS: Planning & Progress
 
-> Every piece of data that exists at runtime must exist as an entry in the
-> K/V store or as a column on a relational table. There is no third option.
-> If you're building a special mechanism, a cache, a side channel, or a
-> separate assembly path, you're building outside the paradigm. Stop and ask.
+> "Is there a rummy way to do this?" Every `<tag>` the model sees is a
+> plugin. Every scheme is registered by its owner. Every piece of data
+> exists as an entry or a column. No exceptions without documentation.
 
 ## Current State
 
-Entry-driven dispatch architecture. Every interaction follows one contract:
+Plugin-driven architecture. Instantiated classes, constructor receives
+`core` (PluginContext). Registration via `core.on()` / `core.filter()`.
+Assembly via `assembly.system` / `assembly.user` filter chains.
+No monolithic assembler. 256 tests passing (159 unit + 97 integration).
+10/11 e2e, 22/23 live.
+
+## Todo: Scheme Registration by Plugins
+
+Schemes are hardcoded in `001_initial_schema.sql`. Each plugin should
+register its own scheme via `core.registerScheme()`. PluginContext and
+`initPlugins` infrastructure is built. Needs:
+
+- [ ] Add `core.registerScheme()` to every tool plugin constructor
+- [ ] Remove hardcoded INSERT from migration (table definition stays)
+- [ ] Audit schemes bootstrapped by core in `initPlugins`
+- [ ] File scheme (`null` scheme for bare paths) — special case, document why
+- [ ] Skill scheme registered by skills plugin
+- [ ] http/https schemes registered by file plugin or web plugin
+
+## Todo: TurnExecutor Thinning
+
+TurnExecutor is 600 lines. It directly writes audit entries that should
+be owned by plugins:
+
+- [ ] `assistant://N` — audit plugin or dedicated assistant plugin
+- [ ] `system://N`, `user://N` — telemetry plugin (already captures via filter)
+- [ ] `model://N` — telemetry plugin
+- [ ] `reasoning://N` — telemetry plugin
+- [ ] `content://N` — telemetry plugin
+- [ ] `error://N` — error handling plugin
+- [ ] `prompt://N`, `ask://N`, `act://N` — prompt plugin
+- [ ] `progress://N` — progress plugin
+- [ ] `instructions://system` — instructions plugin
+
+Each becomes a plugin subscribing to turn events. TurnExecutor emits
+events at checkpoints, plugins write their own entries.
+
+## Todo: ResponseHealer → Hedberg + Core Handler
+
+ResponseHealer is model slop interpretation (hedbergian) mixed with
+state machine decisions (core). Split:
+
+- [ ] Move string/syntax interpretation into hedberg plugin
+  - "Is this plain text or commands?"
+  - "Does this contain investigation tools?"
+  - "Is this a tool-only response with no status?"
+- [ ] Keep state machine in core ResponseHandler
+  - Continue/stop/heal decisions
+  - Stall counter
+  - Loop detection
+  - Calls hedberg for interpretation, makes decisions itself
+
+## Todo: XmlParser → Hedberg Migration
+
+`resolveCommand` in XmlParser does hedbergian format detection inline.
+The format-specific parsers (edits, sed, normalize) already moved to
+hedberg. Remaining:
+
+- [ ] Move JSON `{ search, replace }` detection to hedberg
+- [ ] Move `value` → `body` healing to hedberg/normalize.js (done)
+- [ ] Move unrecognized-attr-as-path healing to hedberg/normalize.js (done)
+- [ ] Consider moving `resolveCommand` entirely — it's mostly hedberg
+      with tool routing glue
+
+## Todo: Skill Plugin Rename
+
+- [ ] `skills.js` → `skill.js` (matches scheme name, matches convention)
+- [ ] Skill registers its own scheme via `core.registerScheme()`
+
+## Todo: File Scheme Special Case
+
+The `null` scheme (bare file paths) has no plugin owner. The file plugin
+handles projections and scanning but doesn't own the scheme itself
+because bare paths have `scheme IS NULL` in the DB. Document this as
+a known exception. The file plugin should register a `file` scheme even
+though bare paths use NULL — the view maps NULL to 'file' category.
+
+## Todo: Test Improvements
+
+- [ ] Unknown investigation e2e test flaky (model doesn't always register unknowns)
+- [ ] Add e2e test for multi-edit sed chaining
+- [ ] Add e2e test for ask mode restrictions
+- [ ] Integration test for scheme registration via plugins
+
+## Done: Plugin Architecture Refactor
+
+- All 18 plugins converted: static `register(hooks)` → instantiated `constructor(core)`
+- PluginContext (`rummy.core`) — plugin-only tier
+- ToolRegistry: `ensureTool`, `onView`/`view` (fidelity-keyed), no `register()`
+- Assembly filter chain: Known, Previous, Unknown, Current, Progress, Prompt
+- ContextAssembler → 30 line orchestrator
+- Tool docs → `instructions.toolDocs` filter (each plugin owns its docs.md)
+- Preamble → `instructions/preamble.md` (prompt.md deleted)
+- Unified API: model/client/plugin use same interface
+
+## Done: xAI Integration
+
+- XaiClient for Responses API (`x.ai/` prefix)
+- Cached tokens, reasoning tokens, cost tracking
+- `last_run.txt` telemetry dump
+
+## Done: Hedberg Plugin
+
+- Pattern library (hedmatch, hedsearch, hedreplace)
+- Heuristic fuzzy matcher
+- Sed parsing with escaped delimiters and chaining
+- Edit format detection (merge conflict, udiff, Claude XML, JSON)
+- Attribute normalization (value→body, unknown-attr→path)
+- Full sed regex via native JS RegExp
+- `Hedberg.replace()` — single entry point for all replacement operations
+
+## Done: Packet Restructuring
 
 ```
-path (scheme://target)  |  body (tag body)  |  attributes (tag attrs JSON)  |  state
+[system]
+    [instructions — preamble + toolDocs filter + persona]
+    <known> — skills first, then by fidelity, then by category
+    <previous> — completed loop history
+    <unknowns> — unresolved questions
+[/system]
+[user]
+    <current> — active loop work
+    <progress> — token budget + unknown count + bridge text
+    <ask>/<act> — always last, always present
+[/user]
 ```
 
-Model emits XML tags → XmlParser produces commands → TurnExecutor records
-each as an entry at `full` state → handler chain dispatches → handlers modify
-state and create related entries → entry.created event fires.
+## Done: Cleanup
 
-Client sends RPC → same dispatch chain, minus mode enforcement.
+- `RUMMY_MODEL_DEFAULT` removed — model required on every call
+- `OPENAI_API_BASE` fallback removed
+- Hedberg legacy default export removed
+- LlmProvider env fallback removed
+- Tilde expansion removed
+- Ctags dependency removed from core
+- `dedup` replaces `slugPath` for file-targeting schemes
+- `read` → `get` in ResponseHealer investigation tools
+- File path encoding fix (no slugify on file paths)
 
-Plugins hook any scheme at any priority. Core tools and third-party plugins
-use the same `tools.register()` / `tools.onHandle()` interface.
-
-### What's done
-
-- Column rename: `value`→`body`, `meta`→`attributes`, `json_valid` constraint
-- Recorder/dispatcher: TurnExecutor records then dispatches, no inline execution
-- Core tools as plugin: all handlers in `src/plugins/tools/tools.js`
-- Handler priority chain: `onHandle(scheme, handler, priority)`, `return false` stops chain
-- `tool://` entries: plugin docs in store, rendered from turn_context
-- `skill://` entries: per-run, loaded from `config_path/skills/*.md`
-- Personas: per-run column, loaded from `config_path/personas/*.md` or raw text
-- Sessions killed: runs belong to projects directly
-- Models table: DB-backed, env bootstrap, runtime CRUD via RPC
-- RPC rebuilt: `read`/`store`/`write`/`delete` dispatch through handler chain
-- Unified verbs: model, plugin (`rummy.get/store/set/rm`), and client use same pipe
-- `progress://` as entry: continuation prompt modifiable by plugins before materialization
-- Materialization in TurnExecutor: core plumbing, not a plugin
-- Engine plugin emptied: no premature budget enforcement
-- Dead hooks killed: `action.search`, `action.fetch`, `prompt.tools`
-- `entries` getter: `rummy.entries` = KnownStore, `rummy.store()` = tool verb
-
-### Test status
-
-- 154 unit, 100 integration: all pass
-- 22/23 live: 1 model timeout
-- 9/11 E2E: 2 model behavior (not code bugs)
-
----
-
-## Todo: Fidelity Projection Hooks
-
-The `v_model_context` VIEW hardcodes `json_extract(attributes, '$.symbols')`
-for summary projection. The system is trespassing on plugin-private data.
-
-Plugins need to define how their entries render at each fidelity level:
-
-```js
-hooks.tools.onProject("myscheme", {
-    full: (entry) => entry.body,
-    summary: (entry) => entry.attributes?.excerpt || entry.body.slice(0, 200),
-});
-```
-
-Recommendation: materialization-time projection in JS. The engine calls
-projection functions before INSERT into turn_context.
-
-**Blocks** full use of `attributes` for plugin-private data.
-
----
-
-## Todo: Janitor Plugin
-
-Deterministic context management. Simple rules, predictable behavior.
-Runs before materialization via `hooks.onTurn()`. Demotes entries by
-tier ordering to fit context budget. Ships with rummy as the default
-context manager.
-
-Separate from the relevance engine (stochastic, model-assisted, separate project).
-
----
-
-## Todo: Repomap / Symbols Extraction (do not touch prematurely)
-
-Orphaned repomap code exists throughout core (`CtagsExtractor.js`,
-`FileScanner.js` symbol hooks, `ContextAssembler.js` file_summary,
-`known_store.sql` symbols json_extract, `Hooks.js` file.symbols filter,
-`plugins/symbols/`). Leave it frozen until we extract the repomap into
-its own plugin/repo. Premature cleanup risks losing context about what
-it does and why. The extraction is the cleanup.
-
----
-
-## Done: Tool Rename — Lean Into Training Data
-
-Core tools renamed to align with unix/programming primitives the model
-has deep training on. The tag name is in the model's output token
-stream — training synergy matters here because we use XML tags, not
-native tool calling.
-
-| Tool | Scheme | Why |
-|------|--------|-----|
-| `get` | `get://` | Universal primitive. `get src/app.js` = load into context |
-| `set` | `set://` | Universal primitive. `set src/app.js` = modify this entry |
-| `known` | `known://` | Explicit knowledge save. `<known>OAuth2 PKCE</known>` |
-| `rm` | `rm://` | Unix. Unambiguous |
-| `mv` | `mv://` | Unix |
-| `cp` | `cp://` | Unix |
-| `sh` | `sh://` | Unix. Models know `sh` = shell execution |
-| `store` | `store://` | No better analog |
-| `env` | `env://` | Already unix |
-| `search` | `search://` | No better analog |
-| `ask_user` | `ask_user://` | No better analog |
-| `summarize` | `summarize://` | No better analog |
-| `update` | `update://` | No better analog |
-| `unknown` | `unknown://` | No better analog |
-
-### Tool result header format
-
-Every tool result projection uses `#` comment headers. No state in the
-header — state comes from the assembler. Token counts on a second `#` line
-where the model benefits from knowing the budget impact.
-
-**Single operations:**
-
-```
-# set src/app.js
-# 120→125 tokens
-<<<<<<< SEARCH
-const port = 3000;
-=======
-const port = 8080;
->>>>>>> REPLACE
-```
-
-```
-# get src/app.js
-src/app.js 120 tokens
-```
-
-```
-# rm src/old.js
-# 125→0 tokens
-```
-
-```
-# mv known://draft known://final
-# 125 tokens moved
-```
-
-```
-# sh npm test
-12 passing, 0 failing
-```
-
-```
-# env node --version
-v22.1.0
-```
-
-```
-# search "Tom Petty death"
-10 results for "Tom Petty death"
-https://...
-```
-
-**Bulk operations — one entry, summary header + itemized listing:**
-
-```
-# mv old/*.js new/
-# 3,215 tokens moved
-
-# mv old/file1.js new/file1.js
-# mv old/file2.js new/file2.js
-```
-
-Bulk operations create ONE entry. `attributes.items` is an array with
-per-item metadata (including individual state for mixed-fate resolutions).
-The body IS the materialized view — summary header first, then per-item
-lines. The projection returns body directly.
-
-Future: summary projection mode that omits the itemized listing for
-large bulk operations.
-
-### Bulk operation handler refactor
-
-Currently pattern operations create N individual entries. This must change:
-
-- `storePatternResult` creates one entry with `attributes.items: [...]`
-- Each item: `{ path, state, tokens, ... }` (scheme-specific metadata)
-- Body: summary header + itemized `# verb from to` lines
-- Client resolves the single entry (bulk accept/reject)
-- The model sees one grouped result, not N individual results
-
-Affects: set (bulk update), get (pattern promote), store (pattern
-demote), rm (pattern remove), mv/cp (pattern operations).
-
-### Set entry contract
-
-- `body` = original content (reconstructable with attributes.patch)
-- `attributes.patch` = udiff for client (unix patch format)
-- `attributes.merge` = git conflict for model view (SEARCH/REPLACE)
-- `attributes.beforeTokens` / `attributes.afterTokens` = token delta
-- Projection = `# set file` + token line + merge block
-- Input: accept all formats (hedbergian). Output: always udiff to client, always git conflict to model.
-- Literal search only. No inline regex. Hedberg for pattern matching.
-
-### Resolution states
-
-| Action | State | Run continues? |
-|--------|-------|---------------|
-| `accept` | `pass` | Yes |
-| `error` | `error` | Yes (model gets error output) |
-| `reject` | `rejected` | No |
-
----
-
-## Todo: Cleanup
-
-- [ ] Rename `continuation` to `progress` throughout ContextAssembler
-- [ ] Remove "bucket" terminology from code comments
-
----
-
-## Todo: Deferred
+## Deferred
 
 - Relevance engine (stochastic, separate project/plugin)
-- Out-of-process plugins (rummy.web separation)
+- Hedberg extraction to `@possumtech/rummy.hedberg` npm package
+- Janitor plugin (deterministic context budget management)
+- Bulk operation aggregation (one entry per pattern operation)
 - Non-git file scanner fallback

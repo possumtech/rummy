@@ -5,6 +5,23 @@ export default class File {
 
 	constructor(core) {
 		this.#core = core;
+		core.registerScheme({
+			fidelity: "turn",
+			validStates: ["full", "summary", "index", "stored"],
+			category: "file",
+		});
+		core.registerScheme({
+			name: "http",
+			fidelity: "turn",
+			validStates: ["full", "summary", "stored"],
+			category: "file",
+		});
+		core.registerScheme({
+			name: "https",
+			fidelity: "turn",
+			validStates: ["full", "summary", "stored"],
+			category: "file",
+		});
 		core.on("full", this.full.bind(this));
 
 		// Register identity projections for schemes that just pass through body

@@ -5,6 +5,10 @@ export default class Unknown {
 
 	constructor(core) {
 		this.#core = core;
+		core.registerScheme({
+			validStates: ["full", "stored"],
+			category: "knowledge",
+		});
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");

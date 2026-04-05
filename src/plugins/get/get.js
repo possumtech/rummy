@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { storePatternResult } from "../helpers.js";
 
 export default class Get {

@@ -38,29 +38,30 @@ export default class PluginContext {
 		this.#store = value;
 	}
 
-	#scheme = null;
+	#schemes = [];
 
 	get hooks() {
 		return this.#hooks;
 	}
 
-	get scheme() {
-		return this.#scheme;
+	get schemes() {
+		return this.#schemes;
 	}
 
 	registerScheme({
+		name,
 		fidelity = "full",
 		modelVisible = 1,
 		validStates = ["full", "proposed", "pass", "rejected", "error"],
 		category = "result",
 	} = {}) {
-		this.#scheme = {
-			name: this.#name,
+		this.#schemes.push({
+			name: name || this.#name,
 			fidelity,
 			model_visible: modelVisible,
 			valid_states: JSON.stringify(validStates),
 			category,
-		};
+		});
 	}
 
 	/**

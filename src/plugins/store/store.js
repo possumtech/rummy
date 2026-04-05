@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { storePatternResult } from "../helpers.js";
 
 export default class Store {
@@ -5,6 +6,7 @@ export default class Store {
 
 	constructor(core) {
 		this.#core = core;
+		core.registerScheme({ validStates: ["full", "stored", "pattern"] });
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");

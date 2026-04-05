@@ -1,9 +1,12 @@
 import { readdirSync } from "node:fs";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import SqlRite from "@possumtech/sqlrite";
+import createHooks from "../../src/hooks/Hooks.js";
+import { initPlugins, registerPlugins } from "../../src/plugins/index.js";
+import RpcRegistry from "../../src/server/RpcRegistry.js";
 
 const functionsDir = fileURLToPath(
 	new URL("../../src/sql/functions", import.meta.url),
@@ -28,6 +31,14 @@ export default class TestDb {
 			dir: ["migrations", "src"],
 			functions: sqlFunctions,
 		});
+		const hooks = createHooks();
+		hooks.rpc.registry = new RpcRegistry();
+		const pluginsDir = join(
+			dirname(fileURLToPath(import.meta.url)),
+			"../../src/plugins",
+		);
+		await registerPlugins([pluginsDir], hooks);
+		await initPlugins(db, null, hooks);
 		return new TestDb(db, dbPath);
 	}
 

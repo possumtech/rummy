@@ -6,6 +6,11 @@ export default class Skills {
 
 	constructor(core) {
 		this.#core = core;
+		core.registerScheme({
+			name: "skill",
+			validStates: ["full", "stored"],
+			category: "knowledge",
+		});
 		const r = core.hooks.rpc.registry;
 
 		r.register("skill/add", {
