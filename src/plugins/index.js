@@ -20,13 +20,33 @@ export async function registerPlugins(dirs = [], hooks) {
 	await loadEnvPlugins(hooks);
 }
 
+const AUDIT_SCHEMES = [
+	"instructions", "system", "prompt", "ask", "act", "progress",
+	"reasoning", "model", "error", "user", "assistant", "content",
+];
+
 /**
- * After DB is ready, inject db and store into all PluginContext instances.
+ * After DB is ready, inject db and store into all PluginContext instances,
+ * upsert declared schemes, and bootstrap audit schemes.
  */
-export function initPlugins(db, store) {
+export async function initPlugins(db, store) {
+	for (const name of AUDIT_SCHEMES) {
+		const scheme = {
+			name,
+			fidelity: ["ask", "act", "progress"].includes(name) ? "full" : "null",
+			model_visible: ["ask", "act", "progress"].includes(name) ? 1 : 0,
+			valid_states: JSON.stringify(["info"]),
+			category: "audit",
+		};
+		await db.upsert_scheme.run(scheme);
+	}
+
 	for (const ctx of instances.values()) {
 		ctx.db = db;
 		ctx.entries = store;
+		if (ctx.scheme) {
+			await db.upsert_scheme.run(ctx.scheme);
+		}
 	}
 }
 

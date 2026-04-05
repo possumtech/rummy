@@ -6,48 +6,16 @@ PRAGMA mmap_size = 274877906944;
 -- Scheme registry: single source of truth for all scheme metadata.
 -- fidelity: 'full' = always visible, 'turn' = visible when turn>0, 'null' = never visible.
 -- valid_states: JSON array of allowed state values for this scheme.
--- tier: demotion priority (0 = demote first under budget pressure).
 CREATE TABLE IF NOT EXISTS schemes (
 	name TEXT PRIMARY KEY
 	, fidelity TEXT NOT NULL CHECK (fidelity IN ('full', 'turn', 'null'))
 	, model_visible BOOLEAN NOT NULL DEFAULT 1
 	, valid_states TEXT NOT NULL
-	, tier INTEGER NOT NULL DEFAULT 0
 	, category TEXT
 );
 
-INSERT OR IGNORE INTO schemes (name, fidelity, model_visible, valid_states, tier, category) VALUES
-('file', 'turn', 1, '["full","summary","index","stored"]', 1, 'file'),
-('known', 'turn', 1, '["full","stored"]', 2, 'knowledge'),
-('unknown', 'full', 1, '["full","stored"]', 4, 'knowledge'),
-('set', 'full', 1, '["full","proposed","pass","rejected","error","pattern"]', 0, 'result'),
-('sh', 'full', 1, '["full","proposed","pass","rejected","error"]', 0, 'result'),
-('env', 'full', 1, '["full","proposed","pass","rejected","error"]', 0, 'result'),
-('rm', 'full', 1, '["full","proposed","pass","rejected","error","pattern"]', 0, 'result'),
-('ask_user', 'full', 1, '["full","proposed","pass","rejected","error"]', 0, 'result'),
-('mv', 'full', 1, '["full","proposed","pass","rejected","error","pattern"]', 0, 'result'),
-('cp', 'full', 1, '["full","proposed","pass","rejected","error","pattern"]', 0, 'result'),
-('get', 'full', 1, '["full","read","pattern"]', 0, 'result'),
-('store', 'full', 1, '["full","stored","pattern"]', 0, 'result'),
-('search', 'full', 1, '["full","info"]', 0, 'result'),
-('summarize', 'full', 1, '["summary"]', 0, 'structural'),
-('update', 'full', 1, '["info"]', 0, 'structural'),
-('instructions', 'null', 0, '["info"]', 0, 'audit'),
-('system', 'null', 0, '["info"]', 0, 'audit'),
-('prompt', 'null', 0, '["info"]', 0, 'audit'),
-('ask', 'full', 1, '["info"]', 0, 'audit'),
-('act', 'full', 1, '["info"]', 0, 'audit'),
-('progress', 'full', 1, '["info"]', 0, 'audit'),
-('reasoning', 'null', 0, '["info"]', 0, 'audit'),
-('model', 'null', 0, '["info"]', 0, 'audit'),
-('error', 'null', 0, '["info"]', 0, 'audit'),
-('user', 'null', 0, '["info"]', 0, 'audit'),
-('assistant', 'null', 0, '["info"]', 0, 'audit'),
-('content', 'null', 0, '["info"]', 0, 'audit'),
-('tool', 'null', 0, '["full"]', 0, 'tool'),
-('skill', 'full', 1, '["full","stored"]', 5, 'tool'),
-('http', 'turn', 1, '["full","summary","stored"]', 1, 'file'),
-('https', 'turn', 1, '["full","summary","stored"]', 1, 'file');
+-- Schemes are registered by plugins at startup via core.registerScheme().
+-- Audit schemes are bootstrapped here since they have no plugin owner.
 
 -- Projects: top-level organizational unit.
 CREATE TABLE IF NOT EXISTS projects (

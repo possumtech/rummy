@@ -5,6 +5,7 @@ export default class Get {
 
 	constructor(core) {
 		this.#core = core;
+		core.registerScheme({ validStates: ["full", "read", "pattern"] });
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");

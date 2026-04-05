@@ -34,7 +34,11 @@ export default class Known {
 		);
 		if (entries.length === 0) return content;
 
+		const SCHEME_ORDER = { skill: 0 };
 		entries.sort((a, b) => {
+			const sa = SCHEME_ORDER[a.scheme] ?? 1;
+			const sb = SCHEME_ORDER[b.scheme] ?? 1;
+			if (sa !== sb) return sa - sb;
 			const fa = FIDELITY_ORDER[a.fidelity] ?? 0;
 			const fb = FIDELITY_ORDER[b.fidelity] ?? 0;
 			if (fa !== fb) return fa - fb;
