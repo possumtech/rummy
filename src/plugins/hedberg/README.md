@@ -7,7 +7,27 @@ Models speak in whatever syntax they were trained on — sed regex,
 SEARCH/REPLACE blocks, escaped characters, regex anchors, malformed
 XML. Hedberg normalizes all of it into clean, deterministic operations.
 
-## API
+## Usage
+
+Any plugin can access hedberg via `core.hooks.hedberg`:
+
+```js
+constructor(core) {
+    const { match, replace, parseSed } = core.hooks.hedberg;
+}
+```
+
+## API (available on core.hooks.hedberg)
+
+| Method | Purpose |
+|--------|---------|
+| `match(pattern, string)` | Full-string pattern match (glob, regex, literal) |
+| `search(pattern, string)` | Substring search, returns `{ found, match, index }` |
+| `replace(body, search, replacement, opts?)` | Apply replacement (sed regex → literal → heuristic) |
+| `parseSed(input)` | Parse sed syntax into `[{ search, replace, flags, sed }]` |
+| `parseEdits(content)` | Detect edit format (merge conflict, udiff, Claude XML) |
+| `normalizeAttrs(attrs)` | Heal model attribute names (value→body, unknown→path) |
+| `generatePatch(path, old, new)` | Generate unified diff |
 
 ### Hedberg.replace(body, search, replacement, options?)
 

@@ -51,9 +51,14 @@ export default class FileScanner {
 
 		// Stat all files concurrently (no content reads), skip ignored
 		const diskStats = new Map();
+		const { match } = this.#hooks.hedberg;
+		const isIgnored = (relPath) =>
+			[...constraints.entries()].some(
+				([pattern, vis]) => vis === "ignore" && match(pattern, relPath),
+			);
 		const statResults = await Promise.all(
 			mappableFiles
-				.filter((relPath) => constraints.get(relPath) !== "ignore")
+				.filter((relPath) => !isIgnored(relPath))
 				.map(async (relPath) => {
 					const fullPath = join(projectPath, relPath);
 					try {
@@ -125,7 +130,11 @@ export default class FileScanner {
 
 			changedPaths.push(relPath);
 
-			const constraint = constraints.get(relPath) || null;
+			const constraint = matchConstraint(
+				constraints,
+				relPath,
+				this.#hooks.hedberg.match,
+			);
 			const state = constraint === "active" ? "full" : entry?.state || "index";
 
 			await this.#knownStore.upsert(
@@ -169,7 +178,11 @@ export default class FileScanner {
 			} catch {
 				continue;
 			}
-			const constraint = constraints.get(relPath) || null;
+			const constraint = matchConstraint(
+				constraints,
+				relPath,
+				this.#hooks.hedberg.match,
+			);
 			await this.#knownStore.upsert(
 				runId,
 				currentTurn,
@@ -189,4 +202,11 @@ export default class FileScanner {
 			await this.#knownStore.remove(runId, relPath);
 		}
 	}
+}
+
+function matchConstraint(constraints, relPath, match) {
+	for (const [pattern, visibility] of constraints) {
+		if (match(pattern, relPath)) return visibility;
+	}
+	return null;
 }

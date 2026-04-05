@@ -1,20 +1,39 @@
 import { readFileSync } from "node:fs";
+import { parseEditContent } from "./edits.js";
 import HeuristicMatcher, { generatePatch } from "./matcher.js";
+import { normalizeAttrs } from "./normalize.js";
+import { hedmatch, hedsearch } from "./patterns.js";
+import { parseSed } from "./sed.js";
 
 /**
  * Hedberg: the interpretation boundary between stochastic model output
  * and deterministic system operations.
  *
- * Owns all pattern matching, fuzzy matching, sed regex execution,
- * and input normalization. Other plugins call hedberg.replace() and
- * get clean, deterministic results regardless of what syntax the
- * model used.
+ * Registers its functions on core.hedberg so any plugin can call them:
+ *   core.hedberg.match(pattern, string)
+ *   core.hedberg.search(pattern, string)
+ *   core.hedberg.replace(body, search, replacement, options?)
+ *   core.hedberg.parseSed(input)
+ *   core.hedberg.parseEdits(content)
+ *   core.hedberg.normalizeAttrs(attrs)
+ *   core.hedberg.generatePatch(path, old, new)
  */
 export default class Hedberg {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
+
+		core.hooks.hedberg = {
+			match: hedmatch,
+			search: hedsearch,
+			replace: Hedberg.replace,
+			parseSed,
+			parseEdits: parseEditContent,
+			normalizeAttrs,
+			generatePatch,
+		};
+
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
 			content ? `${content}\n\n${docs}` : docs,

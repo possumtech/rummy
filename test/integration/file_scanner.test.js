@@ -4,11 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import KnownStore from "../../src/agent/KnownStore.js";
+import RummyContext from "../../src/hooks/RummyContext.js";
 import FileScanner from "../../src/plugins/file/FileScanner.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("FileScanner integration", () => {
-	let tdb, store, scanner, PROJECT_ID, RUN_ID;
+	let tdb, store, scanner, rummy, PROJECT_ID, RUN_ID;
 	const projectPath = join(tmpdir(), `rummy-scanner-${Date.now()}`);
 
 	before(async () => {
@@ -23,6 +24,24 @@ describe("FileScanner integration", () => {
 		});
 		PROJECT_ID = seed.projectId;
 		RUN_ID = seed.runId;
+		rummy = new RummyContext(null, {
+			hooks: tdb.hooks,
+			db: tdb.db,
+			store,
+			project: {
+				id: PROJECT_ID,
+				project_root: projectPath,
+				name: "ScannerTest",
+			},
+			type: "act",
+			sequence: 1,
+			runId: RUN_ID,
+			turnId: 1,
+			noContext: false,
+			contextSize: 50000,
+			systemPrompt: "",
+			loopPrompt: "",
+		});
 	});
 
 	after(async () => {
@@ -33,8 +52,8 @@ describe("FileScanner integration", () => {
 	it("adds new files to the store", async () => {
 		await fs.writeFile(join(projectPath, "app.js"), "const x = 1;\n");
 
-		scanner = new FileScanner(store, tdb.db, null);
-		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 1);
+		scanner = new FileScanner(store, tdb.db, tdb.hooks);
+		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 1, rummy);
 
 		const entries = await store.getFileEntries(RUN_ID);
 		const app = entries.find((e) => e.path === "app.js");
@@ -48,7 +67,7 @@ describe("FileScanner integration", () => {
 		const appBefore = entriesBefore.find((e) => e.path === "app.js");
 
 		// Scan again without touching the file
-		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 2);
+		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 2, rummy);
 
 		const entriesAfter = await store.getFileEntries(RUN_ID);
 		const appAfter = entriesAfter.find((e) => e.path === "app.js");
@@ -65,7 +84,7 @@ describe("FileScanner integration", () => {
 		const future = new Date(Date.now() + 2000);
 		await fs.utimes(join(projectPath, "app.js"), future, future);
 
-		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 3);
+		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 3, rummy);
 
 		const entriesAfter = await store.getFileEntries(RUN_ID);
 		const hashAfter = entriesAfter.find((e) => e.path === "app.js").hash;
@@ -74,7 +93,13 @@ describe("FileScanner integration", () => {
 
 	it("removes deleted files from store", async () => {
 		await fs.writeFile(join(projectPath, "temp.js"), "// temp\n");
-		await scanner.scan(projectPath, PROJECT_ID, ["app.js", "temp.js"], 4);
+		await scanner.scan(
+			projectPath,
+			PROJECT_ID,
+			["app.js", "temp.js"],
+			4,
+			rummy,
+		);
 
 		let entries = await store.getFileEntries(RUN_ID);
 		assert.ok(
@@ -84,7 +109,7 @@ describe("FileScanner integration", () => {
 
 		// Delete from disk, scan without it in mappableFiles
 		await fs.unlink(join(projectPath, "temp.js"));
-		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 5);
+		await scanner.scan(projectPath, PROJECT_ID, ["app.js"], 5, rummy);
 
 		entries = await store.getFileEntries(RUN_ID);
 		assert.ok(
@@ -111,6 +136,7 @@ describe("FileScanner integration", () => {
 			PROJECT_ID,
 			["root.js", "src/nested.js", "active.js"],
 			7,
+			rummy,
 		);
 
 		const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });

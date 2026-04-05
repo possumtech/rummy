@@ -16,9 +16,10 @@ const sqlFunctions = readdirSync(functionsDir)
 	.map((f) => join(functionsDir, f));
 
 export default class TestDb {
-	constructor(db, dbPath) {
+	constructor(db, dbPath, hooks) {
 		this.db = db;
 		this.dbPath = dbPath;
+		this.hooks = hooks;
 	}
 
 	static async create() {
@@ -40,7 +41,7 @@ export default class TestDb {
 		);
 		await registerPlugins([pluginsDir], hooks);
 		await initPlugins(db, null, hooks);
-		return new TestDb(db, dbPath);
+		return new TestDb(db, dbPath, hooks);
 	}
 
 	async seedRun({
