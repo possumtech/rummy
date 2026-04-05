@@ -33,7 +33,7 @@ export default class Rpc {
 				ctx.setContext(result.projectId, params.projectRoot);
 				return result;
 			},
-			description: "Initialize project. Returns { projectId, context }.",
+			description: "Initialize project. Returns { projectId }.",
 			params: {
 				name: "string — project name (unique identifier)",
 				projectRoot: "string — absolute path to source code",

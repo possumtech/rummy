@@ -44,23 +44,13 @@ export default class ProjectAgent {
 		});
 		const projectId = projectRow.id;
 
-		const { default: GitProvider } = await import(
-			"../plugins/file/GitProvider.js"
-		);
-		const gitRoot = await GitProvider.detectRoot(projectRoot);
-		const headHash = gitRoot ? await GitProvider.getHeadHash(gitRoot) : null;
-
-		const result = {
-			projectId,
-			context: { gitRoot, headHash },
-		};
-
 		await this.#hooks.project.init.completed.emit({
-			...result,
+			projectId,
 			projectRoot,
 			db: this.#db,
 		});
-		return result;
+
+		return { projectId };
 	}
 
 	get entries() {

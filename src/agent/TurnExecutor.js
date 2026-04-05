@@ -1,6 +1,4 @@
 import RummyContext from "../hooks/RummyContext.js";
-import FileScanner from "../plugins/file/FileScanner.js";
-import ProjectContext from "../plugins/file/ProjectContext.js";
 import ContextAssembler from "./ContextAssembler.js";
 import KnownStore from "./KnownStore.js";
 import msg from "./messages.js";
@@ -13,14 +11,12 @@ export default class TurnExecutor {
 	#llmProvider;
 	#hooks;
 	#knownStore;
-	#fileScanner;
 
 	constructor(db, llmProvider, hooks, knownStore) {
 		this.#db = db;
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
-		this.#fileScanner = new FileScanner(knownStore, db, hooks);
 	}
 
 	async execute({
@@ -85,19 +81,6 @@ export default class TurnExecutor {
 			prompt: loopPrompt,
 			isContinuation: options?.isContinuation,
 		});
-
-		// File scan (after rummy so entry.changed receives context)
-		if (!noContext && project?.project_root) {
-			const ctx = await ProjectContext.open(project.project_root);
-			const files = await ctx.getMappableFiles();
-			await this.#fileScanner.scan(
-				project.project_root,
-				project.id,
-				files,
-				turn,
-				rummy,
-			);
-		}
 
 		await this.#hooks.processTurn(rummy);
 
