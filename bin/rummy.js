@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(__dirname, "..");
+const envExample = join(packageRoot, ".env.example");
 
 // Resolve RUMMY_HOME
 const rummyHome = process.env.RUMMY_HOME || join(homedir(), ".rummy");
@@ -22,8 +23,11 @@ for (const dir of ["plugins", "skills", "personas"]) {
 	if (!existsSync(path)) mkdirSync(path, { recursive: true });
 }
 
+// Keep .env.example in RUMMY_HOME as reference
+copyFileSync(envExample, join(rummyHome, ".env.example"));
+
 // Load defaults from .env.example, then user overrides from ~/.rummy/.env
-process.loadEnvFile(join(packageRoot, ".env.example"));
+process.loadEnvFile(envExample);
 const userEnv = join(rummyHome, ".env");
 if (existsSync(userEnv)) process.loadEnvFile(userEnv);
 
