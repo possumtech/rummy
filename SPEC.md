@@ -191,37 +191,37 @@ Plugin: rummy.rm({ path })               → #record() → dispatch(scheme, entr
 ### 3.3 Plugin Convention
 
 A plugin is an instantiated class. The class name matches the file name.
-The constructor receives `rummy` (a PluginContext) — the plugin's
+The constructor receives `core` (a PluginContext) — the plugin's
 complete interface with the system.
 
 ```js
 export default class Rm {
-    #rummy;
+    #core;
 
-    constructor(rummy) {
-        this.#rummy = rummy;
-        rummy.on("handler", this.handler.bind(this));
-        rummy.on("view", this.view.bind(this));
+    constructor(core) {
+        this.#core = core;
+        core.on("handler", this.handler.bind(this));
+        core.on("full", this.full.bind(this));
     }
 
     async handler(entry, rummy) {
         // rummy here is per-turn RummyContext (not the startup PluginContext)
     }
 
-    view(entry) {
+    full(entry) {
         return `# rm ${entry.attributes.path}`;
     }
 }
 ```
 
-**Two rummy objects:**
-- `this.#rummy` — PluginContext (startup). For registration: `on()`, `filter()`.
+**Two objects:**
+- `this.#core` — PluginContext (startup). For registration: `on()`, `filter()`.
 - `rummy` argument — RummyContext (per-turn). For runtime: tool verbs, queries.
 
 **Plugin types:**
-- **Tool plugins**: register `handler` + `view`. Model-invokable.
-- **Assembly plugins**: register `rummy.filter("assembly.system", ...)`. Own a packet tag.
-- **Infrastructure plugins**: register `rummy.on("turn", ...)`. Background work.
+- **Tool plugins**: register `handler` + `full`/`summary`. Model-invokable.
+- **Assembly plugins**: register `core.filter("assembly.system", ...)`. Own a packet tag.
+- **Infrastructure plugins**: register `core.on("turn", ...)`. Background work.
 
 A plugin can be multiple types. Known is a tool AND an assembly plugin.
 
@@ -313,15 +313,20 @@ text from body + attributes.
 Each turn:
 
 1. Write `instructions://system` (body = prompt.md, attributes = { toolDescriptions, persona })
-2. Run plugin hooks (`onTurn`) — plugins modify instructions attributes and store entries
+2. Run plugin hooks (`onTurn`) — plugins modify entries before the model sees them
 3. Project `instructions://system` → instructions text
 4. Query `v_model_context` VIEW → visible entries
-5. Project each entry through its tool's projection function
+5. Project each entry through its tool's `full`/`summary` projection
 6. Insert projected rows into `turn_context`
-7. ContextAssembler splits turn_context into previous/current by prompt boundary
-8. Assemble system message: instructions + context + previous
-9. Assemble user message: unknowns + current + progress + ask/act
-10. Store as `system://N` and `user://N` audit entries
+7. Invoke `assembly.system` filter chain (instructions text as base):
+   - Known plugin (priority 100) → `<known>` section
+   - Previous plugin (priority 200) → `<previous>` section
+   - Unknown plugin (priority 300) → `<unknowns>` section
+8. Invoke `assembly.user` filter chain (empty string as base):
+   - Current plugin (priority 100) → `<current>` section
+   - Progress plugin (priority 200) → `<progress>` section
+   - Prompt plugin (priority 300) → `<ask>`/`<act>` section
+9. Store as `system://N` and `user://N` audit entries
 
 The VIEW determines visibility. State IS fidelity:
 - `full` → body visible

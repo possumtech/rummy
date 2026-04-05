@@ -4,25 +4,25 @@
 
 A plugin is a directory under `src/plugins/` containing a `.js` file that
 exports a default class. The class name matches the file name. The
-constructor receives `rummy` — the plugin's complete interface with
-the system.
+constructor receives `core` (a PluginContext) — the plugin's complete
+interface with the system.
 
 ```js
 export default class MyTool {
-    #rummy;
+    #core;
 
-    constructor(rummy) {
-        this.#rummy = rummy;
-        rummy.on("handler", this.handler.bind(this));
-        rummy.on("view", this.view.bind(this));
+    constructor(core) {
+        this.#core = core;
+        core.on("handler", this.handler.bind(this));
+        core.on("full", this.full.bind(this));
     }
 
     async handler(entry, rummy) {
-        // What the tool does
+        // What the tool does (rummy is per-turn RummyContext)
     }
 
-    view(entry) {
-        // What the model sees
+    full(entry) {
+        // What the model sees at full fidelity
         return `# mytool ${entry.path}\n${entry.body}`;
     }
 }
@@ -51,10 +51,10 @@ Plugin: rummy.rm({ path: "file.txt" })
 
 ## Registration
 
-All registration happens in the constructor via `rummy.on()` and
-`rummy.filter()`. No static methods. No direct hook manipulation.
+All registration happens in the constructor via `core.on()` and
+`core.filter()`. No static methods. No direct hook manipulation.
 
-### rummy.on(event, callback, priority?)
+### core.on(event, callback, priority?)
 
 | Event | Purpose |
 |-------|---------|
@@ -67,7 +67,7 @@ All registration happens in the constructor via `rummy.on()` and
 | `"entry.changed"` | File entries changed on disk |
 | Any `"dotted.name"` | Resolves to the matching hook in the hook tree |
 
-### rummy.filter(name, callback, priority?)
+### core.filter(name, callback, priority?)
 
 | Filter | Purpose |
 |--------|---------|
@@ -95,18 +95,21 @@ entry = {
 Multiple handlers per scheme. Lower priority runs first. Return `false`
 to stop the chain.
 
-### view(entry)
+### full(entry) / summary(entry)
 
-Returns the string the model sees for this tool's entries. Called during
-materialization. Every tool MUST register a view. No default. No fallback.
+Returns the string the model sees for this tool's entries at the given
+fidelity. Called during materialization. Every tool MUST register `full`.
+`summary` is optional — if unregistered, the entry is invisible at summary
+fidelity (no fallback).
 
-## Two Rummy Objects
+## Two Objects
 
-Plugins interact with two rummy objects at different scopes:
+Plugins interact with two objects at different scopes:
 
-**PluginContext** (`this.#rummy`) — startup-scoped. Created once per plugin.
+**PluginContext** (`this.#core`) — startup-scoped. Created once per plugin.
 Used for registration (`on()`, `filter()`), database access, store queries.
-Lives for the lifetime of the service.
+Lives for the lifetime of the service. This is `rummy.core` — the
+plugin-only tier that clients cannot reach.
 
 **RummyContext** (`rummy` argument) — turn-scoped. Passed to handlers
 per-invocation. Has tool verbs, per-turn state (runId, turn, mode).
@@ -203,7 +206,9 @@ Hooks fire in this order every turn:
 |------|------|---------|------|
 | `entry.changed` | event | `{ rummy, runId, turn, paths }` | Files changed on disk since last turn |
 | `onTurn` | processor | `(rummy)` | Plugin turn setup, before context assembly |
-| `llm.messages` | filter | `messages[], { model, projectId, runId }` | Before LLM call — modify system/user messages |
+| `assembly.system` | filter | `(content, { rows, loopStartTurn, type, tools })` | Build system message — plugins append sections |
+| `assembly.user` | filter | `(content, { rows, loopStartTurn, type, tools })` | Build user message — plugins append sections |
+| `llm.messages` | filter | `messages[], { model, projectId, runId }` | Before LLM call — modify final messages |
 | `llm.request.started` | event | `{ model, turn }` | LLM call about to fire |
 | `llm.response` | filter | `response, { model, projectId, runId }` | Raw LLM response — normalize, transform |
 | `llm.request.completed` | event | `{ model, turn, usage }` | LLM call finished |
@@ -266,7 +271,7 @@ Each plugin has its own README at `src/plugins/{name}/README.md`.
 |--------|------|-------------|
 | [`get`](src/plugins/get/) | Core tool | Load file/entry into context |
 | [`set`](src/plugins/set/) | Core tool | Edit file/entry |
-| [`known`](src/plugins/known/) | Core tool | Save knowledge |
+| [`known`](src/plugins/known/) | Core tool | Save knowledge, render `<known>` |
 | [`store`](src/plugins/store/) | Core tool | Remove from context |
 | [`rm`](src/plugins/rm/) | Core tool | Delete permanently |
 | [`mv`](src/plugins/mv/) | Core tool | Move entry |
@@ -276,7 +281,11 @@ Each plugin has its own README at `src/plugins/{name}/README.md`.
 | [`ask_user`](src/plugins/ask_user/) | Core tool | Ask the user |
 | [`summarize`](src/plugins/summarize/) | Structural | Signal completion |
 | [`update`](src/plugins/update/) | Structural | Signal continued work |
-| [`unknown`](src/plugins/unknown/) | Structural | Register unknowns |
+| [`unknown`](src/plugins/unknown/) | Structural | Register unknowns, render `<unknowns>` |
+| [`previous`](src/plugins/previous/) | Assembly | Render `<previous>` loop history |
+| [`current`](src/plugins/current/) | Assembly | Render `<current>` active loop work |
+| [`progress`](src/plugins/progress/) | Assembly | Render `<progress>` bridge text |
+| [`prompt`](src/plugins/prompt/) | Assembly | Render `<ask>`/`<act>` prompt tag |
 | [`instructions`](src/plugins/instructions/) | Internal | System prompt assembly |
 | [`file`](src/plugins/file/) | Internal | File projections, constraints, scanning |
 | [`rpc`](src/plugins/rpc/) | Internal | RPC method registration |
