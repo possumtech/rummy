@@ -62,7 +62,10 @@ async function main() {
 	const mmapMb = Number.parseInt(process.env.RUMMY_MMAP_MB || "0", 10);
 	const db = await SqlRite.open({
 		path: dbPath,
-		dir: ["migrations", "src"],
+		dir: [
+			fileURLToPath(new URL("./migrations", import.meta.url)),
+			fileURLToPath(new URL("./src", import.meta.url)),
+		],
 		functions: sqlFunctions,
 		params: {
 			mmap_size: mmapMb * 1024 * 1024,

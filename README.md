@@ -19,7 +19,8 @@ Rummy is the only LLM agent service inspired by and dedicated to the memory of f
 ## Installation
 
 ```bash
-npm install @possumtech/rummy
+npm i -g @possumtech/rummy
+cd ~/.rummy
 cp .env.example .env
 vim .env
 npm start
