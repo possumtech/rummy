@@ -41,33 +41,27 @@ export default class Known {
 		if (entries.length === 0) return content;
 
 		// Rows arrive pre-sorted by SQL: skill → index → summary → full, then by recency
-		const lines = entries.map((e) => renderKnowledgeEntry(e));
-		return `${content}\n\n<known>\n${lines.join("\n")}\n</known>`;
+		const lines = entries.map((e) => renderKnownTag(e));
+		return `${content}\n\n<knowns>\n${lines.join("\n")}\n</knowns>`;
 	}
 }
 
-function renderKnowledgeEntry(entry) {
-	if (entry.category === "file_index" || entry.category === "known_index") {
-		return entry.path;
+function renderKnownTag(entry) {
+	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
+	const state = entry.state ? ` state="${entry.state}"` : "";
+
+	if (entry.state === "index") {
+		return `<known path="${entry.path}"${state}${tokens}/>`;
 	}
-	if (entry.category === "known") {
-		return `* ${entry.path} — ${entry.body}`;
+
+	const lang = langFor(entry.path);
+	if (lang && entry.body) {
+		return `<known path="${entry.path}"${state}${tokens}>\`\`\`${lang}\n${entry.body}\n\`\`\`</known>`;
 	}
-	if (entry.category === "file") {
-		const lang = langFor(entry.path);
-		const tokens = entry.tokens ? ` (${entry.tokens} tokens)` : "";
-		const attrs =
-			typeof entry.attributes === "string"
-				? JSON.parse(entry.attributes)
-				: entry.attributes;
-		const constraint = attrs?.constraint;
-		const label =
-			constraint === "readonly"
-				? " (readonly)"
-				: constraint === "active"
-					? " (active)"
-					: "";
-		return `#### ${entry.path}${tokens}${label}\n\`\`\`${lang}\n${entry.body}\n\`\`\``;
+
+	if (entry.body) {
+		return `<known path="${entry.path}"${state}${tokens}>${entry.body}</known>`;
 	}
-	return `* ${entry.path} — ${entry.body}`;
+
+	return `<known path="${entry.path}"${state}${tokens}/>`;
 }

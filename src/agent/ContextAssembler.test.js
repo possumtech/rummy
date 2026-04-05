@@ -66,7 +66,7 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[0].content.includes("You are helpful."));
 			assert.ok(messages[0].content.includes("known://auth"));
 			assert.ok(messages[0].content.includes("const x = 1;"));
-			assert.ok(messages[0].content.includes("<known>"));
+			assert.ok(messages[0].content.includes("<known path="));
 			assert.strictEqual(messages[1].role, "user");
 			assert.ok(messages[1].content.includes("<ask"));
 			assert.ok(messages[1].content.includes("What does this do?"));
@@ -297,7 +297,7 @@ describe("ContextAssembler", () => {
 			);
 			const content = messages[0].content;
 
-			assert.ok(content.includes("<known>"));
+			assert.ok(content.includes("<known path="));
 			assert.ok(content.includes("const y = 2;"), "old file rendered");
 			assert.ok(content.includes("JWT"), "known rendered");
 			assert.ok(content.includes("const x = 1;"), "new file rendered");
