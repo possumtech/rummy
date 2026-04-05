@@ -59,7 +59,6 @@ async function main() {
 		.filter((f) => f.endsWith(".js") && !f.endsWith(".test.js"))
 		.map((f) => join(functionsDir, f));
 
-	const mmapMb = Number.parseInt(process.env.RUMMY_MMAP_MB || "0", 10);
 	const db = await SqlRite.open({
 		path: dbPath,
 		dir: [
@@ -68,7 +67,7 @@ async function main() {
 		],
 		functions: sqlFunctions,
 		params: {
-			mmap_size: mmapMb * 1024 * 1024,
+			mmap_size: Number(process.env.RUMMY_MMAP_MB) * 1024 * 1024,
 		},
 	});
 
