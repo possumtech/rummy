@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import KnownStore from "../../agent/KnownStore.js";
 
 export default class Mv {
@@ -7,6 +8,10 @@ export default class Mv {
 		this.#core = core;
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
+		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
+		core.filter("instructions.toolDocs", async (content) =>
+			content ? `${content}\n\n${docs}` : docs,
+		);
 	}
 
 	async handler(entry, rummy) {

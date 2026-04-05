@@ -1,6 +1,3 @@
-import fs from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import RummyContext from "../hooks/RummyContext.js";
 import FileScanner from "../plugins/file/FileScanner.js";
 import ProjectContext from "../plugins/file/ProjectContext.js";
@@ -10,9 +7,6 @@ import msg from "./messages.js";
 import ResponseHealer from "./ResponseHealer.js";
 import { countTokens } from "./tokens.js";
 import XmlParser from "./XmlParser.js";
-
-const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "../..");
-let promptCache = null;
 
 export default class TurnExecutor {
 	#db;
@@ -27,16 +21,6 @@ export default class TurnExecutor {
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
 		this.#fileScanner = new FileScanner(knownStore, db, hooks);
-	}
-
-	async #loadPrompt() {
-		if (promptCache) return promptCache;
-		try {
-			promptCache = await fs.readFile(join(ROOT_DIR, "prompt.md"), "utf8");
-		} catch {
-			throw new Error("prompt.md not found");
-		}
-		return promptCache;
 	}
 
 	async execute({
@@ -94,14 +78,13 @@ export default class TurnExecutor {
 			);
 		}
 
-		// Write instructions entry — body is prompt.md, attributes from registry.
-		const promptBody = await this.#loadPrompt();
+		// Write instructions entry — body empty, projection builds from preamble + plugins.
 		const runRow2 = await this.#db.get_run_by_id.get({ id: currentRunId });
 		await this.#knownStore.upsert(
 			currentRunId,
 			turn,
 			"instructions://system",
-			promptBody,
+			"",
 			"info",
 			{
 				attributes: {
@@ -168,7 +151,7 @@ export default class TurnExecutor {
 		const systemPrompt = await this.#hooks.tools.view("instructions", {
 			path: "instructions://system",
 			scheme: "instructions",
-			body: instrEntry[0]?.body || promptBody,
+			body: instrEntry[0]?.body || "",
 			attributes: instrAttrs,
 			fidelity: "full",
 			category: "system",

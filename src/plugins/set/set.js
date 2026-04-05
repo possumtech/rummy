@@ -11,6 +11,10 @@ export default class Set {
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.on("turn.proposing", this.#materializeRevisions.bind(this));
+		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
+		core.filter("instructions.toolDocs", async (content) =>
+			content ? `${content}\n\n${docs}` : docs,
+		);
 	}
 
 	async handler(entry, rummy) {

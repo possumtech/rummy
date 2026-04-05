@@ -1,8 +1,8 @@
 # RUMMY: Architecture Specification
 
 The authoritative reference for Rummy's design. The sacred prompt
-(`prompt.md`) defines model-facing behavior. This document defines
-everything else.
+The instructions plugin (`preamble.md` + tool docs) defines
+model-facing behavior. This document defines everything else.
 
 ---
 
@@ -298,7 +298,7 @@ continues (next turn), new results append to `<current>`.
 
 | Path | Lifetime | Body | Attributes |
 |------|----------|------|-----------|
-| `instructions://system` | One per run (mutable) | prompt.md raw text | `{ toolDescriptions: [], persona }` |
+| `instructions://system` | One per run (mutable) | Empty (projection builds from preamble + plugins) | `{ persona }` |
 | `system://N` | Audit, one per turn | Full assembled system message | — |
 | `user://N` | Audit, one per turn | Full assembled user message | — |
 | `assistant://N` | Audit, one per turn | Model's raw response | — |
@@ -312,7 +312,7 @@ text from body + attributes.
 
 Each turn:
 
-1. Write `instructions://system` (body = prompt.md, attributes = { toolDescriptions, persona })
+1. Write `instructions://system` (empty body, attributes = { persona })
 2. Run plugin hooks (`onTurn`) — plugins modify entries before the model sees them
 3. Project `instructions://system` → instructions text
 4. Query `v_model_context` VIEW → visible entries

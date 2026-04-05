@@ -14,6 +14,10 @@ export default class Hedberg {
 
 	constructor(core) {
 		this.#core = core;
+		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
+		core.filter("instructions.toolDocs", async (content) =>
+			content ? `${content}\n\n${docs}` : docs,
+		);
 	}
 
 	/**

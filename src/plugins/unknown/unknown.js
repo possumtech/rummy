@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 export default class Unknown {
 	#core;
 
@@ -5,6 +7,10 @@ export default class Unknown {
 		this.#core = core;
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);
+		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
+		core.filter("instructions.toolDocs", async (content) =>
+			content ? `${content}\n\n${docs}` : docs,
+		);
 	}
 
 	full(entry) {

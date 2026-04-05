@@ -485,7 +485,7 @@ export default class AgentLoop {
 		await this.#db.enqueue_prompt.get({
 			run_id: runId,
 			mode: resumeMode,
-			model: null,
+			model: runRow.model,
 			prompt: "",
 			config: "{}",
 		});
@@ -534,7 +534,7 @@ export default class AgentLoop {
 		await this.#db.enqueue_prompt.get({
 			run_id: runRow.id,
 			mode: "ask",
-			model: null,
+			model: runRow.model,
 			prompt: message,
 			config: "{}",
 		});
