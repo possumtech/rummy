@@ -1,7 +1,7 @@
 {
 	"name": "rummy",
-	"version": "0.0.1",
-	"description": "Sqlite/Node OpenRouter Engine",
+	"version": "0.1.0",
+	"description": "Relational Unknowns Memory Management Yoke",
 	"keywords": [
 		"llm"
 	],
@@ -45,7 +45,7 @@
 		"ws": "^8.19.0"
 	},
 	"optionalDependencies": {
-		"@possumtech/rummy.repo": "^0.0.3",
+		"@possumtech/rummy.repo": "^0.0.4",
 		"@possumtech/rummy.web": "^0.0.7"
 	}
 }

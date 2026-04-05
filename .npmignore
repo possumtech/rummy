@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.claude/
+rummy.db
+rummy_dev.db
+*.db-shm
+*.db-wal
+test/
+.venv/
+.sqlfluff
+.sqlfluffignore
+biome.json
+AGENTS.md
+MIGRATION_NOTES.md
