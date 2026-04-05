@@ -17,7 +17,7 @@ import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
-const model = process.env.RUMMY_MODEL_DEFAULT;
+const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 300_000;
 
 async function lastResponse(db, runAlias) {

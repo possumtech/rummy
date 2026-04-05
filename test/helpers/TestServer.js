@@ -23,7 +23,7 @@ export default class TestServer {
 
 		// Bootstrap models from env vars (same as service.js)
 		for (const key of Object.keys(process.env)) {
-			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_MODEL_DEFAULT")
+			if (!key.startsWith("RUMMY_MODEL_") || key === "RUMMY_TEST_MODEL")
 				continue;
 			const alias = key.replace("RUMMY_MODEL_", "");
 			await db.upsert_model.get({

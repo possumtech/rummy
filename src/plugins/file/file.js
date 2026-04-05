@@ -9,7 +9,7 @@ export default class File {
 
 		// Register identity projections for schemes that just pass through body
 		for (const scheme of ["known", "skill", "ask", "act", "progress"]) {
-			core.hooks.tools.onProject(scheme, (entry) => entry.body);
+			core.hooks.tools.onView(scheme, (entry) => entry.body);
 		}
 	}
 

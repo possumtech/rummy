@@ -57,7 +57,7 @@ export default class PluginContext {
 		}
 		if (event === "full" || event === "summary") {
 			this.#hooks.tools.ensureTool(this.#name);
-			this.#hooks.tools.onProject(this.#name, callback, event);
+			this.#hooks.tools.onView(this.#name, callback, event);
 			return;
 		}
 		if (event === "docs") {

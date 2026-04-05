@@ -175,7 +175,7 @@ export default class TurnExecutor {
 					"instructions://system",
 				)
 			: null;
-		const systemPrompt = this.#hooks.tools.project("instructions", {
+		const systemPrompt = this.#hooks.tools.view("instructions", {
 			path: "instructions://system",
 			scheme: "instructions",
 			body: instrEntry[0]?.body || promptBody,
@@ -191,7 +191,7 @@ export default class TurnExecutor {
 		});
 		for (const row of viewRows) {
 			const scheme = row.scheme || "file";
-			const projectedBody = this.#hooks.tools.project(scheme, {
+			const projectedBody = this.#hooks.tools.view(scheme, {
 				path: row.path,
 				scheme,
 				body: row.body,

@@ -7,7 +7,7 @@ import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
-const model = process.env.RUMMY_MODEL_DEFAULT;
+const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 120_000;
 
 describe("E2E: Persona & Fork", () => {

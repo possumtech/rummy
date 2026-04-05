@@ -1,16 +1,15 @@
 export default class ToolRegistry {
 	#tools = new Map();
 	#handlers = new Map();
-	#projections = new Map();
+	#views = new Map();
 
-	register(name, definition) {
-		if (this.#tools.has(name))
-			throw new Error(`Tool '${name}' already registered.`);
-		const { handler, project, ...rest } = definition;
-		this.#tools.set(name, Object.freeze(rest));
-		if (handler) this.onHandle(name, handler);
-		if (project) this.#projections.set(name, project);
+	ensureTool(scheme) {
+		if (this.#tools.has(scheme)) return;
+		this.#tools.set(scheme, Object.freeze({ modes: new Set(["ask", "act"]) }));
 	}
+
+	// Exception: old register() removed. Plugins use core.on("handler")/core.on("full").
+	// The only remaining caller pathway is ensureTool + onHandle + onView.
 
 	get(name) {
 		return this.#tools.get(name);
@@ -20,11 +19,6 @@ export default class ToolRegistry {
 		return this.#tools.has(name);
 	}
 
-	/**
-	 * Register a handler for a scheme. Multiple handlers per scheme,
-	 * executed in priority order (lower = first). Any plugin can hook
-	 * any scheme — core tools and third-party use the same interface.
-	 */
 	onHandle(scheme, handler, priority = 10) {
 		if (!this.#handlers.has(scheme)) this.#handlers.set(scheme, []);
 		const list = this.#handlers.get(scheme);
@@ -32,37 +26,16 @@ export default class ToolRegistry {
 		list.sort((a, b) => a.priority - b.priority);
 	}
 
-	/**
-	 * Register a projection function for a scheme. The projection
-	 * transforms the entry's body/attributes into what the model sees.
-	 * Called during materialization. No projection = crash.
-	 */
-	onProject(scheme, fn, fidelity = "full") {
-		if (!this.#projections.has(scheme))
-			this.#projections.set(scheme, new Map());
-		this.#projections.get(scheme).set(fidelity, fn);
+	onView(scheme, fn, fidelity = "full") {
+		if (!this.#views.has(scheme)) this.#views.set(scheme, new Map());
+		this.#views.get(scheme).set(fidelity, fn);
 	}
 
-	setDocs(scheme, docs) {
-		this.ensureTool(scheme);
-		const existing = this.#tools.get(scheme);
-		this.#tools.set(scheme, Object.freeze({ ...existing, docs }));
-	}
-
-	ensureTool(scheme) {
-		if (this.#tools.has(scheme)) return;
-		this.#tools.set(scheme, Object.freeze({ modes: new Set(["ask", "act"]) }));
-	}
-
-	/**
-	 * Project an entry for model view. Returns the body the model sees.
-	 * Throws if no projection is registered for the scheme.
-	 */
-	project(scheme, entry) {
-		const fidelityMap = this.#projections.get(scheme);
+	view(scheme, entry) {
+		const fidelityMap = this.#views.get(scheme);
 		if (!fidelityMap) {
 			throw new Error(
-				`No projection registered for scheme '${scheme}'. ` +
+				`No view registered for scheme '${scheme}'. ` +
 					`Every tool must define how its entries appear in the model view.`,
 			);
 		}
@@ -72,19 +45,11 @@ export default class ToolRegistry {
 		return fn(entry);
 	}
 
-	/**
-	 * Check if a projection is registered for a scheme.
-	 */
-	hasProjection(scheme) {
-		const fidelityMap = this.#projections.get(scheme);
+	hasView(scheme) {
+		const fidelityMap = this.#views.get(scheme);
 		return fidelityMap?.size > 0;
 	}
 
-	/**
-	 * Run all handlers for a scheme in priority order.
-	 * Each handler receives (entry, rummy). If a handler returns false,
-	 * the chain stops (entry was fully handled).
-	 */
 	async dispatch(scheme, entry, rummy) {
 		const list = this.#handlers.get(scheme);
 		if (!list) return;
@@ -94,10 +59,12 @@ export default class ToolRegistry {
 		}
 	}
 
-	/**
-	 * Materialize tool:// entries into the store for a run.
-	 * Called once per run (idempotent).
-	 */
+	setDocs(scheme, docs) {
+		this.ensureTool(scheme);
+		const existing = this.#tools.get(scheme);
+		this.#tools.set(scheme, Object.freeze({ ...existing, docs }));
+	}
+
 	async materialize(store, runId, turn) {
 		for (const [name, def] of this.#tools) {
 			if (!def.docs) continue;

@@ -400,10 +400,7 @@ describe("Handler dispatch", () => {
 			const testHooks = createHooks();
 			const order = [];
 
-			testHooks.tools.register("test_tool", {
-				modes: new Set(["ask"]),
-				category: "ask",
-			});
+			testHooks.tools.ensureTool("test_tool");
 
 			testHooks.tools.onHandle(
 				"test_tool",
