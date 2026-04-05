@@ -53,7 +53,7 @@ async function main() {
 	await registerPlugins([pluginsDir, userPluginsDir], hooks);
 
 	// 5. Bootstrap Persistence
-	const dbPath = process.env.RUMMY_DB_PATH || join(rummyHome, "rummy.db");
+	const dbPath = process.env.RUMMY_DB_PATH;
 	const functionsDir = fileURLToPath(new URL("./src/sql/functions", import.meta.url));
 	const sqlFunctions = readdirSync(functionsDir)
 		.filter((f) => f.endsWith(".js") && !f.endsWith(".test.js"))
