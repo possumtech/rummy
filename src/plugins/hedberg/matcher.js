@@ -120,7 +120,7 @@ export default class HeuristicMatcher {
 				patch: null,
 				warning: null,
 				error:
-					"Could not find the SEARCH block in the file. Ensure you are providing an exact match of the existing code, without truncating lines with '...'.",
+					"SEARCH blocks are matched literally, not as a pattern. Could not find the SEARCH block in the file.",
 			};
 		}
 

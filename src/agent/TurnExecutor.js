@@ -401,14 +401,8 @@ export default class TurnExecutor {
 			};
 		}
 
-		// Normalize path — encode spaces in scheme:// paths
 		const rawTarget = cmd.path || cmd.command || cmd.question || "";
-		const target = rawTarget.includes("://")
-			? rawTarget.replace(
-					/:\/\/(.*)$/,
-					(_, rest) => `://${encodeURIComponent(decodeURIComponent(rest))}`,
-				)
-			: rawTarget;
+		const target = rawTarget;
 		const resultPath = await this.#knownStore.dedup(runId, scheme, target);
 
 		// Pass parsed command fields through as attributes

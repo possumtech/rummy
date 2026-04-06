@@ -47,7 +47,7 @@ describe("E2E: RPC Methods", () => {
 		assert.ok(result.methods.ask, "has ask method");
 		assert.ok(result.methods.act, "has act method");
 		assert.ok(result.methods["run/resolve"], "has run/resolve method");
-		assert.ok(result.methods.read, "has read method");
+		assert.ok(result.methods.get, "has read method");
 		assert.ok(result.methods.store, "has store method");
 		assert.ok(result.methods.getEntries, "has getEntries method");
 		assert.ok(result.methods.addModel, "has addModel method");
@@ -167,7 +167,7 @@ describe("E2E: RPC Methods", () => {
 	});
 
 	it("read with persist activates file", async () => {
-		const result = await client.call("read", {
+		const result = await client.call("get", {
 			path: "app.js",
 			persist: true,
 		});
@@ -175,7 +175,7 @@ describe("E2E: RPC Methods", () => {
 	});
 
 	it("read with persist + readonly sets readonly", async () => {
-		const result = await client.call("read", {
+		const result = await client.call("get", {
 			path: "app.js",
 			persist: true,
 			readonly: true,
@@ -193,7 +193,7 @@ describe("E2E: RPC Methods", () => {
 	});
 
 	it("store with persist + clear removes constraint", async () => {
-		await client.call("read", { path: "app.js", persist: true });
+		await client.call("get", { path: "app.js", persist: true });
 		const result = await client.call("store", {
 			path: "app.js",
 			persist: true,

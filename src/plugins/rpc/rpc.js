@@ -221,9 +221,9 @@ export default class Rpc {
 				if (!run) return [];
 				const entries = await ctx.projectAgent.entries.getEntriesByPattern(
 					run.id,
-					params.pattern,
-					params.body,
-					{ limit: params.limit ?? null, offset: params.offset },
+					params.pattern ?? "*",
+					params.body ?? null,
+					{ limit: params.limit ?? null, offset: params.offset ?? null },
 				);
 				return entries.map((e) => ({
 					path: e.path,
