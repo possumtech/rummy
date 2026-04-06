@@ -17,13 +17,13 @@ export default class Previous {
 		if (entries.length === 0) return content;
 
 		const lines = await Promise.all(
-			entries.map((e) => renderToolTag(e, "summary", this.#core)),
+			entries.map((e) => renderToolTag(e, this.#core)),
 		);
 		return `${content}\n\n<previous>\n${lines.join("\n")}\n</previous>`;
 	}
 }
 
-async function renderToolTag(entry, fidelity, core) {
+async function renderToolTag(entry, core) {
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -36,7 +36,6 @@ async function renderToolTag(entry, fidelity, core) {
 	try {
 		body = await core.hooks.tools.view(entry.scheme, {
 			...entry,
-			fidelity,
 			attributes: attrs,
 		});
 	} catch {
