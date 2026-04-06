@@ -340,6 +340,26 @@ I need to check the port.
 			assert.ok(unparsed.includes("I need to check the port"));
 		});
 
+		it("recovers from mismatched close tag", () => {
+			const input = `<rm path="unknown://foo"></unknown>
+<update>Starting research.</update>
+<search>Mitch Hedberg cultural impact</search>`;
+			const { commands, warnings } = XmlParser.parse(input);
+			assert.strictEqual(
+				commands.length,
+				3,
+				`expected 3 commands, got ${commands.length}: ${commands.map((c) => c.name)}`,
+			);
+			assert.strictEqual(commands[0].name, "rm");
+			assert.strictEqual(commands[1].name, "update");
+			assert.strictEqual(commands[2].name, "search");
+			assert.ok(
+				warnings.some(
+					(w) => w.includes("Unclosed") || w.includes("Mismatched"),
+				),
+			);
+		});
+
 		it("ignores unknown tags", () => {
 			const input = `<thinking>internal thoughts</thinking>
 <summarize>The answer.</summarize>`;

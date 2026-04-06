@@ -190,6 +190,16 @@ export default class XmlParser {
 						return;
 					}
 
+					// Known tool opened while another is still open — close the old one.
+					if (current) {
+						warnings.push(
+							`Unclosed <${current.name}> before <${name}> — recovered`,
+						);
+						commands.push(
+							resolveCommand(current.name, current.attrs, current.rawBody),
+						);
+					}
+
 					current = { name, attrs, rawBody: "" };
 				},
 
@@ -206,6 +216,16 @@ export default class XmlParser {
 						if (ended) {
 							warnings.push(`Unclosed <${name}> tag — content captured anyway`);
 						}
+						commands.push(
+							resolveCommand(current.name, current.attrs, current.rawBody),
+						);
+						current = null;
+					} else if (current && ALL_TOOLS.has(name)) {
+						// Mismatched close tag for a known tool — close current tag,
+						// don't swallow subsequent commands as body text.
+						warnings.push(
+							`Mismatched </${name}> closing <${current.name}> — recovered`,
+						);
 						commands.push(
 							resolveCommand(current.name, current.attrs, current.rawBody),
 						);

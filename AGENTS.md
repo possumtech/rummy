@@ -70,10 +70,18 @@ hedberg. Remaining:
 - [ ] Consider moving `resolveCommand` entirely — it's mostly hedberg
       with tool routing glue
 
-## Todo: Skill Plugin Rename
+## Todo: Skill Plugin Paradigm Fix
+
+Skills plugin bypasses the entry system — does raw DB writes with
+`runRow.next_turn` outside any loop context. A skill is just an entry
+with two exceptional qualities: (1) sorted to top of context in the
+materialized view, (2) body sourced from `~/.rummy/skills/`. The
+client adds skills to a run; they aren't included otherwise. Should
+go through normal `store.upsert` like everything else.
 
 - [ ] `skills.js` → `skill.js` (matches scheme name, matches convention)
 - [ ] Skill registers its own scheme via `core.registerScheme()`
+- [ ] Replace raw DB write with `store.upsert` through proper pipeline
 
 ## Todo: File Scheme Special Case
 
@@ -82,6 +90,26 @@ handles projections and scanning but doesn't own the scheme itself
 because bare paths have `scheme IS NULL` in the DB. Document this as
 a known exception. The file plugin should register a `file` scheme even
 though bare paths use NULL — the view maps NULL to 'file' category.
+
+## Todo: XmlParser Mismatched Close Tag Recovery
+
+When the model sends `<rm path="..."></unknown>` (wrong closing tag),
+the parser absorbs all subsequent commands (`<update>`, `<search>`, etc.)
+as body text of the unclosed `<rm>`. The flush-on-EOF captures the `<rm>`
+but everything after the mismatched close is lost. Fix: when `onclosetag`
+sees a known tool name that doesn't match `current.name`, close the
+current tag first, then handle the mismatched close.
+
+## Todo: Model rm Path Training Issue
+
+The model tried `<rm path="unknown://specific aspects of...">` with
+literal spaces instead of the encoded URI `unknown://specific%20aspects%20...`.
+It referenced the entry by its body text, not its path. Two concerns:
+(1) the model never sees encoded paths in context — it sees body text —
+so it has no way to know the encoded form. (2) Should `<rm>` accept
+body text as a match target? The hedberg pattern matching on the path
+won't match unencoded text against encoded paths. May need rm to fall
+back to body matching, or expose paths in a model-friendly format.
 
 ## Todo: Test Improvements
 
