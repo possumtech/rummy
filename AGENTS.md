@@ -91,6 +91,36 @@ because bare paths have `scheme IS NULL` in the DB. Document this as
 a known exception. The file plugin should register a `file` scheme even
 though bare paths use NULL — the view maps NULL to 'file' category.
 
+## Todo: Proposal Lifecycle Refactor
+
+The model sends multiple commands in one response. Some go to proposed
+(file-scheme rm, set, sh). The current dispatch executes all commands
+regardless of proposal state. The resolve path handles proposals one
+at a time. This creates a class of bugs:
+
+- Model sends `<rm>file` + `<summarize>file deleted.` — rm goes to
+  proposed, summarize claims success. Currently mitigated by overriding
+  summarize when proposals exist, but the model's other commands
+  (known, set, etc.) after a proposed entry may also assume the outcome.
+- Multiple proposals on same turn are resolved independently by the
+  user, but commands between proposals may depend on earlier outcomes.
+- When a proposal is rejected, commands that followed it in the
+  response may be invalid — but which ones? Not all are dependent.
+
+Needs:
+- [ ] Design the ordering semantics: which entries after a proposal
+      depend on the proposal's outcome?
+- [ ] On rejection, invalidate dependent entries with clear error
+- [ ] On acceptance, confirm dependent entries were correct
+- [ ] Handle interleaved proposals: `<rm>A`, `<set>B`, `<rm>C` where
+      A is rejected but C is accepted
+- [ ] Summarize/update from a turn with proposals should always be
+      held until all proposals resolve
+
+Current mitigation: TurnExecutor overrides summarize when any entry
+on the turn is proposed. This prevents the "model claims success"
+bug but doesn't handle dependent tool entries.
+
 ## Todo: XmlParser Mismatched Close Tag Recovery
 
 When the model sends `<rm path="..."></unknown>` (wrong closing tag),

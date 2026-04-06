@@ -15,14 +15,31 @@ const sqlFunctions = readdirSync(functionsDir)
 	.filter((f) => f.endsWith(".js") && !f.endsWith(".test.js"))
 	.map((f) => join(functionsDir, f));
 
+const DIAG_DIR = join(tmpdir(), "rummy_test_diag");
+
+async function cleanOldTestDbs() {
+	const dir = tmpdir();
+	const entries = await fs.readdir(dir);
+	const stale = entries.filter((f) => f.startsWith("rummy_test_") && f.endsWith(".db"));
+	await Promise.all(stale.flatMap((f) => [
+		fs.unlink(join(dir, f)).catch(() => {}),
+		fs.unlink(join(dir, `${f}-shm`)).catch(() => {}),
+		fs.unlink(join(dir, `${f}-wal`)).catch(() => {}),
+	]));
+	await fs.rm(DIAG_DIR, { recursive: true, force: true });
+	await fs.mkdir(DIAG_DIR, { recursive: true });
+}
+
 export default class TestDb {
-	constructor(db, dbPath, hooks) {
+	constructor(db, dbPath, hooks, suiteName) {
 		this.db = db;
 		this.dbPath = dbPath;
 		this.hooks = hooks;
+		this.suiteName = suiteName;
 	}
 
-	static async create() {
+	static async create(suiteName = "test") {
+		await cleanOldTestDbs();
 		const dbPath = join(
 			tmpdir(),
 			`rummy_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
@@ -41,7 +58,7 @@ export default class TestDb {
 		);
 		await registerPlugins([pluginsDir], hooks);
 		await initPlugins(db, null, hooks);
-		return new TestDb(db, dbPath, hooks);
+		return new TestDb(db, dbPath, hooks, suiteName);
 	}
 
 	async seedRun({
@@ -77,6 +94,8 @@ export default class TestDb {
 
 	async cleanup() {
 		await this.db.close();
+		const diagPath = join(DIAG_DIR, `${this.suiteName}.db`);
+		await fs.copyFile(this.dbPath, diagPath).catch(() => {});
 		await fs.unlink(this.dbPath).catch(() => {});
 		await fs.unlink(`${this.dbPath}-shm`).catch(() => {});
 		await fs.unlink(`${this.dbPath}-wal`).catch(() => {});

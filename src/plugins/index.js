@@ -1,8 +1,15 @@
+import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import PluginContext from "../hooks/PluginContext.js";
+
+let globalPrefix;
+function getGlobalPrefix() {
+	globalPrefix ??= execSync("npm prefix -g", { encoding: "utf8" }).trim();
+	return globalPrefix;
+}
 
 const instances = new Map();
 
@@ -87,12 +94,28 @@ export async function initPlugins(db, store, hooks) {
 	}
 }
 
+function resolvePlugin(packageName) {
+	// Check local node_modules first, then global
+	const localDir = join(process.cwd(), "node_modules", packageName);
+	if (existsSync(join(localDir, "package.json"))) return localDir;
+	const globalDir = join(getGlobalPrefix(), "lib", "node_modules", packageName);
+	if (existsSync(join(globalDir, "package.json"))) return globalDir;
+	throw new Error(`Package '${packageName}' not found locally or globally`);
+}
+
+async function importPlugin(packageName) {
+	const dir = resolvePlugin(packageName);
+	const pkg = JSON.parse((await import("node:fs")).readFileSync(join(dir, "package.json"), "utf8"));
+	const entry = pkg.exports?.["."] || pkg.main || "index.js";
+	return import(pathToFileURL(join(dir, entry)).href);
+}
+
 async function loadEnvPlugins(hooks) {
 	for (const [key, value] of Object.entries(process.env)) {
 		if (!key.startsWith("RUMMY_PLUGIN_") || !value) continue;
 		const name = key.replace("RUMMY_PLUGIN_", "").toLowerCase();
 		try {
-			const { default: Plugin } = await import(value);
+			const { default: Plugin } = await importPlugin(value);
 			if (typeof Plugin?.register === "function") {
 				await Plugin.register(hooks);
 			} else if (typeof Plugin === "function") {

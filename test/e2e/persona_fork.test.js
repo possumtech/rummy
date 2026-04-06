@@ -10,7 +10,7 @@ import TestServer from "../helpers/TestServer.js";
 const model = process.env.RUMMY_TEST_MODEL;
 const TIMEOUT = 120_000;
 
-describe("E2E: Persona & Fork", () => {
+describe("E2E: Persona & Fork", { concurrency: 1 }, () => {
 	let tdb, tserver, client;
 	const projectRoot = join(tmpdir(), `rummy-persona-${Date.now()}`);
 
@@ -26,7 +26,7 @@ describe("E2E: Persona & Fork", () => {
 			{ cwd: projectRoot },
 		);
 
-		tdb = await TestDb.create();
+		tdb = await TestDb.create("persona_fork");
 		tserver = await TestServer.start(tdb.db);
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();

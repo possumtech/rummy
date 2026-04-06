@@ -22,12 +22,28 @@ const TIMEOUT = 300_000;
 
 async function lastResponse(db, runAlias) {
 	const runRow = await db.get_run_by_alias.get({ alias: runAlias });
-	const summary = await db.get_latest_summary.get({ run_id: runRow.id });
+	const loops = await db.get_pending_loops.all({ run_id: runRow.id });
+	const latestLoop = await db.get_latest_completed_loop.get({ run_id: runRow.id });
+	const allLoops = [...loops];
+	if (latestLoop) allLoops.push(latestLoop);
+
+	console.log(`[DEBUG lastResponse] run=${runAlias} status=${runRow.status} next_turn=${runRow.next_turn} next_loop=${runRow.next_loop}`);
+	console.log(`[DEBUG lastResponse] loops: ${JSON.stringify(allLoops.map((l) => ({ id: l.id, seq: l.sequence, status: l.status })))}`);
+
+	const summary = await db.get_latest_summary.get({ run_id: runRow.id, loop_id: latestLoop?.id ?? null });
+	console.log(`[DEBUG lastResponse] summary (loop_id=${latestLoop?.id ?? null}): ${summary?.body?.slice(0, 120) ?? "NONE"}`);
+
 	if (summary?.body) return summary.body;
+
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
+	const summaries = entries.filter((e) => e.scheme === "summarize");
 	const content = entries
 		.filter((e) => e.scheme === "content")
 		.toSorted((a, b) => b.turn - a.turn);
+
+	console.log(`[DEBUG lastResponse] all summarize entries: ${JSON.stringify(summaries.map((s) => ({ path: s.path, turn: s.turn, body: s.body?.slice(0, 80) })))}`);
+	console.log(`[DEBUG lastResponse] content entries: ${content.length}, latest: ${content[0]?.body?.slice(0, 80) ?? "NONE"}`);
+
 	if (content.length > 0) return content[0].body;
 	return "";
 }
@@ -61,7 +77,7 @@ async function acceptAll(client, result) {
 	return current;
 }
 
-describe("E2E Stories", () => {
+describe("E2E Stories", { concurrency: 1 }, () => {
 	let tdb, tserver, client;
 	const projectRoot = join(tmpdir(), `rummy-stories-${Date.now()}`);
 
@@ -103,7 +119,7 @@ describe("E2E Stories", () => {
 			{ cwd: projectRoot },
 		);
 
-		tdb = await TestDb.create();
+		tdb = await TestDb.create("stories");
 		tserver = await TestServer.start(tdb.db);
 		client = new AuditClient(tserver.url, tdb.db);
 		await client.connect();

@@ -281,7 +281,6 @@ export default class TurnExecutor {
 		// --- PHASE 2: DISPATCH ---
 		// Handlers perform side effects: promote, demote, patch, propose.
 
-		let hasErrors = false;
 		for (const entry of recorded) {
 			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			await this.#hooks.entry.created.emit(entry);
@@ -290,19 +289,28 @@ export default class TurnExecutor {
 		// Materialize proposals (e.g. file plugin applies accumulated revisions)
 		await this.#hooks.turn.proposing.emit({ rummy, recorded });
 
-		// Check if any dispatched entries ended in error state
+		// Check if any dispatched entries ended in error or proposed state
+		let hasErrors = false;
+		let hasProposed = false;
 		for (const entry of recorded) {
 			const row = await this.#db.get_entry_state.get({
 				run_id: currentRunId,
 				path: entry.resultPath || entry.path,
 			});
 			if (row?.state === "error") hasErrors = true;
+			if (row?.state === "proposed") hasProposed = true;
 		}
 
 		// Errors override summarize — the model thinks it's done but it's not
 		if (hasErrors && summaryText) {
 			summaryText = null;
 			updateText = "Tool errors detected — retry or investigate.";
+		}
+
+		// Proposals override summarize — outcome unknown until user resolves
+		if (hasProposed && summaryText) {
+			summaryText = null;
+			updateText = "Awaiting approval for proposed changes.";
 		}
 
 		// --- Classify for return value ---

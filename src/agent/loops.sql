@@ -54,3 +54,10 @@ LIMIT 1;
 SELECT id, run_id, sequence, mode, model, prompt, status, config
 FROM loops
 WHERE id = :id;
+
+-- PREP: get_latest_completed_loop
+SELECT id, sequence, mode, status
+FROM loops
+WHERE run_id = :run_id AND status IN ('completed', 'failed')
+ORDER BY id DESC
+LIMIT 1;
