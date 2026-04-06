@@ -1,4 +1,5 @@
-import { JSDOM } from "jsdom";
+import { DOMParser } from "@xmldom/xmldom";
+import xpath from "xpath";
 
 export const deterministic = true;
 
@@ -250,11 +251,10 @@ function compile(pattern) {
 
 function evalXpath(expr, string) {
 	try {
-		const dom = new JSDOM(string, { contentType: "text/xml" });
-		const doc = dom.window.document;
-		const result = doc.evaluate(expr, doc, null, 0, null);
-		const node = result.iterateNext();
-		if (!node) return null;
+		const doc = new DOMParser().parseFromString(string, "text/xml");
+		const nodes = xpath.select(expr, doc);
+		if (!nodes || nodes.length === 0) return null;
+		const node = nodes[0];
 		return { match: node.textContent, node };
 	} catch {
 		return null;
