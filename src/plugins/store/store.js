@@ -19,6 +19,13 @@ export default class Store {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const target = entry.attributes.path;
+		if (!target) {
+			await store.upsert(runId, turn, entry.resultPath, "", "error", {
+				attributes: { error: "path is required" },
+				loopId,
+			});
+			return;
+		}
 		const bodyFilter = entry.attributes.body || null;
 		const isPattern = bodyFilter || target.includes("*");
 		const matches = await store.getEntriesByPattern(runId, target, bodyFilter);
