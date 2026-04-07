@@ -1,6 +1,6 @@
 import { Parser } from "htmlparser2";
 import { parseEditContent } from "../plugins/hedberg/edits.js";
-import { normalizeAttrs } from "../plugins/hedberg/normalize.js";
+import { normalizeAttrs, parseJsonEdit } from "../plugins/hedberg/normalize.js";
 import { parseSed } from "../plugins/hedberg/sed.js";
 
 const STORE_TOOLS = new Set([
@@ -51,31 +51,10 @@ function resolveCommand(name, attrs, rawBody) {
 				};
 			}
 		}
-		// JSON-style { search, replace } — accept valid JSON and =style variants
-		if (trimmed.startsWith("{") && /search/.test(trimmed)) {
-			let search = null;
-			let replace = null;
-			try {
-				const json = JSON.parse(trimmed);
-				search = json.search;
-				replace = json.replace ?? "";
-			} catch {
-				// Try = style: { search="old", replace="new" }
-				const searchMatch = trimmed.match(/search\s*=\s*"([^"]*)"/);
-				const replaceMatch = trimmed.match(/replace\s*=\s*"([^"]*)"/);
-				if (searchMatch) {
-					search = searchMatch[1];
-					replace = replaceMatch?.[1] ?? "";
-				}
-			}
-			if (search != null) {
-				return {
-					name,
-					path: a.path,
-					search,
-					replace,
-				};
-			}
+		// JSON-style { search, replace }
+		const jsonEdit = parseJsonEdit(trimmed);
+		if (jsonEdit) {
+			return { name, path: a.path, ...jsonEdit };
 		}
 		// Sed syntax: s/search/replace/flags — supports chained commands
 		if (trimmed.startsWith("s/")) {

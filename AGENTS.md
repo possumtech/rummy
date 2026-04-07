@@ -58,22 +58,30 @@ don't. The server needs optional disk writes on accept:
 set → write patched file, rm → delete file, mv/cp → filesystem
 operation, sh/env → execute command.
 
-## Todo: TurnExecutor Thinning
+## Todo: TurnExecutor Thinning (MOSTLY DONE)
 
-Move audit writes (assistant://, system://, user://, model://,
-reasoning://, content://, error://) from TurnExecutor to plugins
-via turn events. Each audit type becomes a plugin subscription.
+Audit writes (assistant://, system://, user://, model://,
+reasoning://, content://) already moved to telemetry plugin.
+Remaining TurnExecutor upserts are core turn logic (command
+recording, summarize/update). May be fully complete — verify
+error:// writes are in the right place.
 
-## Todo: ResponseHealer → Hedberg + Core Handler
+## Todo: ResponseHealer Improvements
 
-Split interpretation (hedbergian: "is this plain text or commands?")
-from state machine (core: continue/stop/heal decisions, stall
-counter, loop detection).
+ResponseHealer is 134 lines with clear separation: `healStatus`
+(interpretation) and `assessRepetition`/`assessProgress` (state
+machine). The split to hedberg adds indirection without benefit.
+Focus instead on improving the detection:
+- [ ] Semantic repetition detection (same update text N turns)
+- [ ] Update text fingerprinting (not just command fingerprinting)
 
-## Todo: XmlParser → Hedberg Migration
+## Todo: XmlParser → Hedberg Migration (MOSTLY DONE)
 
-Move remaining `resolveCommand` format detection (JSON search/replace)
-to hedberg. Consider moving `resolveCommand` entirely.
+JSON edit parsing moved to `hedberg/normalize.js`. `resolveCommand`
+now delegates all format detection to hedberg: `parseEditContent`,
+`parseJsonEdit`, `parseSed`, `normalizeAttrs`. What remains is pure
+tool routing (tool name → attribute shape) which is structural, not
+hedbergian.
 
 ## Todo: File Scheme Special Case
 

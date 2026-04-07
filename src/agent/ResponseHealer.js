@@ -1,10 +1,13 @@
 const MAX_STALLS = Number(process.env.RUMMY_MAX_STALLS) || 3;
 const MAX_REPETITIONS = Number(process.env.RUMMY_MAX_REPETITIONS) || 3;
+const MAX_UPDATE_REPEATS = 3;
 
 export default class ResponseHealer {
 	#stallCount = 0;
 	#lastFingerprint = null;
 	#repetitionCount = 0;
+	#lastUpdateText = null;
+	#updateRepeatCount = 0;
 
 	/**
 	 * Heal a missing status tag. Called when the model emits
@@ -105,6 +108,18 @@ export default class ResponseHealer {
 
 		if (updateText && !statusHealed) {
 			this.#stallCount = 0;
+			// Track repeated update text — model stuck declaring readiness
+			if (updateText === this.#lastUpdateText) {
+				this.#updateRepeatCount++;
+				if (this.#updateRepeatCount >= MAX_UPDATE_REPEATS) {
+					const reason = `Same <update/> repeated ${this.#updateRepeatCount} turns: "${updateText.slice(0, 60)}"`;
+					console.warn(`[RUMMY] Stalled: ${reason}. Force-completing.`);
+					return { continue: false, reason };
+				}
+			} else {
+				this.#lastUpdateText = updateText;
+				this.#updateRepeatCount = 1;
+			}
 			return { continue: true };
 		}
 
@@ -130,5 +145,7 @@ export default class ResponseHealer {
 		this.#stallCount = 0;
 		this.#lastFingerprint = null;
 		this.#repetitionCount = 0;
+		this.#lastUpdateText = null;
+		this.#updateRepeatCount = 0;
 	}
 }

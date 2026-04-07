@@ -1,6 +1,6 @@
 import { parseEditContent } from "./edits.js";
 import HeuristicMatcher, { generatePatch } from "./matcher.js";
-import { normalizeAttrs } from "./normalize.js";
+import { normalizeAttrs, parseJsonEdit } from "./normalize.js";
 import { hedmatch, hedsearch } from "./patterns.js";
 import { parseSed } from "./sed.js";
 
@@ -29,6 +29,7 @@ export default class Hedberg {
 			replace: Hedberg.replace,
 			parseSed,
 			parseEdits: parseEditContent,
+			parseJsonEdit,
 			normalizeAttrs,
 			generatePatch,
 		};
