@@ -79,6 +79,17 @@ SET
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
+-- PREP: set_fidelity
+UPDATE known_entries
+SET
+	fidelity = :fidelity
+	, tokens = CASE
+		WHEN :fidelity = 'stored' THEN 0
+		ELSE countTokens(body)
+	END
+	, updated_at = CURRENT_TIMESTAMP
+WHERE run_id = :run_id AND path = :path;
+
 -- PREP: get_entry_body
 SELECT body
 FROM known_entries

@@ -202,6 +202,28 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		assert.ok(writes.length > 0, "should have a write result");
 	});
 
+	// Story 3b: Verify accepted edits are visible on next turn.
+	// The model edits a file, we accept, then ask what the file contains.
+	// If the scanner doesn't pick up the disk write, the model sees stale content.
+	it("accepted edits visible on next turn", { timeout: TIMEOUT }, async () => {
+		const r1 = await client.call("act", {
+			model,
+			prompt:
+				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
+		});
+		await client.assertRun(r1, [200, 202], "edit-visible");
+		if (r1.status === 202) await acceptAll(client, r1);
+
+		const r2 = await client.call("ask", {
+			model,
+			prompt:
+				"Read src/app.js and tell me: does it contain the text 'error handler configured'? Reply ONLY with yes or no.",
+			run: r1.run,
+		});
+		await client.assertRun(r2, 200, "edit-verify");
+		assertContains(await lastResponse(tdb.db, r2.run), "yes", "edit-visible");
+	});
+
 	// Story 4: Prompt coherence across follow-up questions.
 	// Each question is a separate ask on the same run.
 	// The model must answer the LATEST question, not an earlier one.
@@ -236,7 +258,8 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			prompt:
 				"You MUST use <unknown> to register what you don't know, then use <get> to investigate. What test framework does this project use?",
 		});
-		await client.assertRun(r, 200, "unknowns");
+		await client.assertRun(r, [200, 202], "unknowns");
+		if (r.status === 202) await acceptAll(client, r);
 		const entries = await allEntries(tdb.db, r.run);
 		const unknowns = entries.filter((e) => e.scheme === "unknown");
 		assert.ok(unknowns.length > 0, "should have registered unknowns");
@@ -338,7 +361,51 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 	});
 
-	// Story 9: Web search — model searches, gets results, answers from them.
+	// Story 9b: Context budget enforcement — entries demoted when over budget.
+	// Writes large files, loads them, then shrinks the context window.
+	// Budget enforcement should demote oldest full entries to summary.
+	it("context budget demotion", { timeout: TIMEOUT }, async () => {
+		// Write large files that will eat significant context
+		const bigContent = `// ${"x".repeat(2000)}\n`;
+		await fs.writeFile(join(projectRoot, "src/big1.js"), bigContent);
+		await fs.writeFile(join(projectRoot, "src/big2.js"), bigContent);
+
+		// Load both files at full fidelity via RPC (no model involvement)
+		await client.call("get", { path: "src/big1.js", persist: true });
+		await client.call("get", { path: "src/big2.js", persist: true });
+		const r1 = await client.call("ask", {
+			model,
+			prompt: "Reply with OK.",
+		});
+		await client.assertRun(r1, 200, "budget-load");
+
+		// Set context limit that can't hold both big files + system prompt
+		await client.call("run/config", {
+			run: r1.run,
+			contextLimit: 1024,
+		});
+
+		// Next turn triggers budget enforcement
+		const r2 = await client.call("ask", {
+			model,
+			prompt:
+				"What is the project codename in notes.md? Reply ONLY with the word.",
+			run: r1.run,
+		});
+		await client.assertRun(r2, 200, "budget-demoted");
+
+		// Check that file entries were demoted to summary
+		const entries = await allEntries(tdb.db, r2.run);
+		const summaries = entries.filter(
+			(e) => e.scheme === null && e.fidelity === "summary",
+		);
+		assert.ok(
+			summaries.length > 0,
+			"should have demoted file entries to summary to fit budget",
+		);
+	});
+
+	// Story 10: Web search — model searches, gets results, answers from them.
 	it("autonomous web search", { timeout: TIMEOUT }, async () => {
 		const r = await client.call("ask", {
 			model,

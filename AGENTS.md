@@ -91,6 +91,29 @@ because bare paths have `scheme IS NULL` in the DB. Document this as
 a known exception. The file plugin should register a `file` scheme even
 though bare paths use NULL — the view maps NULL to 'file' category.
 
+## Todo: Server-Side Disk Writes for Headless Clients
+
+rummy.nvim writes accepted set patches and rm deletions to disk
+before sending resolve. The scanner then picks up changes on the
+next turn via mtime+hash. This works for interactive clients.
+
+But headless/API clients (e.g., test harness, future web UI, CI
+integration) that call resolve without writing to disk will cause
+the scanner to overwrite accepted edits with stale disk content.
+
+The server needs an optional disk write path on resolve/accept:
+- [ ] `<set>` accept: write patched content to project_root/path
+- [ ] `<rm>` accept: delete project_root/path
+- [ ] `<mv>` accept: rename file on disk
+- [ ] `<cp>` accept: copy file on disk
+- [ ] `<sh>` accept: execute command (already proposed, needs exec)
+- [ ] `<env>` accept: execute command (already proposed, needs exec)
+
+This could be a core resolve handler or a plugin that subscribes
+to resolution events. The client should be able to opt out (it
+handles disk writes itself). Maybe a `diskWrite: true` param on
+resolve, or a server config flag.
+
 ## Todo: Proposal Lifecycle Refactor
 
 The model sends multiple commands in one response. Some go to proposed

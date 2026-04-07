@@ -103,6 +103,14 @@ export default class KnownStore {
 		}
 	}
 
+	async setFidelity(runId, path, fidelity) {
+		await this.#db.set_fidelity.run({
+			run_id: runId,
+			path: KnownStore.normalizePath(path),
+			fidelity,
+		});
+	}
+
 	async demote(runId, path) {
 		await this.#db.demote_path.run({
 			run_id: runId,

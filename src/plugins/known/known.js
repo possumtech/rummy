@@ -36,18 +36,20 @@ export default class Known {
 		if (entries.length === 0) return content;
 
 		// Rows arrive pre-sorted by SQL: skill → index → summary → full, then by recency
-		const lines = entries.map((e) => renderKnownTag(e));
+		const demotedSet = new Set(ctx.demoted || []);
+		const lines = entries.map((e) => renderKnownTag(e, demotedSet));
 		return `${content}\n\n<knowns>\n${lines.join("\n")}\n</knowns>`;
 	}
 }
 
-function renderKnownTag(entry) {
+function renderKnownTag(entry, demotedSet) {
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
+	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
 
 	if (entry.body) {
-		return `<known path="${entry.path}"${status}${tokens}>${entry.body}</known>`;
+		return `<known path="${entry.path}"${status}${tokens}${flag}>${entry.body}</known>`;
 	}
 
-	return `<known path="${entry.path}"${status}${tokens}/>`;
+	return `<known path="${entry.path}"${status}${tokens}${flag}/>`;
 }

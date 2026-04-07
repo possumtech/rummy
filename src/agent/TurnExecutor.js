@@ -140,16 +140,7 @@ export default class TurnExecutor {
 			});
 		}
 
-		// Budget check — abort before sending a doomed request
-		const budget = await this.#db.get_turn_budget.get({
-			run_id: currentRunId,
-			turn,
-		});
-		if (contextSize && budget.total > contextSize * 0.95) {
-			throw new Error(
-				`Context overflow: ${budget.total} tokens exceeds 95% of ${contextSize} token limit. Use <store/> to demote entries.`,
-			);
-		}
+		const demoted = [];
 
 		await this.#hooks.run.progress.emit({
 			projectId,
@@ -159,19 +150,95 @@ export default class TurnExecutor {
 		});
 
 		// Assemble messages from projected system prompt + materialized turn_context
-		const rows = await this.#db.get_turn_context.all({
+		let rows = await this.#db.get_turn_context.all({
 			run_id: currentRunId,
 			turn,
 		});
-		const messages = await ContextAssembler.assembleFromTurnContext(
+		let messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
 			{
 				type: mode,
 				systemPrompt,
 				contextSize,
+				demoted,
 			},
 			this.#hooks,
 		);
+
+		// Budget check on assembled messages (includes system prompt)
+		if (contextSize && demoted.length === 0) {
+			const assembledTokens = messages.reduce(
+				(sum, m) => sum + countTokens(m.content || ""),
+				0,
+			);
+			const ceiling = contextSize * 0.95;
+			if (assembledTokens > ceiling) {
+				const candidates = rows
+					.filter(
+						(r) =>
+							r.fidelity === "full" &&
+							r.tokens > 0 &&
+							(r.category === "file" || r.category === "known"),
+					)
+					.toSorted((a, b) => a.source_turn - b.source_turn);
+
+				let excess = assembledTokens - ceiling;
+				for (const entry of candidates) {
+					if (excess <= 0) break;
+					await this.#knownStore.setFidelity(
+						currentRunId,
+						entry.path,
+						"summary",
+					);
+					excess -= entry.tokens;
+					demoted.push(entry.path);
+				}
+
+				if (demoted.length > 0) {
+					await this.#db.clear_turn_context.run({ run_id: currentRunId, turn });
+					const freshViewRows = await this.#db.get_model_context.all({
+						run_id: currentRunId,
+					});
+					for (const row of freshViewRows) {
+						const scheme = row.scheme || "file";
+						const projectedBody = await this.#hooks.tools.view(scheme, {
+							path: row.path,
+							scheme,
+							body: row.body,
+							attributes: row.attributes ? JSON.parse(row.attributes) : null,
+							fidelity: row.fidelity,
+							category: row.category,
+						});
+						await this.#db.insert_turn_context.run({
+							run_id: currentRunId,
+							loop_id: currentLoopId,
+							turn,
+							ordinal: row.ordinal,
+							path: row.path,
+							fidelity: row.fidelity,
+							status: row.status,
+							body: projectedBody ?? "",
+							tokens: countTokens(projectedBody ?? ""),
+							attributes: row.attributes,
+							category: row.category,
+							source_turn: row.turn,
+						});
+					}
+					rows = await this.#db.get_turn_context.all({
+						run_id: currentRunId,
+						turn,
+					});
+					messages = await ContextAssembler.assembleFromTurnContext(
+						rows,
+						{ type: mode, systemPrompt, contextSize, demoted },
+						this.#hooks,
+					);
+					console.warn(
+						`[RUMMY] Budget exceeded: demoted ${demoted.length} entries to fit ${contextSize} token limit`,
+					);
+				}
+			}
+		}
 
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,

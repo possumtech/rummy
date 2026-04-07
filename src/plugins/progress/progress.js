@@ -33,6 +33,12 @@ export default class Progress {
 		const status = [tokenInfo, unknownInfo].filter(Boolean).join(" · ");
 		if (status) parts.push(status);
 
+		if (ctx.demoted?.length > 0) {
+			parts.push(
+				`⚠ ${ctx.demoted.length} entries demoted to summary to fit context budget. Use <get/> to restore.`,
+			);
+		}
+
 		if (hasCurrent) {
 			parts.push(
 				"The above actions were performed in response to the following prompt:",
