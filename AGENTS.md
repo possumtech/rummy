@@ -38,12 +38,12 @@ Fingerprint never matches because content is slightly different.
 Needs: same update text N times = force-complete. Known entry dedup
 by content overlap (>90% similar = upsert over existing).
 
-## Todo: Native Tool Call Normalization (Hedberg)
+## Todo: Native Tool Call Normalization (DONE — extend as needed)
 
-Models emit native tool calling syntax instead of rummy XML.
-Hedberg should silently translate as a preprocessing step in
-XmlParser. Map: Qwen `<|tool_call>`, OpenAI function_call,
-Anthropic `<tool_use>` → rummy `<NAME>` XML tags.
+XmlParser preprocesses native formats to rummy XML:
+- Qwen/gemma: `<|tool_call>call:NAME{...}<tool_call|>`
+- OpenAI: `{"name":"...","arguments":{...}}`
+Anthropic `<tool_use>` not yet seen in the wild — add when observed.
 
 ## Todo: Skill Plugin Paradigm Fix
 
@@ -83,11 +83,12 @@ now delegates all format detection to hedberg: `parseEditContent`,
 tool routing (tool name → attribute shape) which is structural, not
 hedbergian.
 
-## Todo: File Scheme Special Case
+## Todo: File Scheme Special Case (DOCUMENTED)
 
-Document the `null` scheme exception for bare file paths. The file
-plugin registers projections but doesn't own the scheme because
-bare paths have `scheme IS NULL`.
+Bare paths have `scheme IS NULL`. The file plugin registers a "file"
+scheme entry so `v_model_context` can JOIN via `COALESCE(scheme, 'file')`.
+Documented in file.js with JSDoc. The one exception to "every scheme
+has a plugin owner."
 
 ## Todo: http/https Summary View (rummy.web)
 

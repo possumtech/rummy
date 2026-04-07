@@ -360,6 +360,25 @@ I need to check the port.
 			);
 		});
 
+		it("normalizes native tool call format", () => {
+			const input = `<|tool_call>call:search{query:"Mass Effect 1 release date"}<tool_call|>
+<update>Searching.</update>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 2);
+			assert.strictEqual(commands[0].name, "search");
+			assert.strictEqual(commands[0].path, "Mass Effect 1 release date");
+			assert.strictEqual(commands[1].name, "update");
+		});
+
+		it("normalizes OpenAI function_call format", () => {
+			const input = `{"name":"search","arguments":{"query":"test query"}}
+<update>Searching.</update>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 2);
+			assert.strictEqual(commands[0].name, "search");
+			assert.strictEqual(commands[0].path, "test query");
+		});
+
 		it("ignores unknown tags", () => {
 			const input = `<thinking>internal thoughts</thinking>
 <summarize>The answer.</summarize>`;

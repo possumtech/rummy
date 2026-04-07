@@ -153,6 +153,9 @@ export default class XmlParser {
 	static parse(content) {
 		if (!content) return { commands: [], warnings: [], unparsed: "" };
 
+		// Normalize native tool call formats to rummy XML
+		const normalized = XmlParser.#normalizeToolCalls(content);
+
 		const commands = [];
 		const warnings = [];
 		const textChunks = [];
@@ -227,7 +230,7 @@ export default class XmlParser {
 			},
 		);
 
-		parser.write(content);
+		parser.write(normalized);
 		ended = true;
 		parser.end();
 
@@ -242,5 +245,40 @@ export default class XmlParser {
 
 		const unparsed = textChunks.join("").trim();
 		return { commands, warnings, unparsed };
+	}
+
+	/**
+	 * Normalize native tool call formats to rummy XML.
+	 * Models sometimes emit their training-format tool calls instead of
+	 * our XML tags. The intent is unambiguous — translate silently.
+	 */
+	static #normalizeToolCalls(content) {
+		let result = content;
+
+		// Qwen/gemma: <|tool_call>call:NAME{key:"value"}<tool_call|>
+		result = result.replace(
+			/<\|tool_call>call:(\w+)\{([^}]*)\}<(?:tool_call\||\|tool_call)>/g,
+			(_, name, params) => {
+				if (!ALL_TOOLS.has(name)) return _;
+				// Extract first string value as body
+				const valueMatch = params.match(/["']([^"']+)["']/);
+				const body = valueMatch?.[1] || "";
+				return `<${name}>${body}</${name}>`;
+			},
+		);
+
+		// OpenAI function_call JSON: {"name":"search","arguments":{"query":"..."}}
+		result = result.replace(
+			/\{"name"\s*:\s*"(\w+)"\s*,\s*"arguments"\s*:\s*\{([^}]*)\}\}/g,
+			(_, name, args) => {
+				if (!ALL_TOOLS.has(name)) return _;
+				// Extract the first value (skip key names)
+				const pairs = [...args.matchAll(/"(\w+)"\s*:\s*"([^"]*)"/g)];
+				const body = pairs[0]?.[2] || "";
+				return `<${name}>${body}</${name}>`;
+			},
+		);
+
+		return result;
 	}
 }

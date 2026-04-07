@@ -1,16 +1,26 @@
 import { isAbsolute, relative } from "node:path";
 
+/**
+ * File plugin: projections and constraints for filesystem entries.
+ *
+ * Bare file paths (src/app.js) have scheme=NULL in the DB because
+ * schemeOf() only recognizes "://" patterns. The schemes table has
+ * a "file" entry so v_model_context can JOIN via COALESCE(scheme, 'file').
+ * This is the one exception to "every scheme has a plugin owner" —
+ * the file plugin owns the NULL scheme through the "file" registry entry.
+ */
 export default class File {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
+		// "file" scheme covers bare paths (scheme IS NULL in DB)
 		core.registerScheme({ category: "file" });
 		core.registerScheme({ name: "http", category: "file" });
 		core.registerScheme({ name: "https", category: "file" });
 		core.on("full", this.full.bind(this));
 
-		// Register identity projections for schemes that just pass through body
+		// Identity projections for schemes that just pass through body
 		for (const scheme of ["known", "skill", "ask", "act", "progress"]) {
 			core.hooks.tools.onView(scheme, (entry) => entry.body);
 		}
