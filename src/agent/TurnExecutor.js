@@ -512,8 +512,19 @@ export default class TurnExecutor {
 		// known tool or naked write → known:// slug from body
 		if (scheme === "known" || (scheme === "set" && !cmd.path)) {
 			if (!cmd.body) return null;
-			const knownPath =
-				cmd.path || (await this.#knownStore.slugPath(runId, "known", cmd.body));
+			let knownPath = cmd.path;
+			if (!knownPath) {
+				// Dedup: if an existing known entry shares the same first 80 chars, reuse it
+				const prefix = cmd.body.slice(0, 80);
+				const existing = await this.#knownStore.getEntriesByPattern(
+					runId,
+					"known://*",
+					prefix,
+				);
+				knownPath =
+					existing[0]?.path ||
+					(await this.#knownStore.slugPath(runId, "known", cmd.body));
+			}
 			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, 200, {
 				loopId,
 			});

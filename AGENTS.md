@@ -30,26 +30,13 @@ The model sends multiple commands in one response. Some go to 202
 
 Needs design before code.
 
-## Todo: Repetition Detection Improvement
+## Todo: Repetition Detection — Get Handler Dedup
 
-ResponseHealer misses semantic repetition. Model sends "Ready to
-begin issue identification" 10+ turns with different known:// slugs.
-Fingerprint never matches because content is slightly different.
-Needs: same update text N times = force-complete. Known entry dedup
-by content overlap (>90% similar = upsert over existing).
+When the model sends `<get path="lua/*.lua">` AND individual
+`<get>lua/init.lua</get>` in the same response, files promote
+twice. The overhead is minimal (promotion is idempotent) but
+receipt entries accumulate. Low priority.
 
-## Todo: Native Tool Call Normalization (DONE — extend as needed)
-
-XmlParser preprocesses native formats to rummy XML:
-- Qwen/gemma: `<|tool_call>call:NAME{...}<tool_call|>`
-- OpenAI: `{"name":"...","arguments":{...}}`
-Anthropic `<tool_use>` not yet seen in the wild — add when observed.
-
-## Todo: Skill Plugin Paradigm Fix
-
-Skills plugin bypasses the entry system — raw DB writes with
-`runRow.next_turn` outside any loop context. Should use normal
-`store.upsert`. Rename `skills.js` → `skill.js`.
 
 ## Todo: Server-Side Disk Writes for Headless Clients
 
@@ -58,37 +45,6 @@ don't. The server needs optional disk writes on accept:
 set → write patched file, rm → delete file, mv/cp → filesystem
 operation, sh/env → execute command.
 
-## Todo: TurnExecutor Thinning (MOSTLY DONE)
-
-Audit writes (assistant://, system://, user://, model://,
-reasoning://, content://) already moved to telemetry plugin.
-Remaining TurnExecutor upserts are core turn logic (command
-recording, summarize/update). May be fully complete — verify
-error:// writes are in the right place.
-
-## Todo: ResponseHealer Improvements
-
-ResponseHealer is 134 lines with clear separation: `healStatus`
-(interpretation) and `assessRepetition`/`assessProgress` (state
-machine). The split to hedberg adds indirection without benefit.
-Focus instead on improving the detection:
-- [ ] Semantic repetition detection (same update text N turns)
-- [ ] Update text fingerprinting (not just command fingerprinting)
-
-## Todo: XmlParser → Hedberg Migration (MOSTLY DONE)
-
-JSON edit parsing moved to `hedberg/normalize.js`. `resolveCommand`
-now delegates all format detection to hedberg: `parseEditContent`,
-`parseJsonEdit`, `parseSed`, `normalizeAttrs`. What remains is pure
-tool routing (tool name → attribute shape) which is structural, not
-hedbergian.
-
-## Todo: File Scheme Special Case (DOCUMENTED)
-
-Bare paths have `scheme IS NULL`. The file plugin registers a "file"
-scheme entry so `v_model_context` can JOIN via `COALESCE(scheme, 'file')`.
-Documented in file.js with JSDoc. The one exception to "every scheme
-has a plugin owner."
 
 ## Todo: http/https Summary View (rummy.web)
 
@@ -103,6 +59,20 @@ around by storing at `full` in rummy.web@0.0.10.
 - [ ] Add e2e test for multi-edit sed chaining
 - [ ] Add e2e test for ask mode restrictions
 - [ ] Integration test for scheme registration via plugins
+
+## Done: Session 2026-04-06/07 (continued)
+
+- **Skill plugin**: Class renamed `Skill`, turn 0 for init-time writes.
+- **XmlParser → Hedberg**: JSON edit parsing moved to `hedberg/normalize.js`.
+  `resolveCommand` delegates all format detection to hedberg functions.
+- **Native tool call normalization**: Qwen `<|tool_call>` and OpenAI
+  `function_call` JSON silently translated to rummy XML in XmlParser.
+- **Repetition detection**: Update text fingerprinting (same 3 turns =
+  force-complete). Known entry dedup (80-char prefix match reuses path).
+- **File scheme documented**: NULL scheme exception explained in file.js.
+- **ResponseHealer**: Already clean 134 lines. No split needed.
+- **TurnExecutor thinning**: Already done — audit writes in telemetry plugin.
+- **Scheme registration**: All tool plugins register. Audit schemes bootstrapped.
 
 ## Done: Session 2026-04-06/07
 

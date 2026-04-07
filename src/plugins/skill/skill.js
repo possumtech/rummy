@@ -90,43 +90,7 @@ export default class Skill {
 			requiresInit: true,
 		});
 
-		r.register("persona/set", {
-			handler: async (params, ctx) => {
-				if (!params.run) throw new Error("run is required");
-
-				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
-				if (!runRow) throw new Error(`Run not found: ${params.run}`);
-
-				let text = params.text;
-				if (params.name && !text) {
-					text = await loadFile("personas", params.name);
-				}
-
-				await ctx.db.update_run_config.run({
-					id: runRow.id,
-					temperature: null,
-					persona: text || null,
-					context_limit: null,
-					model: null,
-				});
-
-				return { status: "ok" };
-			},
-			description:
-				"Set persona on a run. Pass name or text. Pass neither to clear.",
-			params: {
-				run: "string — run alias",
-				name: "string? — persona filename (without .md)",
-				text: "string? — raw persona text (overrides name)",
-			},
-			requiresInit: true,
-		});
-
-		r.register("listPersonas", {
-			handler: async () => listAvailable("personas"),
-			description: "List available persona files. Returns [{ name, path }].",
-			requiresInit: true,
-		});
+		// Persona methods extracted to persona plugin.
 	}
 }
 
