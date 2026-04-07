@@ -1,4 +1,5 @@
 import { DOMParser } from "@xmldom/xmldom";
+import picomatch from "picomatch";
 import xpath from "xpath";
 
 export const deterministic = true;
@@ -131,26 +132,7 @@ function detect(pattern) {
 
 // --- Compilation ---
 
-function globToRegex(glob) {
-	let result = "";
-	for (let i = 0; i < glob.length; i++) {
-		const c = glob[i];
-		if (c === "*") result += ".*";
-		else if (c === "?") result += ".";
-		else if (c === "[") {
-			const close = glob.indexOf("]", i + 1);
-			if (close === -1) {
-				result += "\\[";
-				continue;
-			}
-			result += glob.slice(i, close + 1);
-			i = close;
-		} else if (/[.+^${}()|\\]/.test(c)) {
-			result += `\\${c}`;
-		} else result += c;
-	}
-	return result;
-}
+// Glob matching delegated to picomatch (standard, battle-tested).
 
 function parseRegex(pattern) {
 	const lastSlash = pattern.lastIndexOf("/");
@@ -214,12 +196,14 @@ function compile(pattern) {
 	switch (type) {
 		case "literal":
 			return { type, pattern };
-		case "glob":
-			return {
-				type,
-				anchoredRe: new RegExp(`^${globToRegex(pattern)}$`),
-				searchRe: new RegExp(globToRegex(pattern)),
-			};
+		case "glob": {
+			// Escape parens — picomatch treats them as extglob even with noextglob
+			const escaped = pattern.replace(/([()])/g, "\\$1");
+			const opts = { dot: true, nobrace: true, noextglob: true };
+			const isMatch = picomatch(escaped, opts);
+			const picoRe = picomatch.makeRe(escaped, opts);
+			return { type, isMatch, searchRe: picoRe };
+		}
 		case "regex": {
 			const { body, flags } = parseRegex(pattern);
 			return {
@@ -332,7 +316,7 @@ export function hedmatch(pattern, string) {
 		case "literal":
 			return string === compiled.pattern;
 		case "glob":
-			return compiled.anchoredRe.test(string);
+			return compiled.isMatch(string);
 		case "regex":
 			return compiled.re.test(string);
 		case "sed":

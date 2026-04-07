@@ -144,6 +144,61 @@ Current mitigation: TurnExecutor overrides summarize when any entry
 on the turn is proposed. This prevents the "model claims success"
 bug but doesn't handle dependent tool entries.
 
+## Todo: Preamble — Known Entries as Memory
+
+The model makes plans in reasoning, then loses them. It writes
+"I have mapped the project" as a known entry 10 times without
+advancing because it has no persistent plan to follow.
+
+The preamble tells the model to "save known information" but doesn't
+explain that known entries are its ONLY memory between turns.
+Reasoning content is never shown back. The model needs to understand:
+
+- Known entries persist. Reasoning does not.
+- Save your plan, decisions, and findings as known entries.
+- On each turn, check your known entries before acting.
+- You forget everything between turns except entries.
+
+Proposed preamble addition (needs approval — sacred file):
+```
+* <known/> entries are your memory. You forget everything else between turns.
+* Save your plans, decisions, and findings as known entries.
+```
+
+## Todo: Double-Star Glob Broken
+
+`<get path="lua/rummy/**/*.lua">` returns 0 matches. Single star
+`lua/rummy/*.lua` works. The hedberg glob-to-regex conversion may
+not handle `**` (recursive match) correctly. This causes models to
+fall back to `<env>ls -R` for directory traversal.
+
+## Todo: Repetition Detection Improvement
+
+The ResponseHealer's repetition detector checks command fingerprints
+but misses semantic repetition. The model sends "Ready to begin
+issue identification" 10 times with slightly different known://
+slugs. Each turn has unique tool calls (different known content)
+so the fingerprint never matches. Needs semantic similarity or
+a simpler heuristic: if the update text is the same N times,
+force-complete.
+
+## Todo: Dedup Known Entries by Content
+
+The model creates `known://I have mapped the project structure...`
+with near-identical content on turns 11, 12, 13, 14 — each with
+a new slug. The slugify dedup checks the slug, not the content.
+Known entries with >90% content overlap should upsert over the
+existing entry instead of creating duplicates.
+
+## Todo: Get Handler Double-Loading
+
+When the model sends `<get path="lua/rummy/*.lua">` AND individual
+`<get>lua/rummy/init.lua</get>` in the same response, the files
+load twice — once from the glob, once individually. The dedup
+appends timestamps creating `_1775565014526` suffixed entries.
+The get handler should recognize that a glob already covered
+individual paths and skip redundant loads.
+
 ## Todo: Native Tool Call Normalization (Hedberg)
 
 Models sometimes emit native tool calling syntax instead of rummy XML:
