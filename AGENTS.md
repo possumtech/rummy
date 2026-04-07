@@ -46,12 +46,6 @@ set → write patched file, rm → delete file, mv/cp → filesystem
 operation, sh/env → execute command.
 
 
-## Todo: http/https Summary View (rummy.web)
-
-Search results should be stored at `summary` state with `title` and
-`snippet` attributes. The summary view renders from attributes.
-`<get>` promotes to `full` via Playwright fetch. Currently worked
-around by storing at `full` in rummy.web@0.0.10.
 
 ## Todo: Test Improvements
 

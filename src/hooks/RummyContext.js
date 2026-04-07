@@ -89,7 +89,7 @@ export default class RummyContext {
 
 	// --- Tool methods (same operations the model uses) ---
 
-	async set({ path, body, status = 200, attributes } = {}) {
+	async set({ path, body, status = 200, fidelity, attributes } = {}) {
 		if (!path) {
 			const slugify = (await import("../sql/functions/slugify.js")).default;
 			const base = slugify(body || "");
@@ -101,7 +101,7 @@ export default class RummyContext {
 			path,
 			body || "",
 			status,
-			{ attributes, loopId: this.loopId },
+			{ fidelity, attributes, loopId: this.loopId },
 		);
 		return path;
 	}
