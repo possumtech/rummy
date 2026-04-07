@@ -18,17 +18,17 @@ multiplier for cross-model safety. Glob matching via picomatch.
 flaky — model sends ask_user instead of investigating). Live tests
 need rerun.
 
-## Todo: Proposal Lifecycle Refactor
+## Todo: Proposal Lifecycle — Remaining Work
 
-The model sends multiple commands in one response. Some go to 202
-(proposed). The resolve path handles them one at a time. Bugs:
+Sequential dispatch implemented: commands execute one at a time.
+On 202 (proposed) or >= 400 (error), remaining commands abort with
+409 and context message. Get handler returns 413 when files would
+exceed context budget.
 
-- `<rm>file` + `<summarize>deleted` — rm proposes, summarize claims
-  success. Mitigated by overriding summarize when proposals exist.
-- Rejected proposals don't invalidate dependent entries.
-- Interleaved proposals resolved independently but may be coupled.
-
-Needs design before code.
+Remaining:
+- [ ] Integration test for sequential abort behavior
+- [ ] E2E test: model sends rm + summarize, rm rejected, verify
+  model sees rejection + aborted summarize on next turn
 
 ## Todo: Repetition Detection — Get Handler Dedup
 

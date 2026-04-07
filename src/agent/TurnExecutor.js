@@ -357,26 +357,64 @@ export default class TurnExecutor {
 		}
 
 		// --- PHASE 2: DISPATCH ---
-		// Handlers perform side effects: promote, demote, patch, propose.
+		// Sequential execution. Stop on proposal or error — abort the rest.
 
-		for (const entry of recorded) {
-			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
-			await this.#hooks.entry.created.emit(entry);
-		}
-
-		// Materialize proposals (e.g. file plugin applies accumulated revisions)
-		await this.#hooks.turn.proposing.emit({ rummy, recorded });
-
-		// Check if any dispatched entries ended in error or proposed state
 		let hasErrors = false;
 		let hasProposed = false;
+		let abortAfter = null;
+		const dispatched = [];
+
 		for (const entry of recorded) {
+			if (abortAfter) {
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					entry.resultPath || entry.path,
+					"",
+					409,
+					{
+						attributes: {
+							error: `Aborted — preceding <${abortAfter}> requires resolution.`,
+						},
+						loopId: currentLoopId,
+					},
+				);
+				hasErrors = true;
+				continue;
+			}
+
+			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+			await this.#hooks.entry.created.emit(entry);
+			dispatched.push(entry);
+
 			const row = await this.#db.get_entry_state.get({
 				run_id: currentRunId,
 				path: entry.resultPath || entry.path,
 			});
-			if (row?.status >= 400) hasErrors = true;
-			if (row?.status === 202) hasProposed = true;
+			if (row?.status === 202) {
+				hasProposed = true;
+				abortAfter = entry.scheme;
+			} else if (row?.status >= 400) {
+				hasErrors = true;
+				abortAfter = entry.scheme;
+			}
+		}
+
+		// Materialize proposals only if we dispatched without early abort
+		if (!abortAfter || hasProposed) {
+			await this.#hooks.turn.proposing.emit({ rummy, recorded: dispatched });
+		}
+
+		// Recheck after materialization (set handler may create proposals)
+		if (!hasProposed && !hasErrors) {
+			for (const entry of dispatched) {
+				const row = await this.#db.get_entry_state.get({
+					run_id: currentRunId,
+					path: entry.resultPath || entry.path,
+				});
+				if (row?.status === 202) hasProposed = true;
+				if (row?.status >= 400) hasErrors = true;
+			}
 		}
 
 		// Errors override summarize — the model thinks it's done but it's not

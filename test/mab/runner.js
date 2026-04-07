@@ -104,8 +104,8 @@ async function ingestContext(client, model, run, chunks) {
 
 async function askQuestion(client, db, model, run, question) {
 	const prompt = [
-		"Answer the following question based on what you remember.",
-		"Reply with ONLY the answer, as briefly as possible.",
+		"Answer this question from memory. Use <summarize> with ONLY the answer.",
+		"Do NOT use <known>, <unknown>, <update>, or any other tag.",
 		"",
 		question,
 	].join("\n");
@@ -114,18 +114,30 @@ async function askQuestion(client, db, model, run, question) {
 
 	if (r.status >= 500) return "";
 
+	// Extract the model's answer — try multiple sources
 	const runRow = await db.get_run_by_alias.get({ alias: r.run });
-	const summary = await db.get_latest_summary.get({
-		run_id: runRow.id,
-		loop_id: null,
-	});
-	if (summary?.body) return summary.body;
+	const runId = runRow.id;
 
-	const entries = await db.get_known_entries.all({ run_id: runRow.id });
+	// 1. Latest summarize entry (the intended path)
+	const entries = await db.get_known_entries.all({ run_id: runId });
+	const summaries = entries
+		.filter((e) => e.scheme === "summarize")
+		.toSorted((a, b) => b.turn - a.turn);
+	if (summaries[0]?.body) return summaries[0].body;
+
+	// 2. Latest content (unparsed text from model)
 	const content = entries
 		.filter((e) => e.scheme === "content")
 		.toSorted((a, b) => b.turn - a.turn);
-	return content[0]?.body || "";
+	if (content[0]?.body) return content[0].body;
+
+	// 3. Latest assistant response (raw)
+	const assistant = entries
+		.filter((e) => e.scheme === "assistant")
+		.toSorted((a, b) => b.turn - a.turn);
+	if (assistant[0]?.body) return assistant[0].body;
+
+	return "";
 }
 
 async function runRow(client, db, model, split, rowIndex, row) {
@@ -269,9 +281,11 @@ async function main() {
 		await client?.close();
 		await tserver?.stop();
 
-		// Preserve the database in the results directory
+		// Preserve the database — copy the db + WAL/SHM before cleanup closes it
 		const dbDest = join(runDir, "mab.db");
 		await fs.copyFile(tdb.dbPath, dbDest).catch(() => {});
+		await fs.copyFile(`${tdb.dbPath}-wal`, `${dbDest}-wal`).catch(() => {});
+		await fs.copyFile(`${tdb.dbPath}-shm`, `${dbDest}-shm`).catch(() => {});
 		await tdb.cleanup();
 	}
 
