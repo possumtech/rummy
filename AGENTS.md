@@ -121,6 +121,23 @@ Current mitigation: TurnExecutor overrides summarize when any entry
 on the turn is proposed. This prevents the "model claims success"
 bug but doesn't handle dependent tool entries.
 
+## Todo: Native Tool Call Normalization (Hedberg)
+
+Models sometimes emit native tool calling syntax instead of rummy XML:
+`<|tool_call>call:search{query:"..."}<tool_call|>` instead of
+`<search>...</search>`. The intent is unambiguous — hedberg should
+silently translate. This is a preprocessing step in XmlParser.
+
+Needs mapping for the full set of native formats:
+- Qwen: `<|tool_call>call:NAME{params}<tool_call|>`
+- OpenAI function calling: `{"name":"search","arguments":{"query":"..."}}`
+- Anthropic: `<tool_use>` blocks
+- Generic: `function_call`, `tool_use`, etc.
+
+Each maps to the corresponding rummy `<NAME>` XML tag. The model tried
+to use the right tool — we just translate the format. No warnings,
+no feedback. Hedberg doesn't lecture.
+
 ## Todo: E2E Web Search Test
 
 The test asserts that a fetched URL has > 200 chars of content, forcing

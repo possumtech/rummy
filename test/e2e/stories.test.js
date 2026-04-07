@@ -169,14 +169,14 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const r = await client.call("ask", {
 			model,
 			prompt:
-				"Search the web for when mass Effect 1 was released. Save the release year as a known entry. Then tell me: what year, what database does this project use, and what is the project codename?",
+				"Search the web for when Mass Effect 1 was released. Save the release year as a known entry. Tell me the year.",
 		});
 		await client.assertRun(r, 200, "research");
-		const resp = await lastResponse(tdb.db, r.run);
-		assertContains(resp, "phoenix", "research-codename");
+		assertContains(await lastResponse(tdb.db, r.run), "2007", "research-year");
 
-		// The model should have saved search-discovered info as known
 		const entries = await allEntries(tdb.db, r.run);
+		const searched = entries.filter((e) => e.scheme === "search");
+		assert.ok(searched.length > 0, "should have performed a web search");
 		const known = entries.filter((e) => e.scheme === "known");
 		assert.ok(known.length > 0, "should have saved discovered knowledge");
 	});

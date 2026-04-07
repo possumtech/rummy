@@ -354,7 +354,7 @@ export default class Rpc {
 				ctx.projectAgent.abortRun(runRow.id);
 				await ctx.db.update_run_status.run({
 					id: runRow.id,
-					status: "aborted",
+					status: 499,
 				});
 				return { status: "ok" };
 			},
