@@ -36,6 +36,8 @@ export default class Set {
 						: null;
 		if (fidelityAttr && attrs.path) {
 			const target = attrs.path;
+			const summaryText =
+				typeof attrs.summary === "string" ? attrs.summary : null;
 			const matches = await store.getEntriesByPattern(
 				runId,
 				target,
@@ -43,22 +45,30 @@ export default class Set {
 			);
 			if (entry.body) {
 				// Write content directly at specified fidelity
+				const entryAttrs = summaryText ? { summary: summaryText } : null;
 				for (const match of matches) {
 					await store.upsert(runId, turn, match.path, entry.body, 200, {
 						fidelity: fidelityAttr,
+						attributes: entryAttrs,
 						loopId,
 					});
 				}
 				if (matches.length === 0) {
 					await store.upsert(runId, turn, target, entry.body, 200, {
 						fidelity: fidelityAttr,
+						attributes: entryAttrs,
 						loopId,
 					});
 				}
 			} else {
-				// No body — just change fidelity on existing entries
+				// No body — change fidelity, attach summary if provided
 				for (const match of matches) {
 					await store.setFidelity(runId, match.path, fidelityAttr);
+					if (summaryText) {
+						await store.setAttributes(runId, match.path, {
+							summary: summaryText,
+						});
+					}
 				}
 			}
 			const label =

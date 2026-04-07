@@ -41,7 +41,15 @@ export default class ToolRegistry {
 		}
 		const fidelity = entry.fidelity || "full";
 		const fn = fidelityMap.get(fidelity);
-		if (!fn) return "";
+		if (!fn) {
+			// Fall back on model-authored summary attribute
+			const attrs =
+				typeof entry.attributes === "string"
+					? JSON.parse(entry.attributes)
+					: entry.attributes;
+			if (typeof attrs?.summary === "string") return attrs.summary;
+			return "";
+		}
 		return await fn(entry);
 	}
 

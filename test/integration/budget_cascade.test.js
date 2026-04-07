@@ -1,9 +1,7 @@
 import assert from "node:assert";
 import { after, before, beforeEach, describe, it } from "node:test";
 import BudgetCascade from "../../src/agent/BudgetCascade.js";
-import ContextAssembler from "../../src/agent/ContextAssembler.js";
 import KnownStore from "../../src/agent/KnownStore.js";
-import { countTokens } from "../../src/agent/tokens.js";
 import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
@@ -103,7 +101,9 @@ describe("Budget cascade — halving spiral", () => {
 		);
 		if (fullKnowns.length > 0) {
 			const newestFull = fullKnowns.toSorted((a, b) => b.turn - a.turn)[0];
-			const oldestDemoted = demotedEntries.toSorted((a, b) => a.turn - b.turn)[0];
+			const oldestDemoted = demotedEntries.toSorted(
+				(a, b) => a.turn - b.turn,
+			)[0];
 			assert.ok(
 				newestFull.turn >= oldestDemoted.turn,
 				"newest full should have higher turn than oldest demoted",
@@ -118,21 +118,34 @@ describe("Budget cascade — halving spiral", () => {
 		}
 
 		// Very tight budget
-		const result = await assembleAndEnforce(2000);
+		const _result = await assembleAndEnforce(2000);
 
 		const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 		const indexKnowns = entries.filter(
 			(e) => e.scheme === "known" && e.fidelity === "index",
 		);
-		assert.ok(indexKnowns.length > 0, "tier 2 should have created index entries");
+		assert.ok(
+			indexKnowns.length > 0,
+			"tier 2 should have created index entries",
+		);
 	});
 
 	it("tier 3 creates stash entries at index fidelity", async () => {
 		// Create entries and manually set them to index fidelity
 		// to test tier 3 directly
 		for (let i = 0; i < 50; i++) {
-			await store.upsert(RUN_ID, i + 1, `known://stashtest_${String(i).padStart(3, "0")}`, pad(100), 200);
-			await store.setFidelity(RUN_ID, `known://stashtest_${String(i).padStart(3, "0")}`, "index");
+			await store.upsert(
+				RUN_ID,
+				i + 1,
+				`known://stashtest_${String(i).padStart(3, "0")}`,
+				pad(100),
+				200,
+			);
+			await store.setFidelity(
+				RUN_ID,
+				`known://stashtest_${String(i).padStart(3, "0")}`,
+				"index",
+			);
 		}
 		// Add one large full entry to push over budget and trigger the cascade
 		await store.upsert(RUN_ID, 51, "known://trigger", pad(500), 200);
@@ -226,7 +239,13 @@ describe("Budget cascade — halving spiral", () => {
 		// Create a large system prompt that can't be demoted
 		// plus enough entries that even after full cascade, floor is too big
 		for (let i = 0; i < 200; i++) {
-			await store.upsert(RUN_ID, i + 1, `known://floor_${String(i).padStart(3, "0")}`, pad(50), 200);
+			await store.upsert(
+				RUN_ID,
+				i + 1,
+				`known://floor_${String(i).padStart(3, "0")}`,
+				pad(50),
+				200,
+			);
 		}
 
 		// Budget of 5 — system prompt "test" alone might fit,
@@ -249,7 +268,7 @@ describe("Budget cascade — halving spiral", () => {
 		}
 
 		// Force everything to stash
-		const result = await assembleAndEnforce(500);
+		const _result = await assembleAndEnforce(500);
 
 		const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 		const stash = entries.find((e) => e.path === "known://stash_known");

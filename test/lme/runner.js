@@ -274,7 +274,12 @@ async function runRow(client, db, model, split, rowIndex, row) {
 
 	if (!pass && response) {
 		const verdict = await judgeAnswer(
-			client, db, model, row.question, answer, response,
+			client,
+			db,
+			model,
+			row.question,
+			answer,
+			response,
 		);
 		if (verdict.pass) {
 			pass = true;

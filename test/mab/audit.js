@@ -52,7 +52,8 @@ function parseRange(spec) {
 
 function loadRow(split, idx) {
 	const path = join(DATA_DIR, `${split}.ndjson`);
-	if (!existsSync(path)) throw new Error(`Missing: ${path}\nRun: npm run test:mab:get`);
+	if (!existsSync(path))
+		throw new Error(`Missing: ${path}\nRun: npm run test:mab:get`);
 	const lines = readFileSync(path, "utf8").trim().split("\n");
 	return JSON.parse(lines[idx]);
 }
@@ -68,7 +69,11 @@ function chunkContext(context, size) {
 async function resolveAll(client, result) {
 	let current = result;
 	let resolves = 0;
-	while (current.status === 202 && current.proposed?.length > 0 && resolves < 50) {
+	while (
+		current.status === 202 &&
+		current.proposed?.length > 0 &&
+		resolves < 50
+	) {
 		for (const p of current.proposed) {
 			if (resolves >= 50) break;
 			current = await client.call("run/resolve", {
@@ -101,7 +106,9 @@ async function ingest(client, db, model, run, chunks) {
 	}
 
 	// Report what was saved
-	const entries = await db.get_known_entries.all({ run_id: await runId(db, run) });
+	const entries = await db.get_known_entries.all({
+		run_id: await runId(db, run),
+	});
 	const knowns = entries.filter((e) => e.scheme === "known");
 	console.log(`  ${knowns.length} known entries saved`);
 }
@@ -111,7 +118,16 @@ async function runId(db, alias) {
 	return row.id;
 }
 
-async function auditQuestion(client, db, model, run, qi, question, validAnswers, contextLines) {
+async function auditQuestion(
+	client,
+	db,
+	model,
+	run,
+	qi,
+	question,
+	validAnswers,
+	_contextLines,
+) {
 	const rid = await runId(db, run);
 
 	// Snapshot: what known entries are visible before asking?
@@ -122,7 +138,9 @@ async function auditQuestion(client, db, model, run, qi, question, validAnswers,
 	const preKnownCount = preKnowns.length;
 	const storedCount = preEntries.filter((e) => e.fidelity === "stored").length;
 	const indexCount = preEntries.filter((e) => e.fidelity === "index").length;
-	const summaryCount = preEntries.filter((e) => e.fidelity === "summary").length;
+	const summaryCount = preEntries.filter(
+		(e) => e.fidelity === "summary",
+	).length;
 
 	// Ask the question
 	const preRun = await db.get_run_by_alias.get({ alias: run });
@@ -151,9 +169,10 @@ async function auditQuestion(client, db, model, run, qi, question, validAnswers,
 		.filter((e) => e.scheme === "reasoning")
 		.toSorted((a, b) => b.turn - a.turn);
 
-	const response = summaryEntry?.body
-		|| assistantEntries[0]?.body?.replace(/<[^>]+>/g, " ").trim()
-		|| "";
+	const response =
+		summaryEntry?.body ||
+		assistantEntries[0]?.body?.replace(/<[^>]+>/g, " ").trim() ||
+		"";
 	const reasoning = reasoningEntries[0]?.body || "";
 	const rawAssistant = assistantEntries[0]?.body || "";
 
@@ -186,7 +205,7 @@ async function auditQuestion(client, db, model, run, qi, question, validAnswers,
 	return diagnostic;
 }
 
-function formatDiagnostic(d, contextLines) {
+function formatDiagnostic(d, _contextLines) {
 	const status = d.pass ? "PASS" : "FAIL";
 	const lines = [];
 	lines.push(`### Q${d.qi + 1}: ${d.question}`);
@@ -194,7 +213,9 @@ function formatDiagnostic(d, contextLines) {
 	lines.push(`**Expected:** ${d.expected.join(" / ")}`);
 	lines.push(`**Got:** ${d.got || "(empty)"}`);
 	lines.push(`**Turns used:** ${d.turnsAfter - d.turnsBefore}`);
-	lines.push(`**Context at question time:** ${d.context.knownsFull} full, ${d.context.knownsSummary} summary, ${d.context.knownsIndex} index, ${d.context.knownsStored} stored`);
+	lines.push(
+		`**Context at question time:** ${d.context.knownsFull} full, ${d.context.knownsSummary} summary, ${d.context.knownsIndex} index, ${d.context.knownsStored} stored`,
+	);
 	lines.push("");
 
 	if (!d.pass) {
@@ -232,7 +253,9 @@ async function main() {
 
 	console.log(`MAB Audit: ${SPLIT} row ${ROW_IDX}`);
 	console.log(`Model: ${MODEL}`);
-	console.log(`Context: ${row.context.length} chars, ${row.questions.length} questions`);
+	console.log(
+		`Context: ${row.context.length} chars, ${row.questions.length} questions`,
+	);
 
 	// Setup
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -244,13 +267,17 @@ async function main() {
 	const tserver = await TestServer.start(tdb.db);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
-	await client.call("init", { name: "MABAudit", projectRoot: "/tmp/rummy-mab-audit" });
+	await client.call("init", {
+		name: "MABAudit",
+		projectRoot: "/tmp/rummy-mab-audit",
+	});
 	await fs.mkdir("/tmp/rummy-mab-audit", { recursive: true });
 
 	// Create run and ingest
 	const initR = await client.call("ask", {
 		model: MODEL,
-		prompt: "You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save facts. Reply with <update>ready</update>.",
+		prompt:
+			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save facts. Reply with <update>ready</update>.",
 		noContext: true,
 	});
 	let run = initR.run;
@@ -276,7 +303,10 @@ async function main() {
 
 	// Run questions
 	const start = questionRange?.start ?? 0;
-	const end = Math.min(questionRange?.end ?? row.questions.length - 1, row.questions.length - 1);
+	const end = Math.min(
+		questionRange?.end ?? row.questions.length - 1,
+		row.questions.length - 1,
+	);
 
 	const reportPath = join(auditDir, "MAB_AUDIT.md");
 	const diagnostics = [];
@@ -291,8 +321,14 @@ async function main() {
 	for (let qi = start; qi <= end; qi++) {
 		console.log(`\n  Q${qi + 1}: ${row.questions[qi].slice(0, 60)}...`);
 		const d = await auditQuestion(
-			client, tdb.db, MODEL, run,
-			qi, row.questions[qi], row.answers[qi], contextLines,
+			client,
+			tdb.db,
+			MODEL,
+			run,
+			qi,
+			row.questions[qi],
+			row.answers[qi],
+			contextLines,
 		);
 		diagnostics.push(d);
 
@@ -300,7 +336,7 @@ async function main() {
 		console.log(`  ${mark} ${d.got?.slice(0, 60) || "(empty)"}`);
 
 		// Append to report incrementally
-		await fs.appendFile(reportPath, formatDiagnostic(d, contextLines) + "\n");
+		await fs.appendFile(reportPath, `${formatDiagnostic(d, contextLines)}\n`);
 	}
 
 	// Summary
@@ -321,7 +357,9 @@ async function main() {
 
 	console.log(`\nReport:   ${reportPath}`);
 	console.log(`Database: ${dbDest}`);
-	console.log(`Result:   ${passed}/${total} (${((passed / total) * 100).toFixed(1)}%)`);
+	console.log(
+		`Result:   ${passed}/${total} (${((passed / total) * 100).toFixed(1)}%)`,
+	);
 }
 
 main().catch((err) => {
