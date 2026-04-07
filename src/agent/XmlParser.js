@@ -260,7 +260,6 @@ export default class XmlParser {
 			/<\|tool_call>call:(\w+)\{([^}]*)\}<(?:tool_call\||\|tool_call)>/g,
 			(_, name, params) => {
 				if (!ALL_TOOLS.has(name)) return _;
-				// Extract first string value as body
 				const valueMatch = params.match(/["']([^"']+)["']/);
 				const body = valueMatch?.[1] || "";
 				return `<${name}>${body}</${name}>`;
@@ -272,7 +271,28 @@ export default class XmlParser {
 			/\{"name"\s*:\s*"(\w+)"\s*,\s*"arguments"\s*:\s*\{([^}]*)\}\}/g,
 			(_, name, args) => {
 				if (!ALL_TOOLS.has(name)) return _;
-				// Extract the first value (skip key names)
+				const pairs = [...args.matchAll(/"(\w+)"\s*:\s*"([^"]*)"/g)];
+				const body = pairs[0]?.[2] || "";
+				return `<${name}>${body}</${name}>`;
+			},
+		);
+
+		// Anthropic: <tool_use><name>search</name><input>{"query":"..."}</input></tool_use>
+		result = result.replace(
+			/<tool_use>\s*<name>(\w+)<\/name>\s*<input>\{([^}]*)\}<\/input>\s*<\/tool_use>/g,
+			(_, name, args) => {
+				if (!ALL_TOOLS.has(name)) return _;
+				const pairs = [...args.matchAll(/"(\w+)"\s*:\s*"([^"]*)"/g)];
+				const body = pairs[0]?.[2] || "";
+				return `<${name}>${body}</${name}>`;
+			},
+		);
+
+		// Mistral: [TOOL_CALLS] [{"name":"search","arguments":{"query":"..."}}]
+		result = result.replace(
+			/\[TOOL_CALLS\]\s*\[\{"name"\s*:\s*"(\w+)"\s*,\s*"arguments"\s*:\s*\{([^}]*)\}\}\]/g,
+			(_, name, args) => {
+				if (!ALL_TOOLS.has(name)) return _;
 				const pairs = [...args.matchAll(/"(\w+)"\s*:\s*"([^"]*)"/g)];
 				const body = pairs[0]?.[2] || "";
 				return `<${name}>${body}</${name}>`;

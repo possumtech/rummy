@@ -31,7 +31,7 @@ async function renderToolTag(entry, core) {
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
 
-	const path = `${entry.scheme}://${attrs?.path || attrs?.file || attrs?.command || ""}`;
+	const target = attrs?.path || attrs?.file || attrs?.command || "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
 
 	let body;
@@ -45,7 +45,7 @@ async function renderToolTag(entry, core) {
 	}
 
 	if (body) {
-		return `<tool path="${path}"${status}>${body}</tool>`;
+		return `<${entry.scheme} path="${target}"${status}>${body}</${entry.scheme}>`;
 	}
-	return `<tool path="${path}"${status}/>`;
+	return `<${entry.scheme} path="${target}"${status}/>`;
 }
