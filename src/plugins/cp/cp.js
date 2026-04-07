@@ -12,20 +12,17 @@ export default class Cp {
 		core.on("summary", this.summary.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n\n${docs}` : docs,
+			content ? `${content}\n${docs}` : docs,
 		);
 	}
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
-		const fidelity = entry.attributes.stored
-			? "stored"
-			: entry.attributes.summary
-				? "summary"
-				: entry.attributes.index
-					? "index"
-					: undefined;
+		const VALID = { stored: 1, summary: 1, index: 1, full: 1 };
+		const fidelity = VALID[entry.attributes.fidelity]
+			? entry.attributes.fidelity
+			: undefined;
 
 		const source = await store.getBody(runId, path);
 		if (source === null) return;

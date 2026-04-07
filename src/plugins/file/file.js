@@ -19,6 +19,7 @@ export default class File {
 		core.registerScheme({ name: "http", category: "file" });
 		core.registerScheme({ name: "https", category: "file" });
 		core.on("full", this.full.bind(this));
+		core.on("summary", this.summary.bind(this));
 
 		// Identity projections for schemes that just pass through body
 		for (const scheme of ["known", "skill", "ask", "act", "progress"]) {
@@ -27,6 +28,10 @@ export default class File {
 	}
 
 	full(entry) {
+		return entry.body;
+	}
+
+	summary(entry) {
 		return entry.body;
 	}
 

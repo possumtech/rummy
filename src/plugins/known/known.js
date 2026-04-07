@@ -11,7 +11,7 @@ export default class Known {
 		core.filter("assembly.system", this.assembleKnown.bind(this), 100);
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n\n${docs}` : docs,
+			content ? `${content}\n${docs}` : docs,
 		);
 	}
 
@@ -43,13 +43,23 @@ export default class Known {
 }
 
 function renderKnownTag(entry, demotedSet) {
+	const tag = entry.scheme || "file";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
+	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
+	const attrs =
+		typeof entry.attributes === "string"
+			? JSON.parse(entry.attributes)
+			: entry.attributes;
+	const summary =
+		typeof attrs?.summary === "string"
+			? ` summary="${attrs.summary.slice(0, 80)}"`
+			: "";
 
 	if (entry.body) {
-		return `<known path="${entry.path}"${status}${tokens}${flag}>${entry.body}</known>`;
+		return `<${tag} path="${entry.path}"${status}${fidelity}${summary}${tokens}${flag}>${entry.body}</${tag}>`;
 	}
 
-	return `<known path="${entry.path}"${status}${tokens}${flag}/>`;
+	return `<${tag} path="${entry.path}"${status}${fidelity}${summary}${tokens}${flag}/>`;
 }

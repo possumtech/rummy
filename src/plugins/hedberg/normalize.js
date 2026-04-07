@@ -19,10 +19,8 @@ const KNOWN_ATTRS = new Set([
 	"results",
 	"command",
 	"warn",
-	"stored",
 	"summary",
-	"full",
-	"index",
+	"fidelity",
 ]);
 
 export function normalizeAttrs(attrs) {
@@ -41,10 +39,10 @@ export function normalizeAttrs(attrs) {
 		}
 	}
 	if ("preview" in out) out.preview = true;
-	if ("stored" in out) out.stored = true;
-	if ("summary" in out) out.summary = out.summary || true;
-	if ("full" in out) out.full = true;
-	if ("index" in out) out.index = true;
+	// summary="..." is the description text, not a fidelity flag
+	if ("summary" in out && !out.summary) out.summary = true;
+	// file:// prefix — strip silently, bare paths are the convention
+	if (out.path?.startsWith("file://")) out.path = out.path.slice(7);
 	return out;
 }
 

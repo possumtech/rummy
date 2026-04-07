@@ -3,6 +3,8 @@ import KnownStore from "../../agent/KnownStore.js";
 import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
 
+const VALID_FIDELITY = { stored: 1, summary: 1, index: 1, full: 1 };
+
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {
 	#core;
@@ -16,7 +18,7 @@ export default class Set {
 		core.on("turn.proposing", this.#materializeRevisions.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n\n${docs}` : docs,
+			content ? `${content}\n${docs}` : docs,
 		);
 	}
 
@@ -24,16 +26,8 @@ export default class Set {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
 
-		// Fidelity control: <set path="..." stored/>, <set path="..." summary/>
-		const fidelityAttr = attrs.stored
-			? "stored"
-			: attrs.summary
-				? "summary"
-				: attrs.index
-					? "index"
-					: attrs.full
-						? "full"
-						: null;
+		// Fidelity control: <set path="..." fidelity="stored"/>
+		const fidelityAttr = VALID_FIDELITY[attrs.fidelity] ? attrs.fidelity : null;
 		if (fidelityAttr && attrs.path) {
 			const target = attrs.path;
 			const rawSummary =

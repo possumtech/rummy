@@ -188,8 +188,8 @@ describe("Message assembly", () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
 		assert.ok(
-			system.content.includes("<known path="),
-			"should have known entries",
+			system.content.includes("<knowns>"),
+			"should have knowns section",
 		);
 		assert.ok(system.content.includes("src/app.js"), "files in context");
 		// Results should NOT be in the system message

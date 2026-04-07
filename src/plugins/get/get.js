@@ -13,7 +13,7 @@ export default class Get {
 		core.on("summary", this.summary.bind(this));
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n\n${docs}` : docs,
+			content ? `${content}\n${docs}` : docs,
 		);
 	}
 

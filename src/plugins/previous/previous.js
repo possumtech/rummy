@@ -33,6 +33,10 @@ async function renderToolTag(entry, core) {
 
 	const target = attrs?.path || attrs?.file || attrs?.command || "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
+	const summary =
+		typeof attrs?.summary === "string"
+			? ` summary="${attrs.summary.slice(0, 80)}"`
+			: "";
 
 	let body;
 	try {
@@ -45,7 +49,7 @@ async function renderToolTag(entry, core) {
 	}
 
 	if (body) {
-		return `<${entry.scheme} path="${target}"${status}>${body}</${entry.scheme}>`;
+		return `<${entry.scheme} path="${target}"${status}${summary}>${body}</${entry.scheme}>`;
 	}
-	return `<${entry.scheme} path="${target}"${status}/>`;
+	return `<${entry.scheme} path="${target}"${status}${summary}/>`;
 }

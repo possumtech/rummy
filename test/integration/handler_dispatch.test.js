@@ -308,7 +308,7 @@ describe("Handler dispatch", () => {
 				scheme: "set",
 				path: "set://known%3A%2F%2Fdemote_me",
 				body: "",
-				attributes: { path: "known://demote_me", stored: true },
+				attributes: { path: "known://demote_me", fidelity: "stored" },
 				status: 200,
 				resultPath: "set://known%3A%2F%2Fdemote_me",
 			};

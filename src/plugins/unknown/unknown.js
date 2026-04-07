@@ -12,7 +12,7 @@ export default class Unknown {
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);
 		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (content) =>
-			content ? `${content}\n\n${docs}` : docs,
+			content ? `${content}\n${docs}` : docs,
 		);
 	}
 

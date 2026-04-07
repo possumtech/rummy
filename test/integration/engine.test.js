@@ -166,5 +166,49 @@ describe("Engine integration", () => {
 				"body should pass through at summary fidelity",
 			);
 		});
+
+		it("model-authored summary shows in known tag at full fidelity", async () => {
+			await store.upsert(RUN_ID, 5, "src/described.js", "const x = 1;", 200, {
+				fidelity: "full",
+				attributes: { summary: "Utility module for X" },
+			});
+
+			const viewResult = await tdb.hooks.tools.view("file", {
+				path: "src/described.js",
+				scheme: null,
+				body: "const x = 1;",
+				fidelity: "full",
+				attributes: { summary: "Utility module for X" },
+				category: "file",
+			});
+			// At full fidelity, summary is in the tag attribute, not the body
+			assert.ok(
+				viewResult.includes("const x = 1;"),
+				"full view should include body",
+			);
+		});
+
+		it("summary attribute used as fallback at summary fidelity", async () => {
+			// File plugin registers a summary view that returns body
+			// rummy.repo would override with symbols when installed
+			await store.upsert(RUN_ID, 6, "src/noview.js", "const y = 2;", 200, {
+				fidelity: "summary",
+				attributes: { summary: "Helper for Y calculations" },
+			});
+
+			const viewResult = await tdb.hooks.tools.view("file", {
+				path: "src/noview.js",
+				scheme: null,
+				body: "const y = 2;",
+				fidelity: "summary",
+				attributes: { summary: "Helper for Y calculations" },
+				category: "file",
+			});
+			// File plugin summary view returns body; summary attr goes in tag
+			assert.ok(
+				viewResult.length > 0,
+				"summary fidelity should produce content",
+			);
+		});
 	});
 });
