@@ -59,6 +59,20 @@ export default class OpenAiClient {
 		const headers = { "Content-Type": "application/json" };
 		if (this.#apiKey) headers.Authorization = `Bearer ${this.#apiKey}`;
 
+		// Try /props first — llama.cpp exposes runtime n_ctx here
+		try {
+			const propsResponse = await fetch(`${this.#baseUrl}/props`, {
+				headers,
+				signal: AbortSignal.timeout(timeout),
+			});
+			if (propsResponse.ok) {
+				const props = await propsResponse.json();
+				const runtimeCtx = props?.default_generation_settings?.n_ctx;
+				if (runtimeCtx) return runtimeCtx;
+			}
+		} catch {}
+
+		// Fall back to /v1/models for training context
 		const response = await fetch(`${this.#baseUrl}/v1/models`, {
 			headers,
 			signal: AbortSignal.timeout(timeout),
