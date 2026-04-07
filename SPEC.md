@@ -80,10 +80,12 @@ Paths use URI scheme syntax. Bare paths (no `://`) are files.
 | `stored` | Key listed, no value |
 
 **Tool results** (`set://`, `sh://`, `env://`, `rm://`, `ask_user://`,
-`mv://`, `cp://`, `search://`, `get://`, `store://`):
+`mv://`, `cp://`, `search://`, `get://`):
 
-All start at `full` state when recorded. Handlers set the final state:
-`proposed`, `pass`, `rejected`, `error`, `pattern`, `read`, `stored`, `info`.
+All entries use HTTP status codes: 200 (OK), 202 (proposed), 400 (bad
+request), 403 (rejected), 404 (not found), 409 (conflict), 413 (too
+large), 500 (error). Fidelity managed independently: full, summary,
+index, stored.
 
 **Skills** (`skill://`): `full` or `stored`. Rendered in system message.
 
@@ -169,7 +171,7 @@ object is the same shape at every tier.
 
 | Method | Model | Client | Plugin |
 |--------|-------|--------|--------|
-| `get`, `set`, `rm`, `mv`, `cp`, `sh`, `env`, `store` | ✓ | ✓ | ✓ |
+| `get`, `set`, `rm`, `mv`, `cp`, `sh`, `env` | ✓ | ✓ | ✓ |
 | `known`, `unknown`, `ask_user`, `summarize`, `update` | ✓ | ✓ | ✓ |
 | `ask`, `act`, `resolve`, `abort`, `startRun` | — | ✓ | ✓ |
 | `getRuns`, `getModels`, `getEntries` | — | ✓ | ✓ |
@@ -369,13 +371,14 @@ JSON-RPC 2.0 over WebSocket. `discover` returns the live catalog.
 
 | Method | Params |
 |--------|--------|
-| `read` | `{ path, run?, persist?, readonly? }` |
+| `get` | `{ path, run?, persist?, readonly? }` |
 | `store` | `{ path, run?, persist?, ignore?, clear? }` |
-| `write` | `{ run, path, body?, state?, attributes? }` |
-| `delete` | `{ run, path }` |
+| `set` | `{ run, path, body?, status?, fidelity?, attributes? }` |
+| `rm` | `{ run, path }` |
 | `getEntries` | `{ pattern?, body?, run?, limit?, offset? }` |
 
 `persist` creates a project-level file constraint (operator privilege).
+`store` RPC handles file constraints only — not a model tool.
 Without `persist`, operations dispatch through the handler chain.
 
 #### Runs

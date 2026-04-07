@@ -11,6 +11,7 @@ Plugin-driven architecture. Instantiated classes, constructor receives
 Assembly via `assembly.system` / `assembly.user` filter chains.
 No monolithic assembler. Loops table (projects > runs > loops > turns).
 HTTP status codes throughout (entries, runs, loops, client RPC).
+9 model tools (store removed — fidelity control via set attributes).
 Budget enforcement demotes oldest full entries to summary when context
 exceeds 95% of the model's window. Token estimation via tiktoken * 2x
 multiplier for cross-model safety. Glob matching via picomatch.
@@ -85,7 +86,7 @@ receipt entries accumulate. Low priority.
   vars. Local then global — no fallback, explicit error.
 - **Phantom tool cleanup**: `ensureTool` only from `on("handler")`.
   File plugin no longer appears in model tool list.
-- **Error feedback**: Get, store, rm return labeled errors on missing
+- **Error feedback**: Get, set, rm return labeled errors on missing
   path (400). Rm returns 404 on no match. Path normalization for
   unencoded URIs.
 - **Tool docs distributed**: Advanced patterns section removed from

@@ -103,9 +103,13 @@ async function ingestContext(client, model, run, chunks) {
 }
 
 async function askQuestion(client, db, model, run, question) {
+	// Snapshot turn count before asking
+	const preRun = await db.get_run_by_alias.get({ alias: run });
+	const turnBefore = preRun.next_turn;
+
 	const prompt = [
-		"Answer this question from memory. Use <summarize> with ONLY the answer.",
-		"Do NOT use <known>, <unknown>, <update>, or any other tag.",
+		"Answer this question from memory.",
+		"<summarize>[your answer]</summarize>",
 		"",
 		question,
 	].join("\n");
@@ -114,28 +118,24 @@ async function askQuestion(client, db, model, run, question) {
 
 	if (r.status >= 500) return "";
 
-	// Extract the model's answer — try multiple sources
+	// Extract answer from entries created after turnBefore
 	const runRow = await db.get_run_by_alias.get({ alias: r.run });
-	const runId = runRow.id;
+	const entries = await db.get_known_entries.all({ run_id: runRow.id });
+	const newEntries = entries.filter((e) => e.turn >= turnBefore);
 
-	// 1. Latest summarize entry (the intended path)
-	const entries = await db.get_known_entries.all({ run_id: runId });
-	const summaries = entries
-		.filter((e) => e.scheme === "summarize")
-		.toSorted((a, b) => b.turn - a.turn);
-	if (summaries[0]?.body) return summaries[0].body;
+	// 1. Summarize entry from the question's turns
+	const summary = newEntries.find((e) => e.scheme === "summarize");
+	if (summary?.body) return summary.body;
 
-	// 2. Latest content (unparsed text from model)
-	const content = entries
-		.filter((e) => e.scheme === "content")
-		.toSorted((a, b) => b.turn - a.turn);
-	if (content[0]?.body) return content[0].body;
-
-	// 3. Latest assistant response (raw)
-	const assistant = entries
+	// 2. Raw assistant response — strip XML tags for evaluation
+	const assistant = newEntries
 		.filter((e) => e.scheme === "assistant")
-		.toSorted((a, b) => b.turn - a.turn);
-	if (assistant[0]?.body) return assistant[0].body;
+		.toSorted((a, b) => b.turn - a.turn)[0];
+	if (assistant?.body) return assistant.body.replace(/<[^>]+>/g, " ").trim();
+
+	// 3. Content (unparsed text)
+	const content = newEntries.find((e) => e.scheme === "content");
+	if (content?.body) return content.body;
 
 	return "";
 }

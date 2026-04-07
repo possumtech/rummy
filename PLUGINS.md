@@ -162,9 +162,8 @@ per-invocation. Has tool verbs, per-turn state (runId, turn, mode).
 
 | Method | Effect |
 |--------|--------|
-| `rummy.set({ path, body, state, attributes })` | Create/update entry |
+| `rummy.set({ path, body, status, fidelity, attributes })` | Create/update entry |
 | `rummy.get({ path })` | Promote to full state |
-| `rummy.store({ path })` | Demote to stored state |
 | `rummy.rm({ path })` | Delete permanently |
 | `rummy.mv({ path, to })` | Move entry |
 | `rummy.cp({ path, to })` | Copy entry |
@@ -292,9 +291,9 @@ Each plugin has its own README at `src/plugins/{name}/README.md`.
 | Plugin | Type | Description |
 |--------|------|-------------|
 | [`get`](src/plugins/get/) | Core tool | Load file/entry into context |
-| [`set`](src/plugins/set/) | Core tool | Edit file/entry |
+| [`set`](src/plugins/set/) | Core tool | Edit file/entry, fidelity control |
 | [`known`](src/plugins/known/) | Core tool + Assembly | Save knowledge, render `<knowns>` section |
-| [`store`](src/plugins/store/) | Core tool | Remove from context |
+| [`store`](src/plugins/store/) | Scheme only | Scheme registration and views (no model tool) |
 | [`rm`](src/plugins/rm/) | Core tool | Delete permanently |
 | [`mv`](src/plugins/mv/) | Core tool | Move entry |
 | [`cp`](src/plugins/cp/) | Core tool | Copy entry |
