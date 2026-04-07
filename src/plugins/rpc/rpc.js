@@ -229,6 +229,7 @@ export default class Rpc {
 					path: e.path,
 					scheme: e.scheme,
 					status: e.status,
+					fidelity: e.fidelity,
 					tokens: e.tokens_full,
 				}));
 			},

@@ -36,8 +36,12 @@ export default class File {
 			visibility,
 		});
 
-		if (visibility === "ignore") {
-			const runs = await db.get_all_runs.all({ project_id: projectId });
+		const runs = await db.get_all_runs.all({ project_id: projectId });
+		if (visibility === "active") {
+			for (const run of runs) {
+				await knownStore.promoteByPattern(run.id, path, null, 0);
+			}
+		} else if (visibility === "ignore") {
 			for (const run of runs) {
 				await knownStore.demoteByPattern(run.id, path, null);
 			}

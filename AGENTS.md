@@ -257,6 +257,35 @@ giving the model no feedback to self-correct.
 - rm docs example updated: `known://donald-rumsfeld-was-born-in-1932`
   (traces lifecycle from known docs, replaces stale `unknown://42`)
 
+## Done: HTTP Status Codes (2026-04-06)
+
+Replaced `state TEXT` with `status INTEGER` (HTTP codes) and
+`fidelity TEXT` (visibility level) on known_entries. Runs and loops
+also use HTTP status codes. Schemes table simplified — no valid_states,
+no fidelity column.
+
+Status codes: 200=OK, 201=Created, 202=Accepted (proposed),
+301=Moved, 302=Found, 400=Bad Request, 403=Forbidden (rejected),
+404=Not Found, 409=Conflict, 410=Gone, 500=Error, 499=Aborted.
+
+The ghost in the model data — zero tokens spent teaching the model
+a state machine it already knows.
+
+External plugins (rummy.web, rummy.repo) updated locally. rummy.nvim
+client migrated to integer status codes.
+
+## Done: File Activate Promotion (2026-04-06)
+
+File.activate now promotes existing matching entries immediately,
+symmetric with how File.ignore demotes them. Previously, activating
+a pattern only stored the constraint — entries weren't promoted
+until the next file scan.
+
+## Done: getEntries Fidelity Field (2026-04-06)
+
+Server getEntries response now includes `fidelity` field. Client
+uses fidelity (not status) to determine buffer visibility marking.
+
 ## Done: Previous Loop Context (2026-04-06)
 
 - Previous/current assembly plugins use entry's own fidelity from the
