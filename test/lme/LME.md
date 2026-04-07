@@ -2,14 +2,6 @@
 
 Live benchmark of Rummy's long-term memory against the [LongMemEval](https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned) dataset (ICLR 2025).
 
-## How to run the LME test
-
-1. Download the dataset: `npm run test:lme:get`
-2. Run rows incrementally: `npm run test:lme -- --split longmemeval_oracle --row 0`
-3. After each row, inspect the database in the timestamped `test/lme/results/` directory
-4. Record findings in `test/lme/REPORT.md` — one section per row with question, expected answer, actual response, context/budget analysis from the DB, and a conclusion identifying the root cause (evaluator, budget, ingestion, architecture)
-5. Do NOT assume model failure. Rule out context assembly, budget cascade, fidelity state, token accounting, and prompt construction before attributing a failure to the model.
-
 ## Setup
 
 ```bash
@@ -80,11 +72,11 @@ For each benchmark row:
 2. The conversation history (haystack sessions with timestamps) is serialized and chunked
 3. Chunks are fed via `ask` prompts; the model uses `<known>` to save facts
 4. The question is asked as a separate `ask` on the same run (with `question_date` context)
-5. The model's response is checked for containment of the valid answer (case-insensitive, strict substring match)
+5. The model's response is evaluated: substring match first, LLM judge as fallback
 
 ## Evaluation
 
-Pass/fail. The model's response passes if the answer appears as a case-insensitive substring. No fuzzy matching, no LLM judge.
+Two-tier. First, strict substring containment (case-insensitive). If that fails and the model produced a response, an LLM judge evaluates whether the response correctly answers the question. Results are tagged `exact` or `judged` so the distinction is visible.
 
 ## Results
 
@@ -99,11 +91,53 @@ test/lme/results/2026-04-07T12-30-00-000Z/
 
 Results are appended incrementally to `results.ndjson` so partial runs survive crashes.
 
-## Auditing a Run
+## Diagnostic Audit
 
-### Quick: check the report
+Run rows incrementally and build `test/lme/REPORT.md` with per-row analysis.
 
-The runner prints a summary after completion with per-type accuracy, token usage, and failed questions.
+### Report Format
+
+Each row gets its own section:
+
+```markdown
+### #0 — gpt4_2655b836 (temporal-reasoning) ✗
+**Question:** What was the first issue I had with my new car after its first service?
+**Expected:** GPS system not functioning correctly
+**Got:** A GPS system issue on 3/22, which the dealership resolved by replacing the entire GPS unit.
+**Turns used:** 5
+**Context at question time:** 12 full, 8 summary, 4 index, 6 stored
+
+**Diagnosis:** Evaluator — model answered correctly ("GPS system issue") but
+the substring evaluator requires the exact rubric phrasing "GPS system not
+functioning correctly". The LLM judge confirmed the answer is correct.
+
+**Recommendation:** No architecture change needed. Evaluation limitation.
+```
+
+### Diagnosis Rules
+
+The diagnosis for each failed question MUST be one of:
+
+1. **Context problem** — necessary facts were demoted out of context.
+   Recommendation: adjust cascade priority, fidelity, or budget.
+2. **Budget problem** — context floor exceeded model limit; run returned 500.
+   Recommendation: identify what's consuming the floor (audit entries, stash indices, system prompt).
+3. **Prompt problem** — model misunderstood the task or used wrong tools.
+   Recommendation: adjust question prompt or system prompt.
+4. **Ingestion problem** — facts were never saved during ingestion.
+   Recommendation: adjust ingestion prompt or chunk size.
+5. **Evaluator problem** — model answered correctly but evaluation failed.
+   Recommendation: describe the mismatch (rubric format, paraphrase, etc.).
+6. **Reasoning problem** — model had the facts but chained wrong.
+   Recommendation: describe what went wrong. If the model had every
+   necessary fact and still answered wrong, state that clearly.
+7. **Unknown** — unable to determine root cause from available data.
+   State what was checked and what remains unclear.
+
+The diagnosis CANNOT be "model drift" or "model limitation." If the model
+failed, something in the context, prompt, or design allowed it to fail.
+
+## Auditing a Run (Quick)
 
 ### Inspect a specific row's agent state
 
@@ -114,17 +148,34 @@ DB=test/lme/results/<timestamp>/lme.db
 sqlite3 "$DB" "
   SELECT path, substr(body, 1, 120)
   FROM known_entries
-  WHERE run_id = (SELECT id FROM runs WHERE alias = 'lme_s_0')
+  WHERE run_id = (SELECT id FROM runs WHERE alias = 'lme_orac_0')
     AND scheme = 'known'
   ORDER BY turn;
+"
+
+# What was the full conversation for a specific turn?
+sqlite3 "$DB" "
+  SELECT path, substr(body, 1, 200)
+  FROM known_entries
+  WHERE run_id = (SELECT id FROM runs WHERE alias = 'lme_orac_0')
+    AND scheme IN ('system', 'user', 'assistant')
+  ORDER BY turn, id;
 "
 
 # How many tokens per turn?
 sqlite3 "$DB" "
   SELECT sequence, prompt_tokens, completion_tokens, cached_tokens, cost
   FROM turns
-  WHERE run_id = (SELECT id FROM runs WHERE alias = 'lme_s_0')
+  WHERE run_id = (SELECT id FROM runs WHERE alias = 'lme_orac_0')
   ORDER BY sequence;
+"
+
+# Fidelity distribution at question time
+sqlite3 "$DB" "
+  SELECT fidelity, count(*), sum(tokens)
+  FROM known_entries
+  WHERE run_id = (SELECT id FROM runs WHERE alias = 'lme_orac_0')
+  GROUP BY fidelity;
 "
 ```
 
@@ -135,5 +186,20 @@ node -e "
   import { loadResults, printReport } from './test/lme/report.js';
   const r = await loadResults('test/lme/results/<timestamp>/results.ndjson');
   printReport(r);
+"
+```
+
+### Compare runs
+
+```bash
+node -e "
+  import { loadResults } from './test/lme/report.js';
+  const a = await loadResults('test/lme/results/<timestamp-a>/results.ndjson');
+  const b = await loadResults('test/lme/results/<timestamp-b>/results.ndjson');
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    console.log(a[i].questionType, a[i].rowIndex,
+      'A:', (a[i].score.accuracy * 100).toFixed(1) + '%',
+      'B:', (b[i].score.accuracy * 100).toFixed(1) + '%');
+  }
 "
 ```

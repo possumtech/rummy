@@ -15,16 +15,20 @@ import { countTokens } from "./tokens.js";
  * Tier 4: hard error
  */
 
+// Demotion priority: shed data first, then reasoning, then narrative.
+// Tier 0: files, URLs, entries — re-readable data
+// Tier 1: knowns and unknowns — the model's reasoning state
+// Tier 2: prompts and tool results — the model's narrative and action history
 const DEMOTION_ORDER = {
-	prompt: 0,
-	result: 0,
-	structural: 0,
-	file: 1,
-	file_index: 1,
-	file_summary: 1,
-	known: 2,
-	known_index: 2,
-	unknown: 3,
+	file: 0,
+	file_index: 0,
+	file_summary: 0,
+	known: 1,
+	known_index: 1,
+	unknown: 1,
+	result: 2,
+	structural: 2,
+	prompt: 2,
 };
 
 function sortByDemotionPriority(entries) {
