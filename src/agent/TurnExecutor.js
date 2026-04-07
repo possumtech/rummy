@@ -140,6 +140,17 @@ export default class TurnExecutor {
 			});
 		}
 
+		// Budget check — abort before sending a doomed request
+		const budget = await this.#db.get_turn_budget.get({
+			run_id: currentRunId,
+			turn,
+		});
+		if (contextSize && budget.total > contextSize * 0.95) {
+			throw new Error(
+				`Context overflow: ${budget.total} tokens exceeds 95% of ${contextSize} token limit. Use <store/> to demote entries.`,
+			);
+		}
+
 		await this.#hooks.run.progress.emit({
 			projectId,
 			run: currentAlias,
