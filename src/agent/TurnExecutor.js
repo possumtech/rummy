@@ -173,14 +173,29 @@ export default class TurnExecutor {
 			);
 			const ceiling = contextSize * 0.95;
 			if (assembledTokens > ceiling) {
+				// Demotion priority: files/results first, then knowns, then unknowns.
+				// Within each tier, oldest first. Model memory demoted last.
+				const DEMOTION_ORDER = {
+					file: 0,
+					file_index: 0,
+					result: 1,
+					known: 2,
+					known_index: 2,
+					unknown: 3,
+				};
 				const candidates = rows
 					.filter(
 						(r) =>
 							r.fidelity === "full" &&
 							r.tokens > 0 &&
-							(r.category === "file" || r.category === "known"),
+							DEMOTION_ORDER[r.category] !== undefined,
 					)
-					.toSorted((a, b) => a.source_turn - b.source_turn);
+					.toSorted((a, b) => {
+						const tierA = DEMOTION_ORDER[a.category] ?? 99;
+						const tierB = DEMOTION_ORDER[b.category] ?? 99;
+						if (tierA !== tierB) return tierA - tierB;
+						return a.source_turn - b.source_turn;
+					});
 
 				let excess = assembledTokens - ceiling;
 				for (const entry of candidates) {

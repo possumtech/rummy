@@ -379,6 +379,35 @@ I need to check the port.
 			assert.strictEqual(commands[0].path, "test query");
 		});
 
+		it("normalizes Anthropic tool_use format", () => {
+			const input = `<tool_use>
+<name>search</name>
+<input>{"query":"Mitch Hedberg"}</input>
+</tool_use>
+<update>Searching.</update>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 2);
+			assert.strictEqual(commands[0].name, "search");
+			assert.strictEqual(commands[0].path, "Mitch Hedberg");
+		});
+
+		it("normalizes Mistral TOOL_CALLS format", () => {
+			const input = `[TOOL_CALLS] [{"name":"search","arguments":{"query":"test"}}]
+<update>Searching.</update>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 2);
+			assert.strictEqual(commands[0].name, "search");
+			assert.strictEqual(commands[0].path, "test");
+		});
+
+		it("ignores native tool calls for unknown tools", () => {
+			const input = `<|tool_call>call:fakeTool{arg:"value"}<tool_call|>
+<summarize>Done.</summarize>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(commands.length, 1);
+			assert.strictEqual(commands[0].name, "summarize");
+		});
+
 		it("ignores unknown tags", () => {
 			const input = `<thinking>internal thoughts</thinking>
 <summarize>The answer.</summarize>`;
