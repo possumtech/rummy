@@ -210,35 +210,7 @@ export default class TurnExecutor {
 				}
 
 				if (demoted.length > 0) {
-					await this.#db.clear_turn_context.run({ run_id: currentRunId, turn });
-					const freshViewRows = await this.#db.get_model_context.all({
-						run_id: currentRunId,
-					});
-					for (const row of freshViewRows) {
-						const scheme = row.scheme || "file";
-						const projectedBody = await this.#hooks.tools.view(scheme, {
-							path: row.path,
-							scheme,
-							body: row.body,
-							attributes: row.attributes ? JSON.parse(row.attributes) : null,
-							fidelity: row.fidelity,
-							category: row.category,
-						});
-						await this.#db.insert_turn_context.run({
-							run_id: currentRunId,
-							loop_id: currentLoopId,
-							turn,
-							ordinal: row.ordinal,
-							path: row.path,
-							fidelity: row.fidelity,
-							status: row.status,
-							body: projectedBody ?? "",
-							tokens: countTokens(projectedBody ?? ""),
-							attributes: row.attributes,
-							category: row.category,
-							source_turn: row.turn,
-						});
-					}
+					await this.#rematerialize(currentRunId, currentLoopId, turn);
 					rows = await this.#db.get_turn_context.all({
 						run_id: currentRunId,
 						turn,
@@ -255,20 +227,91 @@ export default class TurnExecutor {
 			}
 		}
 
-		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
+		let filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
 			projectId,
 			runId: currentRunId,
 		});
 
-		// Store assembled messages as audit
-		// Call LLM
+		// Call LLM — retry once on context overflow after emergency demotion
 		await this.#hooks.llm.request.started.emit({ model: requestedModel, turn });
-		const rawResult = await this.#llmProvider.completion(
-			filteredMessages,
-			requestedModel,
-			{ temperature: options?.temperature, signal },
-		);
+		let rawResult;
+		try {
+			rawResult = await this.#llmProvider.completion(
+				filteredMessages,
+				requestedModel,
+				{ temperature: options?.temperature, signal },
+			);
+		} catch (err) {
+			if (!err.message?.includes("exceed")) throw err;
+
+			// Emergency demotion — demote largest entries one at a time until it fits
+			console.warn("[RUMMY] Context overflow from LLM — emergency demotion");
+			const DEMOTION_ORDER = {
+				file: 0,
+				file_index: 0,
+				result: 1,
+				known: 2,
+				known_index: 2,
+				unknown: 3,
+			};
+
+			for (let attempt = 0; attempt < 10; attempt++) {
+				const candidate = rows
+					.filter(
+						(r) =>
+							r.fidelity === "full" &&
+							r.tokens > 0 &&
+							DEMOTION_ORDER[r.category] !== undefined &&
+							!demoted.includes(r.path),
+					)
+					.toSorted((a, b) => {
+						const tierA = DEMOTION_ORDER[a.category] ?? 99;
+						const tierB = DEMOTION_ORDER[b.category] ?? 99;
+						if (tierA !== tierB) return tierA - tierB;
+						return b.tokens - a.tokens;
+					})[0];
+
+				if (!candidate) throw err;
+				await this.#knownStore.setFidelity(
+					currentRunId,
+					candidate.path,
+					"summary",
+				);
+				demoted.push(candidate.path);
+
+				await this.#rematerialize(currentRunId, currentLoopId, turn);
+				rows = await this.#db.get_turn_context.all({
+					run_id: currentRunId,
+					turn,
+				});
+				messages = await ContextAssembler.assembleFromTurnContext(
+					rows,
+					{ type: mode, systemPrompt, contextSize, demoted },
+					this.#hooks,
+				);
+				filteredMessages = await this.#hooks.llm.messages.filter(messages, {
+					model: requestedModel,
+					projectId,
+					runId: currentRunId,
+				});
+
+				try {
+					rawResult = await this.#llmProvider.completion(
+						filteredMessages,
+						requestedModel,
+						{ temperature: options?.temperature, signal },
+					);
+					console.warn(
+						`[RUMMY] Emergency demotion: ${attempt + 1} entries demoted. Retry succeeded.`,
+					);
+					break;
+				} catch (retryErr) {
+					if (!retryErr.message?.includes("exceed")) throw retryErr;
+				}
+			}
+			if (!rawResult) throw err;
+		}
 		const result = await this.#hooks.llm.response.filter(rawResult, {
 			model: requestedModel,
 			projectId,
@@ -447,7 +490,7 @@ export default class TurnExecutor {
 		// --- Classify for return value ---
 
 		const actionCalls = recorded.filter((e) =>
-			["get", "store", "set", "rm", "mv", "cp", "sh", "env", "search"].includes(
+			["get", "set", "rm", "mv", "cp", "sh", "env", "search"].includes(
 				e.scheme,
 			),
 		);
@@ -605,5 +648,35 @@ export default class TurnExecutor {
 			status: 200,
 			resultPath,
 		};
+	}
+
+	async #rematerialize(runId, loopId, turn) {
+		await this.#db.clear_turn_context.run({ run_id: runId, turn });
+		const viewRows = await this.#db.get_model_context.all({ run_id: runId });
+		for (const row of viewRows) {
+			const scheme = row.scheme || "file";
+			const projectedBody = await this.#hooks.tools.view(scheme, {
+				path: row.path,
+				scheme,
+				body: row.body,
+				attributes: row.attributes ? JSON.parse(row.attributes) : null,
+				fidelity: row.fidelity,
+				category: row.category,
+			});
+			await this.#db.insert_turn_context.run({
+				run_id: runId,
+				loop_id: loopId,
+				turn,
+				ordinal: row.ordinal,
+				path: row.path,
+				fidelity: row.fidelity,
+				status: row.status,
+				body: projectedBody ?? "",
+				tokens: countTokens(projectedBody ?? ""),
+				attributes: row.attributes,
+				category: row.category,
+				source_turn: row.turn,
+			});
+		}
 	}
 }

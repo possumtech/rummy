@@ -3,15 +3,7 @@ import { parseEditContent } from "../plugins/hedberg/edits.js";
 import { normalizeAttrs, parseJsonEdit } from "../plugins/hedberg/normalize.js";
 import { parseSed } from "../plugins/hedberg/sed.js";
 
-const STORE_TOOLS = new Set([
-	"get",
-	"store",
-	"rm",
-	"set",
-	"mv",
-	"cp",
-	"search",
-]);
+const STORE_TOOLS = new Set(["get", "rm", "set", "mv", "cp", "search"]);
 const ALL_TOOLS = new Set([
 	...STORE_TOOLS,
 	"known",
@@ -111,7 +103,7 @@ function resolveCommand(name, attrs, rawBody) {
 		return { name, path, body };
 	}
 
-	if (name === "get" || name === "store" || name === "rm") {
+	if (name === "get" || name === "rm") {
 		const path = a.path || trimmed || null;
 		return { name, path, body: a.body, preview: a.preview };
 	}

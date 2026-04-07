@@ -157,14 +157,14 @@ describe("Message assembly", () => {
 		const user = messages.find((m) => m.role === "user");
 
 		assert.ok(
-			user.content.includes("<tool path="),
+			user.content.includes("<search ") || user.content.includes("<env "),
 			"tool tags present in current",
 		);
-		assert.ok(user.content.includes("search://"), "search entry visible");
-		assert.ok(user.content.includes("env://"), "env entry visible");
-		assert.ok(user.content.includes("rm://"), "rm entry visible");
-		assert.ok(user.content.includes("mv://"), "mv entry visible");
-		assert.ok(user.content.includes("cp://"), "cp entry visible");
+		assert.ok(user.content.includes("10 results"), "search entry visible");
+		assert.ok(user.content.includes("node"), "env entry visible");
+		assert.ok(user.content.includes("<rm "), "rm entry visible");
+		assert.ok(user.content.includes("<mv "), "mv entry visible");
+		assert.ok(user.content.includes("<cp "), "cp entry visible");
 	});
 
 	it("structural entries (summary/update) appear in messages", async () => {

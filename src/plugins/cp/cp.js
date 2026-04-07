@@ -19,6 +19,13 @@ export default class Cp {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
+		const fidelity = entry.attributes.stored
+			? "stored"
+			: entry.attributes.summary
+				? "summary"
+				: entry.attributes.index
+					? "index"
+					: undefined;
 
 		const source = await store.getBody(runId, path);
 		if (source === null) return;
@@ -37,7 +44,7 @@ export default class Cp {
 				loopId,
 			});
 		} else {
-			await store.upsert(runId, turn, to, source, 200, { loopId });
+			await store.upsert(runId, turn, to, source, 200, { fidelity, loopId });
 			await store.upsert(runId, turn, entry.resultPath, body, 200, {
 				attributes: { from: path, to, isMove: false, warning },
 				loopId,

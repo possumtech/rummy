@@ -25,7 +25,7 @@ describe("Scheme registration via plugins", () => {
 
 	it("all tool plugins are registered", () => {
 		const tools = [...tdb.hooks.tools.names];
-		assert.ok(tools.length >= 10, `expected 10+ tools, got ${tools.length}`);
+		assert.ok(tools.length >= 9, `expected 9+ tools, got ${tools.length}`);
 		for (const name of [
 			"get",
 			"set",
@@ -34,7 +34,6 @@ describe("Scheme registration via plugins", () => {
 			"cp",
 			"sh",
 			"env",
-			"store",
 			"known",
 			"ask_user",
 		]) {

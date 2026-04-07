@@ -24,6 +24,56 @@ export default class Set {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
 
+		// Fidelity control: <set path="..." stored/>, <set path="..." summary/>
+		const fidelityAttr = attrs.stored
+			? "stored"
+			: attrs.summary
+				? "summary"
+				: attrs.index
+					? "index"
+					: attrs.full
+						? "full"
+						: null;
+		if (fidelityAttr && attrs.path) {
+			const target = attrs.path;
+			const matches = await store.getEntriesByPattern(
+				runId,
+				target,
+				attrs.body,
+			);
+			if (entry.body) {
+				// Write content directly at specified fidelity
+				for (const match of matches) {
+					await store.upsert(runId, turn, match.path, entry.body, 200, {
+						fidelity: fidelityAttr,
+						loopId,
+					});
+				}
+				if (matches.length === 0) {
+					await store.upsert(runId, turn, target, entry.body, 200, {
+						fidelity: fidelityAttr,
+						loopId,
+					});
+				}
+			} else {
+				// No body — just change fidelity on existing entries
+				for (const match of matches) {
+					await store.setFidelity(runId, match.path, fidelityAttr);
+				}
+			}
+			const label =
+				fidelityAttr === "stored" ? "archived" : `set to ${fidelityAttr}`;
+			const body =
+				matches.length > 0
+					? `${matches.map((m) => m.path).join(", ")} ${label}`
+					: `${target} not found`;
+			await store.upsert(runId, turn, entry.resultPath, body, 200, {
+				fidelity: "stored",
+				loopId,
+			});
+			return;
+		}
+
 		if (attrs.blocks || attrs.search != null) {
 			await this.#processEdit(rummy, entry, attrs);
 			return;

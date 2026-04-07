@@ -47,7 +47,7 @@ export default class Get {
 			if (incomingTokens > remaining) {
 				await store.upsert(runId, turn, entry.resultPath, "", 413, {
 					attributes: {
-						error: `${matches.length} entries (${incomingTokens} tokens) exceeds available context (${remaining} tokens remaining). Use <store/> or <rm/> to free space, or <get path="..." preview/> to list without loading.`,
+						error: `${matches.length} entries (${incomingTokens} tokens) exceeds available context (${remaining} tokens remaining). Use <set path="..." stored/> to archive or <rm/> to free space, or <get path="..." preview/> to list without loading.`,
 					},
 					loopId,
 				});

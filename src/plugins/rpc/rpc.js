@@ -142,10 +142,10 @@ export default class Rpc {
 				}
 
 				if (!params.run) throw new Error("run is required");
-				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(hooks, rummy, "store", params.path, "", {
-					path: params.path,
-				});
+				const runRow = await ctx.db.get_run_by_alias.get({ alias: params.run });
+				if (!runRow) throw new Error(`Run not found: ${params.run}`);
+				const store = ctx.projectAgent.entries;
+				await store.demoteByPattern(runRow.id, params.path, null);
 				return { status: "ok" };
 			},
 			description: "Demote entry to stored state.",

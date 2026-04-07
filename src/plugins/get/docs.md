@@ -7,4 +7,4 @@ Example: <get path="src/*.js" body="TODO" preview/> (find files containing TODO)
 * Adding `preview` shows matches without loading into context
 * Use `body` attribute to filter by content
 * Use "known://" paths to recall stored information
-* When irrelevant or resolved, use <store/> to remove from context
+* When irrelevant, use <set path="..." stored/> to archive from context

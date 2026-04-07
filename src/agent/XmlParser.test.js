@@ -36,12 +36,6 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].path, "src/config.js");
 		});
 
-		it("parses self-closing store", () => {
-			const { commands } = XmlParser.parse('<store path="/:unknown:42"/>');
-			assert.strictEqual(commands[0].name, "store");
-			assert.strictEqual(commands[0].path, "/:unknown:42");
-		});
-
 		it("parses self-closing rm", () => {
 			const { commands } = XmlParser.parse('<rm path="src/old.js"/>');
 			assert.strictEqual(commands[0].name, "rm");
@@ -231,11 +225,6 @@ export default {};
 		it("get: body as path", () => {
 			const { commands } = XmlParser.parse("<get>src/app.js</get>");
 			assert.strictEqual(commands[0].path, "src/app.js");
-		});
-
-		it("store: body as path", () => {
-			const { commands } = XmlParser.parse("<store>/:unknown:42</store>");
-			assert.strictEqual(commands[0].path, "/:unknown:42");
 		});
 
 		it("rm: body as path", () => {

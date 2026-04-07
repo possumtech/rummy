@@ -35,7 +35,11 @@ export default class Progress {
 
 		if (ctx.demoted?.length > 0) {
 			parts.push(
-				`⚠ ${ctx.demoted.length} entries demoted to summary to fit context budget. Use <get/> to restore.`,
+				`⚠ ${ctx.demoted.length} entries demoted to summary to fit context. Use <get/> to restore, <set path="..." stored/> to archive, or <rm/> to permanently remove entries.`,
+			);
+		} else if (pct > 75) {
+			parts.push(
+				`Context is high. Use <set path="..." stored/> to archive or <rm/> to remove unneeded entries.`,
 			);
 		}
 

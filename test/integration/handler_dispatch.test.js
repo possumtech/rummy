@@ -299,27 +299,27 @@ describe("Handler dispatch", () => {
 		});
 	});
 
-	describe("store handler", () => {
-		it("demotes target and writes confirmation", async () => {
+	describe("set fidelity control", () => {
+		it("archives entry via stored attribute", async () => {
 			await store.upsert(RUN_ID, 1, "known://demote_me", "some data", 200);
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const entry = {
-				scheme: "store",
-				path: "store://known%3A%2F%2Fdemote_me",
+				scheme: "set",
+				path: "set://known%3A%2F%2Fdemote_me",
 				body: "",
-				attributes: { path: "known://demote_me" },
+				attributes: { path: "known://demote_me", stored: true },
 				status: 200,
-				resultPath: "store://known%3A%2F%2Fdemote_me",
+				resultPath: "set://known%3A%2F%2Fdemote_me",
 			};
 
-			await hooks.tools.dispatch("store", entry, rummy);
+			await hooks.tools.dispatch("set", entry, rummy);
 
 			const state = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "known://demote_me",
 			});
-			assert.strictEqual(state.fidelity, "stored", "target demoted");
+			assert.strictEqual(state.fidelity, "stored", "target archived");
 		});
 	});
 

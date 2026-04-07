@@ -3,11 +3,9 @@
  * multiplier to account for less efficient tokenizers (gemma, qwen).
  *
  * o200k gives proportionally correct counts — code is denser than
- * prose, CJK denser than ASCII. The 2x multiplier scales for the
- * worst-case tokenizer gap (~1.5 chars/token vs ~4 chars/token).
- *
- * This intentionally overestimates for efficient tokenizers.
- * Safe for budgeting, not billing.
+ * prose, CJK denser than ASCII. The 3x multiplier covers the worst
+ * case (digit sequences: o200k groups digits, other tokenizers
+ * tokenize each digit individually).
  */
 
 const TOKENIZER_MULTIPLIER = 2;

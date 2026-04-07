@@ -19,6 +19,10 @@ const KNOWN_ATTRS = new Set([
 	"results",
 	"command",
 	"warn",
+	"stored",
+	"summary",
+	"full",
+	"index",
 ]);
 
 export function normalizeAttrs(attrs) {
@@ -37,6 +41,10 @@ export function normalizeAttrs(attrs) {
 		}
 	}
 	if ("preview" in out) out.preview = true;
+	if ("stored" in out) out.stored = true;
+	if ("summary" in out) out.summary = true;
+	if ("full" in out) out.full = true;
+	if ("index" in out) out.index = true;
 	return out;
 }
 
