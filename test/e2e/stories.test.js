@@ -307,12 +307,12 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const r2 = await client.call("ask", {
 			model,
 			prompt:
-				"What port does src/app.js listen on? Reply ONLY with the number.",
+				"How many users are in data/users.json? Reply ONLY with the number.",
 			run: r1.run,
 			noInteraction: true,
 		});
 		await client.assertRun(r2, 200, "coherence-2");
-		assertContains(await lastResponse(tdb.db, r2.run), "8080", "coherence-2");
+		assertContains(await lastResponse(tdb.db, r2.run), "2", "coherence-2");
 	});
 
 	// Story 5: Unknown-driven investigation — one prompt, model must
