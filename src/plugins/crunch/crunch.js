@@ -1,6 +1,6 @@
 const SYSTEM_PROMPT =
-	"Compress each entry to ≤80 characters of searchable keywords. " +
-	"No sentences. No filler. One line per entry: path → keywords";
+	"Compress each entry to comma-separated searchable keywords (≤80 chars). " +
+	"One line per entry. Format: path → keyword1, keyword2, keyword3";
 
 const DEBUG = process.env.RUMMY_DEBUG === "true";
 
@@ -15,12 +15,16 @@ export default class Crunch {
 	async #handleSummarize({ entries, runId, store, contextSize, complete }) {
 		if (!entries?.length || !complete || !store) return;
 
-		const maxChars = contextSize ? Math.floor(contextSize * 3) : 100_000;
+		const maxChars = contextSize ? Math.floor(contextSize * 0.5) : 50_000;
 		const batches = batchEntries(entries, maxChars);
+
+		console.warn(
+			`[RUMMY] Crunch: ${entries.length} entries in ${batches.length} batch(es)`,
+		);
 
 		for (const batch of batches) {
 			const userLines = batch
-				.map((e) => `<entry path="${e.path}">${e.body || ""}</entry>`)
+				.map((e) => `${e.path}: ${(e.body || "").slice(0, 200)}`)
 				.join("\n");
 
 			const messages = [
@@ -29,7 +33,7 @@ export default class Crunch {
 			];
 
 			if (DEBUG) {
-				console.warn(`[RUMMY] Crunch: summarizing ${batch.length} entries`);
+				console.warn(`[RUMMY] Crunch: batch of ${batch.length}, ${userLines.length} chars`);
 			}
 
 			let response;
@@ -42,17 +46,18 @@ export default class Crunch {
 			}
 
 			if (DEBUG) {
-				console.warn(`[RUMMY] Crunch: response:\n${response}`);
+				console.warn(`[RUMMY] Crunch response:\n${response}`);
 			}
 
 			const summaries = parseSummaries(response, batch);
 
 			for (const { path, summary } of summaries) {
 				await store.setAttributes(runId, path, { summary });
-				if (DEBUG) {
-					console.warn(`[RUMMY] Crunch: wrote summary for ${path}: ${summary}`);
-				}
 			}
+
+			console.warn(
+				`[RUMMY] Crunch: wrote ${summaries.length}/${batch.length} summaries`,
+			);
 		}
 	}
 }
@@ -63,7 +68,8 @@ export function batchEntries(entries, maxChars) {
 	let currentSize = 0;
 
 	for (const entry of entries) {
-		const size = (entry.path?.length ?? 0) + (entry.body?.length ?? 0) + 30;
+		// path + truncated body (200 chars max in the prompt) + overhead
+		const size = (entry.path?.length ?? 0) + Math.min(entry.body?.length ?? 0, 200) + 10;
 		if (currentSize + size > maxChars && current.length > 0) {
 			batches.push(current);
 			current = [];
@@ -86,12 +92,13 @@ export function parseSummaries(response, entries) {
 		const trimmed = line.trim();
 		if (!trimmed) continue;
 
-		const sep = trimmed.indexOf(" → ");
-		if (sep === -1) continue;
+		// Accept multiple separator formats: →, ->, :, |
+		const sep = trimmed.match(/\s*(?:→|->|:\s|\|)\s*/);
+		if (!sep) continue;
 
-		const path = trimmed.slice(0, sep).trim();
+		const path = trimmed.slice(0, sep.index).trim();
 		const summary = trimmed
-			.slice(sep + 3)
+			.slice(sep.index + sep[0].length)
 			.trim()
 			.slice(0, 80);
 
