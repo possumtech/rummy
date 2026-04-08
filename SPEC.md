@@ -350,73 +350,72 @@ Model controls fidelity via `<set>` attributes: `stored`, `summary`,
 ### 4.5 Budget Cascade
 
 Context overflow is structurally impossible. After materialization, the
-budget plugin (`src/plugins/budget/`) enforces a ceiling of 95% of the model's context window.
-If assembled tokens exceed the ceiling, entries are demoted through three
-tiers using an iterative halving spiral.
+budget plugin (`src/plugins/budget/`) enforces a ceiling of 95% of the
+model's context window. If assembled tokens exceed the ceiling, entries
+are degraded through two phases: the crunch spiral and the death spiral.
 
-**Halving spiral:** Demote the oldest half of eligible entries, rematerialize,
-re-measure. Repeat until the budget is met or the tier is exhausted.
-Newest entries survive longest.
+**Selection: fattest half of oldest half.** No scheme-based priority.
+Sort all candidates by `source_turn` ASC (oldest first), take the oldest
+half, then within that half sort by `tokens` DESC (fattest first) and
+take the fattest half. This selects 25% of entries per pass — the
+simultaneously oldest AND largest entries.
 
-**Demotion tiers:**
+**Protected categories:** `system`, `tool`, and `prompt` entries are
+exempt from crunching and stashing. Stash entries (`known://stash_*`)
+are also exempt.
 
-| Tier | Transition | Effect |
-|------|-----------|--------|
-| 1 | full → summary | Body replaced by `attributes.summary` (≤80 chars) |
-| 2 | summary → index | Content removed, path listed only |
-| 3 | index → stored | Entry hidden; paths collapsed into `known://stash_{scheme}` |
-| 4 | Hard error | Context floor exceeds model limit |
+**Crunch spiral** (graceful degradation):
+- Full entries → set to summary fidelity. The `summarize` callback fires
+  for entries without `attributes.summary` (see § 4.6).
+- Summary entries with summaries > 80 chars → summary text halved
+  deterministically (no LLM call). Repeated: 2000→1000→500→250→125→80.
+- Summary entries whose summaries shrink below 10 chars → index fidelity.
+- Repeat until under budget or no crunchable entries remain.
 
-**Demotion priority** (within each tier, shed in this order):
-- Tier 0: Files, URLs — re-readable from disk
-- Tier 1: Knowns, unknowns — the model's reasoning state
-- Tier 2: Prompts, results, structural — narrative and action history
+`ToolRegistry.view()` prepends `attributes.summary` above whatever the
+plugin's summary view returns. Files at summary fidelity render as:
+description line + symbols. All schemes benefit automatically.
 
-Within the same priority, oldest `source_turn` is demoted first.
+**Death spiral** (last resort):
+- Sort remaining summary/index entries by `source_turn` ASC.
+- Stash the oldest half by scheme into `known://stash_<scheme>` index
+  entries. Stash body = newline-separated paths of stored entries.
+- Repeat until under budget or nothing left to stash.
 
-**Stash entries:** When tier 3 demotes index entries to stored, it creates
-per-scheme stash entries (`known://stash_known`, `known://stash_file`, etc.)
-at index fidelity. The stash body contains newline-separated paths of stored
-entries. The model can `<get known://stash_known/>` to see the list, then
-promote specific entries back to full.
+**Crash:** If stashes + system prompt + tool docs don't fit, that's a
+configuration error — the model's context window is too small.
 
 **Callbacks:**
-- `rematerialize`: After each demotion pass, clears `turn_context`, re-queries
-  `v_model_context`, re-projects through view handlers, re-assembles messages.
-- `summarize`: During tier 1 (full→summary), if demoted entries lack
-  `attributes.summary`, this callback fires with the batch. See § 4.6.
+- `rematerialize`: After each pass, re-queries `v_model_context`,
+  re-projects through view handlers, re-assembles messages.
+- `summarize`: During crunch spiral, fires for full→summary entries
+  missing `attributes.summary`. See § 4.6.
 
 ### 4.6 Crunch: Mid-Cascade Summarization
 
-When the budget cascade demotes known entries from full to summary fidelity,
-their body content disappears from context. The `ToolRegistry.view()` fallback
-renders `attributes.summary` (≤80 chars) if present — but nothing writes it
-by default.
-
-The **crunch plugin** (`src/plugins/crunch/`) subscribes to `cascade.summarize`.
-When the budget cascade identifies entries being demoted that lack summaries,
-it emits the hook with the entry batch and an LLM completion closure.
+The **crunch plugin** (`src/plugins/crunch/`) subscribes to
+`cascade.summarize`. When the crunch spiral demotes full entries to
+summary and they lack summaries, it generates keyword descriptions.
 
 **Flow:**
-1. Budget cascade identifies N entries for full→summary demotion
+1. Crunch spiral selects entries for full→summary demotion
 2. Filters to entries missing `attributes.summary`
-3. Emits `cascade.summarize` with `{ entries, runId, model, complete }`
-4. Crunch plugin builds a prompt: compress each entry to ≤80 chars of
-   searchable keywords
-5. Makes one `complete(messages)` call (direct LLM, no run/loop/turn overhead)
-6. Parses response (one line per entry: `path → keywords`)
-7. Writes summaries to `attributes.summary` via `KnownStore.setAttributes()`
-8. Budget cascade calls `rematerialize` — summaries now render via the
-   ToolRegistry fallback
+3. Fires `summarize` callback with the batch
+4. Crunch plugin compresses each entry to ≤80 chars of keywords
+5. One LLM call per batch (direct, no run/loop overhead)
+6. Parses response: one line per entry, `path → keywords`
+7. Writes to `attributes.summary` via `KnownStore.setAttributes()`
+8. Cascade calls `rematerialize` — summaries render via ToolRegistry
 
-**Cost:** One LLM call per demotion batch containing unsummarized entries.
-After first crunch, entries have permanent summaries. Future demotions skip
-the call.
+**Cost:** One LLM call per batch of unsummarized entries. After first
+crunch, entries have permanent summaries. Future passes halve
+deterministically (no LLM). Subsequent crunch spirals skip the call.
 
-**Failure:** If the LLM call fails, entries are still demoted — they just
-render with empty summaries. Logged as `[RUMMY] Crunch: summarization failed`.
+**Failure:** If the LLM call fails, entries are still demoted — they
+render with empty summaries. Logged as `[RUMMY] Crunch: summarization
+failed`.
 
-**Debug:** When `RUMMY_DEBUG=true`, full request/response packets are logged.
+**Debug:** When `RUMMY_DEBUG=true`, full request/response logged.
 
 ### 4.7 progress:// as Entry
 

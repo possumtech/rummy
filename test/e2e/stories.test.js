@@ -595,7 +595,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		await client.call("get", { path: "src/crunch1.js", persist: true });
 		await client.call("get", { path: "src/crunch2.js", persist: true });
 
-		// Shrink context to force tier 1 cascade (full→summary triggers crunch).
+		// Shrink context to force the crunch spiral (full→summary triggers crunch).
 		// Measure current context and set limit to 75% — forces demotion while
 		// holding the irreducible floor (system prompt + tool docs).
 		const crunchRun = await tdb.db.get_run_by_alias.get({ alias: r1.run });
