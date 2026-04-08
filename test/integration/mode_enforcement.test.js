@@ -112,7 +112,7 @@ describe("Mode enforcement in ask mode", () => {
 	});
 });
 
-describe("noInteraction and noWeb flag enforcement", () => {
+describe("Tool exclusion flags", () => {
 	let tdb;
 
 	before(async () => {
@@ -121,6 +121,18 @@ describe("noInteraction and noWeb flag enforcement", () => {
 
 	after(async () => {
 		await tdb.cleanup();
+	});
+
+	it("ask mode excludes sh", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("ask");
+		assert.ok(!tools.has("sh"), "sh excluded in ask mode");
+		assert.ok(tools.has("get"), "get available in ask mode");
+		assert.ok(tools.has("env"), "env available in ask mode");
+	});
+
+	it("act mode includes sh", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("act");
+		assert.ok(tools.has("sh"), "sh available in act mode");
 	});
 
 	it("noInteraction removes ask_user from tool set", () => {
@@ -138,19 +150,39 @@ describe("noInteraction and noWeb flag enforcement", () => {
 		assert.ok(tools.has("get"), "get should still be available");
 	});
 
-	it("both flags together remove both tools", () => {
+	it("noBench removes ask_user, env, and sh", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("act", { noBench: true });
+		assert.ok(!tools.has("ask_user"), "ask_user excluded");
+		assert.ok(!tools.has("env"), "env excluded");
+		assert.ok(!tools.has("sh"), "sh excluded");
+		assert.ok(tools.has("get"), "get still available");
+		assert.ok(tools.has("set"), "set still available");
+		assert.ok(tools.has("search"), "search still available");
+	});
+
+	it("multiple flags compose", () => {
 		const tools = tdb.hooks.tools.resolveForLoop("ask", {
 			noInteraction: true,
 			noWeb: true,
 		});
 		assert.ok(!tools.has("ask_user"), "ask_user excluded");
 		assert.ok(!tools.has("search"), "search excluded");
+		assert.ok(!tools.has("sh"), "sh excluded (ask mode)");
 		assert.ok(tools.has("known"), "known still available");
 	});
 
-	it("no flags keeps all tools", () => {
-		const tools = tdb.hooks.tools.resolveForLoop("ask");
-		assert.ok(tools.has("ask_user"), "ask_user available by default");
-		assert.ok(tools.has("search"), "search available by default");
+	it("no flags in act mode keeps all tools", () => {
+		const tools = tdb.hooks.tools.resolveForLoop("act");
+		assert.ok(tools.has("ask_user"), "ask_user available");
+		assert.ok(tools.has("search"), "search available");
+		assert.ok(tools.has("sh"), "sh available");
+		assert.ok(tools.has("env"), "env available");
+	});
+
+	it("tools are sorted by priority, not alphabetically", () => {
+		const tools = [...tdb.hooks.tools.resolveForLoop("act")];
+		const getIdx = tools.indexOf("get");
+		const askUserIdx = tools.indexOf("ask_user");
+		assert.ok(getIdx < askUserIdx, "get should come before ask_user");
 	});
 });

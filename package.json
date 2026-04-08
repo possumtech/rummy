@@ -39,12 +39,13 @@
 		"test:all": "npm run lint && npm run test:unit && npm run test:intg && npm run test:e2e",
 		"test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --experimental-test-coverage --test-coverage-lines=70 --test-coverage-branches=70 --test-coverage-functions=70 --test-concurrency=1 --test $(find src -name '*.test.js')",
 		"test:intg": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test $(find test/integration -name '*.test.js')",
-		"test:e2e": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/e2e -name '*.test.js')",
-		"test:live": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/live -name '*.test.js')",
+		"test:e2e": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/e2e -name '*.test.js') 2>&1 | tee /tmp/rummy_test_diag/e2e_$(date +%Y%m%dT%H%M%S).log",
+		"test:live": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test-concurrency=1 --test-force-exit --test-reporter=spec --test $(find test/live -name '*.test.js') 2>&1 | tee /tmp/rummy_test_diag/live_$(date +%Y%m%dT%H%M%S).log",
 		"test:mab:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/download.js",
-		"test:mab": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/runner.js",
+		"test:mab": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/mab/runner.js 2>&1 | tee /tmp/rummy_test_diag/mab_$(date +%Y%m%dT%H%M%S).log",
 		"test:lme:get": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/download.js",
-		"test:lme": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/runner.js"
+		"test:lme": "mkdir -p /tmp/rummy_test_diag && node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test test/lme/runner.js 2>&1 | tee /tmp/rummy_test_diag/lme_$(date +%Y%m%dT%H%M%S).log",
+		"test:clear": "rm -rf /tmp/rummy_test_diag /tmp/rummy_test_*.db /tmp/rummy_test_*.db-shm /tmp/rummy_test_*.db-wal /tmp/rummy-stories-*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6"

@@ -33,9 +33,10 @@ export default class Prompt {
 
 		const mode = promptEntry?.scheme || ctx.type;
 		const body = promptEntry?.body || "";
-		const tools = ctx.toolSet
-			? [...ctx.toolSet].join(", ")
-			: this.#core.hooks.tools.namesForMode(mode).join(", ");
+		const toolNames = ctx.toolSet
+			? [...ctx.toolSet]
+			: [...this.#core.hooks.tools.resolveForLoop(mode)];
+		const tools = toolNames.join(", ");
 		const warn = mode === "ask" ? ' warn="File editing disallowed."' : "";
 
 		return `${content}<${mode} tools="${tools}"${warn}>${body}</${mode}>`;

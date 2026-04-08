@@ -56,6 +56,10 @@ export default class PluginContext {
 		});
 	}
 
+	ensureTool() {
+		this.#hooks.tools.ensureTool(this.#name);
+	}
+
 	/**
 	 * Register a named callback for this plugin.
 	 * "handler" registers the tool handler.

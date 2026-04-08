@@ -530,7 +530,80 @@ Each plugin has its own README at `src/plugins/{name}/README.md`.
 
 ---
 
-## 7. Hedberg Editing Syntax
+## 7. Tool Documentation Design
+
+Tool docs are the most carefully designed text in rummy. Every line
+simultaneously teaches syntax, implies workflow priority, demonstrates
+pattern capabilities, and constrains misuse. Each letter earns its place.
+
+### Principles
+
+**Show, don't tell.** Examples ARE the documentation. A model learns
+`<get path="known://*">auth</get>` from seeing it, not from being told
+"you can filter known entries by keyword." Examples are ordered from
+simple to powerful — weak models learn from examples 1-2, strong models
+pick up the pattern from example 3.
+
+**Lifecycle continuity.** Examples weave stories across tools. The get
+docs end with `<set path="..." fidelity="index"/>`. The known docs
+reference `<get path="known://*">keyword</get>` for recall and
+`<set path="known://..." stored/>` for archiving. The unknown docs
+reference `<get/>` for investigation and `<rm/>` for cleanup. A model
+reading the full tool docs encounters a coherent workflow:
+discover → load → reason → edit → archive → recall.
+
+**RFC 2119 semantics.** Constraint bullets use YOU MUST, YOU MUST NOT,
+YOU SHOULD, YOU MAY from RFC 2119. Every LLM has extensive pretraining
+on RFC documents where these keywords carry precise semantic weight.
+MUST is absolute. SHOULD is strong advisory. MAY is permissive. This
+is not decorative — it's leveraging the model's existing understanding
+of requirement levels.
+
+**Consistent structure.** Every tool doc follows: header (syntax), 2+
+examples, 2+ constraint bullets. Inconsistent formatting reads as
+inconsistent importance. A tool with 5 examples and dense bullets feels
+complex; a tool with 1 line feels disposable. Both are wrong — every
+tool is equally real, each doc is proportional to the tool's surface area.
+
+### Format
+
+Tool docs live in `*Doc.js` files as annotated line arrays:
+
+```js
+const LINES = [
+    ["* Body text filters results by content match",
+        "Generalizes examples 2-3. Body = filter, not just path."],
+];
+export default LINES.map(([text]) => text).join("\n");
+```
+
+The first element is the model-facing text. The second is the rationale —
+visible only in source. Changing any line requires reading all rationales
+first. This prevents well-intentioned edits from breaking subtle behavioral
+guarantees that adjacent lines depend on.
+
+### Tool Display Order
+
+Tools are presented gather → reason → act → communicate. Position in
+the list implies priority. `get` is first. `ask_user` is last. The
+order is defined in `ToolRegistry.TOOL_ORDER` and applied by
+`resolveForLoop()`. The same method handles all tool exclusions —
+mode restrictions, `noInteraction`, `noWeb`, `noBench` — through
+one unified mechanism.
+
+### Pattern Distribution
+
+Hedbergian pattern matching (globs, body filters, preview) is taught
+across multiple tools, not concentrated in one. `get` shows content
+filtering. `cp` shows glob batch operations. `rm` shows preview safety.
+Each tool reinforces the pattern vocabulary from a different angle.
+A model that sees `path="known://*"` in get, `path="known://plan_*"` in
+cp, and `path="known://temp_*" preview` in rm learns that patterns
+are universal — not a feature of any single tool.
+
+---
+
+## 8. Hedberg Editing Syntax
 
 The model picks its preferred edit format. The parser understands all of them:
 
@@ -545,7 +618,7 @@ The model picks its preferred edit format. The parser understands all of them:
 
 ---
 
-## 8. Response Healing
+## 9. Response Healing
 
 The server never throws on model output. Recovery order:
 
@@ -564,7 +637,7 @@ Termination protocol:
 
 ---
 
-## 9. Testing
+## 10. Testing
 
 | Tier | Location | LLM? |
 |------|----------|------|
@@ -578,7 +651,7 @@ E2E tests must NEVER mock the LLM. Environment cascade:
 
 ---
 
-## 10. SQL Functions
+## 11. SQL Functions
 
 | Function | Purpose |
 |----------|---------|
@@ -593,7 +666,7 @@ See [PLUGINS.md](PLUGINS.md) for the hedberg pattern type reference.
 
 ---
 
-## 11. Configuration
+## 12. Configuration
 
 ```env
 RUMMY_HOME=~/.rummy

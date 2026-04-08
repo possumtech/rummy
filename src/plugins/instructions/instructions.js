@@ -33,15 +33,18 @@ export default class Instructions {
 		const activeTools = attrs.toolSet
 			? new Set(attrs.toolSet)
 			: new Set(this.#core.hooks.tools.names);
-		const tools = [...activeTools].join(", ");
+		const sorted = this.#core.hooks.tools.names.filter((n) =>
+			activeTools.has(n),
+		);
+		const tools = sorted.join(", ");
 		let prompt = preamble.replace("[%TOOLS%]", tools);
 		const toolDocs = await this.#core.hooks.instructions.toolDocs.filter(
 			{},
 			{ toolSet: activeTools },
 		);
-		const docsText = Object.entries(toolDocs)
-			.filter(([key]) => activeTools.has(key))
-			.map(([, value]) => value)
+		const docsText = sorted
+			.filter((key) => toolDocs[key])
+			.map((key) => toolDocs[key])
 			.join("\n\n");
 		if (docsText) prompt += `\n\n${docsText}`;
 		if (attrs.persona) prompt += `\n\n## Persona\n\n${attrs.persona}`;

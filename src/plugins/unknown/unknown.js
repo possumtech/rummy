@@ -1,16 +1,16 @@
-import { readFileSync } from "node:fs";
+import docs from "./unknownDoc.js";
 
 export default class Unknown {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
+		core.ensureTool();
 		core.registerScheme({
 			category: "knowledge",
 		});
 		core.on("full", this.full.bind(this));
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);
-		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.unknown = docs;
 			return docsMap;

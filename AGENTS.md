@@ -4,6 +4,14 @@
 > plugin. Every scheme is registered by its owner. Every piece of data
 > exists as an entry or a column. No exceptions without documentation.
 
+> **"Model behavior" is never an acceptable explanation for a test failure.**
+> When a model misbehaves, the system failed — suboptimal context, poorly
+> designed test conditions, insufficient reinforcement of correct behavior.
+> Every failure is a system bug until proven otherwise. Investigate the
+> context the model saw, the instructions it was given, and the constraints
+> it was operating under. If you can't explain exactly why the model did
+> what it did, you haven't finished debugging.
+
 ## Current State
 
 Plugin-driven architecture. Instantiated classes, constructor receives

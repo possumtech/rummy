@@ -1,7 +1,7 @@
-import { readFileSync } from "node:fs";
 import KnownStore from "../../agent/KnownStore.js";
 import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
+import docs from "./setDoc.js";
 
 const VALID_FIDELITY = { stored: 1, summary: 1, index: 1, full: 1 };
 
@@ -16,7 +16,6 @@ export default class Set {
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
 		core.on("turn.proposing", this.#materializeRevisions.bind(this));
-		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.set = docs;
 			return docsMap;

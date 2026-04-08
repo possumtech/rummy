@@ -30,7 +30,6 @@ async function cleanOldTestDbs() {
 			fs.unlink(join(dir, `${f}-wal`)).catch(() => {}),
 		]),
 	);
-	await fs.rm(DIAG_DIR, { recursive: true, force: true });
 	await fs.mkdir(DIAG_DIR, { recursive: true });
 }
 
@@ -101,7 +100,8 @@ export default class TestDb {
 
 	async cleanup() {
 		await this.db.close();
-		const diagPath = join(DIAG_DIR, `${this.suiteName}.db`);
+		const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+		const diagPath = join(DIAG_DIR, `${this.suiteName}_${ts}.db`);
 		await fs.copyFile(this.dbPath, diagPath).catch(() => {});
 		await fs.unlink(this.dbPath).catch(() => {});
 		await fs.unlink(`${this.dbPath}-shm`).catch(() => {});

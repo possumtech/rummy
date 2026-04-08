@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import KnownStore from "../../agent/KnownStore.js";
+import docs from "./rmDoc.js";
 
 export default class Rm {
 	#core;
@@ -10,7 +10,6 @@ export default class Rm {
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
-		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.rm = docs;
 			return docsMap;

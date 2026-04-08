@@ -1,3 +1,32 @@
+// Tool display order: gather → reason → act → communicate.
+// Position in the list implies priority to the model.
+const TOOL_ORDER = [
+	"get",
+	"set",
+	"known",
+	"unknown",
+	"env",
+	"sh",
+	"rm",
+	"cp",
+	"mv",
+	"search",
+	"summarize",
+	"update",
+	"ask_user",
+];
+
+function sortByPriority(names) {
+	return names.toSorted((a, b) => {
+		const ia = TOOL_ORDER.indexOf(a);
+		const ib = TOOL_ORDER.indexOf(b);
+		if (ia === -1 && ib === -1) return a.localeCompare(b);
+		if (ia === -1) return 1;
+		if (ib === -1) return 1;
+		return ia - ib;
+	});
+}
+
 export default class ToolRegistry {
 	#tools = new Map();
 	#handlers = new Map();
@@ -5,11 +34,8 @@ export default class ToolRegistry {
 
 	ensureTool(scheme) {
 		if (this.#tools.has(scheme)) return;
-		this.#tools.set(scheme, Object.freeze({ modes: new Set(["ask", "act"]) }));
+		this.#tools.set(scheme, Object.freeze({}));
 	}
-
-	// Exception: old register() removed. Plugins use core.on("handler")/core.on("full").
-	// The only remaining caller pathway is ensureTool + onHandle + onView.
 
 	get(name) {
 		return this.#tools.get(name);
@@ -68,35 +94,31 @@ export default class ToolRegistry {
 		}
 	}
 
-	get actTools() {
-		return new Set(
-			[...this.#tools.entries()]
-				.filter(([, def]) => def.category === "act")
-				.map(([name]) => name),
-		);
-	}
-
 	get names() {
-		return [...this.#tools.keys()];
-	}
-
-	namesForMode(mode) {
-		return [...this.#tools.entries()]
-			.filter(([, def]) => def.modes.has(mode))
-			.map(([name]) => name);
+		return sortByPriority([...this.#tools.keys()]);
 	}
 
 	/**
 	 * Compute the active tool set for a loop.
-	 * Starts with all tools for the mode, then removes excluded tools.
-	 * Returns a Set of tool names.
+	 * All exclusions — mode, flags — handled here. One mechanism.
 	 */
-	resolveForLoop(mode, { noInteraction = false, noWeb = false } = {}) {
-		const names = this.namesForMode(mode);
+	resolveForLoop(
+		mode,
+		{ noInteraction = false, noWeb = false, noBench = false } = {},
+	) {
 		const excluded = new Set();
+		if (mode === "ask") excluded.add("sh");
 		if (noInteraction) excluded.add("ask_user");
 		if (noWeb) excluded.add("search");
-		return new Set(names.filter((n) => !excluded.has(n)));
+		if (noBench) {
+			excluded.add("ask_user");
+			excluded.add("env");
+			excluded.add("sh");
+		}
+		const names = sortByPriority(
+			[...this.#tools.keys()].filter((n) => !excluded.has(n)),
+		);
+		return new Set(names);
 	}
 
 	entries() {

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import docs from "./ask_userDoc.js";
 
 export default class AskUser {
 	#core;
@@ -9,7 +9,6 @@ export default class AskUser {
 		core.on("handler", this.handler.bind(this));
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
-		const docs = readFileSync(new URL("./docs.md", import.meta.url), "utf8");
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.ask_user = docs;
 			return docsMap;
