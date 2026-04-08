@@ -90,18 +90,37 @@ export default class LlmProvider {
 	}
 
 	async getContextSize(model) {
+		// DB is the authority — check models table first
+		if (this.#db) {
+			const row = await this.#db.get_model_by_alias.get({ alias: model });
+			if (row?.context_length) return row.context_length;
+		}
+
+		// Fall back to API query
 		const resolvedModel = await this.resolve(model);
+		let size;
 		if (resolvedModel.startsWith("ollama/")) {
 			const localModel = resolvedModel.replace("ollama/", "");
-			return this.#getOllama().getContextSize(localModel);
-		}
-		if (resolvedModel.startsWith("openai/")) {
-			return this.#getOpenAi().getContextSize(resolvedModel);
-		}
-		if (resolvedModel.startsWith("x.ai/")) {
+			size = await this.#getOllama().getContextSize(localModel);
+		} else if (resolvedModel.startsWith("openai/")) {
+			size = await this.#getOpenAi().getContextSize(resolvedModel);
+		} else if (resolvedModel.startsWith("x.ai/")) {
 			const localModel = resolvedModel.replace("x.ai/", "");
-			return this.#getXai().getContextSize(localModel);
+			size = await this.#getXai().getContextSize(localModel);
+		} else {
+			size = await this.#getOpenRouter().getContextSize(resolvedModel);
 		}
-		return this.#getOpenRouter().getContextSize(resolvedModel);
+
+		// Cache back to DB for next time
+		if (this.#db && size) {
+			await this.#db.update_model_context_length
+				.run({
+					alias: model,
+					context_length: size,
+				})
+				.catch(() => {});
+		}
+
+		return size;
 	}
 }

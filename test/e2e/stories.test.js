@@ -440,10 +440,19 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		});
 		await client.assertRun(r1, 200, "budget-load");
 
-		// Set context limit tight enough to force demotions but above the floor
+		// Set context limit tight enough to force demotions but above the floor.
+		// Measure current context and set limit to 75%.
+		const budgetRun = await tdb.db.get_run_by_alias.get({ alias: r1.run });
+		const budgetCtx = await tdb.db.get_promoted_token_total.get({
+			run_id: budgetRun.id,
+		});
+		const budgetLimit = Math.max(
+			6144,
+			Math.ceil((budgetCtx?.total || 6144) * 0.75),
+		);
 		await client.call("run/config", {
 			run: r1.run,
-			contextLimit: 4096,
+			contextLimit: budgetLimit,
 		});
 
 		// Next turn triggers budget enforcement
@@ -496,10 +505,19 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		await client.call("get", { path: "src/pressure2.js", persist: true });
 		await client.call("get", { path: "src/pressure3.js", persist: true });
 
-		// Shrink context to force cascade
+		// Shrink context to force cascade.
+		// Measure current context and set limit to 75%.
+		const cascadeRun = await tdb.db.get_run_by_alias.get({ alias: r1.run });
+		const cascadeCtx = await tdb.db.get_promoted_token_total.get({
+			run_id: cascadeRun.id,
+		});
+		const cascadeLimit = Math.max(
+			6144,
+			Math.ceil((cascadeCtx?.total || 6144) * 0.75),
+		);
 		await client.call("run/config", {
 			run: r1.run,
-			contextLimit: 4096,
+			contextLimit: cascadeLimit,
 		});
 
 		// Ask about the fact — cascade should preserve it while demoting files
@@ -567,11 +585,19 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		await client.call("get", { path: "src/crunch2.js", persist: true });
 
 		// Shrink context to force tier 1 cascade (full→summary triggers crunch).
-		// 4096 is tight enough to force demotion but holds the irreducible floor
-		// (system prompt + tool docs + stash paths ≈ 2500 tokens).
+		// Measure current context and set limit to 75% — forces demotion while
+		// holding the irreducible floor (system prompt + tool docs).
+		const crunchRun = await tdb.db.get_run_by_alias.get({ alias: r1.run });
+		const crunchCtx = await tdb.db.get_promoted_token_total.get({
+			run_id: crunchRun.id,
+		});
+		const crunchLimit = Math.max(
+			6144,
+			Math.ceil((crunchCtx?.total || 6144) * 0.75),
+		);
 		await client.call("run/config", {
 			run: r1.run,
-			contextLimit: 4096,
+			contextLimit: crunchLimit,
 		});
 
 		// Ask about one of the facts — model must answer from crunched context

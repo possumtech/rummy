@@ -3,6 +3,7 @@ import msg from "../agent/messages.js";
 export default class XaiClient {
 	#baseUrl;
 	#apiKey;
+	#contextCache = new Map();
 
 	constructor(baseUrl, apiKey) {
 		this.#baseUrl = baseUrl;
@@ -107,7 +108,31 @@ export default class XaiClient {
 		);
 	}
 
-	async getContextSize(_model) {
-		return Number(process.env.RUMMY_CONTEXT_SIZE) || 131072;
+	async getContextSize(model) {
+		if (this.#contextCache.has(model)) return this.#contextCache.get(model);
+
+		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
+
+		// Query xAI models endpoint for context_length
+		const modelsUrl = this.#baseUrl.replace(/\/responses$/, "/models");
+		const res = await fetch(modelsUrl, {
+			headers: { Authorization: `Bearer ${this.#apiKey}` },
+			signal: AbortSignal.timeout(5000),
+		});
+
+		if (res.ok) {
+			const data = await res.json();
+			const models = data.data || data.models || [];
+			const entry = models.find((m) => m.id === model);
+			if (entry?.context_length) {
+				this.#contextCache.set(model, entry.context_length);
+				return entry.context_length;
+			}
+		}
+
+		throw new Error(
+			`Cannot determine context size for xAI model "${model}". ` +
+				"Register the model with addModel(contextLength) or set context_length in the models table.",
+		);
 	}
 }

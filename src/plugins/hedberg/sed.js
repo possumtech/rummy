@@ -5,14 +5,15 @@
  * - Flag extraction (g, i, m, s, v)
  */
 
-function splitSed(str) {
+function splitSed(str, delim) {
 	const parts = [];
 	let current = "";
+	const escaped = `\\${delim}`;
 	for (let i = 0; i < str.length; i++) {
 		if (str[i] === "\\" && i + 1 < str.length) {
 			current += str[i] + str[i + 1];
 			i++;
-		} else if (str[i] === "/") {
+		} else if (str[i] === delim) {
 			parts.push(current);
 			current = "";
 		} else {
@@ -20,26 +21,32 @@ function splitSed(str) {
 		}
 	}
 	parts.push(current);
-	return parts;
+	return { parts, escaped };
 }
 
 export function parseSed(input) {
-	if (!input.startsWith("s/")) return null;
+	// Sed allows any non-alphanumeric delimiter: s/old/new/, s|old|new|, s#old#new#
+	const match = input.match(/^s([^\w\s])/);
+	if (!match) return null;
 
+	const delim = match[1];
 	const blocks = [];
 	let remaining = input;
-	while (remaining.startsWith("s/")) {
-		const parts = splitSed(remaining.slice(2));
+	const prefix = `s${delim}`;
+
+	while (remaining.startsWith(prefix)) {
+		const { parts, escaped } = splitSed(remaining.slice(2), delim);
 		if (parts.length < 2) break;
 		const flags = (parts[2] || "").match(/^[gimsv]*/)?.[0] || "";
+		const unesc = (s) => s.replaceAll(escaped, delim);
 		blocks.push({
-			search: parts[0].replaceAll("\\/", "/"),
-			replace: parts[1].replaceAll("\\/", "/"),
+			search: unesc(parts[0]),
+			replace: unesc(parts[1]),
 			flags,
 			sed: true,
 		});
-		const rest = parts.slice(2).join("/");
-		const next = rest.indexOf("s/");
+		const rest = parts.slice(2).join(delim);
+		const next = rest.indexOf(prefix);
 		remaining = next >= 0 ? rest.slice(next) : "";
 	}
 

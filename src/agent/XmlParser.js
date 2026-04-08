@@ -245,7 +245,11 @@ export default class XmlParser {
 	 * our XML tags. The intent is unambiguous — translate silently.
 	 */
 	static #normalizeToolCalls(content) {
-		let result = content;
+		// Gemma: ```tool_code\n<xml>...\n``` — strip code fences around valid XML
+		let result = content.replace(
+			/```(?:tool_code|tool_command|xml)\n([\s\S]*?)```/g,
+			(_, inner) => inner.trim(),
+		);
 
 		// Qwen/gemma: <|tool_call>call:NAME{key:"value"}<tool_call|>
 		result = result.replace(
