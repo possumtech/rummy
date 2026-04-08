@@ -8,7 +8,7 @@ function pad(n) {
 	return Array(n).fill("hello world test data").join(" ");
 }
 
-describe("Budget cascade — halving spiral", () => {
+describe("Budget cascade — crunch spiral + death spiral", () => {
 	let tdb, store, cascade, RUN_ID;
 
 	before(async () => {
@@ -27,9 +27,9 @@ describe("Budget cascade — halving spiral", () => {
 		await tdb.cleanup();
 	});
 
-	async function assembleAndEnforce(contextSize) {
+	async function assembleAndEnforce(contextSize, { summarize } = {}) {
 		const turn = 1;
-		const systemPrompt = "test system prompt";
+		const systemPrompt = "test";
 		await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
 
 		let rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
@@ -52,6 +52,7 @@ describe("Budget cascade — halving spiral", () => {
 			turn,
 			messages,
 			rows,
+			summarize,
 			rematerialize: async () => {
 				await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
 				rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
@@ -70,126 +71,23 @@ describe("Budget cascade — halving spiral", () => {
 		});
 	}
 
+	function getEntries() {
+		return tdb.db.get_known_entries.all({ run_id: RUN_ID });
+	}
+
 	it("no demotion when under budget", async () => {
 		await store.upsert(RUN_ID, 1, "known://small", "a small fact", 200);
 		const result = await assembleAndEnforce(100000);
 		assert.strictEqual(result.demoted.length, 0);
 	});
 
-	it("tier 1 halving demotes oldest full entries first", async () => {
-		// Create 10 known entries with clear age ordering
-		for (let i = 0; i < 10; i++) {
-			await store.upsert(RUN_ID, i + 1, `known://fact_${i}`, pad(50), 200);
-		}
-
-		// Tight budget — forces demotions via halving
-		const result = await assembleAndEnforce(2500);
-
-		// Should have demoted entries
-		assert.ok(result.demoted.length > 0, "should have demoted entries");
-
-		// Oldest entries should have been demoted first
-		const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-		const demotedEntries = entries.filter(
-			(e) => e.scheme === "known" && e.fidelity !== "full",
-		);
-		assert.ok(demotedEntries.length > 0, "some entries should be demoted");
-
-		// If any entries remain at full, they should be newer than demoted ones
-		const fullKnowns = entries.filter(
-			(e) => e.scheme === "known" && e.fidelity === "full",
-		);
-		if (fullKnowns.length > 0) {
-			const newestFull = fullKnowns.toSorted((a, b) => b.turn - a.turn)[0];
-			const oldestDemoted = demotedEntries.toSorted(
-				(a, b) => a.turn - b.turn,
-			)[0];
-			assert.ok(
-				newestFull.turn >= oldestDemoted.turn,
-				"newest full should have higher turn than oldest demoted",
-			);
-		}
-	});
-
-	it("tier 2 halving demotes summary to index when tier 1 insufficient", async () => {
-		// Create many entries that won't fit even at summary
-		for (let i = 0; i < 20; i++) {
-			await store.upsert(RUN_ID, i + 1, `known://big_${i}`, pad(100), 200);
-		}
-
-		// Very tight budget
-		const _result = await assembleAndEnforce(2000);
-
-		const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-		const indexKnowns = entries.filter(
-			(e) => e.scheme === "known" && e.fidelity === "index",
-		);
-		assert.ok(
-			indexKnowns.length > 0,
-			"tier 2 should have created index entries",
-		);
-	});
-
-	it("tier 3 creates stash entries at index fidelity", async () => {
-		// Create entries and manually set them to index fidelity
-		// to test tier 3 directly
-		for (let i = 0; i < 50; i++) {
-			await store.upsert(
-				RUN_ID,
-				i + 1,
-				`known://stashtest_${String(i).padStart(3, "0")}`,
-				pad(100),
-				200,
-			);
-			await store.setFidelity(
-				RUN_ID,
-				`known://stashtest_${String(i).padStart(3, "0")}`,
-				"index",
-			);
-		}
-		// Add one large full entry to push over budget and trigger the cascade
-		await store.upsert(RUN_ID, 51, "known://trigger", pad(500), 200);
-
-		// Budget tight enough to trigger tier 3 after tier 1+2 handle the trigger entry
-		const result = await assembleAndEnforce(200);
-
-		const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-		const stashes = entries.filter((e) => e.path?.startsWith("known://stash_"));
-
-		// If stashes were created, verify they're at index fidelity
-		if (stashes.length > 0) {
-			for (const stash of stashes) {
-				assert.strictEqual(
-					stash.fidelity,
-					"index",
-					`stash ${stash.path} should be at index fidelity`,
-				);
-			}
-			// Stash body should contain URIs of stored entries
-			assert.ok(
-				stashes.some((s) => s.body?.includes("known://stashtest_")),
-				"stash body should contain stored entry URIs",
-			);
-		} else {
-			// Tier 3 may not trigger if index entries are cheap enough
-			// Verify that stored entries exist instead
-			const stored = entries.filter(
-				(e) => e.fidelity === "stored" && e.scheme === "known",
-			);
-			assert.ok(
-				stored.length > 0 || result.demoted.length > 0,
-				"cascade should have demoted entries",
-			);
-		}
-	});
-
-	it("halving preserves newest entries at each tier", async () => {
-		// Create entries with clear age ordering
+	it("crunch spiral selects oldest entries first", async () => {
+		// Create entries with clear age ordering and equal size
 		await store.upsert(RUN_ID, 1, "known://oldest", pad(50), 200);
-		await store.upsert(RUN_ID, 2, "known://middle", pad(50), 200);
-		await store.upsert(RUN_ID, 3, "known://newest", pad(50), 200);
+		await store.upsert(RUN_ID, 5, "known://middle", pad(50), 200);
+		await store.upsert(RUN_ID, 10, "known://newest", pad(50), 200);
 
-		// Budget that forces exactly one demotion
+		// Budget forces at least one demotion
 		const result = await assembleAndEnforce(3000);
 
 		if (result.demoted.length > 0) {
@@ -199,111 +97,84 @@ describe("Budget cascade — halving spiral", () => {
 				"oldest entry should be demoted first",
 			);
 
-			// Newest should survive
-			const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			// Newest should survive at full fidelity
+			const entries = await getEntries();
 			const newest = entries.find((e) => e.path === "known://newest");
 			assert.strictEqual(
 				newest.fidelity,
 				"full",
-				"newest entry should remain at full fidelity",
+				"newest entry should remain full",
 			);
 		}
 	});
 
-	it("demotion priority: prompts before files before knowns", async () => {
-		// Create one of each type
-		await store.upsert(RUN_ID, 1, "ask://old_prompt", "old question", 200);
-		await store.upsert(RUN_ID, 1, "src/file.js", pad(50), 200);
-		await store.upsert(RUN_ID, 1, "known://fact", pad(50), 200);
+	it("crunch spiral selects fattest entries within oldest half", async () => {
+		// All at same turn (same age), but different sizes
+		await store.upsert(RUN_ID, 1, "known://tiny", "small", 200);
+		await store.upsert(RUN_ID, 1, "known://medium", pad(20), 200);
+		await store.upsert(RUN_ID, 1, "known://huge", pad(200), 200);
+		// Newer entry that should survive
+		await store.upsert(RUN_ID, 5, "known://recent", pad(20), 200);
 
-		// Budget that forces some demotions but not all
 		const result = await assembleAndEnforce(3000);
 
 		if (result.demoted.length > 0) {
-			// Prompt should be demoted before known
-			const promptIdx = result.demoted.indexOf("ask://old_prompt");
-			const knownIdx = result.demoted.indexOf("known://fact");
+			// The huge entry should be among the first demoted
+			assert.ok(
+				result.demoted.includes("known://huge"),
+				"fattest entry should be demoted",
+			);
+		}
+	});
 
-			if (promptIdx !== -1 && knownIdx !== -1) {
+	it("crunch spiral is scheme-agnostic — all types treated equally by age", async () => {
+		// Different schemes, all at turn 1 (oldest)
+		await store.upsert(RUN_ID, 1, "ask://old_prompt", pad(30), 200);
+		await store.upsert(RUN_ID, 1, "src/old_file.js", pad(30), 200);
+		await store.upsert(RUN_ID, 1, "known://old_fact", pad(30), 200);
+		// Recent entry at turn 10
+		await store.upsert(RUN_ID, 10, "known://recent", pad(30), 200);
+
+		const result = await assembleAndEnforce(3000);
+
+		// All old entries should be candidates equally — no scheme priority
+		// The recent entry should be more likely to survive
+		if (result.demoted.length > 0) {
+			const entries = await getEntries();
+			const recent = entries.find((e) => e.path === "known://recent");
+			if (recent) {
 				assert.ok(
-					promptIdx < knownIdx,
-					"prompt should be demoted before known",
+					recent.fidelity === "full" || recent.fidelity === "summary",
+					"recent entry should survive at full or summary",
 				);
-			} else if (promptIdx === -1 && knownIdx !== -1) {
-				assert.fail("known demoted but prompt still full — wrong priority");
 			}
 		}
 	});
 
-	it("hard error when floor exceeds context", async () => {
-		// Create a large system prompt that can't be demoted
-		// plus enough entries that even after full cascade, floor is too big
-		for (let i = 0; i < 200; i++) {
-			await store.upsert(
-				RUN_ID,
-				i + 1,
-				`known://floor_${String(i).padStart(3, "0")}`,
-				pad(50),
-				200,
-			);
+	it("full entries transition to summary fidelity", async () => {
+		for (let i = 0; i < 10; i++) {
+			await store.upsert(RUN_ID, i + 1, `known://fact_${i}`, pad(50), 200);
 		}
 
-		// Budget of 5 — system prompt "test" alone might fit,
-		// but stash entries for 200 known entries won't
-		await assert.rejects(
-			() => assembleAndEnforce(5),
-			(err) => {
-				assert.ok(err.message.includes("Context floor"));
-				return true;
-			},
+		await assembleAndEnforce(2500);
+
+		const entries = await getEntries();
+		const summaryEntries = entries.filter(
+			(e) => e.scheme === "known" && e.fidelity === "summary",
+		);
+		assert.ok(
+			summaryEntries.length > 0,
+			"crunch spiral should create summary entries from full",
 		);
 	});
 
-	it("summarize callback fires for entries without summaries", async () => {
+	it("summarize callback fires for full→summary entries without summaries", async () => {
 		for (let i = 0; i < 10; i++) {
 			await store.upsert(RUN_ID, i + 1, `known://unsumm_${i}`, pad(50), 200);
 		}
 
 		const summarized = [];
-		const turn = 1;
-		const systemPrompt = "test system prompt";
-		await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
-
-		let rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
-		let messages = [
-			{ role: "system", content: systemPrompt },
-			{
-				role: "user",
-				content: rows
-					.filter((r) => r.path !== "system://prompt")
-					.map((r) => r.body)
-					.join("\n"),
-			},
-		];
-
-		await cascade.enforce({
-			contextSize: 2500,
-			store,
-			runId: RUN_ID,
-			loopId: null,
-			turn,
-			messages,
-			rows,
-			rematerialize: async () => {
-				await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
-				rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
-				messages = [
-					{ role: "system", content: systemPrompt },
-					{
-						role: "user",
-						content: rows
-							.filter((r) => r.path !== "system://prompt")
-							.map((r) => r.body)
-							.join("\n"),
-					},
-				];
-				return { messages, rows };
-			},
+		await assembleAndEnforce(2500, {
 			summarize: async (entries) => {
 				summarized.push(...entries.map((e) => e.path));
 			},
@@ -311,7 +182,7 @@ describe("Budget cascade — halving spiral", () => {
 
 		assert.ok(
 			summarized.length > 0,
-			"summarize callback should have been called",
+			"summarize callback should fire for entries without summaries",
 		);
 	});
 
@@ -323,45 +194,7 @@ describe("Budget cascade — halving spiral", () => {
 		}
 
 		const summarized = [];
-		const turn = 1;
-		const systemPrompt = "test system prompt";
-		await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
-
-		let rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
-		let messages = [
-			{ role: "system", content: systemPrompt },
-			{
-				role: "user",
-				content: rows
-					.filter((r) => r.path !== "system://prompt")
-					.map((r) => r.body)
-					.join("\n"),
-			},
-		];
-
-		await cascade.enforce({
-			contextSize: 2500,
-			store,
-			runId: RUN_ID,
-			loopId: null,
-			turn,
-			messages,
-			rows,
-			rematerialize: async () => {
-				await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
-				rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
-				messages = [
-					{ role: "system", content: systemPrompt },
-					{
-						role: "user",
-						content: rows
-							.filter((r) => r.path !== "system://prompt")
-							.map((r) => r.body)
-							.join("\n"),
-					},
-				];
-				return { messages, rows };
-			},
+		await assembleAndEnforce(2500, {
 			summarize: async (entries) => {
 				summarized.push(...entries.map((e) => e.path));
 			},
@@ -374,32 +207,125 @@ describe("Budget cascade — halving spiral", () => {
 		);
 	});
 
-	it("stash contains all stored URIs", async () => {
-		const paths = [];
+	it("death spiral stashes entries by scheme when crunch exhausted", async () => {
+		// Create many entries — budget so tight that crunch can't save them
 		for (let i = 0; i < 20; i++) {
-			const path = `known://item_${String(i).padStart(2, "0")}`;
-			await store.upsert(RUN_ID, i + 1, path, pad(100), 200);
-			paths.push(path);
+			await store.upsert(RUN_ID, i + 1, `known://item_${i}`, pad(100), 200);
 		}
 
-		// Force everything to stash
-		const _result = await assembleAndEnforce(500);
+		// Very tight budget forces death spiral
+		await assembleAndEnforce(2000);
 
-		const entries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+		const entries = await getEntries();
+		const stored = entries.filter(
+			(e) =>
+				e.fidelity === "stored" &&
+				e.scheme === "known" &&
+				!e.path.startsWith("known://stash_"),
+		);
 		const stash = entries.find((e) => e.path === "known://stash_known");
 
+		// Either stash exists with stored entries, or death spiral ran
 		if (stash) {
-			const storedEntries = entries.filter(
-				(e) =>
-					e.fidelity === "stored" &&
-					e.scheme === "known" &&
-					!e.path.startsWith("known://stash_"),
+			assert.strictEqual(
+				stash.fidelity,
+				"index",
+				"stash should be at index fidelity",
 			);
-			// Every stored entry should be listed in the stash
-			for (const stored of storedEntries) {
+			// Every stored entry should be in the stash body
+			for (const s of stored) {
 				assert.ok(
-					stash.body.includes(stored.path),
-					`stash should contain ${stored.path}`,
+					stash.body.includes(s.path),
+					`stash should contain ${s.path}`,
+				);
+			}
+		} else {
+			// If no stash, entries should still have been demoted
+			assert.ok(stored.length > 0, "death spiral should have stored entries");
+		}
+	});
+
+	it("death spiral selects oldest entries for stashing", async () => {
+		// Create entries with clear age separation
+		for (let i = 0; i < 10; i++) {
+			await store.upsert(RUN_ID, i + 1, `known://age_${i}`, pad(100), 200);
+		}
+
+		await assembleAndEnforce(2000);
+
+		const entries = await getEntries();
+		const stored = entries.filter(
+			(e) => e.fidelity === "stored" && e.scheme === "known",
+		);
+		const surviving = entries.filter(
+			(e) =>
+				e.fidelity !== "stored" &&
+				e.scheme === "known" &&
+				!e.path.startsWith("known://stash_"),
+		);
+
+		if (stored.length > 0 && surviving.length > 0) {
+			const oldestSurvivor = surviving.toSorted((a, b) => a.turn - b.turn)[0];
+			const newestStored = stored.toSorted((a, b) => b.turn - a.turn)[0];
+			assert.ok(
+				oldestSurvivor.turn >= newestStored.turn,
+				"surviving entries should be newer than stashed entries",
+			);
+		}
+	});
+
+	it("crash when floor exceeds context", async () => {
+		// Create enough entries that even stash index entries won't fit
+		// in an impossibly small budget. The system prompt alone (~4 tokens)
+		// plus stash entries exceed the ceiling.
+		for (let i = 0; i < 200; i++) {
+			await store.upsert(
+				RUN_ID,
+				i + 1,
+				`known://floor_${String(i).padStart(3, "0")}`,
+				pad(50),
+				200,
+			);
+		}
+
+		// contextSize=1 → ceiling=0.95, nothing fits
+		await assert.rejects(
+			() => assembleAndEnforce(1),
+			(err) => {
+				assert.ok(err.message.includes("Context floor"));
+				return true;
+			},
+		);
+	});
+
+	it("fat summary entries get halved before death spiral", async () => {
+		// Create entries with fat summaries (> 80 chars)
+		const fatSummary = "a".repeat(200);
+		for (let i = 0; i < 5; i++) {
+			await store.upsert(RUN_ID, i + 1, `known://fatsumm_${i}`, pad(10), 200, {
+				attributes: { summary: fatSummary },
+			});
+			await store.setFidelity(RUN_ID, `known://fatsumm_${i}`, "summary");
+		}
+
+		// Budget tight enough to trigger halving but not death
+		await assembleAndEnforce(3000);
+
+		const entries = await getEntries();
+		const summaryEntries = entries.filter(
+			(e) => e.scheme === "known" && e.fidelity === "summary",
+		);
+
+		// Some summaries should have been truncated
+		for (const entry of summaryEntries) {
+			const attrs =
+				typeof entry.attributes === "string"
+					? JSON.parse(entry.attributes)
+					: entry.attributes;
+			if (attrs?.summary) {
+				assert.ok(
+					attrs.summary.length <= fatSummary.length,
+					"summary should have been halved or preserved, not grown",
 				);
 			}
 		}

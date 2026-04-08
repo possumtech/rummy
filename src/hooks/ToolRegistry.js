@@ -66,18 +66,27 @@ export default class ToolRegistry {
 			);
 		}
 
+		const attrs =
+			typeof entry.attributes === "string"
+				? JSON.parse(entry.attributes)
+				: entry.attributes;
+		const summary = typeof attrs?.summary === "string" ? attrs.summary : null;
+
 		const fidelity = entry.fidelity || "full";
 		const fn = fidelityMap.get(fidelity);
 		if (!fn) {
 			// No view for this fidelity — fall back on model-authored summary
-			const attrs =
-				typeof entry.attributes === "string"
-					? JSON.parse(entry.attributes)
-					: entry.attributes;
-			if (typeof attrs?.summary === "string") return attrs.summary.slice(0, 80);
-			return "";
+			return summary || "";
 		}
-		return await fn(entry);
+
+		const body = await fn(entry);
+
+		// Prepend crunch-generated summary above plugin output at summary fidelity
+		if (fidelity === "summary" && summary && body) {
+			return `${summary}\n${body}`;
+		}
+
+		return body;
 	}
 
 	hasView(scheme) {

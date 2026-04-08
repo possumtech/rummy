@@ -4,40 +4,42 @@ import { countTokens } from "../../agent/tokens.js";
  * Budget plugin: guarantees materialized context fits within the model's
  * context window. Context overflow is structurally impossible.
  *
- * Each tier uses iterative halving — demote the oldest half of eligible
- * entries, re-render, re-measure. Repeat until budget met or tier exhausted.
- * Most recent entries survive longest. In conflict-resolution scenarios,
- * later entries are authoritative.
+ * Crunch spiral: select the fattest half of the oldest half of entries.
+ * Full entries get summary fidelity (crunch LLM generates ≤80-char keywords).
+ * Summary entries get their summary text halved (deterministic truncation).
+ * Entries whose summaries shrink below 10 chars drop to index fidelity.
+ * Repeat until under budget or everything is ≤80 chars.
  *
- * Tier 1: full → summary (halving spiral)
- * Tier 2: summary → index (halving spiral)
- * Tier 3: index → stash (halving spiral)
- * Tier 4: hard error
+ * Death spiral: when crunch can't free enough, stash the oldest half
+ * by scheme into known://stash_<scheme> index entries. The model can
+ * <get> them back. Repeat until under budget or nothing left to stash.
+ *
+ * Crash: floor doesn't fit. Configuration error.
  */
 
-// Demotion priority: shed data first, then reasoning, then narrative.
-// Tier 0: files, URLs, entries — re-readable data
-// Tier 1: knowns and unknowns — the model's reasoning state
-// Tier 2: prompts and tool results — the model's narrative and action history
-const DEMOTION_ORDER = {
-	file: 0,
-	file_index: 0,
-	file_summary: 0,
-	known: 1,
-	known_index: 1,
-	unknown: 1,
-	result: 2,
-	structural: 2,
-	prompt: 2,
-};
+// Categories exempt from crunching — system infrastructure, not model content
+const PROTECTED = new Set(["system", "tool", "prompt"]);
 
-function sortByDemotionPriority(entries) {
-	return entries.toSorted((a, b) => {
-		const tierA = DEMOTION_ORDER[a.category] ?? 99;
-		const tierB = DEMOTION_ORDER[b.category] ?? 99;
-		if (tierA !== tierB) return tierA - tierB;
-		return a.source_turn - b.source_turn;
-	});
+function isCrunchable(row) {
+	if (PROTECTED.has(row.category)) return false;
+	if (row.path?.startsWith("known://stash_")) return false;
+	return true;
+}
+
+function selectCrunchCandidates(rows) {
+	// Fattest half of the oldest half
+	const byAge = rows.toSorted((a, b) => a.source_turn - b.source_turn);
+	const oldestHalf = byAge.slice(0, Math.max(1, Math.ceil(byAge.length / 2)));
+	const bySize = oldestHalf.toSorted((a, b) => b.tokens - a.tokens);
+	return bySize.slice(0, Math.max(1, Math.ceil(bySize.length / 2)));
+}
+
+function getSummaryLength(entry) {
+	const attrs =
+		typeof entry.attributes === "string"
+			? JSON.parse(entry.attributes)
+			: entry.attributes;
+	return attrs?.summary?.length ?? 0;
 }
 
 function measureMessages(messages) {
@@ -53,10 +55,6 @@ export default class Budget {
 		core.hooks.budget = { enforce: this.enforce.bind(this) };
 	}
 
-	/**
-	 * Enforce budget on assembled messages. Demotes entries through the
-	 * cascade until the context fits. Returns { messages, rows, demoted }.
-	 */
 	async enforce({
 		contextSize,
 		runId,
@@ -91,122 +89,62 @@ export default class Budget {
 			);
 		};
 
-		// Tier 1: Full → summary (halving spiral)
-		await this.#halvingSpiral({
-			ceiling,
-			assembledTokens: () => assembledTokens,
-			refresh,
-			demoted,
-			runId,
-			fidelityFrom: "full",
-			fidelityTo: "summary",
-			tier: 1,
-			summarize,
-			getCandidates: () =>
-				sortByDemotionPriority(
-					currentRows.filter(
-						(r) =>
-							r.fidelity === "full" &&
-							r.tokens > 0 &&
-							DEMOTION_ORDER[r.category] !== undefined,
-					),
-				),
-		});
+		// --- Crunch spiral ---
+		let crunchPass = 0;
+		const MAX_PASSES = 50;
+		while (assembledTokens > ceiling && crunchPass < MAX_PASSES) {
+			// Full entries that can be crunched to summary
+			const fullCandidates = currentRows.filter(
+				(r) => r.fidelity === "full" && r.tokens > 0 && isCrunchable(r),
+			);
 
-		// Tier 2: Summary → index (halving spiral)
-		await this.#halvingSpiral({
-			ceiling,
-			assembledTokens: () => assembledTokens,
-			refresh,
-			demoted,
-			runId,
-			fidelityFrom: "summary",
-			fidelityTo: "index",
-			tier: 2,
-			getCandidates: () =>
-				sortByDemotionPriority(
-					currentRows.filter(
-						(r) =>
-							r.fidelity === "summary" &&
-							r.tokens > 0 &&
-							DEMOTION_ORDER[r.category] !== undefined,
-					),
-				),
-		});
+			// Summary entries with summaries > 80 chars that can be halved
+			const fatSummaries = currentRows.filter(
+				(r) =>
+					r.fidelity === "summary" &&
+					getSummaryLength(r) > 80 &&
+					isCrunchable(r),
+			);
 
-		// Tier 3: Index → stash (halving spiral)
-		await this.#stashSpiral({
-			ceiling,
-			assembledTokens: () => assembledTokens,
-			refresh,
-			demoted,
-			runId,
-			turn,
-			loopId,
-			getCandidates: () =>
-				sortByDemotionPriority(
-					currentRows.filter(
-						(r) =>
-							r.fidelity === "index" &&
-							DEMOTION_ORDER[r.category] !== undefined &&
-							!r.path?.startsWith("known://stash_"),
-					),
-				),
-		});
-
-		// Tier 4: Hard error
-		if (assembledTokens > ceiling) {
-			const floorBreakdown = currentRows
-				.filter((r) => r.tokens > 0)
-				.toSorted((a, b) => b.tokens - a.tokens)
-				.slice(0, 10)
-				.map((r) => `  ${r.path} (${r.fidelity}, ${r.tokens} tok)`)
-				.join("\n");
+			const crunchable = [...fullCandidates, ...fatSummaries];
+			if (crunchable.length === 0) break;
 			console.warn(
-				`[RUMMY] Budget tier 4 HARD ERROR: ${assembledTokens} tokens > ${ceiling | 0} ceiling\nLargest rows:\n${floorBreakdown}`,
+				`[RUMMY] Budget crunch candidates: ${fullCandidates.length} full, ${fatSummaries.length} fat summaries`,
 			);
-			throw new Error(
-				`Context floor (${assembledTokens} tokens) exceeds model limit (${contextSize}). ` +
-					"Reduce system prompt size or use a model with a larger context window.",
-			);
-		}
 
-		return { messages: currentMessages, rows: currentRows, demoted };
-	}
-
-	/**
-	 * Iterative halving: demote oldest half of eligible entries,
-	 * re-render, re-measure. Repeat until budget met or nothing left.
-	 */
-	async #halvingSpiral({
-		ceiling,
-		assembledTokens,
-		refresh,
-		demoted,
-		runId,
-		fidelityFrom,
-		fidelityTo,
-		tier,
-		getCandidates,
-		summarize,
-	}) {
-		let iteration = 0;
-		while (assembledTokens() > ceiling) {
-			const candidates = getCandidates();
-			if (candidates.length === 0) break;
-
-			const half = Math.max(1, Math.ceil(candidates.length / 2));
-			const toDemote = candidates.slice(0, half);
+			const selected = selectCrunchCandidates(crunchable);
 			const batch = [];
 
-			for (const entry of toDemote) {
-				await this.#store.setFidelity(runId, entry.path, fidelityTo);
-				batch.push(entry.path);
-				demoted.push(entry.path);
+			for (const entry of selected) {
+				if (entry.fidelity === "full") {
+					await this.#store.setFidelity(runId, entry.path, "summary");
+					batch.push(entry.path);
+					demoted.push(entry.path);
+				} else {
+					// Halve the summary text
+					const attrs =
+						typeof entry.attributes === "string"
+							? JSON.parse(entry.attributes)
+							: entry.attributes;
+					const current = attrs?.summary || "";
+					const halved = current.slice(0, Math.ceil(current.length / 2));
+					if (halved.length < 10) {
+						await this.#store.setFidelity(runId, entry.path, "index");
+						demoted.push(entry.path);
+					} else {
+						await this.#store.setAttributes(runId, entry.path, {
+							...attrs,
+							summary: halved,
+						});
+					}
+					batch.push(entry.path);
+				}
 			}
 
-			if (fidelityTo === "summary" && summarize) {
-				const needsSummary = toDemote.filter((e) => {
+			// Fire crunch summarizer for full→summary entries that lack summaries
+			if (summarize) {
+				const needsSummary = selected.filter((e) => {
+					if (e.fidelity !== "full") return false;
 					const attrs =
 						typeof e.attributes === "string"
 							? JSON.parse(e.attributes)
@@ -219,56 +157,58 @@ export default class Budget {
 			}
 
 			await refresh();
-			iteration++;
+			crunchPass++;
 			console.warn(
-				`[RUMMY] Budget tier ${tier}: ${batch.length} ${fidelityFrom}→${fidelityTo} (${assembledTokens()}/${ceiling | 0} tokens, pass ${iteration})`,
+				`[RUMMY] Budget crunch: ${batch.length} entries (${assembledTokens}/${ceiling | 0} tokens, pass ${crunchPass})`,
 			);
 		}
-	}
 
-	/**
-	 * Stash spiral: like halving, but stashed entries get collapsed
-	 * into per-scheme stash entries at index fidelity.
-	 */
-	async #stashSpiral({
-		ceiling,
-		assembledTokens,
-		refresh,
-		demoted,
-		runId,
-		turn,
-		loopId,
-		getCandidates,
-	}) {
-		let iteration = 0;
-		while (assembledTokens() > ceiling) {
-			const candidates = getCandidates();
-			if (candidates.length === 0) break;
+		// --- Death spiral: stash oldest half by scheme ---
+		let deathPass = 0;
+		while (assembledTokens > ceiling && deathPass < MAX_PASSES) {
+			const stashable = currentRows.filter(
+				(r) =>
+					(r.fidelity === "summary" || r.fidelity === "index") &&
+					isCrunchable(r),
+			);
+			if (stashable.length === 0) break;
 
-			const half = Math.max(1, Math.ceil(candidates.length / 2));
-			const toDemote = candidates.slice(0, half);
-			const batch = [];
+			const byAge = stashable.toSorted((a, b) => a.source_turn - b.source_turn);
+			const toStash = byAge.slice(0, Math.max(1, Math.ceil(byAge.length / 2)));
 
-			for (const entry of toDemote) {
+			for (const entry of toStash) {
 				await this.#store.setFidelity(runId, entry.path, "stored");
-				batch.push(entry.path);
 				demoted.push(entry.path);
 			}
 
 			await this.#createStashEntries(runId, turn, loopId);
 			await refresh();
-			iteration++;
+			deathPass++;
 			console.warn(
-				`[RUMMY] Budget tier 3: ${batch.length} index→stashed (${assembledTokens()}/${ceiling | 0} tokens, pass ${iteration})`,
+				`[RUMMY] Budget death: ${toStash.length} stashed (${assembledTokens}/${ceiling | 0} tokens, pass ${deathPass})`,
 			);
 		}
+
+		// --- Crash ---
+		if (assembledTokens > ceiling) {
+			const floorBreakdown = currentRows
+				.filter((r) => r.tokens > 0)
+				.toSorted((a, b) => b.tokens - a.tokens)
+				.slice(0, 10)
+				.map((r) => `  ${r.path} (${r.fidelity}, ${r.tokens} tok)`)
+				.join("\n");
+			console.warn(
+				`[RUMMY] Budget CRASH: ${assembledTokens} tokens > ${ceiling | 0} ceiling\nLargest rows:\n${floorBreakdown}`,
+			);
+			throw new Error(
+				`Context floor (${assembledTokens} tokens) exceeds model limit (${contextSize}). ` +
+					"Reduce system prompt size or use a model with a larger context window.",
+			);
+		}
+
+		return { messages: currentMessages, rows: currentRows, demoted };
 	}
 
-	/**
-	 * Collapse stored entries into per-scheme stash entries at index fidelity.
-	 * The stash body contains the full URI list. Fidelity is set to index
-	 * so only the stash path is visible — the model promotes to full to see contents.
-	 */
 	async #createStashEntries(runId, turn, loopId) {
 		const entries = await this.#store.getEntries(runId);
 		const stored = entries.filter(
