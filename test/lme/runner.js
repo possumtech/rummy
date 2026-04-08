@@ -140,7 +140,13 @@ async function ingestContext(client, model, run, chunks) {
 			chunks[i],
 		].join("\n");
 
-		let r = await client.call("ask", { model, prompt, run, noContext: true, noInteraction: true });
+		let r = await client.call("ask", {
+			model,
+			prompt,
+			run,
+			noContext: true,
+			noInteraction: true,
+		});
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status >= 500) {
 			console.warn(
@@ -201,7 +207,12 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 		"<summarize>YES or NO, then a one-sentence reason</summarize>",
 	].join("\n");
 
-	let r = await client.call("ask", { model, prompt, noContext: true, noInteraction: true });
+	let r = await client.call("ask", {
+		model,
+		prompt,
+		noContext: true,
+		noInteraction: true,
+	});
 	if (r.status === 202) r = await resolveAll(client, r);
 	if (r.status >= 500) return { pass: false, reason: "judge call failed" };
 

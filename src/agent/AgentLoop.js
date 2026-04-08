@@ -114,6 +114,7 @@ export default class AgentLoop {
 
 		const noContext = options?.noContext === true;
 		const noInteraction = options?.noInteraction === true;
+		const noWeb = options?.noWeb === true;
 		const requestedModel = model;
 
 		const runInfo = await this.#ensureRun(projectId, model, run, options);
@@ -138,6 +139,7 @@ export default class AgentLoop {
 			config: JSON.stringify({
 				noContext,
 				noInteraction,
+				noWeb,
 				temperature: options?.temperature,
 			}),
 		});
@@ -174,6 +176,7 @@ export default class AgentLoop {
 				prompt: loop.prompt,
 				noContext: loopConfig.noContext || false,
 				noInteraction: loopConfig.noInteraction || false,
+				noWeb: loopConfig.noWeb || false,
 				options: { ...options, temperature: loopConfig.temperature },
 				hook: loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
 			});
@@ -202,6 +205,7 @@ export default class AgentLoop {
 		prompt,
 		noContext,
 		noInteraction,
+		noWeb,
 		options,
 		hook,
 	}) {
@@ -264,6 +268,7 @@ export default class AgentLoop {
 					loopPrompt: turnPrompt,
 					noContext,
 					noInteraction,
+					noWeb,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal: controller.signal,

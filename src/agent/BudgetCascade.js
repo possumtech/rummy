@@ -65,6 +65,7 @@ export default class BudgetCascade {
 		messages,
 		rows,
 		rematerialize,
+		summarize,
 	}) {
 		if (!contextSize) return { messages, rows, demoted: [] };
 
@@ -91,6 +92,7 @@ export default class BudgetCascade {
 			fidelityFrom: "full",
 			fidelityTo: "summary",
 			tier: 1,
+			summarize,
 			getCandidates: () =>
 				sortByDemotionPriority(
 					currentRows.filter(
@@ -168,6 +170,7 @@ export default class BudgetCascade {
 		fidelityTo,
 		tier,
 		getCandidates,
+		summarize,
 	}) {
 		let iteration = 0;
 		while (assembledTokens() > ceiling) {
@@ -182,6 +185,19 @@ export default class BudgetCascade {
 				await this.#knownStore.setFidelity(runId, entry.path, fidelityTo);
 				batch.push(entry.path);
 				demoted.push(entry.path);
+			}
+
+			if (summarize && fidelityTo === "summary") {
+				const needsSummary = toDemote.filter((e) => {
+					const attrs =
+						typeof e.attributes === "string"
+							? JSON.parse(e.attributes)
+							: e.attributes;
+					return !attrs?.summary;
+				});
+				if (needsSummary.length > 0) {
+					await summarize(needsSummary);
+				}
 			}
 
 			await refresh();

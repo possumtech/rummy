@@ -113,7 +113,13 @@ async function ingestContext(client, model, run, chunks) {
 			chunks[i],
 		].join("\n");
 
-		let r = await client.call("ask", { model, prompt, run, noContext: true, noInteraction: true });
+		let r = await client.call("ask", {
+			model,
+			prompt,
+			run,
+			noContext: true,
+			noInteraction: true,
+		});
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status >= 500) {
 			console.warn(
@@ -130,7 +136,12 @@ async function askQuestion(client, db, model, run, question) {
 	const preRun = await db.get_run_by_alias.get({ alias: run });
 	const turnBefore = preRun.next_turn;
 
-	let r = await client.call("ask", { model, prompt: question, run, noInteraction: true });
+	let r = await client.call("ask", {
+		model,
+		prompt: question,
+		run,
+		noInteraction: true,
+	});
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	if (r.status >= 500) return "";

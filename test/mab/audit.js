@@ -98,7 +98,13 @@ async function ingest(client, db, model, run, chunks) {
 			"",
 			chunks[i],
 		].join("\n");
-		let r = await client.call("ask", { model, prompt, run, noContext: true, noInteraction: true });
+		let r = await client.call("ask", {
+			model,
+			prompt,
+			run,
+			noContext: true,
+			noInteraction: true,
+		});
 		if (r.status === 202) r = await resolveAll(client, r);
 		console.log(`  ingested chunk ${i + 1}/${chunks.length}`);
 	}

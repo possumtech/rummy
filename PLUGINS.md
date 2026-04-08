@@ -276,6 +276,7 @@ Hooks fire in this order every turn:
 | `tools.dispatch` | handler | `(entry, rummy)` | Per command — handler chain executes |
 | `entry.created` | event | `{ scheme, path, body, attributes, state, resultPath }` | After each command dispatched |
 | `turn.proposing` | event | `{ rummy, recorded }` | All dispatches done — materialize proposals |
+| `cascade.summarize` | event | `{ entries, runId, model, complete }` | Budget cascade demoting unsummarized entries |
 
 ### Client Notifications
 
@@ -313,6 +314,7 @@ Each plugin has its own README at `src/plugins/{name}/README.md`.
 | [`rpc`](src/plugins/rpc/) | Internal | RPC method registration |
 | [`skills`](src/plugins/skills/) | Internal | Skill/persona management |
 | [`telemetry`](src/plugins/telemetry/) | Internal | Audit entries, usage stats, last_run.txt |
+| [`crunch`](src/plugins/crunch/) | Internal | Mid-cascade entry summarization (≤80-char keywords) |
 
 ## External Plugins
 

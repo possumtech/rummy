@@ -184,6 +184,15 @@ export default class TurnExecutor {
 				);
 				return { messages, rows };
 			},
+			summarize: async (entries) => {
+				await this.#hooks.cascade.summarize.emit({
+					entries,
+					runId: currentRunId,
+					model: requestedModel,
+					complete: async (msgs) =>
+						this.#llmProvider.completion(msgs, requestedModel),
+				});
+			},
 		});
 		messages = budgetResult.messages;
 		rows = budgetResult.rows;

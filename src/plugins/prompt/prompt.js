@@ -37,6 +37,9 @@ export default class Prompt {
 		if (ctx.noInteraction) {
 			toolNames = toolNames.filter((t) => t !== "ask_user");
 		}
+		if (ctx.noWeb) {
+			toolNames = toolNames.filter((t) => t !== "search");
+		}
 		const tools = toolNames.join(", ");
 		const warn = mode === "ask" ? ' warn="File editing disallowed."' : "";
 

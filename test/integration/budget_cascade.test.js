@@ -259,6 +259,119 @@ describe("Budget cascade — halving spiral", () => {
 		);
 	});
 
+	it("summarize callback fires for entries without summaries", async () => {
+		for (let i = 0; i < 10; i++) {
+			await store.upsert(RUN_ID, i + 1, `known://unsumm_${i}`, pad(50), 200);
+		}
+
+		const summarized = [];
+		const turn = 1;
+		const systemPrompt = "test system prompt";
+		await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
+
+		let rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
+		let messages = [
+			{ role: "system", content: systemPrompt },
+			{
+				role: "user",
+				content: rows
+					.filter((r) => r.path !== "system://prompt")
+					.map((r) => r.body)
+					.join("\n"),
+			},
+		];
+
+		await cascade.enforce({
+			contextSize: 2500,
+			runId: RUN_ID,
+			loopId: null,
+			turn,
+			messages,
+			rows,
+			rematerialize: async () => {
+				await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
+				rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
+				messages = [
+					{ role: "system", content: systemPrompt },
+					{
+						role: "user",
+						content: rows
+							.filter((r) => r.path !== "system://prompt")
+							.map((r) => r.body)
+							.join("\n"),
+					},
+				];
+				return { messages, rows };
+			},
+			summarize: async (entries) => {
+				summarized.push(...entries.map((e) => e.path));
+			},
+		});
+
+		assert.ok(
+			summarized.length > 0,
+			"summarize callback should have been called",
+		);
+	});
+
+	it("summarize callback skips entries with existing summaries", async () => {
+		for (let i = 0; i < 10; i++) {
+			await store.upsert(RUN_ID, i + 1, `known://presumm_${i}`, pad(50), 200, {
+				attributes: { summary: "already summarized" },
+			});
+		}
+
+		const summarized = [];
+		const turn = 1;
+		const systemPrompt = "test system prompt";
+		await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
+
+		let rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
+		let messages = [
+			{ role: "system", content: systemPrompt },
+			{
+				role: "user",
+				content: rows
+					.filter((r) => r.path !== "system://prompt")
+					.map((r) => r.body)
+					.join("\n"),
+			},
+		];
+
+		await cascade.enforce({
+			contextSize: 2500,
+			runId: RUN_ID,
+			loopId: null,
+			turn,
+			messages,
+			rows,
+			rematerialize: async () => {
+				await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
+				rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
+				messages = [
+					{ role: "system", content: systemPrompt },
+					{
+						role: "user",
+						content: rows
+							.filter((r) => r.path !== "system://prompt")
+							.map((r) => r.body)
+							.join("\n"),
+					},
+				];
+				return { messages, rows };
+			},
+			summarize: async (entries) => {
+				summarized.push(...entries.map((e) => e.path));
+			},
+		});
+
+		assert.strictEqual(
+			summarized.length,
+			0,
+			"should not summarize pre-summarized entries",
+		);
+	});
+
 	it("stash contains all stored URIs", async () => {
 		const paths = [];
 		for (let i = 0; i < 20; i++) {

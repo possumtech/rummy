@@ -285,6 +285,7 @@ export default class Rpc {
 						contextLimit: params.contextLimit,
 						noContext: params.noContext,
 						noInteraction: params.noInteraction,
+						noWeb: params.noWeb,
 						fork: params.fork,
 					},
 				);
@@ -300,6 +301,7 @@ export default class Rpc {
 				contextLimit: "number?",
 				noContext: "boolean?",
 				noInteraction: "boolean? — disable ask_user tool",
+				noWeb: "boolean? — disable search and URL fetch",
 				fork: "boolean?",
 			},
 			requiresInit: true,
@@ -319,6 +321,7 @@ export default class Rpc {
 						contextLimit: params.contextLimit,
 						noContext: params.noContext,
 						noInteraction: params.noInteraction,
+						noWeb: params.noWeb,
 						fork: params.fork,
 					},
 				);
@@ -334,6 +337,7 @@ export default class Rpc {
 				contextLimit: "number?",
 				noContext: "boolean?",
 				noInteraction: "boolean? — disable ask_user tool",
+				noWeb: "boolean? — disable search and URL fetch",
 				fork: "boolean?",
 			},
 			requiresInit: true,

@@ -342,7 +342,78 @@ Model controls fidelity via `<set>` attributes: `stored`, `summary`,
 `index`, `full`. The `summary="..."` attribute attaches a description
 (<= 80 chars) that persists across fidelity changes.
 
-### 4.5 progress:// as Entry
+### 4.5 Budget Cascade
+
+Context overflow is structurally impossible. After materialization, the
+`BudgetCascade` enforces a ceiling of 95% of the model's context window.
+If assembled tokens exceed the ceiling, entries are demoted through three
+tiers using an iterative halving spiral.
+
+**Halving spiral:** Demote the oldest half of eligible entries, rematerialize,
+re-measure. Repeat until the budget is met or the tier is exhausted.
+Newest entries survive longest.
+
+**Demotion tiers:**
+
+| Tier | Transition | Effect |
+|------|-----------|--------|
+| 1 | full → summary | Body replaced by `attributes.summary` (≤80 chars) |
+| 2 | summary → index | Content removed, path listed only |
+| 3 | index → stored | Entry hidden; paths collapsed into `known://stash_{scheme}` |
+| 4 | Hard error | Context floor exceeds model limit |
+
+**Demotion priority** (within each tier, shed in this order):
+- Tier 0: Files, URLs — re-readable from disk
+- Tier 1: Knowns, unknowns — the model's reasoning state
+- Tier 2: Prompts, results, structural — narrative and action history
+
+Within the same priority, oldest `source_turn` is demoted first.
+
+**Stash entries:** When tier 3 demotes index entries to stored, it creates
+per-scheme stash entries (`known://stash_known`, `known://stash_file`, etc.)
+at index fidelity. The stash body contains newline-separated paths of stored
+entries. The model can `<get known://stash_known/>` to see the list, then
+promote specific entries back to full.
+
+**Callbacks:**
+- `rematerialize`: After each demotion pass, clears `turn_context`, re-queries
+  `v_model_context`, re-projects through view handlers, re-assembles messages.
+- `summarize`: During tier 1 (full→summary), if demoted entries lack
+  `attributes.summary`, this callback fires with the batch. See § 4.6.
+
+### 4.6 Crunch: Mid-Cascade Summarization
+
+When the budget cascade demotes known entries from full to summary fidelity,
+their body content disappears from context. The `ToolRegistry.view()` fallback
+renders `attributes.summary` (≤80 chars) if present — but nothing writes it
+by default.
+
+The **crunch plugin** (`src/plugins/crunch/`) subscribes to `cascade.summarize`.
+When the budget cascade identifies entries being demoted that lack summaries,
+it emits the hook with the entry batch and an LLM completion closure.
+
+**Flow:**
+1. Budget cascade identifies N entries for full→summary demotion
+2. Filters to entries missing `attributes.summary`
+3. Emits `cascade.summarize` with `{ entries, runId, model, complete }`
+4. Crunch plugin builds a prompt: compress each entry to ≤80 chars of
+   searchable keywords
+5. Makes one `complete(messages)` call (direct LLM, no run/loop/turn overhead)
+6. Parses response (one line per entry: `path → keywords`)
+7. Writes summaries to `attributes.summary` via `KnownStore.setAttributes()`
+8. Budget cascade calls `rematerialize` — summaries now render via the
+   ToolRegistry fallback
+
+**Cost:** One LLM call per demotion batch containing unsummarized entries.
+After first crunch, entries have permanent summaries. Future demotions skip
+the call.
+
+**Failure:** If the LLM call fails, entries are still demoted — they just
+render with empty summaries. Logged as `[RUMMY] Crunch: summarization failed`.
+
+**Debug:** When `RUMMY_DEBUG=true`, full request/response packets are logged.
+
+### 4.7 progress:// as Entry
 
 The continuation prompt is a `progress://N` entry. Plugins can modify its
 body before materialization.
