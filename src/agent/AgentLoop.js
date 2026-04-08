@@ -223,6 +223,11 @@ export default class AgentLoop {
 			? Math.min(runRow.context_limit, modelContextSize)
 			: modelContextSize;
 
+		const toolSet = this.#hooks.tools.resolveForLoop(mode, {
+			noInteraction,
+			noWeb,
+		});
+
 		let loopIteration = 0;
 		const MAX_LOOP_ITERATIONS = Number(process.env.RUMMY_MAX_TURNS) || 15;
 		const healer = new ResponseHealer();
@@ -267,8 +272,7 @@ export default class AgentLoop {
 					requestedModel,
 					loopPrompt: turnPrompt,
 					noContext,
-					noInteraction,
-					noWeb,
+					toolSet,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal: controller.signal,

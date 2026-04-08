@@ -63,6 +63,14 @@ export default class RummyContext {
 		return this.#context.noInteraction === true;
 	}
 
+	get noWeb() {
+		return this.#context.noWeb === true;
+	}
+
+	get toolSet() {
+		return this.#context.toolSet || null;
+	}
+
 	get contextSize() {
 		return this.#context.contextSize || null;
 	}

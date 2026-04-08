@@ -17,20 +17,30 @@ export default class Instructions {
 	async onTurnStarted({ rummy }) {
 		const { entries: store, sequence: turn, runId } = rummy;
 		const runRow = await rummy.db.get_run_by_id.get({ id: runId });
+		const toolSet = rummy.toolSet
+			? [...rummy.toolSet]
+			: this.#core.hooks.tools.names;
 		await store.upsert(runId, turn, "instructions://system", "", 200, {
-			attributes: { persona: runRow?.persona || null },
+			attributes: {
+				persona: runRow?.persona || null,
+				toolSet,
+			},
 		});
 	}
 
 	async full(entry) {
 		const attrs = entry.attributes;
-		const tools = this.#core.hooks.tools.names.join(", ");
+		const activeTools = attrs.toolSet
+			? new Set(attrs.toolSet)
+			: new Set(this.#core.hooks.tools.names);
+		const tools = [...activeTools].join(", ");
 		let prompt = preamble.replace("[%TOOLS%]", tools);
 		const toolDocs = await this.#core.hooks.instructions.toolDocs.filter(
-			"",
 			{},
+			{ toolSet: activeTools },
 		);
-		if (toolDocs) prompt += `\n\n${toolDocs}`;
+		const docsText = Object.values(toolDocs).join("\n\n");
+		if (docsText) prompt += `\n\n${docsText}`;
 		if (attrs.persona) prompt += `\n\n## Persona\n\n${attrs.persona}`;
 		return prompt;
 	}

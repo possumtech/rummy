@@ -10,6 +10,7 @@ export default class Crunch {
 	constructor(core) {
 		this.#core = core;
 		core.on("cascade.summarize", this.#handleSummarize.bind(this));
+		console.warn("[RUMMY] Crunch plugin registered");
 	}
 
 	async #handleSummarize({ entries, runId, model, complete }) {

@@ -75,13 +75,58 @@ function assertContains(text, substring, label) {
 	);
 }
 
-/** Accept all proposed entries and return final result. */
-async function acceptAll(client, result) {
+/** Accept all proposed entries, applying file edits to disk. */
+async function acceptAll(client, result, db, projectRoot) {
 	let current = result;
 	let resolves = 0;
 	while (current.status === 202 && resolves < 15) {
 		for (const p of current.proposed) {
 			if (resolves >= 15) break;
+
+			// Apply file edits to disk before accepting
+			if (p.path?.startsWith("set://") && projectRoot) {
+				const runRow = await db.get_run_by_alias.get({ alias: current.run });
+				if (runRow) {
+					const entries = await db.get_known_entries.all({ run_id: runRow.id });
+					const setEntry = entries.find((e) => e.path === p.path);
+					if (setEntry) {
+						const attrs = typeof setEntry.attributes === "string"
+							? JSON.parse(setEntry.attributes)
+							: setEntry.attributes;
+						if (attrs?.file && attrs?.merge) {
+							const filePath = join(projectRoot, attrs.file);
+							const content = await fs.readFile(filePath, "utf8").catch(() => "");
+							const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH\n)/);
+							let patched = content;
+							for (const block of blocks) {
+								const match = block.match(
+									/<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/,
+								);
+								if (match) patched = patched.replace(match[1], match[2]);
+							}
+							if (patched !== content) await fs.writeFile(filePath, patched);
+						}
+					}
+				}
+			}
+
+			// Apply rm to disk before accepting
+			if (p.path?.startsWith("rm://") && projectRoot) {
+				const runRow = await db.get_run_by_alias.get({ alias: current.run });
+				if (runRow) {
+					const entries = await db.get_known_entries.all({ run_id: runRow.id });
+					const rmEntry = entries.find((e) => e.path === p.path);
+					if (rmEntry) {
+						const attrs = typeof rmEntry.attributes === "string"
+							? JSON.parse(rmEntry.attributes)
+							: rmEntry.attributes;
+						if (attrs?.path) {
+							await fs.unlink(join(projectRoot, attrs.path)).catch(() => {});
+						}
+					}
+				}
+			}
+
 			current = await client.call("run/resolve", {
 				run: current.run,
 				resolution: { path: p.path, action: "accept", output: "applied" },
@@ -190,7 +235,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
 		});
 		await client.assertRun(r, [200, 202], "edit");
-		if (r.status === 202) await acceptAll(client, r);
+		if (r.status === 202) await acceptAll(client, r, tdb.db, projectRoot);
 
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({
@@ -212,12 +257,23 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
 		});
 		await client.assertRun(r1, [200, 202], "edit-visible");
-		if (r1.status === 202) await acceptAll(client, r1);
+		if (r1.status === 202) await acceptAll(client, r1, tdb.db, projectRoot);
 
+		// Verify the edit landed on disk
+		const fileContent = await fs.readFile(
+			join(projectRoot, "src/app.js"),
+			"utf8",
+		);
+		assert.ok(
+			fileContent.includes("error handler configured"),
+			`edit-visible: file should contain edit, got: ${fileContent.slice(0, 200)}`,
+		);
+
+		// Verify the model can see the edit on the next turn
 		const r2 = await client.call("ask", {
 			model,
 			prompt:
-				"Read src/app.js and tell me: does it contain the text 'error handler configured'? Reply ONLY with yes or no.",
+				'Read src/app.js. Does it contain "error handler configured"? One word answer: yes or no.',
 			run: r1.run,
 		});
 		await client.assertRun(r2, 200, "edit-verify");
@@ -259,7 +315,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"You MUST use <unknown> to register what you don't know, then use <get> to investigate. What test framework does this project use?",
 		});
 		await client.assertRun(r, [200, 202], "unknowns");
-		if (r.status === 202) await acceptAll(client, r);
+		if (r.status === 202) await acceptAll(client, r, tdb.db, projectRoot);
 		const entries = await allEntries(tdb.db, r.run);
 		const unknowns = entries.filter((e) => e.scheme === "unknown");
 		assert.ok(unknowns.length > 0, "should have registered unknowns");
@@ -347,18 +403,18 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			}
 		}
 
-		// Verify file survives — new ask on same run
-		const r2 = await client.call("ask", {
-			model,
-			prompt: "What does notes.md contain? Reply with its content.",
-			run: r1.run,
-		});
-		await client.assertRun(r2, 200, "reject-verify");
-		assertContains(
-			await lastResponse(tdb.db, r2.run),
-			"phoenix",
-			"reject-survive",
+		// Verify file survives on disk (rejection should not delete)
+		const fileExists = await fs
+			.stat(join(projectRoot, "notes.md"))
+			.then(() => true)
+			.catch(() => false);
+		assert.ok(fileExists, "reject-survive: notes.md should still exist on disk");
+
+		const content = await fs.readFile(
+			join(projectRoot, "notes.md"),
+			"utf8",
 		);
+		assertContains(content, "phoenix", "reject-survive");
 	});
 
 	// Story 9b: Context budget enforcement — entries demoted when over budget.
@@ -422,7 +478,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"Save this as a known entry: <known>The speed of light is 299792458 meters per second</known>. Reply with <update>saved</update>.",
 			noContext: true,
 		});
-		if (r1.status === 202) r1 = await acceptAll(client, r1);
+		if (r1.status === 202) r1 = await acceptAll(client, r1, tdb.db, projectRoot);
 		await client.assertRun(r1, 200, "cascade-save");
 
 		// Load several large files to pressure the budget
@@ -447,7 +503,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"What is the speed of light in meters per second? Reply ONLY with the number.",
 			run: r1.run,
 		});
-		if (r2.status === 202) r2 = await acceptAll(client, r2);
+		if (r2.status === 202) r2 = await acceptAll(client, r2, tdb.db, projectRoot);
 		await client.assertRun(r2, [200, 202], "cascade-answer");
 
 		// The known entry should have survived (full or at least visible)

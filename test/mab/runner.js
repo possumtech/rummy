@@ -118,7 +118,7 @@ async function ingestContext(client, model, run, chunks) {
 			prompt,
 			run,
 			noContext: true,
-			noInteraction: true,
+			noInteraction: true, noWeb: true,
 		});
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status >= 500) {
@@ -140,7 +140,7 @@ async function askQuestion(client, db, model, run, question) {
 		model,
 		prompt: question,
 		run,
-		noInteraction: true,
+		noInteraction: true, noWeb: true,
 	});
 	if (r.status === 202) r = await resolveAll(client, r);
 

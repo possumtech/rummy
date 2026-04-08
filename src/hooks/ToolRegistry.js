@@ -86,6 +86,19 @@ export default class ToolRegistry {
 			.map(([name]) => name);
 	}
 
+	/**
+	 * Compute the active tool set for a loop.
+	 * Starts with all tools for the mode, then removes excluded tools.
+	 * Returns a Set of tool names.
+	 */
+	resolveForLoop(mode, { noInteraction = false, noWeb = false } = {}) {
+		const names = this.namesForMode(mode);
+		const excluded = new Set();
+		if (noInteraction) excluded.add("ask_user");
+		if (noWeb) excluded.add("search");
+		return new Set(names.filter((n) => !excluded.has(n)));
+	}
+
 	entries() {
 		return this.#tools.entries();
 	}

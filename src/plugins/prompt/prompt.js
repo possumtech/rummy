@@ -33,14 +33,9 @@ export default class Prompt {
 
 		const mode = promptEntry?.scheme || ctx.type;
 		const body = promptEntry?.body || "";
-		let toolNames = this.#core.hooks.tools.namesForMode(mode);
-		if (ctx.noInteraction) {
-			toolNames = toolNames.filter((t) => t !== "ask_user");
-		}
-		if (ctx.noWeb) {
-			toolNames = toolNames.filter((t) => t !== "search");
-		}
-		const tools = toolNames.join(", ");
+		const tools = ctx.toolSet
+			? [...ctx.toolSet].join(", ")
+			: this.#core.hooks.tools.namesForMode(mode).join(", ");
 		const warn = mode === "ask" ? ' warn="File editing disallowed."' : "";
 
 		return `${content}<${mode} tools="${tools}"${warn}>${body}</${mode}>`;

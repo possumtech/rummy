@@ -11,7 +11,7 @@ export default class ContextAssembler {
 			systemPrompt = "",
 			contextSize = 0,
 			demoted = [],
-			noInteraction = false,
+			toolSet = null,
 		} = {},
 		hooks,
 	) {
@@ -28,7 +28,7 @@ export default class ContextAssembler {
 			type,
 			contextSize,
 			demoted,
-			noInteraction,
+			toolSet,
 		};
 
 		const system = await hooks.assembly.system.filter(systemPrompt, ctx);

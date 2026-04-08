@@ -187,7 +187,7 @@ export default class BudgetCascade {
 				demoted.push(entry.path);
 			}
 
-			if (summarize && fidelityTo === "summary") {
+			if (fidelityTo === "summary") {
 				const needsSummary = toDemote.filter((e) => {
 					const attrs =
 						typeof e.attributes === "string"
@@ -195,7 +195,10 @@ export default class BudgetCascade {
 							: e.attributes;
 					return !attrs?.summary;
 				});
-				if (needsSummary.length > 0) {
+				if (needsSummary.length > 0 && summarize) {
+					console.warn(
+						`[RUMMY] Crunch: ${needsSummary.length} entries need summaries`,
+					);
 					await summarize(needsSummary);
 				}
 			}
