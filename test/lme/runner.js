@@ -140,7 +140,7 @@ async function ingestContext(client, model, run, chunks) {
 			chunks[i],
 		].join("\n");
 
-		let r = await client.call("ask", { model, prompt, run, noContext: true });
+		let r = await client.call("ask", { model, prompt, run, noContext: true, noInteraction: true });
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status >= 500) {
 			console.warn(
@@ -167,7 +167,7 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 		.filter(Boolean)
 		.join("\n");
 
-	let r = await client.call("ask", { model, prompt, run });
+	let r = await client.call("ask", { model, prompt, run, noInteraction: true });
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	if (r.status >= 500) return "";
@@ -201,7 +201,7 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 		"<summarize>YES or NO, then a one-sentence reason</summarize>",
 	].join("\n");
 
-	let r = await client.call("ask", { model, prompt, noContext: true });
+	let r = await client.call("ask", { model, prompt, noContext: true, noInteraction: true });
 	if (r.status === 202) r = await resolveAll(client, r);
 	if (r.status >= 500) return { pass: false, reason: "judge call failed" };
 
@@ -240,6 +240,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		prompt:
 			"You are being evaluated on long-term memory. Incoming conversation history follows. Use <known> to save facts about the user. Reply with <update>ready</update>.",
 		noContext: true,
+		noInteraction: true,
 	});
 	let run = initR.run;
 

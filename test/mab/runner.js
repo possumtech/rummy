@@ -109,13 +109,11 @@ async function ingestContext(client, model, run, chunks) {
 		const prompt = [
 			`Memory ingestion — chunk ${chunkNum} of ${total}.`,
 			"Read and remember the key facts in this text.",
-			"Use <known> to save important information.",
-			"Use <update> when done (do NOT use <summarize>).",
 			"",
 			chunks[i],
 		].join("\n");
 
-		let r = await client.call("ask", { model, prompt, run, noContext: true });
+		let r = await client.call("ask", { model, prompt, run, noContext: true, noInteraction: true });
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status >= 500) {
 			console.warn(
@@ -132,14 +130,7 @@ async function askQuestion(client, db, model, run, question) {
 	const preRun = await db.get_run_by_alias.get({ alias: run });
 	const turnBefore = preRun.next_turn;
 
-	const prompt = [
-		"Answer this question from memory.",
-		"<summarize>[your answer]</summarize>",
-		"",
-		question,
-	].join("\n");
-
-	let r = await client.call("ask", { model, prompt, run });
+	let r = await client.call("ask", { model, prompt: question, run, noInteraction: true });
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	if (r.status >= 500) return "";

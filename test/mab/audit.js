@@ -95,12 +95,10 @@ async function ingest(client, db, model, run, chunks) {
 		const prompt = [
 			`Memory ingestion — chunk ${i + 1} of ${chunks.length}.`,
 			"Read and remember the key facts in this text.",
-			"Use <known> to save important information.",
-			"Use <update> when done (do NOT use <summarize>).",
 			"",
 			chunks[i],
 		].join("\n");
-		let r = await client.call("ask", { model, prompt, run, noContext: true });
+		let r = await client.call("ask", { model, prompt, run, noContext: true, noInteraction: true });
 		if (r.status === 202) r = await resolveAll(client, r);
 		console.log(`  ingested chunk ${i + 1}/${chunks.length}`);
 	}
@@ -146,14 +144,9 @@ async function auditQuestion(
 	const preRun = await db.get_run_by_alias.get({ alias: run });
 	const turnBefore = preRun.next_turn;
 
-	const prompt = [
-		"Answer this question from memory.",
-		"<summarize>[your answer]</summarize>",
-		"",
-		question,
-	].join("\n");
+	const prompt = question;
 
-	let r = await client.call("ask", { model, prompt, run });
+	let r = await client.call("ask", { model, prompt, run, noInteraction: true });
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	// Get entries from this question's turns
@@ -279,6 +272,7 @@ async function main() {
 		prompt:
 			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save facts. Reply with <update>ready</update>.",
 		noContext: true,
+		noInteraction: true,
 	});
 	let run = initR.run;
 	const mabAlias = `mab_audit_${ROW_IDX}`;
