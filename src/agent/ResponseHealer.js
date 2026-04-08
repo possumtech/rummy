@@ -100,7 +100,7 @@ export default class ResponseHealer {
 	 *   neither present    → warn, increment stall counter, continue
 	 *   stall counter hits MAX_STALLS → force-complete
 	 */
-	assessProgress({ summaryText, updateText, statusHealed }) {
+	assessProgress({ summaryText, updateText, statusHealed, flags }) {
 		if (summaryText) {
 			this.#stallCount = 0;
 			return { continue: false };
@@ -109,7 +109,10 @@ export default class ResponseHealer {
 		if (updateText && !statusHealed) {
 			this.#stallCount = 0;
 			// Track repeated update text — model stuck declaring readiness
-			if (updateText === this.#lastUpdateText) {
+			// But if the model created new entries this turn, it's making
+			// progress even if the update text is the same.
+			const madeProgress = flags?.hasWrites || flags?.hasReads;
+			if (updateText === this.#lastUpdateText && !madeProgress) {
 				this.#updateRepeatCount++;
 				if (this.#updateRepeatCount >= MAX_UPDATE_REPEATS) {
 					const reason = `Same <update/> repeated ${this.#updateRepeatCount} turns: "${updateText.slice(0, 60)}"`;
