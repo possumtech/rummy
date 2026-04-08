@@ -313,6 +313,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			model,
 			prompt:
 				"You MUST use <unknown> to register what you don't know, then use <get> to investigate. What test framework does this project use?",
+			noInteraction: true,
 		});
 		await client.assertRun(r, [200, 202], "unknowns");
 		if (r.status === 202) await acceptAll(client, r, tdb.db, projectRoot);

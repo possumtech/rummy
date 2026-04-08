@@ -14,6 +14,7 @@ export default class Crunch {
 	}
 
 	async #handleSummarize({ entries, runId, model, complete }) {
+		console.warn(`[RUMMY] Crunch: handler invoked, ${entries?.length ?? 0} entries`);
 		if (!entries?.length || !complete) return;
 
 		const store = this.#core.entries;
