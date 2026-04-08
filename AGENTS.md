@@ -19,22 +19,36 @@ Plugin-driven architecture. Instantiated classes, constructor receives
 Assembly via `assembly.system` / `assembly.user` filter chains.
 No monolithic assembler. Loops table (projects > runs > loops > turns).
 HTTP status codes throughout (entries, runs, loops, client RPC).
-9 model tools (store removed — fidelity control via set attributes).
-Budget cascade (BudgetCascade.js) with halving spiral through 3 tiers.
-Crunch plugin for mid-cascade summarization. Token estimation via
-tiktoken * 2x multiplier. Glob matching via picomatch.
-`noInteraction` and `noWeb` flags for benchmark/headless usage.
-`summary="..."` attribute on entries for model-authored descriptions.
-`<knowns>` tags use entry scheme names (`<file>`, `<known>`, `<https>`).
-173 unit + 112 integration passing. 12/14 e2e (file edit assertions).
-MAB and LME benchmark runners built. Live tests need rerun.
+12 model tools: get, set, known, unknown, env, sh, rm, cp, mv,
+search, summarize, update. Tool priority ordering (get first,
+ask_user last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
+Budget cascade: two-phase crunch spiral (upfront LLM summary + halving)
++ death spiral (stash by scheme) + crash. No scheme-based tiers.
+Selection: fattest half of oldest half. Protected: system, tool, prompt.
+Crunch plugin generates ≤80-char keyword summaries. ToolRegistry.view()
+prepends summaries above plugin output at summary fidelity.
+Token estimation via tiktoken * 2x multiplier. Glob matching via picomatch.
+Tool docs in annotated `*Doc.js` line arrays with rationales.
+Lifecycle/action split in TurnExecutor — summarize/update/known/unknown
+always dispatch, never 409'd. Summarize overridden when actions fail.
+Preamble: XML format, conclude every turn, summaries approximate.
+173 unit + 121 integration + 15/15 e2e passing (gemma).
+MAB and LME benchmark runners built. First MAB run in progress.
 
 ### Architecture Notes
 
 **Budget is a plugin.** `src/plugins/budget/budget.js` registers
 `hooks.budget.enforce()`. TurnExecutor delegates through the hook.
-Crunch plugin subscribes to `cascade.summarize` for mid-cascade
-summarization.
+Crunch plugin subscribes to `cascade.summarize` for upfront summary
+generation (one LLM call per cascade, not per halving pass).
+
+**toolDocs are annotated code.** Each plugin has a `*Doc.js` file with
+`[text, rationale]` line arrays. Text goes to the model, rationale stays
+in source. Changing any line requires reading all rationales first.
+
+**Benchmark DBs are durable.** MAB/LME runners create the database
+directly in the results directory (`TestDb.createAt`). Survives kills,
+crashes, and power failures. The DB is the primary output of every run.
 
 **toolDocs filter uses docsMap pattern.** Each plugin writes to a
 keyed object (`docsMap.set = docs`). Instructions plugin filters by
@@ -58,16 +72,17 @@ largest entries. Maximum staleness, maximum token savings per demotion.
 
 ### Crunch Spiral
 
-The crunch spiral handles graceful degradation:
-- **Full entries** → set to summary fidelity. Crunch LLM generates
-  ≤80-char keyword summary stored in `attributes.summary`.
-- **Summary entries with summaries > 80 chars** → summary text halved
-  deterministically (no LLM call). 2000→1000→500→250→125→80.
+**Phase 1: Summary generation** (one LLM call upfront):
+- Before the halving spiral, ALL full entries without summaries are
+  batched into a single crunch LLM call. Summaries generated upfront
+  and stored in `attributes.summary`.
+
+**Phase 2: Halving** (no LLM calls, fidelity flags only):
+- **Full entries** → set to summary fidelity (summary already exists).
+- **Summary entries with summaries > 80 chars** → halved deterministically.
+  2000→1000→500→250→125→80.
 - **Summary entries with summaries < 10 chars** → drop to index fidelity.
 - Repeat until under budget or no crunchable entries remain.
-
-The LLM crunch call fires once per entry (full→summary). Every
-subsequent compression is deterministic string truncation.
 
 ToolRegistry.view() prepends `attributes.summary` above whatever the
 plugin's summary view produces. This happens automatically for all

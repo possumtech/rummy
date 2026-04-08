@@ -269,7 +269,8 @@ async function main() {
 	await fs.mkdir(auditDir, { recursive: true });
 	process.env.RUMMY_HOME = auditDir;
 
-	const tdb = await TestDb.create("mab_audit");
+	const dbPath = join(auditDir, "mab.db");
+	const tdb = await TestDb.createAt(dbPath, "mab_audit");
 	const tserver = await TestServer.start(tdb.db);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
@@ -300,9 +301,7 @@ async function main() {
 	await ingest(client, tdb.db, MODEL, run, chunks);
 
 	if (args["ingest-only"]) {
-		console.log("\nIngest complete. Database preserved for inspection.");
-		const dbDest = join(auditDir, "mab_audit.db");
-		await fs.copyFile(tdb.dbPath, dbDest).catch(() => {});
+		console.log(`\nIngest complete. Database: ${dbPath}`);
 		await client.close();
 		await tserver.stop();
 		await tdb.cleanup();
@@ -352,12 +351,6 @@ async function main() {
 	const total = diagnostics.length;
 	const summary = `\n---\n\n## Summary\n\n**${passed}/${total}** (${((passed / total) * 100).toFixed(1)}%)\n`;
 	await fs.appendFile(reportPath, summary);
-
-	// Save database
-	const dbDest = join(auditDir, "mab_audit.db");
-	await fs.copyFile(tdb.dbPath, dbDest).catch(() => {});
-	await fs.copyFile(`${tdb.dbPath}-wal`, `${dbDest}-wal`).catch(() => {});
-	await fs.copyFile(`${tdb.dbPath}-shm`, `${dbDest}-shm`).catch(() => {});
 
 	await client.close();
 	await tserver.stop();

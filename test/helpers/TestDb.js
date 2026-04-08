@@ -47,6 +47,14 @@ export default class TestDb {
 			tmpdir(),
 			`rummy_test_${Date.now()}_${Math.random().toString(36).slice(2)}.db`,
 		);
+		return TestDb.#open(dbPath, suiteName);
+	}
+
+	static async createAt(dbPath, suiteName = "test") {
+		return TestDb.#open(dbPath, suiteName);
+	}
+
+	static async #open(dbPath, suiteName) {
 		const db = await SqlRite.open({
 			path: dbPath,
 			dir: ["migrations", "src"],
@@ -100,11 +108,16 @@ export default class TestDb {
 
 	async cleanup() {
 		await this.db.close();
-		const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-		const diagPath = join(DIAG_DIR, `${this.suiteName}_${ts}.db`);
-		await fs.copyFile(this.dbPath, diagPath).catch(() => {});
-		await fs.unlink(this.dbPath).catch(() => {});
-		await fs.unlink(`${this.dbPath}-shm`).catch(() => {});
-		await fs.unlink(`${this.dbPath}-wal`).catch(() => {});
+		// If DB is in a temp directory, copy to diag and delete.
+		// If DB is in a results directory (createAt), leave it in place.
+		const inTmp = this.dbPath.startsWith(tmpdir());
+		if (inTmp) {
+			const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+			const diagPath = join(DIAG_DIR, `${this.suiteName}_${ts}.db`);
+			await fs.copyFile(this.dbPath, diagPath).catch(() => {});
+			await fs.unlink(this.dbPath).catch(() => {});
+			await fs.unlink(`${this.dbPath}-shm`).catch(() => {});
+			await fs.unlink(`${this.dbPath}-wal`).catch(() => {});
+		}
 	}
 }

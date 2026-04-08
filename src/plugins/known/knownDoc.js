@@ -5,17 +5,17 @@ const LINES = [
 	// --- Syntax: body = the information to save
 	["## <known>[information]</known> - Save what you learn for later recall"],
 
-	// --- Examples: show the slug path convention and explicit naming
+	// --- Examples: taxonomic form first (teaches path + summary), then simple
 	[
-		"Example: <known>Donald Rumsfeld was born in 1932</known>",
-		"Auto-slugged path. Shows that bare known entries get slug paths from content.",
+		'Example: <known path="known://rumsfeld" summary="US Secretary of Defense, born 1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</known>',
+		"Taxonomic form: path=key, summary=keywords, body=detail. Survives crunching with searchable keywords intact.",
 	],
 	[
-		'Example: <known path="known://auth">OAuth2 PKCE flow with rotating refresh tokens</known>',
-		"Explicit path: model names the entry. Teaches known:// scheme convention.",
+		"Example: <known>Mitch Hedberg died on March 30, 2005</known>",
+		"Simple form: auto-slugged path. Works but unsearchable URIs.",
 	],
 
-	// --- Lifecycle: save → recall → archive
+	// --- Lifecycle
 	[
 		'* Recall with <get path="known://*">keyword</get>',
 		"Cross-tool lifecycle: known entries are recalled via get with body filter.",

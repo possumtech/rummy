@@ -89,16 +89,34 @@ export default class Budget {
 			);
 		};
 
-		// --- Crunch spiral ---
+		// --- Phase 1: Generate all summaries upfront (minimal LLM calls) ---
+		if (assembledTokens > ceiling && summarize) {
+			const needsSummary = currentRows.filter((r) => {
+				if (r.fidelity !== "full" || r.tokens <= 0 || !isCrunchable(r))
+					return false;
+				const attrs =
+					typeof r.attributes === "string"
+						? JSON.parse(r.attributes)
+						: r.attributes;
+				return !attrs?.summary;
+			});
+			if (needsSummary.length > 0) {
+				console.warn(
+					`[RUMMY] Budget: generating summaries for ${needsSummary.length} entries`,
+				);
+				await summarize(needsSummary);
+				await refresh();
+			}
+		}
+
+		// --- Phase 2: Crunch spiral (fidelity flags only, no LLM calls) ---
 		let crunchPass = 0;
 		const MAX_PASSES = 50;
 		while (assembledTokens > ceiling && crunchPass < MAX_PASSES) {
-			// Full entries that can be crunched to summary
 			const fullCandidates = currentRows.filter(
 				(r) => r.fidelity === "full" && r.tokens > 0 && isCrunchable(r),
 			);
 
-			// Summary entries with summaries > 80 chars that can be halved
 			const fatSummaries = currentRows.filter(
 				(r) =>
 					r.fidelity === "summary" &&
@@ -108,9 +126,6 @@ export default class Budget {
 
 			const crunchable = [...fullCandidates, ...fatSummaries];
 			if (crunchable.length === 0) break;
-			console.warn(
-				`[RUMMY] Budget crunch candidates: ${fullCandidates.length} full, ${fatSummaries.length} fat summaries`,
-			);
 
 			const selected = selectCrunchCandidates(crunchable);
 			const batch = [];
@@ -121,7 +136,6 @@ export default class Budget {
 					batch.push(entry.path);
 					demoted.push(entry.path);
 				} else {
-					// Halve the summary text
 					const attrs =
 						typeof entry.attributes === "string"
 							? JSON.parse(entry.attributes)
@@ -138,21 +152,6 @@ export default class Budget {
 						});
 					}
 					batch.push(entry.path);
-				}
-			}
-
-			// Fire crunch summarizer for full→summary entries that lack summaries
-			if (summarize) {
-				const needsSummary = selected.filter((e) => {
-					if (e.fidelity !== "full") return false;
-					const attrs =
-						typeof e.attributes === "string"
-							? JSON.parse(e.attributes)
-							: e.attributes;
-					return !attrs?.summary;
-				});
-				if (needsSummary.length > 0) {
-					await summarize(needsSummary);
 				}
 			}
 

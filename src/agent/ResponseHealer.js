@@ -1,6 +1,6 @@
 const MAX_STALLS = Number(process.env.RUMMY_MAX_STALLS) || 3;
 const MAX_REPETITIONS = Number(process.env.RUMMY_MAX_REPETITIONS) || 3;
-const MAX_UPDATE_REPEATS = 3;
+const MAX_UPDATE_REPEATS = Number(process.env.RUMMY_MAX_UPDATE_REPEATS) || 3;
 
 export default class ResponseHealer {
 	#stallCount = 0;

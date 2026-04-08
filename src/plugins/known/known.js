@@ -44,6 +44,7 @@ export default class Known {
 
 function renderKnownTag(entry, demotedSet) {
 	const tag = entry.scheme || "file";
+	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
@@ -58,8 +59,8 @@ function renderKnownTag(entry, demotedSet) {
 			: "";
 
 	if (entry.body) {
-		return `<${tag} path="${entry.path}"${status}${fidelity}${summary}${tokens}${flag}>${entry.body}</${tag}>`;
+		return `<${tag} path="${entry.path}"${turn}${status}${fidelity}${summary}${tokens}${flag}>${entry.body}</${tag}>`;
 	}
 
-	return `<${tag} path="${entry.path}"${status}${fidelity}${summary}${tokens}${flag}/>`;
+	return `<${tag} path="${entry.path}"${turn}${status}${fidelity}${summary}${tokens}${flag}/>`;
 }

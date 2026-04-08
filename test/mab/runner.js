@@ -183,7 +183,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const initR = await client.call("ask", {
 		model,
 		prompt:
-			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save facts. Reply with <update>ready</update>.",
+			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save every fact. Reply with <summarize>ready</summarize>.",
 		noContext: true,
 	});
 	let run = initR.run;
@@ -280,11 +280,15 @@ async function main() {
 	// Point RUMMY_HOME at the results dir so last_run.txt lands there
 	process.env.RUMMY_HOME = runDir;
 
-	const tdb = await TestDb.create("mab");
+	// DB lives in the results directory from the start — survives kills.
+	const dbPath = join(runDir, "mab.db");
+	const tdb = await TestDb.createAt(dbPath, "mab");
 	const tserver = await TestServer.start(tdb.db);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
 	await client.call("init", { name: "MAB", projectRoot: "/tmp/rummy-mab" });
+
+	console.log(`Database: ${dbPath}`);
 
 	const allResults = [];
 	const resultsPath = join(runDir, "results.ndjson");
@@ -310,12 +314,6 @@ async function main() {
 	} finally {
 		await client?.close();
 		await tserver?.stop();
-
-		// Preserve the database — copy the db + WAL/SHM before cleanup closes it
-		const dbDest = join(runDir, "mab.db");
-		await fs.copyFile(tdb.dbPath, dbDest).catch(() => {});
-		await fs.copyFile(`${tdb.dbPath}-wal`, `${dbDest}-wal`).catch(() => {});
-		await fs.copyFile(`${tdb.dbPath}-shm`, `${dbDest}-shm`).catch(() => {});
 		await tdb.cleanup();
 	}
 

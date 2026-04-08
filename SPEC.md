@@ -407,9 +407,10 @@ summary and they lack summaries, it generates keyword descriptions.
 7. Writes to `attributes.summary` via `KnownStore.setAttributes()`
 8. Cascade calls `rematerialize` — summaries render via ToolRegistry
 
-**Cost:** One LLM call per batch of unsummarized entries. After first
-crunch, entries have permanent summaries. Future passes halve
-deterministically (no LLM). Subsequent crunch spirals skip the call.
+**Cost:** One LLM call per cascade invocation (not per halving pass).
+All unsummarized full entries are batched upfront before the halving
+spiral begins. After first crunch, entries have permanent summaries.
+Future cascades skip the call for those entries entirely.
 
 **Failure:** If the LLM call fails, entries are still demoted — they
 render with empty summaries. Logged as `[RUMMY] Crunch: summarization
