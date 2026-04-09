@@ -68,13 +68,13 @@ export default class Progress {
 		if (fidelityParts.length > 0)
 			parts.push(`Entries: ${fidelityParts.join(" · ")}`);
 
-		if (pct > 75) {
+		if (pct > 85) {
 			parts.push(
-				'Context above 75%. YOU MUST summarize enough entries to free space or the run will fail:\nExample: <set path="known://people/rumsfeld" fidelity="summary" summary="defense,secretary,born 1932"/>\nRestore later with Example: <set path="known://people/rumsfeld" fidelity="full"/>',
+				'Context above 85%. YOU MUST summarize enough entries to free space or the run will fail:\nExample: <set path="known://people/rumsfeld" fidelity="summary" summary="defense,secretary,born 1932"/>\nRestore later: <set path="known://people/rumsfeld" fidelity="full"/>',
 			);
 		} else if (pct > 50) {
 			parts.push(
-				'Context above 50%. YOU MAY summarize entries to free space:\nExample: <set path="known://people/rumsfeld" fidelity="summary" summary="defense,secretary,born 1932"/>\nRestore later with Example: <set path="known://people/rumsfeld" fidelity="full"/>',
+				'Context above 50%. YOU MAY summarize entries to free space:\nExample: <set path="known://people/rumsfeld" fidelity="summary" summary="defense,secretary,born 1932"/>\nRestore later: <set path="known://people/rumsfeld" fidelity="full"/>',
 			);
 		}
 

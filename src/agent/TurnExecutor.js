@@ -173,10 +173,12 @@ export default class TurnExecutor {
 		});
 		messages = budgetResult.messages;
 		rows = budgetResult.rows;
-		const assembledTokens = messages.reduce(
+		const assembledTokens = budgetResult.assembledTokens ?? messages.reduce(
 			(sum, m) => sum + countTokens(m.content),
 			0,
 		);
+
+
 
 		let filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
@@ -656,6 +658,8 @@ export default class TurnExecutor {
 			resultPath,
 		};
 	}
+
+
 
 	async #rematerialize(runId, loopId, turn) {
 		await this.#db.clear_turn_context.run({ run_id: runId, turn });

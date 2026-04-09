@@ -235,10 +235,7 @@ export default class AgentLoop {
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
 
-		const seedCtx = await this.#db.get_last_context_tokens.get({
-			run_id: currentRunId,
-		});
-		let lastAssembledTokens = seedCtx?.context_tokens ?? 0;
+		let lastAssembledTokens = 0;
 
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
@@ -256,52 +253,6 @@ export default class AgentLoop {
 					return out;
 				}
 				loopIteration++;
-
-				// Auto-housekeeping: if context >75%, let model compress.
-				// Stall-based: continues as long as tokens decrease. 3 stalls = give up.
-				if (lastAssembledTokens > 0) {
-					let hkStalls = 0;
-					const hkStart = lastAssembledTokens;
-					while (hkStalls < 3) {
-						const usedPct = (lastAssembledTokens / contextSize) * 100;
-						if (usedPct <= 75) break;
-						const freed = hkStart - lastAssembledTokens;
-						const target = hkStart - Math.floor(contextSize * 0.75);
-						console.warn(
-							`[RUMMY] Housekeeping: context at ${usedPct | 0}%, freed ${freed} of ~${target} tokens needed`,
-						);
-						const beforeTokens = lastAssembledTokens;
-						const hkResult = await this.#turnExecutor.execute({
-							mode,
-							project,
-							projectId,
-							currentRunId,
-							currentAlias,
-							currentLoopId,
-							requestedModel,
-							loopPrompt: freed > 0
-								? `Your context is at ${usedPct | 0}%. Freed ${freed} tokens so far, ~${target - freed} remaining. YOU MUST use <set path="..." fidelity="summary" summary="keyword1,keyword2"/> on your full-fidelity entries with the most tokens to avoid a crash.`
-								: `Your context is at ${usedPct | 0}%. YOU MUST use <set path="..." fidelity="summary" summary="keyword1,keyword2"/> on at least half of your full-fidelity entries with the most tokens to avoid a crash.`,
-							noContext,
-							toolSet,
-							contextSize,
-							options: {
-								...options,
-								isContinuation: false,
-							},
-							signal: controller.signal,
-						});
-						lastAssembledTokens = hkResult.assembledTokens;
-						if (lastAssembledTokens >= beforeTokens) {
-							hkStalls++;
-							console.warn(
-								`[RUMMY] Housekeeping stall ${hkStalls}/3: no progress (${lastAssembledTokens} tokens)`,
-							);
-						} else {
-							hkStalls = 0;
-						}
-					}
-				}
 
 				let turnPrompt;
 				if (loopIteration === 1) {
