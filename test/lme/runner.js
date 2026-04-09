@@ -133,8 +133,6 @@ async function ingestContext(client, model, run, chunks) {
 		const prompt = [
 			`Memory ingestion — chunk ${chunkNum} of ${total}.`,
 			"Read and remember the key facts from these conversation sessions.",
-			"Use <known> to save important information (personal details, preferences, events, relationships).",
-			"Use <update> when done (do NOT use <summarize>).",
 			"",
 			chunks[i],
 		].join("\n");
@@ -250,7 +248,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const initR = await client.call("ask", {
 		model,
 		prompt:
-			"You are being evaluated on long-term memory. Incoming conversation history follows. Use <known> to save facts about the user. Reply with <update>ready</update>.",
+			"You are being evaluated on long-term memory. Incoming conversation history follows. Use <known> to save facts about the user. Reply with <summarize>ready</summarize>.",
 		noContext: true,
 		noInteraction: true,
 	});
@@ -376,12 +374,14 @@ async function main() {
 
 	process.env.RUMMY_HOME = runDir;
 
-	const tdb = await TestDb.create("lme");
-	const dbDest = join(runDir, "lme.db");
+	const dbPath = join(runDir, "lme.db");
+	const tdb = await TestDb.createAt(dbPath, "lme");
 	const tserver = await TestServer.start(tdb.db);
 	const client = new AuditClient(tserver.url, tdb.db);
 	await client.connect();
 	await client.call("init", { name: "LME", projectRoot: "/tmp/rummy-lme" });
+
+	console.log(`Database: ${dbPath}`);
 
 	const allResults = [];
 	const resultsPath = join(runDir, "results.ndjson");
@@ -414,11 +414,6 @@ async function main() {
 	} finally {
 		await client?.close();
 		await tserver?.stop();
-
-		// Copy DB before cleanup destroys the temp files
-		await fs.copyFile(tdb.dbPath, dbDest).catch(() => {});
-		await fs.copyFile(`${tdb.dbPath}-wal`, `${dbDest}-wal`).catch(() => {});
-		await fs.copyFile(`${tdb.dbPath}-shm`, `${dbDest}-shm`).catch(() => {});
 		await tdb.cleanup();
 	}
 
