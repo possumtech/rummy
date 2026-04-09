@@ -87,7 +87,7 @@ export async function initPlugins(db, store, hooks) {
 		}
 	}
 
-	await store.loadSchemes(db);
+	if (store) store.loadSchemes(db);
 }
 
 function resolvePlugin(packageName) {

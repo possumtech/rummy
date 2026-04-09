@@ -42,7 +42,13 @@ export default class McpServerManager {
 			});
 		};
 
-		const server = { child, call, rl };
+		const notify = (method, params = {}) => {
+			child.stdin.write(
+				`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`,
+			);
+		};
+
+		const server = { child, call, notify, rl };
 		this.#servers.set(name, server);
 
 		// Initialize MCP handshake
@@ -51,7 +57,7 @@ export default class McpServerManager {
 			capabilities: {},
 			clientInfo: { name: "rummy-mcp", version: "0.1.0" },
 		});
-		await call("notifications/initialized", {});
+		notify("notifications/initialized", {});
 
 		return server;
 	}
