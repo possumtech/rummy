@@ -37,184 +37,72 @@ MAB benchmark: Conflict_Resolution row 0 = 1/100 (frontier = 7/100).
 Ingestion working: atomic entries, no duplication, 100% crunch success.
 Retrieval from stashed entries is the bottleneck.
 
-### Pending: Budget-Driven Housekeeping
+## Paradigm Refactoring — Unified Plugin Protocol
 
-When the next prompt won't fit, the budget plugin enqueues a housekeeping
-loop ahead of it. No special code paths. Same queue, same execution.
+The budget/housekeeping work exposed systemic drift from the plugin
+protocol. RPC calls bypass tool handlers. File operations bypass budget.
+Token math means different things in different places. The codebase has
+too many special paths for anyone to reason about.
 
-**Design:**
-1. Budget detects incoming prompt won't fit in remaining context
-2. Budget enqueues a housekeeping ask loop with a specific token goal:
-   "Free at least X tokens to receive the next prompt"
-3. Model runs the housekeeping loop with full tools, compresses entries
-4. Model sends `<summarize>` — budget checks token goal
-5. If goal not met: 413 rejection with "Still X tokens over. Keep going."
-6. Three 413 rejections per housekeeping loop, three loops max = 9 chances
-7. If goal met: original prompt's loop runs
-8. If 9 chances exhausted: original prompt runs and crashes naturally
+**Goal:** Every operation — model, client, plugin — flows through the
+same tool handler with the same budget enforcement. No exceptions that
+aren't documented in EXCEPTIONS.md with clear justification.
 
-**Implementation checklist:**
-- [x] Budget plugin: returns 413 with overflow count when over ceiling
-- [x] TurnExecutor: returns 413 to AgentLoop without calling LLM
-- [x] AgentLoop #executeLoop: returns 413 to #drainQueue
-- [x] AgentLoop #drainQueue: on 413, enqueues housekeeping loop, retries (3 loops max)
-- [x] Housekeeping prompt: "Free at least X tokens" with set fidelity example
-- [x] After 3 housekeeping loops exhausted: 413 returned to client
-- [x] No crashes. All budget violations are 413 rejections.
-- [x] Progress: 50% and 75% advisory warnings
-- [x] E2E test: budget rejection returns 413 to client
-- [x] Integration tests: 413 status, overflow math, assembledTokens
-- [x] LME/MAB runners: stop ingestion on 413
-- [ ] E2E test: model receives housekeeping, compresses, original prompt runs
-- [ ] Remove dead `noRepo` flag (set but never read)
-- [ ] 413 reject `<summarize>` during housekeeping when token goal not met
+**Approach:**
+1. Audit every code path against PLUGINS.md's Unified API contract
+2. Document each violation in EXCEPTIONS.md (justify or fix)
+3. Update PLUGINS.md to be the third-party-facing truth
+4. Keep SPEC.md aligned with implementation
+5. Checklist progress here in AGENTS.md
 
-### Other Pending
+**Audit checklist:**
+- [ ] RPC `get` with `persist: true` — calls `File.activate` directly,
+  bypasses tool handler and budget. Must go through the same path as
+  model `<get>`.
+- [ ] RPC `get` without `persist` — goes through `dispatchTool`. Verify
+  budget is checked.
+- [ ] RPC `set`, `rm`, `mv`, `cp` — verify all go through tool handlers
+- [ ] `File.activate` / `File.ignore` / `File.drop` — direct DB calls,
+  no tool handler, no budget check
+- [ ] `known_entries.tokens` vs assembled tokens — two different numbers,
+  used interchangeably in multiple places
+- [ ] `get_promoted_token_total` query — uses DB tokens, should use
+  assembled tokens or be removed
+- [ ] TurnExecutor `#record` budget gate — uses `countTokens(cmd.body)`
+  estimate, not actual assembled measurement
+- [ ] `noRepo` flag — set but never read by any plugin
+- [ ] Crunch plugin — subscribes to `cascade.summarize` hook that no
+  longer fires (budget simplified). Dead code.
+- [ ] `v_model_context` token calculation vs `turn_context` tokens vs
+  `known_entries` tokens — three sources, three meanings
+- [ ] Housekeeping loop in `#drainQueue` — backbone code that should
+  be a plugin or removed
+- [ ] `summarize` 413 rejection in TurnExecutor — uses stale
+  `assembledTokens` (pre-command), not post-command state
+- [ ] Progress plugin token math — uses `ctx.lastContextTokens` from
+  previous turn, not current materialized state
+- [ ] Create EXCEPTIONS.md with documented backbone responsibilities
+- [ ] Update PLUGINS.md to reflect current reality
+- [ ] Align SPEC.md with implementation
 
-- [ ] Body-content similarity dedup (catches paraphrases, not just exact paths)
+**After refactoring is complete:**
 
-### Architecture Notes
+### Future: Budget Enforcement
+- Budget plugin: 413 on every tool use that would exceed context
+- Universal: model tools, client RPC, and plugin calls all checked
+- Measurement: full materialization after each tool, not DB estimates
+- No crashes: all violations are 413 rejections with token math
 
-**Budget is a plugin.** `src/plugins/budget/budget.js` registers
-`hooks.budget.enforce()`. TurnExecutor delegates through the hook.
-Crunch plugin subscribes to `cascade.summarize` for upfront summary
-generation (one LLM call per cascade, not per halving pass).
+### Future: Housekeeping Loop
+- Budget plugin enqueues housekeeping loop when next prompt won't fit
+- 3 loops max, 3 summarize rejections per loop
+- 413 to client if model can't free enough
+- Implemented as a plugin, not backbone code
 
-**toolDocs are annotated code.** Each plugin has a `*Doc.js` file with
-`[text, rationale]` line arrays. Text goes to the model, rationale stays
-in source. Changing any line requires reading all rationales first.
-
-**Benchmark DBs are durable.** MAB/LME runners create the database
-directly in the results directory (`TestDb.createAt`). Survives kills,
-crashes, and power failures. The DB is the primary output of every run.
-
-**toolDocs filter uses docsMap pattern.** Each plugin writes to a
-keyed object (`docsMap.set = docs`). Instructions plugin filters by
-`activeTools` set — enables selective inclusion for noInteraction/noWeb.
-
-## Budget Cascade — Context Guarantee
-
-The budget engine guarantees materialized context fits the model's
-context window. Context overflow is structurally impossible.
-
-### Selection: Fattest Half of Oldest Half
-
-No scheme-based priority tiers. Selection is purely mechanical:
-1. Sort all candidates by `source_turn` ASC (oldest first)
-2. Take the oldest half
-3. Within that half, sort by `tokens` DESC (fattest first)
-4. Take the fattest half
-
-This selects 25% of entries per pass — the simultaneously oldest AND
-largest entries. Maximum staleness, maximum token savings per demotion.
-
-### Crunch Spiral
-
-**Phase 1: Summary generation** (one LLM call upfront):
-- Before the halving spiral, ALL full entries without summaries are
-  batched into a single crunch LLM call. Summaries generated upfront
-  and stored in `attributes.summary`.
-
-**Phase 2: Halving** (no LLM calls, fidelity flags only):
-- **Full entries** → set to summary fidelity (summary already exists).
-- **Summary entries with summaries > 80 chars** → halved deterministically.
-  2000→1000→500→250→125→80.
-- **Summary entries with summaries < 10 chars** → drop to index fidelity.
-- Repeat until under budget or no crunchable entries remain.
-
-ToolRegistry.view() prepends `attributes.summary` above whatever the
-plugin's summary view produces. This happens automatically for all
-schemes including third-party plugins.
-
-### Death Spiral
-
-When the crunch spiral can't free enough, the death spiral stashes
-the oldest half by scheme into `known://stash_<scheme>` index entries:
-- Stash entries at index fidelity — model sees path only.
-- Stash body contains the full URI list of stored entries.
-- Model can `<get path="known://stash_known"/>` to see the list.
-- Repeat until under budget or nothing left to stash.
-
-### Crash
-
-If stash entries + system prompt + tool docs don't fit, that's a
-configuration error — the model's context window is too small.
-
-### 413 Budget Gate
-
-Before the cascade runs, entry recording checks remaining budget headroom.
-Any entry whose body would exceed remaining context budget is rejected with
-HTTP 413. The model sees the rejection and can adapt with `<set stored/>`
-or `<rm>`.
-
-### Token Accounting
-
-Single source of truth: `countTokens()` on the final assembled message
-strings. No estimates, no per-entry overhead calculations, no disconnect
-between what's measured and what's sent. The assembled message IS the
-measurement.
-
-Entry-level `tokens` column in `known_entries` and `turn_context` used
-only for demotion candidate estimation (which entries to batch-demote).
-Never used as the authority on whether the budget is met.
-
----
-
-## Bug: Known Entry Dedup (HIGH PRIORITY)
-
-`#record` for `known` entries creates a unique slug path every time via
-`slugPath`. No content dedup. When the model re-saves the same fact across
-continuation turns (common during ingestion), duplicates accumulate.
-MAB benchmark showed 8.8x duplication (2309 entries for 262 unique facts).
-
-Fix: dedup known entries by body content within a run, same as `unknown`
-does with `getUnknownValues`. If a known entry with the same body already
-exists in the run, skip or update rather than creating a new path.
-
-## Bug: Crunch Parser Path Mismatch
-
-The crunch LLM receives entry paths and echoes them back in its response.
-But it shortens them — `known://319` instead of the full
-`known://319.%20Bernard%20Arnault%20is%20a%20citizen%20of%20France.`.
-`parseSummaries` requires exact path match against `pathSet`, so summaries
-don't get written. MAB showed "wrote 0/40 summaries" repeatedly.
-
-Fix: either send the full path to the crunch LLM (may be too long), or
-use prefix/fuzzy matching in the parser, or send a numbered index and
-map back to paths after parsing.
-
-## Todo: Proposal Lifecycle — Remaining Work
-
-Sequential dispatch implemented: commands execute one at a time.
-On 202 (proposed) or >= 400 (error), remaining commands abort with
-409 and context message. Get handler returns 413 when files would
-exceed context budget.
-
-Remaining:
-- [ ] Integration test for sequential abort behavior
-- [ ] E2E test: model sends rm + summarize, rm rejected, verify
-  model sees rejection + aborted summarize on next turn
-
-## Todo: Repetition Detection — Get Handler Dedup
-
-When the model sends `<get path="lua/*.lua">` AND individual
-`<get>lua/init.lua</get>` in the same response, files promote
-twice. The overhead is minimal (promotion is idempotent) but
-receipt entries accumulate. Low priority.
-
-
-
-
-
-## Todo: Test Improvements
-
-- [x] E2E test diagnostic DBs persist to /tmp/rummy_test_diag/
-- [x] Integration test for scheme registration via plugins (8 tests)
-- [x] Ask mode restrictions (already covered in mode_enforcement.test.js)
-- [x] Sed chaining (already covered in XmlParser.test.js)
-- [ ] Fix set handler integration tests (path normalization mismatch
-  between test setup `set://src%2F...` and handler's `set://src/...`)
-- [ ] Live tests need rerun for HTTP status code migration
+### Future: Benchmarking (MAB + LME)
+- Runners are clean and separate — no changes needed
+- Re-run after refactoring to measure improvement
+- Model cooperation with budget is the remaining challenge
 
 ## Done: Session 2026-04-06/07 (continued)
 

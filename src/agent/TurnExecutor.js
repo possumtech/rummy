@@ -391,6 +391,7 @@ export default class TurnExecutor {
 			summaryText = null;
 		}
 
+
 		// If model sent neither, heal from content
 		let statusHealed = false;
 		if (!summaryText && !updateText) {
