@@ -464,12 +464,15 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const bigContent = `// ${"x".repeat(3000)}\n`;
 		await fs.writeFile(join(projectRoot, "src/pressure1.js"), bigContent);
 		await fs.writeFile(join(projectRoot, "src/pressure2.js"), bigContent);
-		await client.call("get", { path: "src/pressure1.js", persist: true });
-		await client.call("get", { path: "src/pressure2.js", persist: true });
+
+		const setup = await client.call("startRun", { model });
+		await client.call("get", { path: "src/pressure1.js", persist: true, run: setup.run });
+		await client.call("get", { path: "src/pressure2.js", persist: true, run: setup.run });
 
 		const r1 = await client.call("ask", {
 			model,
 			prompt: "Reply with OK.",
+			run: setup.run,
 			noInteraction: true,
 		});
 		await client.assertRun(r1, 200, "pressure-load");

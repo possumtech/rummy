@@ -3,6 +3,8 @@ export default class Prompt {
 
 	constructor(core) {
 		this.#core = core;
+		core.hooks.tools.onView("prompt", (entry) => entry.body);
+		core.hooks.tools.onView("progress", (entry) => entry.body);
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.filter("assembly.user", this.assemblePrompt.bind(this), 300);
 	}
