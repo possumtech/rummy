@@ -235,7 +235,10 @@ export default class AgentLoop {
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
 
-		let lastAssembledTokens = 0;
+		const seedCtx = await this.#db.get_last_context_tokens.get({
+			run_id: currentRunId,
+		});
+		let lastAssembledTokens = seedCtx?.context_tokens ?? 0;
 
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
@@ -255,7 +258,7 @@ export default class AgentLoop {
 				loopIteration++;
 
 				// Auto-housekeeping: if context >75%, inject compression turns (up to 3)
-				if (loopIteration > 1) {
+				if (lastAssembledTokens > 0) {
 					for (let hk = 0; hk < 3; hk++) {
 						const usedPct = (lastAssembledTokens / contextSize) * 100;
 						if (usedPct <= 75) break;
@@ -271,7 +274,7 @@ export default class AgentLoop {
 							currentLoopId,
 							requestedModel,
 							loopPrompt:
-								`Your context is at ${usedPct | 0}%. YOU MUST use <set path="known://..." fidelity="summary" summary="keyword1,keyword2"/> on at least half of your full-fidelity entries. Then <update>done</update>.`,
+								`Your context is at ${usedPct | 0}%. YOU MUST use <set path="..." fidelity="summary" summary="keyword1,keyword2"/> on at least half of your full-fidelity entries with the most tokens to avoid a crash.`,
 							noContext,
 							toolSet,
 							contextSize,
