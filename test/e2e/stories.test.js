@@ -327,9 +327,16 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		});
 		await client.assertRun(r, [200, 202], "unknowns");
 		if (r.status === 202) await acceptAll(client, r, tdb.db, projectRoot);
+		// Check that unknowns were registered at some point (may be resolved/removed by now)
 		const entries = await allEntries(tdb.db, r.run);
 		const unknowns = entries.filter((e) => e.scheme === "unknown");
-		assert.ok(unknowns.length > 0, "should have registered unknowns");
+		const rmUnknowns = entries.filter(
+			(e) => e.scheme === "rm" && e.path?.includes("unknown://"),
+		);
+		assert.ok(
+			unknowns.length > 0 || rmUnknowns.length > 0,
+			"should have registered unknowns (may have been resolved and removed)",
+		);
 	});
 
 	// Story 6: Lite mode — no file context, multi-turn memory.
