@@ -257,14 +257,20 @@ export default class AgentLoop {
 				}
 				loopIteration++;
 
-				// Auto-housekeeping: if context >75%, inject compression turns (up to 3)
+				// Auto-housekeeping: if context >75%, let model compress.
+				// Stall-based: continues as long as tokens decrease. 3 stalls = give up.
 				if (lastAssembledTokens > 0) {
-					for (let hk = 0; hk < 3; hk++) {
+					let hkStalls = 0;
+					const hkStart = lastAssembledTokens;
+					while (hkStalls < 3) {
 						const usedPct = (lastAssembledTokens / contextSize) * 100;
 						if (usedPct <= 75) break;
+						const freed = hkStart - lastAssembledTokens;
+						const target = hkStart - Math.floor(contextSize * 0.75);
 						console.warn(
-							`[RUMMY] Housekeeping ${hk + 1}/3: context at ${usedPct | 0}%`,
+							`[RUMMY] Housekeeping: context at ${usedPct | 0}%, freed ${freed} of ~${target} tokens needed`,
 						);
+						const beforeTokens = lastAssembledTokens;
 						const hkResult = await this.#turnExecutor.execute({
 							mode,
 							project,
@@ -273,8 +279,9 @@ export default class AgentLoop {
 							currentAlias,
 							currentLoopId,
 							requestedModel,
-							loopPrompt:
-								`Your context is at ${usedPct | 0}%. YOU MUST use <set path="..." fidelity="summary" summary="keyword1,keyword2"/> on at least half of your full-fidelity entries with the most tokens to avoid a crash.`,
+							loopPrompt: freed > 0
+								? `Your context is at ${usedPct | 0}%. Freed ${freed} tokens so far, ~${target - freed} remaining. YOU MUST use <set path="..." fidelity="summary" summary="keyword1,keyword2"/> on your full-fidelity entries with the most tokens to avoid a crash.`
+								: `Your context is at ${usedPct | 0}%. YOU MUST use <set path="..." fidelity="summary" summary="keyword1,keyword2"/> on at least half of your full-fidelity entries with the most tokens to avoid a crash.`,
 							noContext,
 							toolSet,
 							contextSize,
@@ -285,6 +292,14 @@ export default class AgentLoop {
 							signal: controller.signal,
 						});
 						lastAssembledTokens = hkResult.assembledTokens;
+						if (lastAssembledTokens >= beforeTokens) {
+							hkStalls++;
+							console.warn(
+								`[RUMMY] Housekeeping stall ${hkStalls}/3: no progress (${lastAssembledTokens} tokens)`,
+							);
+						} else {
+							hkStalls = 0;
+						}
 					}
 				}
 
