@@ -1,18 +1,21 @@
 # known
 
-Writes arbitrary key/value entries into the store at full fidelity.
+Writes knowledge entries into the store at full fidelity.
 
 ## Registration
 
 - **Tool**: `known`
-- **Modes**: ask, act
-- **Category**: act
-- **Handler**: Upserts the entry body at the target path with `full` state.
+- **Category**: `data`
+- **Handler**: Upserts the entry body at the target path with status 200.
+- **Filter**: `assembly.system` at priority 100 — renders `<knowns>` section.
 
 ## Projection
 
-Shows `known {path}` followed by the entry body.
+Shows `# known {path}` followed by the entry body.
 
-## Behavior
+## Assembly
 
-The target path defaults to `entry.resultPath` but can be overridden via `attrs.path`. Used by the model to persist structured notes and context.
+Filters turn_context rows where `category === "data"`. Renders all
+data entries (files, knowledge, skills, URLs) into the `<knowns>` section
+of the system message. Third-party plugins that register with
+`category: "data"` automatically appear here.

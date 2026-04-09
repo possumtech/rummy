@@ -1,18 +1,13 @@
 # update
 
-Structural tool for model-generated progress updates.
+Lifecycle signal — the model declares it has more work to do.
 
 ## Registration
 
 - **Tool**: `update`
-- **Modes**: ask, act
-- **Category**: structural
-- **Handler**: None — projection only.
+- **Category**: `logging`
+- **Handler**: None — recorded by TurnExecutor as a lifecycle signal.
 
 ## Projection
 
 Shows `update` followed by the entry body.
-
-## Behavior
-
-No handler logic. Allows the model to emit progress/status entries that appear in context via projection.

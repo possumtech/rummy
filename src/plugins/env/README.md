@@ -1,13 +1,12 @@
 # env
 
-Stores environment/context information as a pass-through entry.
+Runs an exploratory shell command and records the output.
 
 ## Registration
 
 - **Tool**: `env`
-- **Modes**: ask, act
-- **Category**: ask
-- **Handler**: Upserts the entry body as `pass` state with original attributes preserved.
+- **Category**: `logging`
+- **Handler**: Upserts the entry at status 202 (proposed) with original attributes preserved.
 
 ## Projection
 

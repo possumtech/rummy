@@ -357,7 +357,7 @@ text from body + attributes.
 Each turn:
 
 1. Write `instructions://system` (empty body, attributes = { persona })
-2. Run plugin hooks (`onTurn`) — plugins modify entries before the model sees them
+2. Emit `turn.started` — plugins write prompt/progress/instructions entries
 3. Project `instructions://system` → instructions text
 4. Query `v_model_context` VIEW → visible entries
 5. Project each entry through its tool's `full`/`summary` projection

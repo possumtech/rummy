@@ -5,9 +5,8 @@ Presents a question to the user with optional multiple-choice answers.
 ## Registration
 
 - **Tool**: `ask_user`
-- **Modes**: ask, act
-- **Category**: act
-- **Handler**: Parses options (semicolon or comma delimited) and upserts a `proposed` entry awaiting user response.
+- **Category**: `logging`
+- **Handler**: Parses options (semicolon or comma delimited) and upserts at status 202 (proposed) awaiting user response.
 
 ## Projection
 
@@ -15,4 +14,5 @@ Shows the question and answer attributes.
 
 ## Behavior
 
-Options are split by semicolons first, falling back to commas. The entry stays in `proposed` state until resolved by the client.
+Options are split by semicolons first, falling back to commas. The entry
+stays at status 202 until resolved by the client via `run/resolve`.

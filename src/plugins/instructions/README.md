@@ -4,8 +4,12 @@ Projects the system prompt instructions into model context.
 
 ## Registration
 
-- **Projection**: `onProject("instructions", ...)` — no tool handler.
+- **View**: `full` — renders preamble + tool docs + persona.
+- **Event**: `turn.started` — writes `instructions://system` entry.
+- **Filter**: `instructions.toolDocs` — gathers docs from all tool plugins.
 
 ## Behavior
 
-Replaces the `[%TOOLS%]` placeholder in the prompt body with the `tools` attribute. Appends tool descriptions and persona text when present in attributes.
+Replaces the `[%TOOLS%]` placeholder in the preamble with the active
+tool list. Appends tool descriptions gathered via the `toolDocs` filter
+and persona text when present in attributes.

@@ -1,7 +1,7 @@
 # current
 
 Renders the `<current>` section of the user message — the active loop's
-model responses, tool results, and agent warnings.
+tool results and lifecycle signals.
 
 ## Registration
 
@@ -9,6 +9,6 @@ model responses, tool results, and agent warnings.
 
 ## Behavior
 
-Filters turn_context rows where `category` is `result` or `structural`
-and `source_turn >= loopStartTurn`. Renders each entry chronologically
-with status symbols. Empty on the first turn of a loop.
+Filters turn_context rows where `category === "logging"` and
+`source_turn >= loopStartTurn`. Renders each entry chronologically
+with turn number and status. Empty on the first turn of a loop.

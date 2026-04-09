@@ -88,9 +88,7 @@ aren't documented in EXCEPTIONS.md with clear justification.
   Secondary safety net; real budget enforcement is pre-LLM via
   budget.enforce() on assembled messages. Acceptable.
 - [x] `noRepo` flag — fully plumbed in core: RPC→AgentLoop→TurnExecutor
-  →RummyContext.noRepo. External repo plugin reads it (as `noContext`,
-  needs rename to `noRepo`). Core implementation complete, repo
-  plugin rename tracked separately.
+  →RummyContext.noRepo. All repos aligned (core, rummy.repo, rummy.nvim).
 - [x] Crunch plugin — REMOVED. Dead code. cascade.summarize hook removed.
 - [x] `v_model_context` token calculation vs `turn_context` tokens vs
   `known_entries` tokens — three sources, three meanings, all consistent.
@@ -275,4 +273,3 @@ aren't documented in EXCEPTIONS.md with clear justification.
 - Hedberg extraction to `@possumtech/rummy.hedberg` npm package
 - Bulk operation aggregation (one entry per pattern operation)
 - Non-git file scanner fallback
-- rummy.repo: rename `noContext` → `noRepo` (one-line change)

@@ -10,6 +10,6 @@ history from prior ask/act invocations on this run.
 
 ## Behavior
 
-Filters turn_context rows where `category` is `result` or `structural`
+Filters turn_context rows where `category` is `logging` or `prompt`
 and `source_turn < loopStartTurn`. Renders each entry chronologically
-with status symbols (✓/✗/·).
+with turn number and status.

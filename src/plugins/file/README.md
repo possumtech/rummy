@@ -2,24 +2,21 @@
 
 Owns file-related projections and file constraint management.
 
-## Files
-
-- **file.js** — Plugin registration, projection hooks, and constraint CRUD (activate, ignore, drop).
-- **FileScanner.js** — Scans project directories for file entries.
-- **GitProvider.js** — Git integration for file discovery and status.
-- **ProjectContext.js** — Builds project-level context from scanned files.
-- **FsProvider.js** — Filesystem abstraction for file reading/writing.
-
 ## Registration
 
-- **Projections**: Registers `onProject` handlers for schemes: `file`, `known`, `skill`, `ask`, `act`, `progress`. All project the entry body directly.
+- **Schemes**: `file` (bare paths), `http`, `https` — all `category: "data"`
+- **Views**: `full` and `summary` for file scheme. Default identity views
+  for `http`/`https` (overridden by rummy.web when installed).
 - **No tool handler** — file operations are dispatched through `set`, `get`, `rm`, etc.
 
 ## File Constraints
 
-Static methods `activate`, `ignore`, and `drop` manage per-project file constraints in the database. Constraints control file visibility across all runs:
+Static methods `setConstraint` and `dropConstraint` manage per-project
+file constraints in the database. Constraints are project-level config
+(backbone), not tool dispatch. See SPEC.md §2.3.
 
-- `active` / `readonly` — always promoted into context.
+- `active` / `readonly` — promoted into context.
 - `ignore` — excluded from scans; demotes existing entries.
 
-Paths are normalized to project-relative when absolute.
+Entry promotion/demotion from constraints goes through the standard
+tool handler chain via `dispatchTool`.

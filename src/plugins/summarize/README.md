@@ -1,13 +1,12 @@
 # summarize
 
-Structural tool for model-generated summaries.
+Lifecycle signal — the model declares it has completed the task.
 
 ## Registration
 
 - **Tool**: `summarize`
-- **Modes**: ask, act
-- **Category**: structural
-- **Handler**: None — projection only.
+- **Category**: `logging`
+- **Handler**: None — recorded by TurnExecutor as a lifecycle signal.
 
 ## Projection
 
@@ -15,4 +14,6 @@ Shows `summarize` followed by the entry body.
 
 ## Behavior
 
-No handler logic. The tool registration exists so the model can emit summary entries that appear in context via projection.
+If the model sends `<summarize>` but actions in the same turn failed,
+TurnExecutor overrides it to `<update>` — the model's assertion that
+it's done is false.
