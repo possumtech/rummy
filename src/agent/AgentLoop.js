@@ -277,7 +277,7 @@ export default class AgentLoop {
 							contextSize,
 							options: {
 								...options,
-								isContinuation: true,
+								isContinuation: false,
 							},
 							signal: controller.signal,
 						});
