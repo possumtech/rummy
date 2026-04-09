@@ -466,8 +466,16 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		await fs.writeFile(join(projectRoot, "src/pressure2.js"), bigContent);
 
 		const setup = await client.call("startRun", { model });
-		await client.call("get", { path: "src/pressure1.js", persist: true, run: setup.run });
-		await client.call("get", { path: "src/pressure2.js", persist: true, run: setup.run });
+		await client.call("get", {
+			path: "src/pressure1.js",
+			persist: true,
+			run: setup.run,
+		});
+		await client.call("get", {
+			path: "src/pressure2.js",
+			persist: true,
+			run: setup.run,
+		});
 
 		const r1 = await client.call("ask", {
 			model,
@@ -490,6 +498,12 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			noInteraction: true,
 		});
 		await client.assertRun(r2, 413, "pressure-rejected");
+
+		// Clean up: remove file constraints and pressure files
+		await client.call("store", { path: "src/pressure1.js", clear: true });
+		await client.call("store", { path: "src/pressure2.js", clear: true });
+		await fs.unlink(join(projectRoot, "src/pressure1.js")).catch(() => {});
+		await fs.unlink(join(projectRoot, "src/pressure2.js")).catch(() => {});
 	});
 
 	// Story 10: Web search — model searches, gets results, answers from them.
@@ -497,8 +511,9 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const r = await client.call("ask", {
 			model,
 			prompt:
-				'Search the web for "Mitch Hedberg death date" and tell me when he died.',
+				'Search the web for "Mitch Hedberg death date" and tell me when he died. Limit search results to 3.',
 			noInteraction: true,
+			noRepo: true,
 		});
 		await client.assertRun(r, 200, "search");
 		assertContains(await lastResponse(tdb.db, r.run), "2005", "search-year");
