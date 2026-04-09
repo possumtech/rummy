@@ -15,8 +15,8 @@ that thread a value through subscribers in priority order).
 
 **Every `<tag>` the model sees is a plugin.** The `<known>` section
 of the system message is rendered by the known plugin. The `<progress>`
-section is rendered by the progress plugin. The `<ask>` tag is rendered
-by the prompt plugin. No monolithic assembler decides what goes where.
+section is rendered by the progress plugin. The `<prompt>` tag is
+rendered by the prompt plugin. No monolithic assembler decides what goes where.
 Each plugin filters for its own data from the shared row set, renders
 its section, and returns.
 
@@ -77,17 +77,30 @@ retrievable via `<get>`).
 
 Paths use URI scheme syntax. Bare paths (no `://`) are files.
 
+Every entry plays one of four roles:
+
+| Role | Category | Section | Description |
+|------|----------|---------|-------------|
+| **Data** | `data` | `<knowns>` | Entries the model works with — persistent state |
+| **Logging** | `logging` | `<current>`/`<previous>` | Records of what happened — tool results, lifecycle signals |
+| **Unknowns** | `unknown` | `<unknowns>` | Open questions the model is tracking |
+| **Prompt** | `prompt` | `<prompt>` | The task driving the loop |
+
+`logging` is the default category. Plugins opt into `data` explicitly.
+
 | Scheme | Category | Description |
 |--------|----------|-------------|
-| `NULL` (bare path) | file | File content. JOINs via `COALESCE(scheme, 'file')`. `file://` prefix stripped by hedberg. |
-| `known://` | knowledge | Model-registered knowledge. One fact per entry. |
-| `unknown://` | knowledge | Unresolved questions. |
-| `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | result | Tool result entries. |
-| `skill://` | knowledge | Skill docs. Rendered in system message. |
-| `tool://` | structural | Internal plugin metadata. `model_visible = 0`. |
-| `http://`, `https://` | result | Web content. |
-| `summarize://`, `update://` | structural | Lifecycle signals. |
-| `system://`, `prompt://`, `ask://`, `act://`, `progress://`, `reasoning://`, `model://`, `error://`, `user://`, `assistant://`, `content://` | structural | Audit entries. `model_visible = 0`. |
+| `NULL` (bare path) | data | File content. JOINs via `COALESCE(scheme, 'file')`. `file://` prefix stripped by hedberg. |
+| `known://` | data | Model-registered knowledge. One fact per entry. |
+| `skill://` | data | Skill docs. Rendered in system message. |
+| `http://`, `https://` | data | Web content. |
+| `unknown://` | unknown | Unresolved questions. |
+| `prompt://` | prompt | User prompt with `mode` attribute (`ask`/`act`). |
+| `progress://` | prompt | Continuation prompt. |
+| `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | logging | Tool result entries. |
+| `summarize://`, `update://` | logging | Lifecycle signals. |
+| `tool://` | audit | Internal plugin metadata. `model_visible = 0`. |
+| `system://`, `reasoning://`, `model://`, `error://`, `user://`, `assistant://`, `content://` | audit | Audit entries. `model_visible = 0`. |
 
 ### 1.3 Scheme Registry
 
@@ -293,16 +306,14 @@ Two messages per turn. System = stable truth. User = active task.
         (current loop model responses, agent warnings, and tools used, in order)
     </current>
     <progress>the above actions have been performed on this user prompt:</progress>
-    <ask tools="..." warn="...">user prompt</ask>
-    — OR —
-    <act tools="...">user prompt</act>
+    <prompt mode="ask|act" tools="...">user prompt</prompt>
 [/user]
 ```
 
 **System** contains everything the model needs to know.
 **User** contains everything the model needs to do.
 
-The `<ask>`/`<act>` tag is present on every turn — first turn and
+The `<prompt>` tag is present on every turn — first turn and
 continuations alike. The model always sees its task. The active prompt
 is extracted from its chronological position and placed last for maximum
 recency. `<progress>` bridges the gap, narrating the causal relationship
@@ -320,7 +331,7 @@ first turn of the first loop.
 
 **Current** = the active loop's work so far. Model responses, tool
 results, agent warnings — in order. Does NOT include the user prompt
-(one per loop, extracted to `<ask>`/`<act>`). Lives in the user
+(one per loop, extracted to `<prompt>`). Lives in the user
 message as immediate context. Empty on the first turn of a loop.
 
 When a new prompt arrives on an existing run, the prior loop's
@@ -358,7 +369,7 @@ Each turn:
 8. Invoke `assembly.user` filter chain (empty string as base):
    - Current plugin (priority 100) → `<current>` section
    - Progress plugin (priority 200) → `<progress>` section
-   - Prompt plugin (priority 300) → `<ask>`/`<act>` section
+   - Prompt plugin (priority 300) → `<prompt>` section
 9. Store as `system://N` and `user://N` audit entries
 
 The VIEW determines visibility from `fidelity` and `status`:

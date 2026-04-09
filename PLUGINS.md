@@ -18,7 +18,7 @@ export default class Ping {
     constructor(core) {
         this.#core = core;
         core.ensureTool();
-        core.registerScheme({ category: "result" });
+        core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
         core.on("full", this.full.bind(this));
         core.filter("instructions.toolDocs", async (docsMap) => {
@@ -76,7 +76,7 @@ export default class MyTool {
     constructor(core) {
         this.#core = core;
         core.ensureTool();
-        core.registerScheme({ category: "result" });
+        core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
         core.on("full", this.full.bind(this));
         core.on("summary", this.summary.bind(this));
@@ -146,7 +146,7 @@ constructor.
 ```js
 core.registerScheme({
     modelVisible: 1,     // 1 or 0 — appears in v_model_context
-    category: "result",  // "result", "file", "knowledge", "structural"
+    category: "logging",  // "data", "logging", "unknown", "prompt"
 });
 ```
 
@@ -469,7 +469,7 @@ prepended above the plugin's summary view output.
 | `previous` | Assembly | Render `<previous>` loop history |
 | `current` | Assembly | Render `<current>` active loop work |
 | `progress` | Assembly | Render `<progress>` telemetry + warnings |
-| `prompt` | Assembly | Render `<ask>`/`<act>` prompt tag |
+| `prompt` | Assembly | Render `<prompt mode="ask|act">` tag |
 | `hedberg` | Utility | Pattern matching, interpretation, normalization |
 | `instructions` | Internal | Preamble + tool docs + persona assembly |
 | `file` | Internal | File entry projections and constraints |

@@ -1,6 +1,6 @@
 # prompt
 
-Renders the `<ask>` or `<act>` tag at the end of the user message.
+Renders the `<prompt mode="ask|act">` tag at the end of the user message.
 Always present on every turn — the model always sees its task.
 
 ## Registration
@@ -9,8 +9,8 @@ Always present on every turn — the model always sees its task.
 
 ## Behavior
 
-Finds the latest `ask://` or `act://` entry in the turn_context rows.
-Renders with `tools` attribute (available tool list) and optional `warn`
-attribute in ask mode ("File and system modification prohibited on this
-turn."). Falls back to the mode passed by the core if no prompt entry
+Finds the latest `prompt://` entry in the turn_context rows. The mode
+(`ask` or `act`) is stored in `attributes.mode`. Renders with `tools`
+attribute (available tool list) and optional `warn` attribute in ask
+mode. Falls back to the mode passed by the core if no prompt entry
 exists.

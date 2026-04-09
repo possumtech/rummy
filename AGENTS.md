@@ -32,13 +32,16 @@ Tool docs in annotated `*Doc.js` line arrays with rationales.
 Lifecycle/action split in TurnExecutor — summarize/update/known/unknown
 always dispatch, never 409'd. Summarize overridden when actions fail.
 Preamble: XML format, conclude every turn, summaries approximate.
+Four entry roles: data (knowns), logging (current/previous), unknown,
+prompt. Default category: logging. `<prompt mode="ask|act">` replaces
+`<ask>`/`<act>`. Each plugin owns its own views (no file.js proxying).
 PLUGINS.md: third-party developer guide, §0-§11, quickstart, payloads,
-wire format. plugin_spec.test.js: 30 compliance tests. EXCEPTIONS.md:
-4 documented protocol violations. SPEC.md aligned with implementation.
+wire format. plugin_spec.test.js: 30 compliance tests.
+Hooks: tool.before/after, entry.recording filter, turn.completed,
+loop.started/completed, run.created, context.materialized.
 Paradigm audit: 26/26 complete. All protocol violations resolved.
-File.activate split into setConstraint (backbone) + dispatchTool
-(promotion). RPC set routes all entries through handler chain. RPC
-mv, cp implemented. Unified API: all three tiers, same interface.
+Unified API: all three tiers, same interface. File.activate split
+into setConstraint (backbone) + dispatchTool (promotion).
 MAB benchmark: Conflict_Resolution row 0 = 1/100 (frontier = 7/100).
 
 ## Paradigm Refactoring — Unified Plugin Protocol
