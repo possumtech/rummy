@@ -35,15 +35,13 @@ export default class File {
 		return entry.body;
 	}
 
-	static async activate(
-		db,
-		knownStore,
-		projectId,
-		pattern,
-		visibility = "active",
-	) {
+	/**
+	 * Set a project-level file constraint. Backbone operation —
+	 * constraints are project config, not tool dispatch.
+	 */
+	static async setConstraint(db, projectId, pattern, visibility = "active") {
 		const path = await normalizePath(db, projectId, pattern);
-		if (!path) return { status: "ok" };
+		if (!path) return null;
 
 		await db.upsert_file_constraint.run({
 			project_id: projectId,
@@ -51,34 +49,22 @@ export default class File {
 			visibility,
 		});
 
-		const runs = await db.get_all_runs.all({ project_id: projectId });
-		if (visibility === "active") {
-			for (const run of runs) {
-				await knownStore.promoteByPattern(run.id, path, null, 0);
-			}
-		} else if (visibility === "ignore") {
-			for (const run of runs) {
-				await knownStore.demoteByPattern(run.id, path, null);
-			}
-		}
-
-		return { status: "ok" };
+		return path;
 	}
 
-	static async ignore(db, knownStore, projectId, pattern) {
-		return File.activate(db, knownStore, projectId, pattern, "ignore");
-	}
-
-	static async drop(db, projectId, pattern) {
+	/**
+	 * Remove a project-level file constraint.
+	 */
+	static async dropConstraint(db, projectId, pattern) {
 		const path = await normalizePath(db, projectId, pattern);
-		if (!path) return { status: "ok" };
+		if (!path) return null;
 
 		await db.delete_file_constraint.run({
 			project_id: projectId,
 			pattern: path,
 		});
 
-		return { status: "ok" };
+		return path;
 	}
 }
 

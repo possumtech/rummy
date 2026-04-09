@@ -1,4 +1,4 @@
-import KnownStore from "../../agent/KnownStore.js";
+
 import msg from "../../agent/messages.js";
 import RummyContext from "../../hooks/RummyContext.js";
 import File from "../file/file.js";
@@ -94,14 +94,10 @@ export default class Rpc {
 			handler: async (params, ctx) => {
 				if (!params.path) throw new Error("path is required");
 
-				// EXCEPTION #1: File.activate bypasses tool handler.
-				// See EXCEPTIONS.md. Fix requires splitting constraint
-				// management from entry promotion.
 				if (params.persist) {
 					const visibility = params.readonly ? "readonly" : "active";
-					return File.activate(
+					await File.setConstraint(
 						ctx.db,
-						ctx.projectAgent.entries,
 						ctx.projectId,
 						params.path,
 						visibility,
@@ -118,8 +114,8 @@ export default class Rpc {
 			description: "Promote entry to full state.",
 			params: {
 				path: "string — file path or glob pattern",
-				run: "string? — run alias (required without persist)",
-				persist: "boolean? — create file constraint",
+				run: "string — run alias",
+				persist: "boolean? — also create file constraint",
 				readonly: "boolean? — with persist, set readonly instead of active",
 			},
 			requiresInit: true,
@@ -130,18 +126,17 @@ export default class Rpc {
 				if (!params.path) throw new Error("path is required");
 
 				if (params.clear) {
-					return File.drop(ctx.db, ctx.projectId, params.path);
+					await File.dropConstraint(ctx.db, ctx.projectId, params.path);
+					return { status: "ok" };
 				}
 				if (params.persist) {
-					if (params.ignore) {
-						return File.ignore(
-							ctx.db,
-							ctx.projectAgent.entries,
-							ctx.projectId,
-							params.path,
-						);
-					}
-					return File.drop(ctx.db, ctx.projectId, params.path);
+					const visibility = params.ignore ? "ignore" : "active";
+					await File.setConstraint(
+						ctx.db,
+						ctx.projectId,
+						params.path,
+						visibility,
+					);
 				}
 
 				if (!params.run) throw new Error("run is required");
@@ -155,7 +150,7 @@ export default class Rpc {
 			params: {
 				path: "string — file path or glob pattern",
 				run: "string? — run alias (required without persist)",
-				persist: "boolean? — create file constraint",
+				persist: "boolean? — also create file constraint",
 				ignore: "boolean? — with persist, exclude from scan",
 				clear: "boolean? — remove existing constraint",
 			},
@@ -167,21 +162,14 @@ export default class Rpc {
 				if (!params.path) throw new Error("path is required");
 				if (!params.run) throw new Error("run is required");
 				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-
-				const scheme = KnownStore.scheme(params.path);
-				if (scheme) {
-					await rummy.set({
-						path: params.path,
-						body: params.body,
-						status: params.status || 200,
-						attributes: params.attributes,
-					});
-				} else {
-					await dispatchTool(hooks, rummy, "set", params.path, params.body, {
-						path: params.path,
-						...params.attributes,
-					});
-				}
+				await dispatchTool(
+					hooks,
+					rummy,
+					"set",
+					params.path,
+					params.body || "",
+					{ path: params.path, ...params.attributes },
+				);
 				return { status: "ok" };
 			},
 			description: "Create or update an entry.",
@@ -189,7 +177,6 @@ export default class Rpc {
 				run: "string — run alias",
 				path: "string — entry path",
 				body: "string? — entry content",
-				status: "number? — HTTP status code (default: 200)",
 				attributes: "object? — JSON attributes",
 			},
 			requiresInit: true,
@@ -209,6 +196,48 @@ export default class Rpc {
 			params: {
 				run: "string — run alias",
 				path: "string — entry path",
+			},
+			requiresInit: true,
+		});
+
+		r.register("mv", {
+			handler: async (params, ctx) => {
+				if (!params.path) throw new Error("path is required");
+				if (!params.to) throw new Error("to is required");
+				if (!params.run) throw new Error("run is required");
+				const { rummy } = await buildRunContext(hooks, ctx, params.run);
+				await dispatchTool(hooks, rummy, "mv", params.path, "", {
+					path: params.path,
+					to: params.to,
+				});
+				return { status: "ok" };
+			},
+			description: "Move an entry.",
+			params: {
+				run: "string — run alias",
+				path: "string — source path",
+				to: "string — destination path",
+			},
+			requiresInit: true,
+		});
+
+		r.register("cp", {
+			handler: async (params, ctx) => {
+				if (!params.path) throw new Error("path is required");
+				if (!params.to) throw new Error("to is required");
+				if (!params.run) throw new Error("run is required");
+				const { rummy } = await buildRunContext(hooks, ctx, params.run);
+				await dispatchTool(hooks, rummy, "cp", params.path, "", {
+					path: params.path,
+					to: params.to,
+				});
+				return { status: "ok" };
+			},
+			description: "Copy an entry.",
+			params: {
+				run: "string — run alias",
+				path: "string — source path",
+				to: "string — destination path",
 			},
 			requiresInit: true,
 		});
