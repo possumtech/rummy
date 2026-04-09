@@ -37,7 +37,39 @@ MAB benchmark: Conflict_Resolution row 0 = 1/100 (frontier = 7/100).
 Ingestion working: atomic entries, no duplication, 100% crunch success.
 Retrieval from stashed entries is the bottleneck.
 
-### Pending
+### Pending: Budget-Driven Housekeeping
+
+When the next prompt won't fit, the budget plugin enqueues a housekeeping
+loop ahead of it. No special code paths. Same queue, same execution.
+
+**Design:**
+1. Budget detects incoming prompt won't fit in remaining context
+2. Budget enqueues a housekeeping ask loop with a specific token goal:
+   "Free at least X tokens to receive the next prompt"
+3. Model runs the housekeeping loop with full tools, compresses entries
+4. Model sends `<summarize>` — budget checks token goal
+5. If goal not met: 413 rejection with "Still X tokens over. Keep going."
+6. Three 413 rejections per housekeeping loop, three loops max = 9 chances
+7. If goal met: original prompt's loop runs
+8. If 9 chances exhausted: original prompt runs and crashes naturally
+
+**Implementation checklist:**
+- [x] Budget plugin: returns 413 with overflow count when over ceiling
+- [x] TurnExecutor: returns 413 to AgentLoop without calling LLM
+- [x] AgentLoop #executeLoop: returns 413 to #drainQueue
+- [x] AgentLoop #drainQueue: on 413, enqueues housekeeping loop, retries (3 loops max)
+- [x] Housekeeping prompt: "Free at least X tokens" with set fidelity example
+- [x] After 3 housekeeping loops exhausted: 413 returned to client
+- [x] No crashes. All budget violations are 413 rejections.
+- [x] Progress: 50% and 75% advisory warnings
+- [x] E2E test: budget rejection returns 413 to client
+- [x] Integration tests: 413 status, overflow math, assembledTokens
+- [x] LME/MAB runners: stop ingestion on 413
+- [ ] E2E test: model receives housekeeping, compresses, original prompt runs
+- [ ] Remove dead `noRepo` flag (set but never read)
+- [ ] 413 reject `<summarize>` during housekeeping when token goal not met
+
+### Other Pending
 
 - [ ] Body-content similarity dedup (catches paraphrases, not just exact paths)
 

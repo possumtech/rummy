@@ -102,7 +102,7 @@ async function ingest(client, db, model, run, chunks) {
 			model,
 			prompt,
 			run,
-			noContext: true,
+			noRepo: true,
 			noInteraction: true,
 			noWeb: true,
 		});
@@ -285,7 +285,7 @@ async function main() {
 		model: MODEL,
 		prompt:
 			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save facts. Reply with <update>ready</update>.",
-		noContext: true,
+		noRepo: true,
 		noInteraction: true,
 		noWeb: true,
 	});

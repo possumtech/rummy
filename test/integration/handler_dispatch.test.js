@@ -45,7 +45,7 @@ function makeRummy(
 		sequence,
 		runId: RUN_ID,
 		turnId: 1,
-		noContext: false,
+		noRepo: false,
 		contextSize,
 		systemPrompt: "test",
 		loopPrompt: "",

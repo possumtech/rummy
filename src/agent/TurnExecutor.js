@@ -28,7 +28,7 @@ export default class TurnExecutor {
 		currentLoopId,
 		requestedModel,
 		loopPrompt,
-		noContext,
+		noRepo,
 		toolSet,
 		contextSize,
 		options,
@@ -72,7 +72,7 @@ export default class TurnExecutor {
 				runId: currentRunId,
 				loopId: currentLoopId,
 				turnId: turnRow.id,
-				noContext,
+				noRepo,
 				toolSet,
 				contextSize,
 				systemPrompt: null,
@@ -178,7 +178,17 @@ export default class TurnExecutor {
 			0,
 		);
 
-
+		// Budget overflow — return 413 to caller without calling LLM
+		if (budgetResult.status === 413) {
+			return {
+				turn,
+				turnId: turnRow.id,
+				status: 413,
+				assembledTokens,
+				contextSize,
+				overflow: budgetResult.overflow,
+			};
+		}
 
 		let filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,

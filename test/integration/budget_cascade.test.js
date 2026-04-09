@@ -51,31 +51,47 @@ describe("Budget — ceiling check", () => {
 		});
 	}
 
-	it("no crash when under budget", async () => {
+	it("status 200 when under budget", async () => {
 		await store.upsert(RUN_ID, 1, "known://small", "a small fact", 200);
 		const result = await assembleAndEnforce(100000);
-		assert.strictEqual(result.demoted.length, 0);
+		assert.strictEqual(result.status, 200);
 	});
 
-	it("crash when over budget", async () => {
+	it("status 413 when over budget", async () => {
 		for (let i = 0; i < 10; i++) {
 			await store.upsert(RUN_ID, i + 1, `known://fact_${i}`, pad(50), 200);
 		}
+		const result = await assembleAndEnforce(100);
+		assert.strictEqual(result.status, 413);
+		assert.ok(result.overflow > 0, "should report overflow amount");
+	});
 
-		await assert.rejects(
-			() => assembleAndEnforce(100),
-			(err) => {
-				assert.ok(err.message.includes("exceeds model limit"));
-				return true;
-			},
+	it("overflow reports exact token count over ceiling", async () => {
+		for (let i = 0; i < 5; i++) {
+			await store.upsert(RUN_ID, i + 1, `known://fact_${i}`, pad(20), 200);
+		}
+		const result = await assembleAndEnforce(100);
+		assert.strictEqual(result.status, 413);
+		assert.strictEqual(
+			result.overflow,
+			result.assembledTokens - 100,
+			"overflow should equal assembledTokens minus contextSize",
 		);
 	});
 
-	it("passes when entries fit within budget", async () => {
-		await store.upsert(RUN_ID, 1, "known://a", "fact one", 200);
-		await store.upsert(RUN_ID, 2, "known://b", "fact two", 200);
+	it("assembledTokens returned on both 200 and 413", async () => {
+		await store.upsert(RUN_ID, 1, "known://a", "fact", 200);
 
-		const result = await assembleAndEnforce(50000);
-		assert.strictEqual(result.demoted.length, 0);
+		const ok = await assembleAndEnforce(100000);
+		assert.ok(ok.assembledTokens > 0, "200 should include assembledTokens");
+
+		for (let i = 0; i < 10; i++) {
+			await store.upsert(RUN_ID, i + 2, `known://b_${i}`, pad(50), 200);
+		}
+		const over = await assembleAndEnforce(100);
+		assert.ok(
+			over.assembledTokens > 0,
+			"413 should include assembledTokens",
+		);
 	});
 });

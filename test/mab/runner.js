@@ -117,15 +117,22 @@ async function ingestContext(client, model, run, chunks) {
 			model,
 			prompt,
 			run,
-			noContext: true,
+			noRepo: true,
 			noInteraction: true,
 			noWeb: true,
 		});
 		if (r.status === 202) r = await resolveAll(client, r);
-		if (r.status >= 500) {
-			console.warn(
-				`    chunk ${chunkNum}/${total} failed: ${r.error || "unknown"}`,
+		if (r.status === 413) {
+			console.error(
+				`    chunk ${chunkNum}/${total} REJECTED: context full`,
 			);
+			break;
+		}
+		if (r.status >= 500) {
+			console.error(
+				`    chunk ${chunkNum}/${total} FAILED: ${r.error || "unknown"}`,
+			);
+			break;
 		}
 		process.stdout.write(`    ingesting ${chunkNum}/${total}\r`);
 	}
@@ -184,7 +191,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		model,
 		prompt:
 			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save every fact. Reply with <summarize>ready</summarize>.",
-		noContext: true,
+		noRepo: true,
 	});
 	let run = initR.run;
 

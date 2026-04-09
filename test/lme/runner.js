@@ -127,6 +127,7 @@ async function resolveAll(client, result) {
 }
 
 async function ingestSessions(client, model, run, sessions, dates, sessionIds) {
+	let ingested = 0;
 	for (let i = 0; i < sessions.length; i++) {
 		const session = sessions[i];
 		const date = dates?.[i] || `session ${i + 1}`;
@@ -143,19 +144,27 @@ async function ingestSessions(client, model, run, sessions, dates, sessionIds) {
 			model,
 			prompt,
 			run,
-			noContext: true,
+			noRepo: true,
 			noInteraction: true,
 		});
 		if (r.status === 202) r = await resolveAll(client, r);
-		if (r.status >= 500) {
-			console.warn(
-				`    session ${i + 1}/${total} failed: ${r.error || "unknown"}`,
+		if (r.status === 413) {
+			console.error(
+				`    session ${i + 1}/${total} REJECTED: context full`,
 			);
+			break;
 		}
+		if (r.status >= 500) {
+			console.error(
+				`    session ${i + 1}/${total} FAILED: ${r.error || "unknown"}`,
+			);
+			break;
+		}
+		ingested++;
 		const preview = text.replace(/\n/g, " ").slice(0, 80);
 		console.log(`    ${i + 1}/${total} ${date}: ${preview}`);
 	}
-	console.log(`    ingested ${sessions.length} sessions`);
+	console.log(`    ingested ${ingested} of ${sessions.length} sessions`);
 }
 
 async function askQuestion(client, db, model, run, question, questionDate) {
@@ -210,7 +219,7 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 	let r = await client.call("ask", {
 		model,
 		prompt,
-		noContext: true,
+		noRepo: true,
 		noInteraction: true,
 	});
 	if (r.status === 202) r = await resolveAll(client, r);
@@ -252,7 +261,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		model,
 		prompt:
 			"You are being evaluated on long-term memory. Incoming conversation history follows. Use <known> to save facts about the user. Reply with <summarize>ready</summarize>.",
-		noContext: true,
+		noRepo: true,
 		noInteraction: true,
 	});
 	let run = initR.run;

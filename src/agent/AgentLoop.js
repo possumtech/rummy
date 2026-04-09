@@ -32,7 +32,7 @@ export default class AgentLoop {
 	}
 
 	async #ensureRun(projectId, model, run, options) {
-		const _noContext = options?.noContext === true;
+		const _noRepo = options?.noRepo === true;
 		const isFork = options?.fork === true;
 		const requestedModel = model;
 
@@ -112,7 +112,7 @@ export default class AgentLoop {
 		if (!project)
 			throw new Error(msg("error.project_not_found", { projectId }));
 
-		const noContext = options?.noContext === true;
+		const noRepo = options?.noRepo === true;
 		const noInteraction = options?.noInteraction === true;
 		const noWeb = options?.noWeb === true;
 		const requestedModel = model;
@@ -137,7 +137,7 @@ export default class AgentLoop {
 			model: requestedModel,
 			prompt: prompt || "",
 			config: JSON.stringify({
-				noContext,
+				noRepo,
 				noInteraction,
 				noWeb,
 				temperature: options?.temperature,
@@ -165,7 +165,7 @@ export default class AgentLoop {
 			if (!loop) break;
 
 			const loopConfig = loop.config ? JSON.parse(loop.config) : {};
-			const result = await this.#executeLoop({
+			let result = await this.#executeLoop({
 				mode: loop.mode,
 				project,
 				projectId,
@@ -174,12 +174,89 @@ export default class AgentLoop {
 				currentLoopId: loop.id,
 				requestedModel: loop.model,
 				prompt: loop.prompt,
-				noContext: loopConfig.noContext || false,
+				noRepo: loopConfig.noRepo || false,
 				noInteraction: loopConfig.noInteraction || false,
 				noWeb: loopConfig.noWeb || false,
 				options: { ...options, temperature: loopConfig.temperature },
 				hook: loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
 			});
+
+			// Budget overflow — run housekeeping loops before retrying
+			if (result.status === 413) {
+				let resolved = false;
+				for (let hkLoop = 0; hkLoop < 3 && !resolved; hkLoop++) {
+					console.warn(
+						`[RUMMY] Housekeeping loop ${hkLoop + 1}/3: need to free ${result.overflow} tokens`,
+					);
+					const hkPrompt = `Your context is full. Free at least ${result.overflow} tokens by lowering the fidelity of entries with the most tokens. Use <set path="..." fidelity="summary" summary="keyword1,keyword2,keyword3"/>.`;
+
+					// Run housekeeping as a normal loop
+					const hkSeq = await this.#db.next_loop.get({ run_id: currentRunId });
+					const hkRow = await this.#db.enqueue_loop.get({
+						run_id: currentRunId,
+						sequence: hkSeq.sequence,
+						mode: loop.mode,
+						model: loop.model,
+						prompt: hkPrompt,
+						config: JSON.stringify(loopConfig),
+					});
+
+					const hkResult = await this.#executeLoop({
+						mode: loop.mode,
+						project,
+						projectId,
+						currentRunId,
+						currentAlias,
+						currentLoopId: hkRow.id,
+						requestedModel: loop.model,
+						prompt: hkPrompt,
+						noRepo: loopConfig.noRepo || false,
+						noInteraction: loopConfig.noInteraction || false,
+						noWeb: loopConfig.noWeb || false,
+						options: { ...options, temperature: loopConfig.temperature },
+						hook: loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
+					});
+
+					await this.#db.complete_loop.run({
+						id: hkRow.id,
+						status: hkResult.status,
+						result: JSON.stringify(hkResult),
+					});
+
+					// Retry the original prompt
+					result = await this.#executeLoop({
+						mode: loop.mode,
+						project,
+						projectId,
+						currentRunId,
+						currentAlias,
+						currentLoopId: loop.id,
+						requestedModel: loop.model,
+						prompt: loop.prompt,
+						noRepo: loopConfig.noRepo || false,
+						noInteraction: loopConfig.noInteraction || false,
+						noWeb: loopConfig.noWeb || false,
+						options: { ...options, temperature: loopConfig.temperature },
+						hook: loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
+					});
+
+					if (result.status !== 413) resolved = true;
+				}
+
+				// After 3 housekeeping loops, if still 413, return it to client
+				if (result.status === 413) {
+					await this.#db.complete_loop.run({
+						id: loop.id,
+						status: 413,
+						result: JSON.stringify(result),
+					});
+					return {
+						run: currentAlias,
+						status: 413,
+						error: `Context full after 3 housekeeping attempts. Need ${result.overflow} more tokens.`,
+					};
+				}
+			}
 
 			await this.#db.complete_loop.run({
 				id: loop.id,
@@ -203,7 +280,7 @@ export default class AgentLoop {
 		currentLoopId,
 		requestedModel,
 		prompt,
-		noContext,
+		noRepo,
 		noInteraction,
 		noWeb,
 		options,
@@ -273,12 +350,22 @@ export default class AgentLoop {
 					currentLoopId,
 					requestedModel,
 					loopPrompt: turnPrompt,
-					noContext,
+					noRepo,
 					toolSet,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal: controller.signal,
 				});
+
+				// Budget overflow — return 413 to drainQueue for housekeeping
+				if (result.status === 413) {
+					return {
+						run: currentAlias,
+						status: 413,
+						overflow: result.overflow,
+						turn: result.turn,
+					};
+				}
 
 				lastAssembledTokens = result.assembledTokens;
 

@@ -345,7 +345,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		const r1 = await client.call("ask", {
 			model,
 			prompt: "Remember the number 42. Reply with just 'OK'.",
-			noContext: true,
+			noRepo: true,
 			noInteraction: true,
 		});
 		await client.assertRun(r1, 200, "lite-1");
@@ -485,7 +485,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			run: r1.run,
 			noInteraction: true,
 		});
-		await client.assertRun(r2, 500, "pressure-crash");
+		await client.assertRun(r2, 413, "pressure-rejected");
 	});
 
 	// Story 10: Web search — model searches, gets results, answers from them.

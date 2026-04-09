@@ -55,8 +55,8 @@ export default class RummyContext {
 		return this.#context.loopId || null;
 	}
 
-	get noContext() {
-		return this.#context.noContext === true;
+	get noRepo() {
+		return this.#context.noRepo === true;
 	}
 
 	get noInteraction() {
