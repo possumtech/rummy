@@ -42,6 +42,10 @@ projected AS (
 			WHEN visible_fidelity IN ('full', 'summary') THEN body
 			ELSE ''
 		END AS body
+		-- Four roles: data, logging, unknown, prompt.
+		-- These are structural — see PluginContext.CATEGORIES.
+		-- 'tool' is internal (model_visible=0 in practice).
+		-- Default is 'logging' — plugins opt into 'data' explicitly.
 		, CASE
 			WHEN scheme IS NULL THEN 'data'
 			WHEN scheme IN ('http', 'https') THEN 'data'

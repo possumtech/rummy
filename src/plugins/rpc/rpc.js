@@ -90,6 +90,7 @@ export default class Rpc {
 
 		// --- Entry operations (same dispatch as model) ---
 
+		// Override: get has persist flag for file constraint management
 		r.register("get", {
 			handler: async (params, ctx) => {
 				if (!params.path) throw new Error("path is required");
@@ -121,6 +122,7 @@ export default class Rpc {
 			requiresInit: true,
 		});
 
+		// store is not a tool — it manages file constraints
 		r.register("store", {
 			handler: async (params, ctx) => {
 				if (!params.path) throw new Error("path is required");
@@ -153,91 +155,6 @@ export default class Rpc {
 				persist: "boolean? — also create file constraint",
 				ignore: "boolean? — with persist, exclude from scan",
 				clear: "boolean? — remove existing constraint",
-			},
-			requiresInit: true,
-		});
-
-		r.register("set", {
-			handler: async (params, ctx) => {
-				if (!params.path) throw new Error("path is required");
-				if (!params.run) throw new Error("run is required");
-				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(
-					hooks,
-					rummy,
-					"set",
-					params.path,
-					params.body || "",
-					{ path: params.path, ...params.attributes },
-				);
-				return { status: "ok" };
-			},
-			description: "Create or update an entry.",
-			params: {
-				run: "string — run alias",
-				path: "string — entry path",
-				body: "string? — entry content",
-				attributes: "object? — JSON attributes",
-			},
-			requiresInit: true,
-		});
-
-		r.register("rm", {
-			handler: async (params, ctx) => {
-				if (!params.path) throw new Error("path is required");
-				if (!params.run) throw new Error("run is required");
-				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(hooks, rummy, "rm", params.path, "", {
-					path: params.path,
-				});
-				return { status: "ok" };
-			},
-			description: "Remove an entry.",
-			params: {
-				run: "string — run alias",
-				path: "string — entry path",
-			},
-			requiresInit: true,
-		});
-
-		r.register("mv", {
-			handler: async (params, ctx) => {
-				if (!params.path) throw new Error("path is required");
-				if (!params.to) throw new Error("to is required");
-				if (!params.run) throw new Error("run is required");
-				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(hooks, rummy, "mv", params.path, "", {
-					path: params.path,
-					to: params.to,
-				});
-				return { status: "ok" };
-			},
-			description: "Move an entry.",
-			params: {
-				run: "string — run alias",
-				path: "string — source path",
-				to: "string — destination path",
-			},
-			requiresInit: true,
-		});
-
-		r.register("cp", {
-			handler: async (params, ctx) => {
-				if (!params.path) throw new Error("path is required");
-				if (!params.to) throw new Error("to is required");
-				if (!params.run) throw new Error("run is required");
-				const { rummy } = await buildRunContext(hooks, ctx, params.run);
-				await dispatchTool(hooks, rummy, "cp", params.path, "", {
-					path: params.path,
-					to: params.to,
-				});
-				return { status: "ok" };
-			},
-			description: "Copy an entry.",
-			params: {
-				run: "string — run alias",
-				path: "string — source path",
-				to: "string — destination path",
 			},
 			requiresInit: true,
 		});
@@ -564,6 +481,10 @@ export default class Rpc {
 		r.registerNotification("run/progress", "Turn status.");
 		r.registerNotification("ui/render", "Streaming output.");
 		r.registerNotification("ui/notify", "Toast notification.");
+
+		// Auto-dispatch: any registered tool is callable via RPC.
+		// Checked at request time — no timing dependency on plugin load order.
+		r.setToolFallback(hooks, buildRunContext, dispatchTool);
 	}
 }
 

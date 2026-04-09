@@ -57,6 +57,30 @@ describe("PLUGINS.md Spec Compliance", () => {
 
 	// §3 Registration
 	describe("§3 Registration", () => {
+		it("§3.0 CATEGORIES is frozen with exactly four roles", async () => {
+			const PluginContext = (
+				await import("../../src/hooks/PluginContext.js")
+			).default;
+			const cats = PluginContext.CATEGORIES;
+			assert.ok(Object.isFrozen(cats), "CATEGORIES is frozen");
+			assert.strictEqual(cats.size, 4);
+			assert.ok(cats.has("data"));
+			assert.ok(cats.has("logging"));
+			assert.ok(cats.has("unknown"));
+			assert.ok(cats.has("prompt"));
+		});
+
+		it("§3.0.1 registerScheme rejects invalid categories", async () => {
+			const PluginContext = (
+				await import("../../src/hooks/PluginContext.js")
+			).default;
+			const ctx = new PluginContext("test_invalid", tdb.hooks);
+			assert.throws(
+				() => ctx.registerScheme({ category: "structural" }),
+				/Invalid category/,
+			);
+		});
+
 		it("§3.1 ensureTool called explicitly for handler-less tools", () => {
 			// summarize, update, unknown have no on("handler") but are in tool list
 			const names = tdb.hooks.tools.names;

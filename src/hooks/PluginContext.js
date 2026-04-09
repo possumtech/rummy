@@ -49,12 +49,19 @@ export default class PluginContext {
 	}
 
 	registerScheme({ name, modelVisible = 1, category = "logging" } = {}) {
+		if (!PluginContext.CATEGORIES.has(category)) {
+			throw new Error(
+				`Invalid category "${category}". Must be one of: ${[...PluginContext.CATEGORIES].join(", ")}`,
+			);
+		}
 		this.#schemes.push({
 			name: name || this.#name,
 			model_visible: modelVisible,
 			category,
 		});
 	}
+
+	static CATEGORIES = Object.freeze(new Set(["data", "logging", "unknown", "prompt"]));
 
 	ensureTool() {
 		this.#hooks.tools.ensureTool(this.#name);
