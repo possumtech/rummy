@@ -20,6 +20,9 @@ export default class File {
 		core.registerScheme({ name: "https", category: "data" });
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
+		// Default identity views for http/https — rummy.web overrides these
+		core.hooks.tools.onView("http", (entry) => entry.body);
+		core.hooks.tools.onView("https", (entry) => entry.body);
 	}
 
 	full(entry) {
