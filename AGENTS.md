@@ -66,23 +66,25 @@ aren't documented in EXCEPTIONS.md with clear justification.
   no tool handler, no budget check
 - [ ] `known_entries.tokens` vs assembled tokens — two different numbers,
   used interchangeably in multiple places
-- [ ] `get_promoted_token_total` query — uses DB tokens, should use
-  assembled tokens or be removed
+- [x] `get_promoted_token_total` query — REMOVED. Dead SQL, no callers.
 - [ ] TurnExecutor `#record` budget gate — uses `countTokens(cmd.body)`
   estimate, not actual assembled measurement
-- [ ] `noRepo` flag — set but never read by any plugin
-- [ ] Crunch plugin — subscribes to `cascade.summarize` hook that no
-  longer fires (budget simplified). Dead code.
+- [ ] `noRepo` flag — passed through but never read. Disables default
+  project/repo file scanning. Files can still be added explicitly by
+  the client. Core and rummy.repo should skip auto-loading project
+  files when set. Needs implementation.
+- [x] Crunch plugin — REMOVED. Dead code. cascade.summarize hook removed.
 - [ ] `v_model_context` token calculation vs `turn_context` tokens vs
   `known_entries` tokens — three sources, three meanings
-- [ ] Housekeeping loop in `#drainQueue` — backbone code that should
-  be a plugin or removed
-- [ ] `summarize` 413 rejection in TurnExecutor — uses stale
-  `assembledTokens` (pre-command), not post-command state
+- [x] Housekeeping loop in `#drainQueue` — removed from backbone.
+  413 retry with housekeeping enqueue remains (correct pattern).
+- [x] `summarize` 413 rejection in TurnExecutor — removed.
+  Future: budget plugin handles via entry.changed hook.
 - [ ] Progress plugin token math — uses `ctx.lastContextTokens` from
   previous turn, not current materialized state
-- [ ] Create EXCEPTIONS.md with documented backbone responsibilities
-- [ ] Update PLUGINS.md to reflect current reality
+- [x] EXCEPTIONS.md created with documented backbone responsibilities
+- [x] PLUGINS.md updated with numbered sections, comprehensive API
+- [x] plugin_spec.test.js created with section-numbered compliance tests
 - [ ] Align SPEC.md with implementation
 
 **After refactoring is complete:**

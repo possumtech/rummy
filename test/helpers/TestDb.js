@@ -70,6 +70,10 @@ export default class TestDb {
 		await registerPlugins([pluginsDir], hooks);
 		const store = new (await import("../../src/agent/KnownStore.js")).default(
 			db,
+			{
+				onChanged: (event) =>
+					hooks.entry.changed.emit(event).catch(() => {}),
+			},
 		);
 		await initPlugins(db, store, hooks);
 		return new TestDb(db, dbPath, hooks, suiteName);

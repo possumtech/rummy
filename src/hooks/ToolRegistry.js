@@ -81,7 +81,7 @@ export default class ToolRegistry {
 
 		const body = await fn(entry);
 
-		// Prepend crunch-generated summary above plugin output at summary fidelity
+		// Prepend summary keywords above plugin output at summary fidelity
 		if (fidelity === "summary" && summary && body) {
 			return `${summary}\n${body}`;
 		}

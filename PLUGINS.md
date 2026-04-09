@@ -363,6 +363,9 @@ prepended above the plugin's summary view output.
 | `telemetry` | Internal | Audit entries, usage stats, reasoning_content |
 | `budget` | Internal | Context ceiling enforcement (413) |
 
+Removed: `crunch` (dead code, replaced by model-owned context management),
+`store` (merged into `set` fidelity attributes).
+
 ## §10 External Plugins
 
 | Plugin | Package | Description |

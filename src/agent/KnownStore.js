@@ -2,9 +2,15 @@ import slugify from "../sql/functions/slugify.js";
 
 export default class KnownStore {
 	#db;
+	#onChanged;
 
-	constructor(db) {
+	constructor(db, { onChanged } = {}) {
 		this.#db = db;
+		this.#onChanged = onChanged || null;
+	}
+
+	#emitChanged(runId, path, changeType) {
+		if (this.#onChanged) this.#onChanged({ runId, path, changeType });
 	}
 
 	static scheme(path) {
@@ -71,11 +77,12 @@ export default class KnownStore {
 			loopId = null,
 		} = {},
 	) {
+		const normalized = KnownStore.normalizePath(path);
 		await this.#db.upsert_known_entry.run({
 			run_id: runId,
 			loop_id: loopId,
 			turn,
-			path: KnownStore.normalizePath(path),
+			path: normalized,
 			body,
 			status,
 			fidelity,
@@ -83,14 +90,17 @@ export default class KnownStore {
 			attributes: attributes ? JSON.stringify(attributes) : null,
 			updated_at: updatedAt,
 		});
+		this.#emitChanged(runId, normalized, "upsert");
 	}
 
 	async promote(runId, path, turn) {
+		const normalized = KnownStore.normalizePath(path);
 		await this.#db.promote_path.run({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: normalized,
 			turn,
 		});
+		this.#emitChanged(runId, normalized, "promote");
 	}
 
 	async setFileFidelity(runId, pattern, fidelity) {
@@ -102,28 +112,35 @@ export default class KnownStore {
 		if (result.changes === 0) {
 			await this.upsert(runId, 0, pattern, "", 200, { fidelity });
 		}
+		this.#emitChanged(runId, pattern, "fidelity");
 	}
 
 	async setFidelity(runId, path, fidelity) {
+		const normalized = KnownStore.normalizePath(path);
 		await this.#db.set_fidelity.run({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: normalized,
 			fidelity,
 		});
+		this.#emitChanged(runId, normalized, "fidelity");
 	}
 
 	async demote(runId, path) {
+		const normalized = KnownStore.normalizePath(path);
 		await this.#db.demote_path.run({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: normalized,
 		});
+		this.#emitChanged(runId, normalized, "demote");
 	}
 
 	async remove(runId, path) {
+		const normalized = KnownStore.normalizePath(path);
 		await this.#db.delete_known_entry.run({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: normalized,
 		});
+		this.#emitChanged(runId, normalized, "remove");
 	}
 
 	async removeFilesByPattern(runId, pattern) {
@@ -131,6 +148,7 @@ export default class KnownStore {
 			run_id: runId,
 			pattern,
 		});
+		this.#emitChanged(runId, pattern, "remove");
 	}
 
 	static #bodyPattern(body) {
@@ -144,6 +162,7 @@ export default class KnownStore {
 			body: KnownStore.#bodyPattern(body),
 			turn,
 		});
+		this.#emitChanged(runId, path, "promote");
 	}
 
 	async demoteByPattern(runId, path, body) {
@@ -152,6 +171,7 @@ export default class KnownStore {
 			path,
 			body: KnownStore.#bodyPattern(body),
 		});
+		this.#emitChanged(runId, path, "demote");
 	}
 
 	async getEntriesByPattern(runId, path, body, { limit, offset } = {}) {
@@ -170,6 +190,7 @@ export default class KnownStore {
 			path,
 			body: KnownStore.#bodyPattern(body),
 		});
+		this.#emitChanged(runId, path, "remove");
 	}
 
 	async updateBodyByPattern(runId, path, body, newBody) {
@@ -179,15 +200,18 @@ export default class KnownStore {
 			body: KnownStore.#bodyPattern(body),
 			new_body: newBody,
 		});
+		this.#emitChanged(runId, path, "body");
 	}
 
 	async resolve(runId, path, status, body) {
+		const normalized = KnownStore.normalizePath(path);
 		await this.#db.resolve_known_entry.run({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: normalized,
 			status,
 			body,
 		});
+		this.#emitChanged(runId, normalized, "resolve");
 	}
 
 	async getLog(runId) {
@@ -242,11 +266,13 @@ export default class KnownStore {
 	}
 
 	async setAttributes(runId, path, attrs) {
+		const normalized = KnownStore.normalizePath(path);
 		await this.#db.update_entry_attributes.run({
 			run_id: runId,
-			path: KnownStore.normalizePath(path),
+			path: normalized,
 			attributes: JSON.stringify(attrs),
 		});
+		this.#emitChanged(runId, normalized, "attributes");
 	}
 
 	async getState(runId, path) {

@@ -8,10 +8,17 @@ is weak, the exception should be eliminated.
 
 ### 1. File.activate / File.ignore / File.drop
 
-**What:** Direct DB writes to `file_constraints` and `known_entries`.
+**What:** Direct DB writes to `file_constraints` AND promotes/demotes
+entries across all runs for a project.
 **Called by:** RPC `get` (persist: true), RPC `file/activate`, `file/ignore`.
-**Bypasses:** Tool handler, budget check, entry.created hook.
-**Justification:** TBD — should these go through the `get` tool handler?
+**Bypasses:** Tool handler, budget check, entry.created hook, entry.changed hook.
+**Root cause:** File constraints are project-level config (legitimate
+backbone). But the entry promotion that follows is tool-level work that
+should go through the handler chain with budget checking.
+**Fix required:** Split File.activate into:
+  1. `File.setConstraint()` — project config, stays in backbone
+  2. Entry promotion — moves to run initialization or repo plugin,
+     goes through standard tool dispatch with budget enforcement
 
 ### 2. Housekeeping loop in AgentLoop#drainQueue
 

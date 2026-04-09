@@ -14,7 +14,9 @@ export default class ProjectAgent {
 		this.#db = db;
 		this.#hooks = hooks;
 		this.#llm = new LlmProvider(db);
-		this.#knownStore = new KnownStore(db);
+		this.#knownStore = new KnownStore(db, {
+			onChanged: (event) => hooks.entry.changed.emit(event).catch(() => {}),
+		});
 
 		const turnExecutor = new TurnExecutor(
 			db,

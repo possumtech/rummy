@@ -216,6 +216,57 @@ describe("PLUGINS.md Spec Compliance", () => {
 		});
 	});
 
+	// §7.4 Entry Events
+	describe("§7.4 Entry Events", () => {
+		it("§7.4.1 KnownStore emits onChanged on upsert", async () => {
+			const { runId } = await tdb.seedRun({ alias: "spec_7_4_1" });
+			const events = [];
+			const store = new (await import("../../src/agent/KnownStore.js")).default(
+				tdb.db,
+				{ onChanged: (e) => events.push(e) },
+			);
+			await store.upsert(runId, 1, "known://test_changed", "body", 200);
+			assert.ok(events.length > 0, "onChanged should fire on upsert");
+			assert.strictEqual(events[0].changeType, "upsert");
+		});
+
+		it("§7.4.2 KnownStore emits onChanged on fidelity change", async () => {
+			const { runId } = await tdb.seedRun({ alias: "spec_7_4_2" });
+			const events = [];
+			const store = new (await import("../../src/agent/KnownStore.js")).default(
+				tdb.db,
+				{ onChanged: (e) => events.push(e) },
+			);
+			await store.upsert(runId, 1, "known://fidelity_test", "body", 200);
+			events.length = 0;
+			await store.setFidelity(runId, "known://fidelity_test", "summary");
+			assert.ok(
+				events.some((e) => e.changeType === "fidelity"),
+				"onChanged should fire with changeType=fidelity",
+			);
+		});
+
+		it("§7.4.3 KnownStore emits onChanged on remove", async () => {
+			const { runId } = await tdb.seedRun({ alias: "spec_7_4_3" });
+			const events = [];
+			const store = new (await import("../../src/agent/KnownStore.js")).default(
+				tdb.db,
+				{ onChanged: (e) => events.push(e) },
+			);
+			await store.upsert(runId, 1, "known://remove_test", "body", 200);
+			events.length = 0;
+			await store.remove(runId, "known://remove_test");
+			assert.ok(
+				events.some((e) => e.changeType === "remove"),
+				"onChanged should fire with changeType=remove",
+			);
+		});
+
+		it("§7.4.4 entry.changed hook exists for plugin subscription", () => {
+			assert.ok(tdb.hooks.entry.changed, "entry.changed hook exists");
+		});
+	});
+
 	// TODO sections — tests to implement during refactoring:
 	//
 	// §2.2 client get goes through same handler as model get

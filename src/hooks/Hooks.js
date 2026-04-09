@@ -104,9 +104,6 @@ export default function createHooks(debug = false) {
 			registry: null, // attached by service.js after RpcRegistry creation
 		},
 		agent: {},
-		cascade: {
-			summarize: createEvent("cascade.summarize"),
-		},
 		tools,
 
 		// Utility to add raw filters/events directly if needed for tests

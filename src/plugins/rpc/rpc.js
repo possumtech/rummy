@@ -94,6 +94,9 @@ export default class Rpc {
 			handler: async (params, ctx) => {
 				if (!params.path) throw new Error("path is required");
 
+				// EXCEPTION #1: File.activate bypasses tool handler.
+				// See EXCEPTIONS.md. Fix requires splitting constraint
+				// management from entry promotion.
 				if (params.persist) {
 					const visibility = params.readonly ? "readonly" : "active";
 					return File.activate(
