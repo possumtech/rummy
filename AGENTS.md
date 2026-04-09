@@ -22,20 +22,21 @@ HTTP status codes throughout (entries, runs, loops, client RPC).
 13 model tools: get, set, known, unknown, env, sh, rm, cp, mv,
 search, summarize, update, ask_user. Tool priority ordering (get first,
 ask_user last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
-Budget cascade: two-phase crunch spiral (upfront LLM summary + halving)
-+ death spiral (stash by scheme) + crash. No scheme-based tiers.
-Selection: fattest half of oldest half. Protected: system, tool, prompt.
-Crunch plugin generates ≤80-char keyword summaries. ToolRegistry.view()
-prepends summaries above plugin output at summary fidelity.
+Budget: 413 enforcement (model owns context). No auto-crunch, no death
+spiral. Pre-LLM check on assembled tokens, per-entry gate at 95%
+ceiling, 500-token size gate on known entries. Advisory warnings at
+50% (YOU MAY) and 75% (YOU MUST). Token math: assembled tokens for
+budget, DB tokens for display only — never conflated (PLUGINS.md §7.5).
 Token estimation via tiktoken * 2x multiplier. Glob matching via picomatch.
 Tool docs in annotated `*Doc.js` line arrays with rationales.
 Lifecycle/action split in TurnExecutor — summarize/update/known/unknown
 always dispatch, never 409'd. Summarize overridden when actions fail.
 Preamble: XML format, conclude every turn, summaries approximate.
-175 unit + 121 integration + 14/15 e2e passing (gemma).
+PLUGINS.md: third-party developer guide, §0-§11, quickstart, payloads,
+wire format. plugin_spec.test.js: 30 compliance tests. EXCEPTIONS.md:
+4 documented protocol violations. SPEC.md aligned with implementation.
+Paradigm audit: 22/26 complete, 4 remaining are justified exceptions.
 MAB benchmark: Conflict_Resolution row 0 = 1/100 (frontier = 7/100).
-Ingestion working: atomic entries, no duplication, 100% crunch success.
-Retrieval from stashed entries is the bottleneck.
 
 ## Paradigm Refactoring — Unified Plugin Protocol
 
@@ -125,7 +126,23 @@ aren't documented in EXCEPTIONS.md with clear justification.
   are subscribable but emitted by external plugins only (acceptable).
   `run.config` filter defined but never invoked (future use).
 
-**After refactoring is complete:**
+**Remaining exceptions (documented in EXCEPTIONS.md):**
+- [ ] RPC `get` persist — File.activate bypasses tool handler for entry
+  promotion. Constraint write is legitimate backbone. Promotion should
+  dispatch through tool handler with budget. Fix: split File.activate
+  into setConstraint() (backbone) + promotion (tool dispatch).
+- [ ] RPC `set` scheme — scheme entries skip handler chain via
+  rummy.set() directly. Handler chain is a no-op for scheme entries
+  (no hedberg, no patches). May be correct behavior — document as
+  intentional or route through dispatch for future interceptability.
+- [ ] RPC `mv`, `cp` — no RPC handlers. Model has them, clients don't.
+  No proven need yet. Trivial to add when requested.
+- [ ] File.activate/ignore/drop — root cause of #1. Static methods do
+  direct DB writes + entry promotion/demotion. Constraint half is
+  backbone, promotion half should be tool dispatch. Design session
+  needed to define constraint-vs-entry boundary.
+
+**After protocol alignment is complete:**
 
 ### Future: Budget Enforcement
 - Budget plugin: 413 on every tool use that would exceed context
@@ -143,6 +160,41 @@ aren't documented in EXCEPTIONS.md with clear justification.
 - Runners are clean and separate — no changes needed
 - Re-run after refactoring to measure improvement
 - Model cooperation with budget is the remaining challenge
+
+## Done: Session 2026-04-09 — Paradigm Audit
+
+22/26 audit items resolved. Backbone files unchanged in size.
++1305/-994 lines across 27 files (net +311, mostly tests and docs).
+
+- **Dead code removed**: crunch plugin (111 lines), cascade.summarize
+  hook, get_promoted_token_total SQL query.
+- **SPEC.md realigned**: §1.2 status+fidelity replaces state, §1.3
+  schemes simplified, §2 loops table replaces prompt_queue, §4.5
+  budget 413 enforcement replaces crunch/death spiral, §4.6 crunch
+  removed. noContext→noRepo. 13 tools (was 12).
+- **PLUGINS.md completed**: §0 quickstart (end-to-end ping plugin),
+  §3.3/§3.4 hook examples + payload shapes + ctx object, §11.1 wire
+  format examples, §11.2-§11.5 complete RPC listings with store,
+  getEntries, startRun, run/inject, removeModel, getRun.
+- **EXCEPTIONS.md created**: 4 documented protocol violations with
+  justifications and fix paths.
+- **plugin_spec.test.js**: 30 section-numbered compliance tests.
+  §1 contract, §2 unified API, §3 registration (ensureTool, scheme,
+  handler auto-register, docsMap, views), §4 tool verbs + query
+  methods on RummyContext, §5 tool order + mode exclusions, §6
+  hedberg utilities, §7 hooks exist + entry events + budget enforce,
+  §8 entry lifecycle + visibility + stored hidden.
+- **Token math audited**: three sources (known_entries.tokens,
+  turn_context.tokens, turns.context_tokens), all consistent, no
+  conflation. Budget uses only assembled tokens. Documented in §7.5.
+- **entry.changed verified**: KnownStore.onChanged → hooks pipeline.
+  Fires on upsert, fidelity change, remove. Wired in ProjectAgent
+  and TestDb.
+- **All hooks verified**: every PLUGINS.md hook is both emitted and
+  subscribable. ui.render/ui.notify are extension points for external
+  plugins. run.config filter exists for future use.
+- **noRepo plumbed**: RPC→AgentLoop→TurnExecutor→RummyContext.noRepo.
+  External repo plugin needs noContext→noRepo rename (separate repo).
 
 ## Done: Session 2026-04-06/07 (continued)
 
@@ -221,9 +273,6 @@ aren't documented in EXCEPTIONS.md with clear justification.
 
 - Relevance engine (stochastic, separate project/plugin)
 - Hedberg extraction to `@possumtech/rummy.hedberg` npm package
-- Janitor plugin (deterministic context budget management)
 - Bulk operation aggregation (one entry per pattern operation)
 - Non-git file scanner fallback
-- Separate state from fidelity (already done via HTTP codes — the
-  original concern about conflation is resolved. Fidelity is its own
-  column, status is HTTP codes, schemes don't constrain fidelity.)
+- rummy.repo: rename `noContext` → `noRepo` (one-line change)
