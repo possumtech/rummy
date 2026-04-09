@@ -34,7 +34,7 @@ always dispatch, never 409'd. Summarize overridden when actions fail.
 Preamble: XML format, conclude every turn, summaries approximate.
 Four entry roles: data (knowns), logging (current/previous), unknown,
 prompt. Default category: logging. `<prompt mode="ask|act">` replaces
-`<ask>`/`<act>`. Each plugin owns its own views (no file.js proxying).
+`<prompt mode="ask|act">`. Each plugin owns its own views.
 PLUGINS.md: third-party developer guide, §0-§11, quickstart, payloads,
 wire format. plugin_spec.test.js: 30 compliance tests.
 Hooks: tool.before/after, entry.recording filter, turn.completed,
