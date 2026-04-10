@@ -32,6 +32,8 @@ async function renderToolTag(entry, _core) {
 	const target = attrs?.path || attrs?.file || attrs?.command || "";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
+	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
+	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 
 	// Previous entries render at summary. Prompts get 512 chars for orientation.
 	const limit = entry.scheme === "prompt" ? 512 : 80;
@@ -43,5 +45,5 @@ async function renderToolTag(entry, _core) {
 		? ` summary="${summaryText.replace(/"/g, "'").slice(0, limit)}"`
 		: "";
 
-	return `<${entry.scheme} path="${target}"${turn}${status}${summaryAttr}/>`;
+	return `<${entry.scheme} path="${target}"${turn}${status}${summaryAttr}${fidelity}${tokens}/>`;
 }

@@ -25,10 +25,11 @@ export default class Unknown {
 		const entries = ctx.rows.filter((r) => r.category === "unknown");
 		if (entries.length === 0) return content;
 
-		const lines = entries.map(
-			(u) =>
-				`<unknown path="${u.path}" turn="${u.source_turn || u.turn}">${u.body}</unknown>`,
-		);
+		const lines = entries.map((u) => {
+			const fidelity = u.fidelity ? ` fidelity="${u.fidelity}"` : "";
+			const tokens = u.tokens ? ` tokens="${u.tokens}"` : "";
+			return `<unknown path="${u.path}" turn="${u.source_turn || u.turn}"${fidelity}${tokens}>${u.body}</unknown>`;
+		});
 		return `${content}\n\n<unknowns>\n${lines.join("\n")}\n</unknowns>`;
 	}
 }

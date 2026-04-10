@@ -28,6 +28,8 @@ async function renderToolTag(entry, core) {
 	const target = attrs?.path || attrs?.file || attrs?.command || "";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
+	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
+	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const summary =
 		typeof attrs?.summary === "string"
 			? ` summary="${attrs.summary.slice(0, 80)}"`
@@ -44,7 +46,7 @@ async function renderToolTag(entry, core) {
 	}
 
 	if (body) {
-		return `<${entry.scheme} path="${target}"${turn}${status}${summary}>${body}</${entry.scheme}>`;
+		return `<${entry.scheme} path="${target}"${turn}${status}${summary}${fidelity}${tokens}>${body}</${entry.scheme}>`;
 	}
-	return `<${entry.scheme} path="${target}"${turn}${status}${summary}/>`;
+	return `<${entry.scheme} path="${target}"${turn}${status}${summary}${fidelity}${tokens}/>`;
 }
