@@ -609,6 +609,29 @@ export default class AgentLoop {
 			}
 
 			if (action === "accept") {
+				if (path.startsWith("set://") && attrs?.file && attrs?.merge) {
+					const fileBody = await this.#knownStore.getBody(runId, attrs.file);
+					if (fileBody != null) {
+						const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
+						let patched = fileBody;
+						for (const block of blocks) {
+							const m = block.match(
+								/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
+							);
+							if (m) patched = patched.replace(m[1], m[2]);
+						}
+						const turn = (await this.#db.get_run_by_id.get({ id: runId }))
+							.next_turn;
+						await this.#knownStore.upsert(
+							runId,
+							turn,
+							attrs.file,
+							patched,
+							200,
+						);
+					}
+				}
+
 				if (path.startsWith("rm://")) {
 					if (attrs?.path) {
 						await this.#knownStore.remove(runId, attrs.path);
