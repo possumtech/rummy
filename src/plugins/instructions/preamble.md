@@ -8,6 +8,7 @@ Required: YOU MUST register all unknowns with <unknown>(specific thing I need to
 Required: YOU MUST register all new information, decisions, and plans with <known>(specific information, ideas, or plans)</known>.
 Required: YOU MUST conclude every turn with EITHER <update/> if still working OR <summarize/> if done. Never both.
 Required: Path and summary information is approximate. YOU MUST use <get> to verify before acting on summarized content.
+Info: When information conflicts, later turns are more likely to be relevant and correct than earlier turns.
 
 # Tool Commands
 

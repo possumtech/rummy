@@ -371,8 +371,22 @@ export default class AgentLoop {
 
 				_lastAssembledTokens = result.assembledTokens;
 
-				// Panic mode: strike counting
+				// Panic mode: target check + strike counting
 				if (mode === "panic") {
+					const panicTarget = Math.floor(contextSize * 0.75);
+					if (result.assembledTokens <= panicTarget) {
+						await this.#db.update_run_status.run({
+							id: currentRunId,
+							status: 200,
+						});
+						const out = {
+							run: currentAlias,
+							status: 200,
+							turn: result.turn,
+						};
+						await hook.completed.emit({ projectId, ...out });
+						return out;
+					}
 					if (_lastPanicTokens !== null) {
 						if (result.assembledTokens < _lastPanicTokens) {
 							_panicStrikes = 0;

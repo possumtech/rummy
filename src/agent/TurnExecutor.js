@@ -260,6 +260,19 @@ export default class TurnExecutor {
 		// Parse and emit — plugins handle audit storage
 		const { commands, unparsed } = XmlParser.parse(content);
 
+		// Ensure reasoning_content captures both API field and <think> tag
+		if (responseMessage) {
+			const thinkCmds = commands.filter((c) => c.name === "think");
+			const thinkText = thinkCmds
+				.map((c) => c.body)
+				.filter(Boolean)
+				.join("\n");
+			const apiReasoning = responseMessage.reasoning_content || "";
+			const parts = [apiReasoning, thinkText].filter(Boolean);
+			responseMessage.reasoning_content =
+				parts.length > 0 ? parts.join("\n") : null;
+		}
+
 		const systemMsg = filteredMessages.find((m) => m.role === "system");
 		const userMsg = filteredMessages.find((m) => m.role === "user");
 		await this.#hooks.turn.response.emit({
@@ -498,7 +511,9 @@ export default class TurnExecutor {
 			if (cmd.name === "set" && cmd.path && cmd.body) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) {
-					console.warn(`[RUMMY] Rejected file edit to ${cmd.path} in ${mode} mode`);
+					console.warn(
+						`[RUMMY] Rejected file edit to ${cmd.path} in ${mode} mode`,
+					);
 					return null;
 				}
 			}
@@ -577,9 +592,9 @@ export default class TurnExecutor {
 		if (scheme === "known" || (scheme === "set" && !cmd.path)) {
 			if (!cmd.body) return null;
 
-			// Size gate: reject entries > 500 tokens — force atomic entries
+			// Size gate: reject entries > 512 tokens — force atomic entries
 			const entryTokens = countTokens(cmd.body);
-			const MAX_ENTRY_TOKENS = 500;
+			const MAX_ENTRY_TOKENS = 512;
 			if (scheme === "known" && entryTokens > MAX_ENTRY_TOKENS) {
 				const rejectPath = await this.#knownStore.slugPath(
 					runId,
@@ -590,7 +605,7 @@ export default class TurnExecutor {
 					runId,
 					turn,
 					rejectPath,
-					`Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Separate the information, ideas, or plans carefully into multiple entries.`,
+					`Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Sort the information, ideas, or plans carefully into multiple entries.`,
 					413,
 					{ loopId },
 				);

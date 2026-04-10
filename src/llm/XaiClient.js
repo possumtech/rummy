@@ -113,7 +113,7 @@ export default class XaiClient {
 
 		if (!this.#apiKey) throw new Error(msg("error.xai_api_key_missing"));
 
-		// Query xAI models endpoint for context_length
+		// Query xAI models endpoint
 		const modelsUrl = this.#baseUrl.replace(/\/responses$/, "/models");
 		const res = await fetch(modelsUrl, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
@@ -123,10 +123,25 @@ export default class XaiClient {
 		if (res.ok) {
 			const data = await res.json();
 			const models = data.data || data.models || [];
-			const entry = models.find((m) => m.id === model);
+			const entry = models.find((m) => m.id === model || `${m.id}-latest` === model);
 			if (entry?.context_length) {
 				this.#contextCache.set(model, entry.context_length);
 				return entry.context_length;
+			}
+		}
+
+		// Try /v1/language-models for richer metadata
+		const langUrl = this.#baseUrl.replace(/\/responses$/, "/language-models/" + model);
+		const langRes = await fetch(langUrl, {
+			headers: { Authorization: `Bearer ${this.#apiKey}` },
+			signal: AbortSignal.timeout(5000),
+		}).catch(() => null);
+
+		if (langRes?.ok) {
+			const langData = await langRes.json();
+			if (langData?.context_length) {
+				this.#contextCache.set(model, langData.context_length);
+				return langData.context_length;
 			}
 		}
 

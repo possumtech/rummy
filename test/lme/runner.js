@@ -173,7 +173,6 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 	const prompt = [
 		"Answer this question from memory.",
 		dateLine,
-		"<summarize>[your answer]</summarize>",
 		"",
 		question,
 	]
@@ -211,7 +210,7 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 		`Expected answer: ${expected}`,
 		`Actual response: ${response}`,
 		"",
-		"<summarize>YES or NO, then a one-sentence reason</summarize>",
+		"Answer YES or NO, then a one-sentence reason.",
 	].join("\n");
 
 	let r = await client.call("ask", {
@@ -242,7 +241,13 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 	const yesIdx = normalized.search(/\byes\b/);
 	const noIdx = normalized.search(/\bno\b/);
 	const pass = yesIdx !== -1 && (noIdx === -1 || yesIdx < noIdx);
-	return { pass, reason: judgeText.slice(0, 200) };
+
+	let judgeUsage = { prompt_tokens: 0, completion_tokens: 0, cost: 0 };
+	if (dbRun) {
+		const u = await db.get_run_usage.get({ run_id: dbRun.id });
+		if (u) judgeUsage = { prompt_tokens: u.prompt_tokens, completion_tokens: u.completion_tokens, cost: u.cost ?? 0 };
+	}
+	return { pass, reason: judgeText.slice(0, 200), usage: judgeUsage };
 }
 
 async function runRow(client, db, model, split, rowIndex, row) {
@@ -294,6 +299,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	let matchType = pass ? "exact" : null;
 	let judgeReason = null;
 
+	let judgeUsage = null;
 	if (!pass && response) {
 		const verdict = await judgeAnswer(
 			client,
@@ -303,6 +309,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 			answer,
 			response,
 		);
+		judgeUsage = verdict.usage;
 		if (verdict.pass) {
 			pass = true;
 			matchType = "judged";
@@ -347,6 +354,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 			completion_tokens: usage?.completion_tokens ?? 0,
 			cost: usage?.cost ?? 0,
 		},
+		judgeUsage: judgeUsage || null,
 		timing: { duration_ms: endTime - startTime },
 		questions: questionResults,
 	};

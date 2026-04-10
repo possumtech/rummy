@@ -27,6 +27,7 @@ export default class Budget {
 		return [
 			`CONTEXT OVERFLOW: ${assembledTokens} tokens, ceiling ${contextSize}.`,
 			`YOU MUST free ${mustFree} tokens to get below ${target} (75%).`,
+			"YOU MUST NOT load or create new content. Only reduce.",
 			"",
 			"<knowns> above shows each entry with its token count.",
 			"Target the largest entries first.",

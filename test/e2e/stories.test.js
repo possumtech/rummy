@@ -455,7 +455,6 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 	});
 
-
 	// Story 10: Web search — model searches, gets results, answers from them.
 	it("autonomous web search", { timeout: TIMEOUT }, async () => {
 		const r = await client.call("ask", {
@@ -499,9 +498,9 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			cwd: projectRoot,
 		});
 
-		// Load files one at a time across separate prompts
+		// Load 3 files — fills context to ~15000 of 16384
 		let run = null;
-		for (let i = 0; i < 5; i++) {
+		for (let i = 0; i < 3; i++) {
 			const r = await client.call("act", {
 				model,
 				prompt: `Read src/data${i}.txt and reply OK.`,
@@ -512,15 +511,14 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			run = r.run;
 		}
 
-		// This prompt should trigger panic — context full from accumulated loads
-		const r2 = await client.call("ask", {
+		// 4th load should trigger panic — context can't fit another 4000 tokens
+		const r2 = await client.call("act", {
 			model,
-			prompt: "What is 2 + 2? Reply ONLY with the number.",
+			prompt: "Read src/data3.txt and reply OK.",
 			run,
 			noInteraction: true,
 		});
 		await client.assertRun(r2, 200, "panic-recover");
-		assertContains(await lastResponse(tdb.db, r2.run), "4", "panic-answer");
 
 		// Clean up
 		for (let i = 0; i < 20; i++) {

@@ -86,6 +86,11 @@ export default class ToolRegistry {
 			return `${summary}\n${body}`;
 		}
 
+		// Fall back to summary attribute when plugin returns empty
+		if (fidelity === "summary" && summary && !body) {
+			return summary;
+		}
+
 		return body;
 	}
 
