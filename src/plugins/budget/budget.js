@@ -22,11 +22,11 @@ export default class Budget {
 	}
 
 	static panicPrompt({ assembledTokens, contextSize }) {
-		const target = Math.floor(contextSize * 0.75);
+		const target = Math.floor(contextSize * 0.5);
 		const mustFree = assembledTokens - target;
 		return [
 			`CONTEXT OVERFLOW: ${assembledTokens} tokens, ceiling ${contextSize}.`,
-			`YOU MUST free ${mustFree} tokens to get below ${target} (75%).`,
+			`YOU MUST free ${mustFree} tokens to get below ${target} (50%).`,
 			"YOU MUST NOT load or create new content. Only reduce.",
 			"",
 			"<knowns> above shows each entry with its token count.",
@@ -49,8 +49,9 @@ export default class Budget {
 			`[RUMMY] Budget enforce: ${assembledTokens} tokens, ceiling ${contextSize}, ${rows.length} rows`,
 		);
 
-		if (assembledTokens > contextSize) {
-			const overflow = assembledTokens - contextSize;
+		const ceiling = Math.floor(contextSize * 0.9);
+		if (assembledTokens > ceiling) {
+			const overflow = assembledTokens - ceiling;
 			console.warn(
 				`[RUMMY] Budget 413: ${assembledTokens} tokens > ${contextSize} ceiling (${overflow} over)`,
 			);

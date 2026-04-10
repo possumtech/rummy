@@ -23,7 +23,7 @@ export default class Previous {
 	}
 }
 
-async function renderToolTag(entry, core) {
+async function renderToolTag(entry, _core) {
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -32,23 +32,16 @@ async function renderToolTag(entry, core) {
 	const target = attrs?.path || attrs?.file || attrs?.command || "";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
-	const summary =
-		typeof attrs?.summary === "string"
-			? ` summary="${attrs.summary.slice(0, 80)}"`
-			: "";
 
-	let body;
-	try {
-		body = await core.hooks.tools.view(entry.scheme, {
-			...entry,
-			attributes: attrs,
-		});
-	} catch {
-		body = entry.body;
-	}
+	// Previous entries render at summary. Prompts get 512 chars for orientation.
+	const limit = entry.scheme === "prompt" ? 512 : 80;
+	const summaryText =
+		(typeof attrs?.summary === "string" ? attrs.summary : null) ||
+		entry.body?.slice(0, limit) ||
+		"";
+	const summaryAttr = summaryText
+		? ` summary="${summaryText.replace(/"/g, "'").slice(0, limit)}"`
+		: "";
 
-	if (body) {
-		return `<${entry.scheme} path="${target}"${turn}${status}${summary}>${body}</${entry.scheme}>`;
-	}
-	return `<${entry.scheme} path="${target}"${turn}${status}${summary}/>`;
+	return `<${entry.scheme} path="${target}"${turn}${status}${summaryAttr}/>`;
 }

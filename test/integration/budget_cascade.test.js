@@ -74,8 +74,8 @@ describe("Budget — ceiling check", () => {
 		assert.strictEqual(result.status, 413);
 		assert.strictEqual(
 			result.overflow,
-			result.assembledTokens - 100,
-			"overflow should equal assembledTokens minus contextSize",
+			result.assembledTokens - Math.floor(100 * 0.9),
+			"overflow should equal assembledTokens minus 90% ceiling",
 		);
 	});
 

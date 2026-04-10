@@ -656,7 +656,7 @@ Termination protocol:
 - Neither + investigation tools → stall counter (RUMMY_MAX_STALLS)
 - Neither + action-only tools → healed to summarize
 - Neither + plain text → healed to summarize
-- Repeated commands → loop detection (RUMMY_MAX_REPETITIONS)
+- Repeated commands → cycle detection (RUMMY_MIN_CYCLES, RUMMY_MAX_CYCLE_PERIOD)
 - Repeated update text → stall (RUMMY_MAX_UPDATE_REPEATS)
 
 Format normalization:
@@ -704,7 +704,8 @@ RUMMY_HOME=~/.rummy
 RUMMY_TOKEN_DIVISOR=2
 RUMMY_MAX_TURNS=99
 RUMMY_MAX_STALLS=3
-RUMMY_MAX_REPETITIONS=3
+RUMMY_MIN_CYCLES=3
+RUMMY_MAX_CYCLE_PERIOD=4
 RUMMY_MAX_UPDATE_REPEATS=3
 RUMMY_RETENTION_DAYS=31
 RUMMY_TEMPERATURE=0.5

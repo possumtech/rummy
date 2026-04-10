@@ -55,16 +55,6 @@ export default class Progress {
 		if (fidelityParts.length > 0)
 			parts.push(`Entries: ${fidelityParts.join(" · ")}`);
 
-		if (pct > 75) {
-			parts.push(
-				'Context above 75%. YOU MUST free space: <set fidelity="summary" summary="topic,detail,keyword"/>, <set fidelity="archive"/>, or <rm/>. Target the largest entries.',
-			);
-		} else if (pct > 50) {
-			parts.push(
-				'Context above 50%. You may free space: <set fidelity="summary" summary="topic,detail,keyword"/>, <set fidelity="archive"/>, or <rm/>.',
-			);
-		}
-
 		if (hasCurrent) {
 			parts.push(
 				"The above actions were performed in response to the following prompt:",

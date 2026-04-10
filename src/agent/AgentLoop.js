@@ -180,21 +180,31 @@ export default class AgentLoop {
 						? this.#hooks.ask
 						: this.#hooks.act;
 
-			const result = await this.#executeLoop({
-				mode: loop.mode,
-				project,
-				projectId,
-				currentRunId,
-				currentAlias,
-				currentLoopId: loop.id,
-				requestedModel: loop.model,
-				prompt: loop.prompt,
-				noRepo: loopConfig.noRepo || false,
-				noInteraction: loopConfig.noInteraction || false,
-				noWeb: loopConfig.noWeb || false,
-				options: { ...options, temperature: loopConfig.temperature },
-				hook,
-			});
+			let result;
+			try {
+				result = await this.#executeLoop({
+					mode: loop.mode,
+					project,
+					projectId,
+					currentRunId,
+					currentAlias,
+					currentLoopId: loop.id,
+					requestedModel: loop.model,
+					prompt: loop.prompt,
+					noRepo: loopConfig.noRepo || false,
+					noInteraction: loopConfig.noInteraction || false,
+					noWeb: loopConfig.noWeb || false,
+					options: { ...options, temperature: loopConfig.temperature },
+					hook,
+				});
+			} catch (err) {
+				await this.#db.complete_loop.run({
+					id: loop.id,
+					status: 500,
+					result: JSON.stringify({ error: err.message }),
+				});
+				throw err;
+			}
 
 			if (result.status === 413) {
 				await this.#db.complete_loop.run({
@@ -373,7 +383,7 @@ export default class AgentLoop {
 
 				// Panic mode: target check + strike counting
 				if (mode === "panic") {
-					const panicTarget = Math.floor(contextSize * 0.75);
+					const panicTarget = Math.floor(contextSize * 0.5);
 					if (result.assembledTokens <= panicTarget) {
 						await this.#db.update_run_status.run({
 							id: currentRunId,

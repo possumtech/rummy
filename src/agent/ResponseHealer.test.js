@@ -2,6 +2,21 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import ResponseHealer from "./ResponseHealer.js";
 
+// Helpers to build entry-shaped objects matching what TurnExecutor produces.
+function get(path) {
+	return { scheme: "get", path, attributes: { path } };
+}
+function sh(command) {
+	return { scheme: "sh", path: null, attributes: { command } };
+}
+function search(query) {
+	return { scheme: "search", path: null, attributes: { query } };
+}
+
+function calls(...entries) {
+	return { actionCalls: entries, writeCalls: [] };
+}
+
 describe("ResponseHealer", () => {
 	describe("healStatus", () => {
 		it("plain text with no commands becomes summary", () => {
@@ -160,7 +175,7 @@ describe("ResponseHealer", () => {
 	});
 
 	describe("assessRepetition", () => {
-		it("no commands does not increment", () => {
+		it("no commands does not contribute to cycle history", () => {
 			const healer = new ResponseHealer();
 			const result = healer.assessRepetition({
 				actionCalls: [],
@@ -169,74 +184,106 @@ describe("ResponseHealer", () => {
 			assert.strictEqual(result.continue, true);
 		});
 
-		it("same commands repeated 3x force-completes", () => {
+		it("AAAA — same turn repeated 3x force-completes (period 1)", () => {
 			const healer = new ResponseHealer();
-			const calls = {
-				actionCalls: [{ name: "search", path: "Tom Petty" }],
-				writeCalls: [],
-			};
-			healer.assessRepetition(calls);
-			healer.assessRepetition(calls);
-			const result = healer.assessRepetition(calls);
+			const turn = calls(get("src/app.js"));
+			healer.assessRepetition(turn);
+			healer.assessRepetition(turn);
+			const result = healer.assessRepetition(turn);
 			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason.includes("repeated"));
+			assert.ok(result.reason.includes("period 1"));
 		});
 
-		it("different commands reset the counter", () => {
+		it("ABABAB — alternating pattern force-completes after 3 cycles (period 2)", () => {
 			const healer = new ResponseHealer();
-			const search1 = {
-				actionCalls: [{ name: "search", path: "Tom Petty" }],
-				writeCalls: [],
-			};
-			const search2 = {
-				actionCalls: [{ name: "search", path: "Beatles" }],
-				writeCalls: [],
-			};
-			healer.assessRepetition(search1);
-			healer.assessRepetition(search1);
-			// Different command resets
-			healer.assessRepetition(search2);
-			// Back to original — counter restarts at 1
-			healer.assessRepetition(search1);
-			const result = healer.assessRepetition(search1);
-			// Only 2 repetitions of search1 after reset, not 3
-			assert.strictEqual(result.continue, true);
+			const A = calls(get("src/app.js"));
+			const B = calls(sh("grep TODO src/app.js"));
+			// First 5 turns (incomplete — only 2 full cycles of AB at most)
+			for (let i = 0; i < 5; i++) {
+				const r = healer.assessRepetition(i % 2 === 0 ? A : B);
+				assert.strictEqual(r.continue, true, `should continue at turn ${i}`);
+			}
+			// 6th turn completes ABABAB — 3 full cycles
+			const result = healer.assessRepetition(B);
+			assert.strictEqual(result.continue, false);
+			assert.ok(result.reason.includes("period 2"));
 		});
 
-		it("order of commands does not matter", () => {
+		it("ABCABCABC — 3-period cycle force-completes after 3 cycles", () => {
 			const healer = new ResponseHealer();
-			const calls1 = {
-				actionCalls: [
-					{ name: "read", path: "a.js" },
-					{ name: "read", path: "b.js" },
-				],
-				writeCalls: [],
-			};
-			const calls2 = {
-				actionCalls: [
-					{ name: "read", path: "b.js" },
-					{ name: "read", path: "a.js" },
-				],
-				writeCalls: [],
-			};
-			healer.assessRepetition(calls1);
-			healer.assessRepetition(calls2);
-			const result = healer.assessRepetition(calls1);
+			const A = calls(get("src/app.js"));
+			const B = calls(sh("grep TODO src/app.js"));
+			const C = calls(search("error handler"));
+			const pattern = [A, B, C];
+			// 8 turns (2 full cycles + 2 — not yet 3 full cycles)
+			for (let i = 0; i < 8; i++) {
+				const r = healer.assessRepetition(pattern[i % 3]);
+				assert.strictEqual(r.continue, true, `should continue at turn ${i}`);
+			}
+			// 9th turn completes the 3rd ABC cycle
+			const result = healer.assessRepetition(C);
+			assert.strictEqual(result.continue, false);
+			assert.ok(result.reason.includes("period 3"));
+		});
+
+		it("varied commands with no repeating cycle continue indefinitely", () => {
+			const healer = new ResponseHealer();
+			const turns = [
+				calls(get("a.js")),
+				calls(get("b.js")),
+				calls(get("a.js")),
+				calls(search("query")),
+				calls(get("a.js")),
+				calls(get("c.js")),
+			];
+			for (const turn of turns) {
+				const r = healer.assessRepetition(turn);
+				assert.strictEqual(r.continue, true);
+			}
+		});
+
+		it("order of commands within a turn does not matter", () => {
+			const healer = new ResponseHealer();
+			const fwd = { actionCalls: [get("a.js"), get("b.js")], writeCalls: [] };
+			const rev = { actionCalls: [get("b.js"), get("a.js")], writeCalls: [] };
+			healer.assessRepetition(fwd);
+			healer.assessRepetition(rev);
+			const result = healer.assessRepetition(fwd);
+			// [fwd, rev, fwd] = [A, A, A] since order-normalized — period 1, 3 reps
 			assert.strictEqual(result.continue, false);
 		});
 
-		it("reset clears repetition state", () => {
+		it("fidelity attribute differentiates otherwise identical operations", () => {
 			const healer = new ResponseHealer();
-			const calls = {
-				actionCalls: [{ name: "search", path: "query" }],
-				writeCalls: [],
-			};
-			healer.assessRepetition(calls);
-			healer.assessRepetition(calls);
+			const full = calls({
+				scheme: "get",
+				path: "src/app.js",
+				attributes: { path: "src/app.js", fidelity: "full" },
+			});
+			const summary = calls({
+				scheme: "get",
+				path: "src/app.js",
+				attributes: { path: "src/app.js", fidelity: "summary" },
+			});
+			// ABABAB — different fingerprints due to fidelity, should be period 2
+			for (let i = 0; i < 5; i++) {
+				healer.assessRepetition(i % 2 === 0 ? full : summary);
+			}
+			const result = healer.assessRepetition(summary);
+			assert.strictEqual(result.continue, false);
+			assert.ok(result.reason.includes("period 2"));
+		});
+
+		it("reset clears cycle history", () => {
+			const healer = new ResponseHealer();
+			const turn = calls(get("src/app.js"));
+			healer.assessRepetition(turn);
+			healer.assessRepetition(turn);
 			healer.reset();
-			healer.assessRepetition(calls);
-			healer.assessRepetition(calls);
-			const result = healer.assessRepetition(calls);
+			// After reset, history is empty — needs 3 more to trigger
+			healer.assessRepetition(turn);
+			healer.assessRepetition(turn);
+			const result = healer.assessRepetition(turn);
 			assert.strictEqual(result.continue, false);
 		});
 	});
