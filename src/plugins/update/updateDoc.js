@@ -17,15 +17,15 @@ const LINES = [
 
 	// --- Constraints: RFC-style MUST/MUST NOT
 	[
-		"* YOU MUST use if still working — describes the current state",
+		"* YOU MUST use <update> if still working — describes the current state",
 		"Continuation signal. Triggers the next turn in the loop.",
 	],
 	[
-		"* YOU MUST NOT use if done — use <summarize/> instead",
+		"* YOU MUST NOT use <update> if done — use <summarize/> instead",
 		"Mutual exclusion with summarize. Prevents infinite loops.",
 	],
 	[
-		"* YOU MUST keep to <= 80 characters",
+		"* YOU MUST keep <update> to <= 80 characters",
 		"Length cap. Prevents models from writing essays in status updates.",
 	],
 ];

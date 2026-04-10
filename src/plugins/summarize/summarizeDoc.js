@@ -17,15 +17,15 @@ const LINES = [
 
 	// --- Constraints: RFC-style MUST/MUST NOT
 	[
-		"* YOU MUST use when done — describes the final state",
+		"* YOU MUST use <summarize> when done — describes the final state",
 		"Completion signal. Without this, the loop continues indefinitely.",
 	],
 	[
-		"* YOU MUST NOT use if still working — use <update/> instead",
+		"* YOU MUST NOT use <summarize> if still working — use <update/> instead",
 		"Mutual exclusion with update. Prevents premature completion.",
 	],
 	[
-		"* YOU MUST keep to <= 80 characters",
+		"* YOU MUST keep <summarize> to <= 80 characters",
 		"Length cap. Matches the summary attribute constraint. Prevents verbose output.",
 	],
 ];
