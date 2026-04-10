@@ -21,12 +21,14 @@ export default class Budget {
 		};
 	}
 
-	static panicPrompt({ shortfall, assembledTokens, contextSize }) {
+	static panicPrompt({ assembledTokens, contextSize }) {
+		const target = Math.floor(contextSize * 0.75);
+		const mustFree = assembledTokens - target;
 		return [
-			`CONTEXT OVERFLOW: ${assembledTokens} tokens assembled, ceiling is ${contextSize} (${shortfall} over).`,
-			`YOU MUST free at least ${shortfall} tokens before the run can continue.`,
+			`CONTEXT OVERFLOW: ${assembledTokens} tokens, ceiling ${contextSize}.`,
+			`YOU MUST free ${mustFree} tokens to get below ${target} (75%).`,
 			"",
-			"Look at <knowns> above. Each entry shows its token count.",
+			"<knowns> above shows each entry with its token count.",
 			"Target the largest entries first.",
 			'<rm path="..."/> to delete entries you no longer need.',
 			'<set path="..." fidelity="summary" summary="keywords"/> to compress.',

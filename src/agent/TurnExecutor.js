@@ -488,16 +488,16 @@ export default class TurnExecutor {
 	 * Returns the recorded entry descriptor, or null if rejected/skipped.
 	 */
 	async #record(runId, loopId, turn, mode, cmd) {
-		// Mode enforcement — reject prohibited commands in ask mode
-		if (mode === "ask") {
+		// Mode enforcement — reject prohibited commands in ask/panic mode
+		if (mode === "ask" || mode === "panic") {
 			if (cmd.name === "sh") {
 				console.warn("[RUMMY] Rejected <sh> in ask mode");
 				return null;
 			}
-			if (cmd.name === "set" && cmd.path) {
+			if (cmd.name === "set" && cmd.path && cmd.body) {
 				const scheme = KnownStore.scheme(cmd.path);
 				if (scheme === null) {
-					console.warn(`[RUMMY] Rejected file set to ${cmd.path} in ask mode`);
+					console.warn(`[RUMMY] Rejected file edit to ${cmd.path} in ${mode} mode`);
 					return null;
 				}
 			}
@@ -513,34 +513,6 @@ export default class TurnExecutor {
 				if (destScheme === null) {
 					console.warn(
 						`[RUMMY] Rejected ${cmd.name} to file ${cmd.to} in ask mode`,
-					);
-					return null;
-				}
-			}
-		}
-
-		// Mode enforcement — panic mode restricts to context management
-		if (mode === "panic") {
-			const PANIC_ALLOWED = new Set([
-				"get",
-				"set",
-				"known",
-				"unknown",
-				"rm",
-				"mv",
-				"cp",
-				"summarize",
-				"update",
-			]);
-			if (!PANIC_ALLOWED.has(cmd.name)) {
-				console.warn(`[RUMMY] Rejected <${cmd.name}> in panic mode`);
-				return null;
-			}
-			if (cmd.name === "set" && cmd.path) {
-				const scheme = KnownStore.scheme(cmd.path);
-				if (scheme === null) {
-					console.warn(
-						`[RUMMY] Rejected file set to ${cmd.path} in panic mode`,
 					);
 					return null;
 				}

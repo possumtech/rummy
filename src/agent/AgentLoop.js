@@ -217,9 +217,7 @@ export default class AgentLoop {
 
 				panicAttempted = true;
 
-				const shortfall = result.overflow;
 				const panicPrompt = this.#hooks.budget.panicPrompt({
-					shortfall,
 					assembledTokens: result.assembledTokens,
 					contextSize: result.contextSize,
 				});

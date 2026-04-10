@@ -531,43 +531,50 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		);
 	});
 
-	// Story 11: Panic mode — model fills context, new prompt triggers panic,
-	// model frees space, original prompt retries.
+	// Story 11: Panic mode — context fills with large files, new prompt
+	// triggers panic, model frees space, original prompt succeeds.
 	it("panic mode recovers from context overflow", {
 		timeout: TIMEOUT * 4,
 	}, async () => {
-		// Ask the model to fill its own context with known entries
-		const r1 = await client.call("ask", {
-			model,
-			prompt: [
-				"Create 15 separate <known> entries, each containing a unique fun fact about a different animal.",
-				"Each entry MUST be at least 100 characters long.",
-				"Use paths like known://animal_1, known://animal_2, etc.",
-			].join(" "),
-			noInteraction: true,
-			noRepo: true,
+		// Fill context: ~28000 chars of file content = ~14000 tokens.
+		// System prompt ~3000 tokens. Total ~17000 > 16384 ceiling.
+		for (let i = 0; i < 5; i++) {
+			await fs.writeFile(
+				join(projectRoot, `src/data${i}.txt`),
+				"x".repeat(8000),
+			);
+		}
+		const { execSync: exec } = await import("node:child_process");
+		exec('git add src/data*.txt && git commit --no-verify -m "data"', {
+			cwd: projectRoot,
 		});
-		await client.assertRun(r1, 200, "panic-fill");
 
-		// Verify entries were created
-		const entries = await allEntries(tdb.db, r1.run);
-		const knowns = entries.filter((e) => e.scheme === "known");
-		assert.ok(
-			knowns.length >= 5,
-			`panic-fill: expected 5+ knowns, got ${knowns.length}`,
-		);
+		// Load files one at a time across separate prompts
+		let run = null;
+		for (let i = 0; i < 5; i++) {
+			const r = await client.call("act", {
+				model,
+				prompt: `Read src/data${i}.txt and reply OK.`,
+				run,
+				noInteraction: true,
+			});
+			await client.assertRun(r, 200, `panic-load-${i}`);
+			run = r.run;
+		}
 
-		// Shrink context so the next prompt won't fit
-		await client.call("run/config", { run: r1.run, contextLimit: 4096 });
-
-		// This prompt should trigger panic — the model must free space
+		// This prompt should trigger panic — context full from accumulated loads
 		const r2 = await client.call("ask", {
 			model,
 			prompt: "What is 2 + 2? Reply ONLY with the number.",
-			run: r1.run,
+			run,
 			noInteraction: true,
 		});
 		await client.assertRun(r2, 200, "panic-recover");
 		assertContains(await lastResponse(tdb.db, r2.run), "4", "panic-answer");
+
+		// Clean up
+		for (let i = 0; i < 20; i++) {
+			await fs.unlink(join(projectRoot, `src/data${i}.txt`)).catch(() => {});
+		}
 	});
 });
