@@ -410,8 +410,8 @@ export default class TurnExecutor {
 		let summaryText = summaryEntry?.body || null;
 		let updateText = updateEntry?.body || null;
 
-		// If model sent both, summary wins
-		if (summaryText && updateText) updateText = null;
+		// If model sent both, update wins — if it can't decide, it's not done
+		if (summaryText && updateText) summaryText = null;
 
 		// If model says "done" but actions failed, override — the model's
 		// assertion that it's done is false if it failed to do what it tried.
