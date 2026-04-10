@@ -164,6 +164,8 @@ export default class AgentLoop {
 	}
 
 	async #drainQueue(currentRunId, currentAlias, projectId, project, options) {
+		let panicAttempted = false;
+
 		while (true) {
 			const loop = await this.#db.claim_next_loop.get({
 				run_id: currentRunId,
@@ -171,6 +173,12 @@ export default class AgentLoop {
 			if (!loop) break;
 
 			const loopConfig = loop.config ? JSON.parse(loop.config) : {};
+			const hook = loop.mode === "panic"
+				? this.#hooks.panic
+				: loop.mode === "ask"
+					? this.#hooks.ask
+					: this.#hooks.act;
+
 			const result = await this.#executeLoop({
 				mode: loop.mode,
 				project,
@@ -184,21 +192,59 @@ export default class AgentLoop {
 				noInteraction: loopConfig.noInteraction || false,
 				noWeb: loopConfig.noWeb || false,
 				options: { ...options, temperature: loopConfig.temperature },
-				hook: loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act,
+				hook,
 			});
 
-			// Budget overflow — return 413 to client
 			if (result.status === 413) {
 				await this.#db.complete_loop.run({
 					id: loop.id,
 					status: 413,
 					result: JSON.stringify(result),
 				});
-				return {
-					run: currentAlias,
-					status: 413,
-					error: `Context full (${result.overflow} tokens over).`,
-				};
+
+				// One panic attempt per drain cycle
+				if (loop.mode === "panic" || panicAttempted) {
+					return {
+						run: currentAlias,
+						status: 413,
+						error: loop.mode === "panic"
+							? `Panic mode failed to free enough space (${result.overflow} tokens over).`
+							: `Context full (${result.overflow} tokens over).`,
+					};
+				}
+
+				panicAttempted = true;
+
+				const shortfall = result.overflow;
+				const panicPrompt = this.#hooks.budget.panicPrompt({
+					shortfall,
+					assembledTokens: result.assembledTokens,
+					contextSize: result.contextSize,
+				});
+
+				// Enqueue panic loop
+				const panicSeq = await this.#db.next_loop.get({ run_id: currentRunId });
+				await this.#db.enqueue_loop.get({
+					run_id: currentRunId,
+					sequence: panicSeq.sequence,
+					mode: "panic",
+					model: loop.model,
+					prompt: panicPrompt,
+					config: JSON.stringify({ noRepo: true }),
+				});
+
+				// Re-enqueue the original loop to retry after panic
+				const retrySeq = await this.#db.next_loop.get({ run_id: currentRunId });
+				await this.#db.enqueue_loop.get({
+					run_id: currentRunId,
+					sequence: retrySeq.sequence,
+					mode: loop.mode,
+					model: loop.model,
+					prompt: loop.prompt,
+					config: loop.config,
+				});
+
+				continue;
 			}
 
 			await this.#db.complete_loop.run({
@@ -256,6 +302,8 @@ export default class AgentLoop {
 		this.#activeRuns.set(currentRunId, controller);
 
 		let _lastAssembledTokens = 0;
+		let _panicStrikes = 0;
+		let _lastPanicTokens = null;
 
 		await this.#hooks.loop.started.emit({
 			runId: currentRunId,
@@ -284,6 +332,8 @@ export default class AgentLoop {
 				let turnPrompt;
 				if (loopIteration === 1) {
 					turnPrompt = prompt;
+				} else if (mode === "panic") {
+					turnPrompt = "Continue freeing space. Check <knowns> token counts.";
 				} else {
 					turnPrompt = this.#buildContinuationPrompt(
 						loopIteration,
@@ -307,17 +357,45 @@ export default class AgentLoop {
 					signal: controller.signal,
 				});
 
-				// Budget overflow — return 413 to drainQueue for housekeeping
+				// Budget overflow — return 413 to drainQueue for panic mode
 				if (result.status === 413) {
 					return {
 						run: currentAlias,
 						status: 413,
 						overflow: result.overflow,
+						assembledTokens: result.assembledTokens,
+						contextSize: result.contextSize,
 						turn: result.turn,
 					};
 				}
 
 				_lastAssembledTokens = result.assembledTokens;
+
+				// Panic mode: strike counting
+				if (mode === "panic") {
+					if (_lastPanicTokens !== null) {
+						if (result.assembledTokens < _lastPanicTokens) {
+							_panicStrikes = 0;
+						} else {
+							_panicStrikes++;
+							if (_panicStrikes >= 3) {
+								await this.#db.update_run_status.run({
+									id: currentRunId,
+									status: 200,
+								});
+								return {
+									run: currentAlias,
+									status: 413,
+									overflow: result.assembledTokens - contextSize,
+									assembledTokens: result.assembledTokens,
+									contextSize,
+									turn: result.turn,
+								};
+							}
+						}
+					}
+					_lastPanicTokens = result.assembledTokens;
+				}
 
 				const runUsage = await this.#db.get_run_usage.get({
 					run_id: currentRunId,

@@ -39,7 +39,9 @@ export default class Prompt {
 			? [...ctx.toolSet]
 			: [...this.#core.hooks.tools.resolveForLoop(mode)];
 		const tools = toolNames.join(",");
-		const warn = mode === "ask" ? ' warn="File editing disallowed."' : "";
+		let warn = "";
+		if (mode === "ask") warn = ' warn="File editing disallowed."';
+		if (mode === "panic") warn = ' warn="Context overflow. Free space to continue."';
 
 		return `${content}<prompt mode="${mode}" tools="${tools}"${warn}>${body}</prompt>`;
 	}

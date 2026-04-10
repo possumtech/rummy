@@ -16,8 +16,23 @@ export default class Budget {
 			enforce: this.enforce.bind(this),
 			activate: this.activate.bind(this),
 			deactivate: this.deactivate.bind(this),
+			panicPrompt: Budget.panicPrompt,
 			BudgetExceeded,
 		};
+	}
+
+	static panicPrompt({ shortfall, assembledTokens, contextSize }) {
+		return [
+			`CONTEXT OVERFLOW: ${assembledTokens} tokens assembled, ceiling is ${contextSize} (${shortfall} over).`,
+			`YOU MUST free at least ${shortfall} tokens before the run can continue.`,
+			"",
+			"Look at <knowns> above. Each entry shows its token count.",
+			"Target the largest entries first.",
+			'<rm path="..."/> to delete entries you no longer need.',
+			'<set path="..." fidelity="summary" summary="keywords"/> to compress.',
+			'<set path="..." fidelity="stored"/> to archive out of context.',
+			"<summarize/> when done. <update/> if still working.",
+		].join("\n");
 	}
 
 	async enforce({ contextSize, messages, rows }) {
