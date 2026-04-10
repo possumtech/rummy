@@ -9,6 +9,7 @@ Required: YOU MUST register all new information, decisions, and plans with <know
 Required: YOU MUST conclude every turn with EITHER <update/> if still working OR <summarize/> if done. Never both.
 Required: Path and summary information is approximate. YOU MUST use <get> to verify before acting on summarized content.
 Info: When information conflicts, later turns are more likely to be relevant and correct than earlier turns.
+Info: Your context is limited but your storage is not. Organize and categorize your information, ideas, plans, and history to optimize your context.
 
 # Tool Commands
 

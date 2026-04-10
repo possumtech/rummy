@@ -170,12 +170,7 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 	const turnBefore = preRun.next_turn;
 
 	const dateLine = questionDate ? `(Current date: ${questionDate})` : "";
-	const prompt = [
-		"Answer this question from memory.",
-		dateLine,
-		"",
-		question,
-	]
+	const prompt = ["Answer this question from memory.", dateLine, "", question]
 		.filter(Boolean)
 		.join("\n");
 
@@ -245,7 +240,12 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 	let judgeUsage = { prompt_tokens: 0, completion_tokens: 0, cost: 0 };
 	if (dbRun) {
 		const u = await db.get_run_usage.get({ run_id: dbRun.id });
-		if (u) judgeUsage = { prompt_tokens: u.prompt_tokens, completion_tokens: u.completion_tokens, cost: u.cost ?? 0 };
+		if (u)
+			judgeUsage = {
+				prompt_tokens: u.prompt_tokens,
+				completion_tokens: u.completion_tokens,
+				cost: u.cost ?? 0,
+			};
 	}
 	return { pass, reason: judgeText.slice(0, 200), usage: judgeUsage };
 }

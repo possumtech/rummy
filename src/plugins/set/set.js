@@ -3,7 +3,7 @@ import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
-const VALID_FIDELITY = { stored: 1, summary: 1, index: 1, full: 1 };
+const VALID_FIDELITY = { archive: 1, summary: 1, index: 1, full: 1 };
 
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {
@@ -26,7 +26,7 @@ export default class Set {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
 
-		// Fidelity control: <set path="..." fidelity="stored"/>
+		// Fidelity control: <set path="..." fidelity="archive"/>
 		const fidelityAttr = VALID_FIDELITY[attrs.fidelity] ? attrs.fidelity : null;
 		if (fidelityAttr && attrs.path) {
 			const target = attrs.path;
@@ -67,13 +67,13 @@ export default class Set {
 				}
 			}
 			const label =
-				fidelityAttr === "stored" ? "archived" : `set to ${fidelityAttr}`;
+				fidelityAttr === "archive" ? "archived" : `set to ${fidelityAttr}`;
 			const body =
 				matches.length > 0
 					? `${matches.map((m) => m.path).join(", ")} ${label}`
 					: `${target} not found`;
 			await store.upsert(runId, turn, entry.resultPath, body, 200, {
-				fidelity: "stored",
+				fidelity: "archive",
 				loopId,
 			});
 			return;

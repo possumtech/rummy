@@ -56,7 +56,7 @@ UPDATE known_entries
 SET
 	fidelity = :fidelity
 	, tokens = CASE
-		WHEN :fidelity = 'stored'
+		WHEN :fidelity = 'archive'
 			THEN 0
 		WHEN :fidelity = 'index'
 			THEN 0
@@ -82,7 +82,7 @@ WHERE run_id = :run_id AND path = :path;
 -- PREP: demote_path
 UPDATE known_entries
 SET
-	fidelity = 'stored'
+	fidelity = 'archive'
 	, tokens = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
@@ -92,7 +92,7 @@ UPDATE known_entries
 SET
 	fidelity = :fidelity
 	, tokens = CASE
-		WHEN :fidelity = 'stored'
+		WHEN :fidelity = 'archive'
 			THEN 0
 		WHEN :fidelity = 'index'
 			THEN 0
@@ -149,7 +149,7 @@ WHERE
 -- PREP: demote_by_pattern
 UPDATE known_entries
 SET
-	fidelity = 'stored'
+	fidelity = 'archive'
 	, tokens = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE

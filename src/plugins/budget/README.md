@@ -27,7 +27,7 @@ Installed on KnownStore by TurnExecutor before dispatch, cleared in
 `finally`. Gates `upsert()`, `promoteByPattern()`, `updateBodyByPattern()`.
 
 Exemptions: `status >= 400` (error entries), `model_visible = 0` (audit),
-`fidelity = "stored"` (not in context).
+`fidelity = "archive"` (not in context).
 
 On first violation: `BudgetExceeded` thrown, guard trips, all subsequent
 writes fail. TurnExecutor catches per-tool, writes 413 result entry.

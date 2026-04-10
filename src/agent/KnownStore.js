@@ -29,7 +29,7 @@ export default class KnownStore {
 	}
 
 	#isVisible(path, fidelity) {
-		if (fidelity === "stored") return false;
+		if (fidelity === "archive") return false;
 		const scheme = KnownStore.scheme(path) ?? "file";
 		const meta = this.#schemes.get(scheme);
 		return meta ? meta.model_visible !== 0 : true;
@@ -210,7 +210,7 @@ export default class KnownStore {
 				offset: null,
 			});
 			cost = entries
-				.filter((e) => e.fidelity === "stored" || e.fidelity === "index")
+				.filter((e) => e.fidelity === "archive" || e.fidelity === "index")
 				.reduce((sum, e) => sum + (e.tokens_full || 0), 0);
 			if (cost > 0) this.#budgetGuard.check(cost, path);
 		}

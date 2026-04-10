@@ -188,7 +188,7 @@ describe("KnownStore integration", () => {
 				run_id: RUN_ID,
 				path: "src/demoted.js",
 			});
-			assert.strictEqual(row.fidelity, "stored");
+			assert.strictEqual(row.fidelity, "archive");
 		});
 	});
 

@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS known_entries (
 	, scheme TEXT GENERATED ALWAYS AS (schemeOf(path)) STORED
 	, status INTEGER NOT NULL DEFAULT 200 CHECK (status BETWEEN 100 AND 599)
 	, fidelity TEXT NOT NULL DEFAULT 'full' CHECK (
-		fidelity IN ('full', 'summary', 'index', 'stored')
+		fidelity IN ('full', 'summary', 'index', 'archive')
 	)
 	, hash TEXT
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))

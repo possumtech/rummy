@@ -441,7 +441,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 				.default;
 			const store = new KnownStore(tdb.db);
 			await store.upsert(runId, 1, "known://lifecycle_stored", "hidden", 200, {
-				fidelity: "stored",
+				fidelity: "archive",
 			});
 
 			const rows = await tdb.db.get_model_context.all({ run_id: runId });

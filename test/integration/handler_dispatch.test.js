@@ -308,7 +308,7 @@ describe("Handler dispatch", () => {
 				scheme: "set",
 				path: "set://known%3A%2F%2Fdemote_me",
 				body: "",
-				attributes: { path: "known://demote_me", fidelity: "stored" },
+				attributes: { path: "known://demote_me", fidelity: "archive" },
 				status: 200,
 				resultPath: "set://known%3A%2F%2Fdemote_me",
 			};
@@ -319,7 +319,7 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: "known://demote_me",
 			});
-			assert.strictEqual(state.fidelity, "stored", "target archived");
+			assert.strictEqual(state.fidelity, "archive", "target archived");
 		});
 	});
 

@@ -123,7 +123,7 @@ aren't documented in EXCEPTIONS.md with clear justification.
 - [x] RPC wire format: JSON-RPC request/response/notification in §11.1
 - [x] plugin_spec.test.js: implemented §4.1 tool verbs, §4.2 query
   methods, §6 hedberg utilities, §7.5 budget enforce 413/200,
-  §8.2 v_model_context visibility, §8.3 stored fidelity hidden.
+  §8.2 v_model_context visibility, §8.3 archive fidelity hidden.
   30 tests passing. Remaining: §2.2/§2.3 (need full dispatch
   integration), §11.1 (need RPC integration).
 - [x] entry.changed: fires through full pipeline. KnownStore.onChanged
@@ -158,7 +158,7 @@ aren't documented in EXCEPTIONS.md with clear justification.
 
 - **Budget enforcement (Project 413)**: BudgetGuard at KnownStore
   layer. Every write gated during dispatch. Delta calculation for
-  updates. Exemptions: status>=400, model_visible=0, stored fidelity.
+  updates. Exemptions: status>=400, model_visible=0, archive fidelity.
   Trip cascade: one tool exceeds → all subsequent fail.
 - **Panic mode**: New prompt exceeds ceiling → panic loop with
   restricted tools, strike system (3 strikes without reduction →

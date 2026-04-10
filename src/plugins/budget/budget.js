@@ -33,7 +33,7 @@ export default class Budget {
 			"Target the largest entries first.",
 			'<rm path="..."/> to delete entries you no longer need.',
 			'<set path="..." fidelity="summary" summary="keywords"/> to compress.',
-			'<set path="..." fidelity="stored"/> to archive out of context.',
+			'<set path="..." fidelity="archive"/> to archive out of context.',
 			"<summarize/> when done. <update/> if still working.",
 		].join("\n");
 	}

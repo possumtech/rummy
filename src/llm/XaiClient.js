@@ -123,7 +123,9 @@ export default class XaiClient {
 		if (res.ok) {
 			const data = await res.json();
 			const models = data.data || data.models || [];
-			const entry = models.find((m) => m.id === model || `${m.id}-latest` === model);
+			const entry = models.find(
+				(m) => m.id === model || `${m.id}-latest` === model,
+			);
 			if (entry?.context_length) {
 				this.#contextCache.set(model, entry.context_length);
 				return entry.context_length;
@@ -131,7 +133,10 @@ export default class XaiClient {
 		}
 
 		// Try /v1/language-models for richer metadata
-		const langUrl = this.#baseUrl.replace(/\/responses$/, "/language-models/" + model);
+		const langUrl = this.#baseUrl.replace(
+			/\/responses$/,
+			`/language-models/${model}`,
+		);
 		const langRes = await fetch(langUrl, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
 			signal: AbortSignal.timeout(5000),

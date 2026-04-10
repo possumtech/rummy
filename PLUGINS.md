@@ -444,7 +444,7 @@ Every entry follows the same lifecycle regardless of origin:
 5. **Assembled** — filter chain renders into system/user messages
 6. **Visible** — model sees the entry in its context
 
-Entries at `stored` fidelity skip steps 4-6 (invisible to model).
+Entries at `archive` fidelity skip steps 4-6 (invisible to model).
 Entries at `index` fidelity render as path-only tags (no body).
 Entries at `summary` fidelity render with `attributes.summary`
 prepended above the plugin's summary view output.

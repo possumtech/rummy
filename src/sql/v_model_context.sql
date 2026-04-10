@@ -15,8 +15,8 @@ visible AS (
 		, ke.attributes
 		, ke.tokens AS tokens_full
 		, CASE
-			-- Stored entries not in context
-			WHEN ke.fidelity = 'stored' THEN NULL
+			-- Archived entries not in context
+			WHEN ke.fidelity = 'archive' THEN NULL
 			-- 202 Accepted (proposed) hidden until resolved
 			WHEN ke.status = 202 THEN NULL
 			-- Audit schemes (model_visible = 0) hidden

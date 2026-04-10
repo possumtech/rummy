@@ -141,7 +141,7 @@ async function auditQuestion(
 		.filter((e) => e.scheme === "known" && e.fidelity === "full")
 		.map((e) => ({ path: e.path, body: e.body?.slice(0, 200) }));
 	const preKnownCount = preKnowns.length;
-	const storedCount = preEntries.filter((e) => e.fidelity === "stored").length;
+	const storedCount = preEntries.filter((e) => e.fidelity === "archive").length;
 	const indexCount = preEntries.filter((e) => e.fidelity === "index").length;
 	const summaryCount = preEntries.filter(
 		(e) => e.fidelity === "summary",

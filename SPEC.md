@@ -56,7 +56,7 @@ known_entries (
 | `attributes` | Tag attributes as JSON. Handler-private workspace. `CHECK (json_valid)` |
 | `scheme` | Generated from path via `schemeOf()`. Drives dispatch and view routing |
 | `status` | HTTP status code (200, 202, 400, 413, etc.) |
-| `fidelity` | Visibility level: full, summary, index, stored |
+| `fidelity` | Visibility level: full, summary, index, archive |
 | `hash` | SHA-256 for file change detection |
 | `tokens` | Display-only token count at current fidelity. NEVER used for budget. |
 | `tokens_full` | Cost of raw body at full fidelity |
@@ -72,7 +72,7 @@ and **fidelity** (visibility level). These are separate concerns.
 500 (error).
 
 **Fidelity** (visibility): `full` (body visible), `summary`
-(model-authored summary), `index` (path only), `stored` (invisible,
+(model-authored summary), `index` (path only), `archive` (invisible,
 retrievable via `<get>`).
 
 Paths use URI scheme syntax. Bare paths (no `://`) are files.
@@ -376,11 +376,11 @@ The VIEW determines visibility from `fidelity` and `status`:
 - `full` → body visible
 - `summary` → summary visible (model-authored `summary` attribute if set)
 - `index` → path listed, no content
-- `stored` → invisible (retrievable via `<get>`)
+- `archive` → invisible (retrievable via `<get>`)
 - `status = 202` → invisible (proposed, pending client)
 - `model_visible = 0` → invisible (audit, tool, instructions)
 
-Model controls fidelity via `<set>` attributes: `stored`, `summary`,
+Model controls fidelity via `<set>` attributes: `archive`, `summary`,
 `index`, `full`. The `summary="..."` attribute attaches a description
 (<= 80 chars) that persists across fidelity changes.
 
@@ -401,7 +401,7 @@ Exceeding the budget throws `BudgetExceeded` — the tool 413s, the
 guard trips, and all subsequent tools in the turn fail.
 
 **Exemptions:** `status >= 400` entries (error results), `model_visible
-= 0` entries (audit), `fidelity = "stored"` entries (not in context).
+= 0` entries (audit), `fidelity = "archive"` entries (not in context).
 
 **Size gate:** Known entries exceeding 500 tokens are rejected with
 413, forcing atomic entries.
@@ -568,7 +568,7 @@ pick up the pattern from example 3.
 **Lifecycle continuity.** Examples weave stories across tools. The get
 docs end with `<set path="..." fidelity="index"/>`. The known docs
 reference `<get path="known://*">keyword</get>` for recall and
-`<set path="known://..." stored/>` for archiving. The unknown docs
+`<set path="known://..." archive/>` for archiving. The unknown docs
 reference `<get/>` for investigation and `<rm/>` for cleanup. A model
 reading the full tool docs encounters a coherent workflow:
 discover → load → reason → edit → archive → recall.

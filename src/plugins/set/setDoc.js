@@ -25,8 +25,8 @@ const LINES = [
 
 	// --- Constraints
 	[
-		'* `fidelity="..."`: `stored`, `summary`, `index`, `full`',
-		"Fidelity control via attributes. Replaces the removed <store> tool.",
+		'* `fidelity="..."`: `archive`, `summary`, `index`, `full`',
+		"Fidelity control. Archive removes from context but preserves for retrieval.",
 	],
 	[
 		'* `summary="..."` (<= 80 chars) persists across fidelity changes',

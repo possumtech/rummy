@@ -86,7 +86,7 @@ describe("Budget enforcement at KnownStore layer", () => {
 		store.budgetGuard = new BudgetGuard(100, 100);
 
 		await store.upsert(runId, 1, "known://archived", "big content", 200, {
-			fidelity: "stored",
+			fidelity: "archive",
 		});
 		const body = await store.getBody(runId, "known://archived");
 		assert.strictEqual(body, "big content");
@@ -158,7 +158,7 @@ describe("Budget enforcement at KnownStore layer", () => {
 
 		// Create a stored entry with substantial content
 		await store.upsert(runId, 1, "src/big.js", "x".repeat(5000), 200, {
-			fidelity: "stored",
+			fidelity: "archive",
 		});
 
 		// Set tight budget
