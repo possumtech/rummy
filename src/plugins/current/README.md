@@ -11,4 +11,5 @@ tool results and lifecycle signals.
 
 Filters turn_context rows where `category === "logging"` and
 `source_turn >= loopStartTurn`. Renders each entry chronologically
-with turn number and status. Empty on the first turn of a loop.
+with turn, status, summary, fidelity, and tokens. Empty on the first
+turn of a loop.

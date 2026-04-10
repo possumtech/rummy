@@ -297,13 +297,15 @@ Two messages per turn. System = stable truth. User = active task.
         ...entries sorted by fidelity (index, summary, full), then by scheme
     </knowns>
     <previous>
-        (pre-loop user prompt, model responses, agent warnings, and tools used, in order)
+        (pre-loop entries, each with turn, status, summary, fidelity, tokens)
     </previous>
-    <unknowns></unknowns>
+    <unknowns>
+        (open questions, each with path, turn, fidelity, tokens)
+    </unknowns>
 [/system]
 [user]
     <current>
-        (current loop model responses, agent warnings, and tools used, in order)
+        (current loop entries, each with turn, status, summary, fidelity, tokens)
     </current>
     <progress>the above actions have been performed on this user prompt:</progress>
     <prompt mode="ask|act" tools="...">user prompt</prompt>

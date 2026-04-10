@@ -12,4 +12,5 @@ history from prior ask/act invocations on this run.
 
 Filters turn_context rows where `category` is `logging` or `prompt`
 and `source_turn < loopStartTurn`. Renders each entry chronologically
-with turn number and status.
+with turn, status, summary, fidelity, and tokens. The model can target
+these entries by path with `<set>` or `<rm>` to free context space.
