@@ -116,8 +116,7 @@ async function ingestContext(client, model, run, chunks) {
 		const chunkNum = i + 1;
 		const total = chunks.length;
 		const prompt = [
-			`Memory ingestion — chunk ${chunkNum} of ${total}.`,
-			"Read and remember the key facts in this text.",
+			`Memory ingestion — chunk ${chunkNum} of ${total}. Identify and record the facts found in this text for future recall and reasoning tasks.`,
 			"",
 			chunks[i],
 		].join("\n");
