@@ -401,17 +401,7 @@ export default class AgentLoop {
 				// Panic mode: target check + strike counting
 				if (mode === "panic") {
 					const panicTarget = Math.floor(contextSize * 0.5);
-
-					// Use real LLM context_tokens — budget character estimate overestimates
-					// real tokens after compression. Exit fires one turn late otherwise.
-					const lastCtxRow = await this.#db.get_last_context_tokens.get({
-						run_id: currentRunId,
-					});
-					const realTokens =
-						lastCtxRow?.context_tokens ?? result.assembledTokens;
-					_lastAssembledTokens = realTokens;
-
-					if (realTokens <= panicTarget) {
+					if (result.assembledTokens <= panicTarget) {
 						await this.#db.update_run_status.run({
 							id: currentRunId,
 							status: 200,
@@ -425,7 +415,7 @@ export default class AgentLoop {
 						return out;
 					}
 					if (_lastPanicTokens !== null) {
-						if (realTokens < _lastPanicTokens) {
+						if (result.assembledTokens < _lastPanicTokens) {
 							_panicStrikes = 0;
 						} else {
 							_panicStrikes++;
@@ -437,15 +427,15 @@ export default class AgentLoop {
 								return {
 									run: currentAlias,
 									status: 413,
-									overflow: realTokens - contextSize,
-									assembledTokens: realTokens,
+									overflow: result.assembledTokens - contextSize,
+									assembledTokens: result.assembledTokens,
 									contextSize,
 									turn: result.turn,
 								};
 							}
 						}
 					}
-					_lastPanicTokens = realTokens;
+					_lastPanicTokens = result.assembledTokens;
 				}
 
 				const runUsage = await this.#db.get_run_usage.get({
@@ -522,18 +512,25 @@ export default class AgentLoop {
 
 				const repetition = healer.assessRepetition(result);
 				if (!repetition.continue) {
-					await this.#db.update_run_status.run({
-						id: currentRunId,
-						status: 200,
-					});
-					const out = {
-						run: currentAlias,
-						status: 200,
-						turn: result.turn,
-						reason: repetition.reason,
-					};
-					await hook.completed.emit({ projectId, ...out });
-					return out;
+					// In panic mode, don't exit on summarize unless budget target is met.
+					// The model may signal done before reaching the required headroom.
+					const panicTarget = Math.floor(contextSize * 0.5);
+					if (mode === "panic" && result.assembledTokens > panicTarget) {
+						// treat as continuation — target not yet reached
+					} else {
+						await this.#db.update_run_status.run({
+							id: currentRunId,
+							status: 200,
+						});
+						const out = {
+							run: currentAlias,
+							status: 200,
+							turn: result.turn,
+							reason: repetition.reason,
+						};
+						await hook.completed.emit({ projectId, ...out });
+						return out;
+					}
 				}
 
 				const progress = healer.assessProgress(result);
