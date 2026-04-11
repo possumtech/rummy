@@ -15,8 +15,8 @@ const LINES = [
 		"Keyword recall: glob in path, search term in body. Cross-scheme hedberg pattern.",
 	],
 	[
-		'Example: <get path="src/**/*.js" preview>TODO</get>',
-		"Full pattern: recursive glob + preview + content filter. Shows all 3 features at once.",
+		'Example: <get path="src/**/*.js" preview>authentication</get>',
+		"Full pattern: recursive glob + preview + content filter. Shows all 3 features at once. Body is a filter keyword, never file content.",
 	],
 
 	// --- Constraints: RFC-style. Each prevents a specific failure mode.
