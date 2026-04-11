@@ -31,25 +31,18 @@ export default class Known {
 
 		// Rows arrive pre-sorted by SQL: skill → index → summary → full, then by recency
 		const demotedSet = new Set(ctx.demoted || []);
-		const panic = ctx.type === "panic";
-		const lines = entries.map((e) => renderKnownTag(e, demotedSet, panic));
+		const lines = entries.map((e) => renderKnownTag(e, demotedSet));
 		return `${content}\n\n<knowns>\n${lines.join("\n")}\n</knowns>`;
 	}
 }
 
-function renderKnownTag(entry, demotedSet, panic = false) {
+function renderKnownTag(entry, demotedSet) {
 	const tag = entry.scheme || "file";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
-
-	// Panic mode: index-only view so context fits in LLM window
-	if (panic) {
-		const panicTokens = ` tokens="${entry.tokens || 0}"`;
-		return `<${tag} path="${entry.path}"${turn}${status}${fidelity}${panicTokens}/>`;
-	}
 
 	const attrs =
 		typeof entry.attributes === "string"
