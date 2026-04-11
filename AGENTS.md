@@ -48,7 +48,7 @@ Concurrent loop protection: AbortController created at top of
 chronologically by source_turn (prompt before logging within same turn).
 `progress://` scheme removed; `<progress turn="N">` is structural only.
 `context_tokens` back-filled from LLM `prompt_tokens` post-response.
-154 unit tests passing.
+155 unit tests passing.
 
 ## Benchmark Plan
 
@@ -174,9 +174,6 @@ Publish after Phase 1 (CR full) completes. Tables populated incrementally.
 
 ## Deferred
 
-- Relevance engine (stochastic, separate project/plugin)
-- Hedberg extraction to `@possumtech/rummy.hedberg` npm package
-- Bulk operation aggregation (one entry per pattern operation)
 - Non-git file scanner fallback
 
 ---
@@ -184,7 +181,7 @@ Publish after Phase 1 (CR full) completes. Tables populated incrementally.
 ## Done: Session 2026-04-10/11 — Packet SDI Audit + E2E
 
 40-item SDI audit. 36 fixed, 4 no-change. Summarize/read enforcement.
-14/14 E2E passing. 154 unit tests passing.
+14/14 E2E passing. 155 unit tests passing.
 
 ## Done: Session 2026-04-09/10 — Budget Enforcement + Paradigm Shift
 

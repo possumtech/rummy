@@ -368,6 +368,9 @@ describe("Handler dispatch", () => {
 			await store.upsert(RUN_ID, 2, "known://bulk_b", "data-b", 200);
 			await store.upsert(RUN_ID, 2, "known://bulk_c", "data-c", 200);
 
+			const allBefore = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const rmCountBefore = allBefore.filter((e) => e.scheme === "rm").length;
+
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 2 });
 			const resultPath = "rm://known%3A%2F%2Fbulk_*";
 			const entry = {
@@ -389,23 +392,23 @@ describe("Handler dispatch", () => {
 			);
 			assert.strictEqual(remaining.length, 0, "all matched entries removed");
 
-			// Exactly one aggregate rm:// log entry
-			const allEntries = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const rmEntries = allEntries.filter((e) =>
-				e.path.startsWith("rm://known%3A%2F%2Fbulk"),
+			// Exactly one new rm:// log entry (the aggregate)
+			const allAfter = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const rmEntries = allAfter.filter((e) => e.scheme === "rm");
+			assert.strictEqual(
+				rmEntries.length - rmCountBefore,
+				1,
+				"one aggregate result entry",
 			);
-			assert.strictEqual(rmEntries.length, 1, "one aggregate result entry");
-			assert.strictEqual(rmEntries[0].status, 200);
+			const rmEntry = rmEntries.find((e) => e.body?.includes("known://bulk_a"));
+			assert.ok(rmEntry, "aggregate entry exists");
+			assert.strictEqual(rmEntry.status, 200);
 			assert.ok(
-				rmEntries[0].body.includes("known://bulk_a"),
+				rmEntry.body.includes("known://bulk_b"),
 				"body lists removed paths",
 			);
 			assert.ok(
-				rmEntries[0].body.includes("known://bulk_b"),
-				"body lists removed paths",
-			);
-			assert.ok(
-				rmEntries[0].body.includes("known://bulk_c"),
+				rmEntry.body.includes("known://bulk_c"),
 				"body lists removed paths",
 			);
 		});

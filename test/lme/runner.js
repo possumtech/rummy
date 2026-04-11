@@ -263,7 +263,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const initR = await client.call("ask", {
 		model,
 		prompt:
-			"You are being evaluated on long-term memory. Incoming conversation history follows. Use <known> to save facts about the user. Reply with <summarize>ready</summarize>.",
+			"You are being evaluated on long-term memory. Incoming conversation history follows. When ready, acknowledge.",
 		noRepo: true,
 		noInteraction: true,
 	});

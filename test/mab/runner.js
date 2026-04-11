@@ -199,7 +199,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const initR = await client.call("ask", {
 		model,
 		prompt:
-			"You are being evaluated on memory and retrieval. Incoming context chunks follow. Use <known> to save every fact. Reply with <summarize>ready</summarize>.",
+			"You are being evaluated on memory and retrieval. Incoming context chunks follow. When ready, acknowledge.",
 		noRepo: true,
 	});
 	let run = initR.run;
