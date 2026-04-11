@@ -28,7 +28,7 @@ export default class Budget {
 			`CONTEXT OVERFLOW: ${assembledTokens} tokens used. The ceiling is ${contextSize}.`,
 			`YOU MUST free ${mustFree} tokens to get below ${target} (50%).`,
 			"",
-			"Entries above show their current fidelity and token size. Reduce their fidelity to free up space.",
+			"Entries in <knowns> and <previous> each show their current fidelity and token size. Reduce their fidelity to free up space.",
 			"Target the largest and/or least relevant entries first.",
 			'<set path="..." fidelity="summary" summary="keyword1,keyword2,keyword3,..."/> to compress.',
 			"Use quality keywords from the entry to describe the content.",
