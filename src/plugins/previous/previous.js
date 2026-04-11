@@ -9,11 +9,20 @@ export default class Previous {
 	async assemblePrevious(content, ctx) {
 		if (ctx.loopStartTurn <= 1) return content;
 
-		const entries = ctx.rows.filter(
-			(r) =>
-				(r.category === "logging" || r.category === "prompt") &&
-				r.source_turn < ctx.loopStartTurn,
-		);
+		const entries = ctx.rows
+			.filter(
+				(r) =>
+					(r.category === "logging" || r.category === "prompt") &&
+					r.source_turn < ctx.loopStartTurn,
+			)
+			.toSorted((a, b) => {
+				if (a.source_turn !== b.source_turn)
+					return a.source_turn - b.source_turn;
+				// Within the same turn: prompt first (cause before effect)
+				if (a.category === "prompt" && b.category !== "prompt") return -1;
+				if (b.category === "prompt" && a.category !== "prompt") return 1;
+				return 0;
+			});
 		if (entries.length === 0) return content;
 
 		const lines = await Promise.all(

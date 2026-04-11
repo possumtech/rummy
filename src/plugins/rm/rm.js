@@ -41,8 +41,15 @@ export default class Rm {
 			return;
 		}
 
+		// Single match: reuse the pre-computed entry.resultPath (no duplicate entry).
+		// Multi-match: dedup a path per match, remove the glob-pattern placeholder.
+		const useSinglePath = matches.length === 1;
+		if (!useSinglePath) await store.remove(runId, entry.resultPath);
+
 		for (const match of matches) {
-			const resultPath = `rm://${match.path}`;
+			const resultPath = useSinglePath
+				? entry.resultPath
+				: await store.dedup(runId, "rm", match.path, turn);
 			if (match.scheme === null) {
 				await store.upsert(runId, turn, resultPath, match.path, 202, {
 					attributes: { path: match.path },

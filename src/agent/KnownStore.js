@@ -47,15 +47,16 @@ export default class KnownStore {
 
 	static normalizePath(path) {
 		if (!path?.includes("://")) return path;
-		return path.replace(/:\/\/(.*)$/, (_, rest) => {
-			try {
-				// Decode first (idempotent), then encode — but preserve slashes
-				const decoded = decodeURIComponent(rest);
-				return `://${decoded.split("/").map(encodeURIComponent).join("/")}`;
-			} catch {
-				return `://${rest.split("/").map(encodeURIComponent).join("/")}`;
-			}
-		});
+		const sep = path.indexOf("://");
+		const scheme = path.slice(0, sep).toLowerCase();
+		const rest = path.slice(sep + 3);
+		try {
+			// Decode first (idempotent), then encode — but preserve slashes
+			const decoded = decodeURIComponent(rest);
+			return `${scheme}://${decoded.split("/").map(encodeURIComponent).join("/")}`;
+		} catch {
+			return `${scheme}://${rest.split("/").map(encodeURIComponent).join("/")}`;
+		}
 	}
 
 	async nextTurn(runId) {
