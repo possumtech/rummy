@@ -243,10 +243,12 @@ export default class AgentLoop {
 
 					const ceiling = Math.floor(result.contextSize * 0.9);
 					const incomingTokens = countTokens(loop.prompt);
-					const panicTarget = Math.min(
-						Math.floor(result.contextSize * 0.75),
-						ceiling - incomingTokens,
-					);
+					const cushion = 500;
+					const panicTarget =
+						Math.min(
+							Math.floor(result.contextSize * 0.75),
+							result.contextSize - incomingTokens,
+						) - cushion;
 
 					const panicPrompt = this.#hooks.budget.panicPrompt({
 						assembledTokens: result.assembledTokens,

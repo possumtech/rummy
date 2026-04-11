@@ -161,6 +161,8 @@ async function askQuestion(client, db, model, run, question) {
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	if (r.status >= 500) return "";
+	if (r.status === 413)
+		throw new Error("Context overflow — panic failed. Benchmark aborted.");
 
 	// Extract answer from entries created after turnBefore
 	const runRow = await db.get_run_by_alias.get({ alias: r.run });
