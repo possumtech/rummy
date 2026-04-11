@@ -223,8 +223,12 @@ export default class AgentLoop {
 						result: JSON.stringify(result),
 					});
 
-					// One panic attempt per drain cycle
-					if (loop.mode === "panic" || panicAttempted) {
+					// One panic attempt per run: check both local flag and persisted config
+					if (
+						loop.mode === "panic" ||
+						panicAttempted ||
+						loopConfig.panicAttempted
+					) {
 						return {
 							run: currentAlias,
 							status: 413,
@@ -262,17 +266,19 @@ export default class AgentLoop {
 						config: JSON.stringify({ noRepo: true, panicTarget }),
 					});
 
-					// Re-enqueue the original loop to retry after panic
+					// Re-enqueue the original loop to retry after panic.
+					// Mark panicAttempted so if it 413s again, we hard-fail rather than re-panicking.
 					const retrySeq = await this.#db.next_loop.get({
 						run_id: currentRunId,
 					});
+					const retryConfig = { ...loopConfig, panicAttempted: true };
 					await this.#db.enqueue_loop.get({
 						run_id: currentRunId,
 						sequence: retrySeq.sequence,
 						mode: loop.mode,
 						model: loop.model,
 						prompt: loop.prompt,
-						config: loop.config,
+						config: JSON.stringify(retryConfig),
 					});
 
 					continue;
