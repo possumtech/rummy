@@ -194,13 +194,7 @@ export default class TurnExecutor {
 			messages.reduce((sum, m) => sum + countTokens(m.content), 0);
 
 		// Budget overflow — return 413 to caller without calling LLM.
-		// Panic mode suppresses this — the model must run to free space.
-		// Exception: if assembled exceeds the hard context limit the provider
-		// will reject the request outright; panic cannot help here.
-		if (
-			budgetResult.status === 413 &&
-			(mode !== "panic" || assembledTokens > contextSize)
-		) {
+		if (budgetResult.status === 413) {
 			return {
 				turn,
 				turnId: turnRow.id,
