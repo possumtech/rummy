@@ -241,7 +241,7 @@ export default class AgentLoop {
 
 					panicAttempted = true;
 
-					const ceiling = Math.floor(result.contextSize * 0.9);
+					const _ceiling = Math.floor(result.contextSize * 0.9);
 					const incomingTokens = countTokens(loop.prompt);
 					const cushion = 500;
 					const panicTarget =
