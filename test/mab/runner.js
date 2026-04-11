@@ -72,8 +72,17 @@ function loadSplit(split) {
 
 function chunkContext(context, size) {
 	const chunks = [];
-	for (let i = 0; i < context.length; i += size) {
-		chunks.push(context.slice(i, i + size));
+	let start = 0;
+	while (start < context.length) {
+		const end = start + size;
+		if (end >= context.length) {
+			chunks.push(context.slice(start));
+			break;
+		}
+		const boundary = context.lastIndexOf("\n", end);
+		const cutAt = boundary > start ? boundary + 1 : end;
+		chunks.push(context.slice(start, cutAt));
+		start = cutAt;
 	}
 	return chunks;
 }
