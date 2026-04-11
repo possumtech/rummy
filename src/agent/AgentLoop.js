@@ -401,7 +401,17 @@ export default class AgentLoop {
 				// Panic mode: target check + strike counting
 				if (mode === "panic") {
 					const panicTarget = Math.floor(contextSize * 0.5);
-					if (result.assembledTokens <= panicTarget) {
+
+					// Use real LLM context_tokens — budget character estimate overestimates
+					// real tokens after compression. Exit fires one turn late otherwise.
+					const lastCtxRow = await this.#db.get_last_context_tokens.get({
+						run_id: currentRunId,
+					});
+					const realTokens =
+						lastCtxRow?.context_tokens ?? result.assembledTokens;
+					_lastAssembledTokens = realTokens;
+
+					if (realTokens <= panicTarget) {
 						await this.#db.update_run_status.run({
 							id: currentRunId,
 							status: 200,
@@ -415,7 +425,7 @@ export default class AgentLoop {
 						return out;
 					}
 					if (_lastPanicTokens !== null) {
-						if (result.assembledTokens < _lastPanicTokens) {
+						if (realTokens < _lastPanicTokens) {
 							_panicStrikes = 0;
 						} else {
 							_panicStrikes++;
@@ -427,15 +437,15 @@ export default class AgentLoop {
 								return {
 									run: currentAlias,
 									status: 413,
-									overflow: result.assembledTokens - contextSize,
-									assembledTokens: result.assembledTokens,
+									overflow: realTokens - contextSize,
+									assembledTokens: realTokens,
 									contextSize,
 									turn: result.turn,
 								};
 							}
 						}
 					}
-					_lastPanicTokens = result.assembledTokens;
+					_lastPanicTokens = realTokens;
 				}
 
 				const runUsage = await this.#db.get_run_usage.get({
