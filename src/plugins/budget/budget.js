@@ -28,10 +28,10 @@ export default class Budget {
 			"",
 			"Entries in <knowns> and <previous> each show their current fidelity and token size. Reduce their fidelity to free up space.",
 			"Target the largest and/or least relevant entries first.",
-			'<set path="..." fidelity="summary" summary="keyword1,keyword2,keyword3,..."/> to compress.',
+			'<set path="known://topic" fidelity="summary" summary="keyword1,keyword2,keyword3"/> to compress an entry.',
+			'<set path="prompt://3" fidelity="index"/> to compress an entry — preferred, keeps path visible for later retrieval.',
+			'<set path="known://topic" fidelity="archive"/> to remove from context — use only if the entry is truly irrelevant.',
 			"Use quality keywords from the entry to describe the content.",
-			'<set path="..." fidelity="index"/> to only list the path — preferred, keeps path visible for later retrieval.',
-			'<set path="..." fidelity="archive"/> to remove it from context — use only if the entry is truly irrelevant.',
 			continuation
 				? "<update></update> to report progress, <summarize></summarize> when done."
 				: "<summarize></summarize> when done. <update></update> if still working.",

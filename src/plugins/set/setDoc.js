@@ -19,8 +19,8 @@ const LINES = [
 		"SEARCH/REPLACE block: literal match and replace. Use when sed escaping is complex.",
 	],
 	[
-		'Example: <set path="known://plan" fidelity="summary" summary="Migration plan for Q2"/>',
-		"Fidelity + summary: hide body from context, keep short label visible. Lifecycle endpoint.",
+		'Example: <set path="known://topic" fidelity="summary" summary="keyword1,keyword2"/> ... <set path="prompt://3" fidelity="index"/>',
+		"Fidelity control: compress a known entry to keywords, demote a previous prompt to index-only. Both free context while keeping paths visible.",
 	],
 
 	// --- Constraints
