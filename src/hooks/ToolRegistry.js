@@ -1,10 +1,11 @@
 // Tool display order: gather → reason → act → communicate.
 // Position in the list implies priority to the model.
 const TOOL_ORDER = [
+	"think",
+	"unknown",
+	"known",
 	"get",
 	"set",
-	"known",
-	"unknown",
 	"env",
 	"sh",
 	"rm",
