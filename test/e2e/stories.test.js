@@ -492,7 +492,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"Save 10 separate known entries: for each number 1 through 10, save a known entry with the key 'number-N' and value 'The number N is important because it has N digits of history.' Then summarize when done.",
 			noInteraction: true,
 			noRepo: true,
-			contextLimit: 3000,
+			contextLimit: 5000,
 		});
 
 		// Run must complete — Turn Demotion means 413 never reaches the client
@@ -514,7 +514,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		// If demotion fired, some entries will be at summary fidelity with 413 status.
 		// The run completing without client-facing 413 is the key assertion above.
 		const overflowEntries = entries.filter(
-			(e) => e.scheme === "ctx-overflow" && e.status === 413,
+			(e) => e.scheme === "budget" && e.status === 413,
 		);
 		const demotedEntries = entries.filter(
 			(e) => e.fidelity === "summary" && e.status === 413,

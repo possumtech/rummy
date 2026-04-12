@@ -5,7 +5,7 @@ import Budget from "./budget.js";
 describe("Budget", () => {
 	it("enforce returns 200 when under budget", async () => {
 		const budget = new Budget({
-			hooks: { budget: null },
+			hooks: { budget: null, tools: { onView: () => {} } },
 			registerScheme: () => {},
 		});
 		const result = await budget.enforce({
@@ -19,7 +19,7 @@ describe("Budget", () => {
 
 	it("enforce returns 413 when over budget", async () => {
 		const budget = new Budget({
-			hooks: { budget: null },
+			hooks: { budget: null, tools: { onView: () => {} } },
 			registerScheme: () => {},
 		});
 		const result = await budget.enforce({
@@ -33,7 +33,7 @@ describe("Budget", () => {
 
 	it("enforce returns 200 with no contextSize", async () => {
 		const budget = new Budget({
-			hooks: { budget: null },
+			hooks: { budget: null, tools: { onView: () => {} } },
 			registerScheme: () => {},
 		});
 		const result = await budget.enforce({

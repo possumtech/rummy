@@ -10,10 +10,11 @@ export default class Budget {
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({
-			name: "ctx-overflow",
+			name: "budget",
 			modelVisible: 1,
 			category: "logging",
 		});
+		core.hooks.tools.onView("budget", (entry) => entry.body);
 		core.hooks.budget = {
 			enforce: this.enforce.bind(this),
 		};

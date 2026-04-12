@@ -473,7 +473,7 @@ export default class TurnExecutor {
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
-					`ctx-overflow://${currentLoopId}/${turn}`,
+					`budget://${currentLoopId}/${turn}`,
 					`Turn ${turn}: ${postBudget.assembledTokens}/${contextSize} tokens (${postBudget.overflow} over). Data entries auto-summarized.`,
 					413,
 					{ loopId: currentLoopId },
