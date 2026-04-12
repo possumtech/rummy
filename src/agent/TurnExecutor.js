@@ -92,10 +92,22 @@ export default class TurnExecutor {
 		loopIteration,
 		noRepo,
 		toolSet,
+		inRecovery = false,
 		contextSize,
 		options,
 		signal,
 	}) {
+		const RECOVERY_EXCLUDED = new Set([
+			"sh",
+			"env",
+			"search",
+			"ask_user",
+			"set",
+		]);
+		const effectiveToolSet = inRecovery
+			? new Set([...toolSet].filter((t) => !RECOVERY_EXCLUDED.has(t)))
+			: toolSet;
+
 		const turn = await this.#knownStore.nextTurn(currentRunId);
 
 		const turnRow = await this.#db.create_turn.get({
@@ -135,7 +147,7 @@ export default class TurnExecutor {
 				loopId: currentLoopId,
 				turnId: turnRow.id,
 				noRepo,
-				toolSet,
+				toolSet: effectiveToolSet,
 				contextSize,
 				systemPrompt: null,
 				loopPrompt,
@@ -181,7 +193,7 @@ export default class TurnExecutor {
 			turn,
 			systemPrompt,
 			mode,
-			toolSet,
+			toolSet: effectiveToolSet,
 			contextSize,
 			demoted,
 		});
@@ -229,7 +241,7 @@ export default class TurnExecutor {
 					turn,
 					systemPrompt,
 					mode,
-					toolSet,
+					toolSet: effectiveToolSet,
 					contextSize,
 					demoted,
 				});
@@ -448,7 +460,9 @@ export default class TurnExecutor {
 		}
 
 		// Turn Demotion: if end-of-turn context exceeds ceiling, demote this
-		// turn's data entries to summary with 413 status.
+		// turn's data entries and the incoming prompt to summary, then force a
+		// budget recovery phase before continuing.
+		let budgetRecovery = null;
 		if (contextSize) {
 			const postMat = await this.#materializeTurnContext({
 				runId: currentRunId,
@@ -456,7 +470,7 @@ export default class TurnExecutor {
 				turn,
 				systemPrompt,
 				mode,
-				toolSet,
+				toolSet: effectiveToolSet,
 				contextSize,
 				demoted,
 			});
@@ -466,19 +480,69 @@ export default class TurnExecutor {
 				rows: postMat.rows,
 			});
 			if (postBudget.status === 413) {
-				const demoted = await this.#db.demote_turn_data_entries.all({
+				// Demote this turn's data entries.
+				const demotedEntries = await this.#db.demote_turn_data_entries.all({
 					run_id: currentRunId,
 					turn,
 				});
-				const paths = demoted.map((r) => r.path).join(", ");
+				const paths = demotedEntries.map((r) => r.path).join(", ");
+
+				// Also summarize the prompt — forces the model to earn it back.
+				const promptRow = postMat.rows.find((r) => r.scheme === "prompt");
+				if (promptRow) {
+					await this.#knownStore.setFidelity(
+						currentRunId,
+						promptRow.path,
+						"summary",
+					);
+				}
+
+				// Re-materialize after both demotions for accurate token count.
+				const recoveryMat = await this.#materializeTurnContext({
+					runId: currentRunId,
+					loopId: currentLoopId,
+					turn,
+					systemPrompt,
+					mode,
+					toolSet: effectiveToolSet,
+					contextSize,
+					demoted,
+				});
+				const recoveryBudget = await this.#hooks.budget.enforce({
+					contextSize,
+					messages: recoveryMat.messages,
+					rows: recoveryMat.rows,
+				});
+				const safeLevel = Math.floor(contextSize * 0.75);
+				const tokensToFree = Math.max(
+					0,
+					recoveryBudget.assembledTokens - safeLevel,
+				);
+
+				const body = [
+					"Error 413: Context Size Exceeded",
+					"",
+					"Required: YOU MUST demote larger and/or less relevant items to optimize your context.",
+					`Info: ${paths} have been automatically summarized to avoid overflow.`,
+					`Info: Prompt auto-summarized. Full prompt restores automatically when you free ${tokensToFree} tokens.`,
+					"Info: YOU MAY use bulk patterns to demote and promote entries by pattern.",
+					"Info: Well-designed paths and summaries improve context management.",
+					'Example: <set path="known://people/*" fidelity="summary"/>',
+				].join("\n");
+
 				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
 					`budget://${currentLoopId}/${turn}`,
-					`Turn ${turn} overflow (${postBudget.overflow} tokens over). Auto-summarized: ${paths}`,
+					body,
 					413,
 					{ loopId: currentLoopId },
 				);
+
+				budgetRecovery = {
+					target: safeLevel,
+					promptPath: promptRow?.path ?? null,
+				};
 			}
 		}
 
@@ -561,6 +625,7 @@ export default class TurnExecutor {
 			contextSize,
 			assembledTokens,
 			usage: result.usage,
+			budgetRecovery,
 		};
 
 		await this.#hooks.turn.completed.emit(turnResult);

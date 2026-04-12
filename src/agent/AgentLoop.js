@@ -280,6 +280,7 @@ export default class AgentLoop {
 		const healer = new ResponseHealer();
 
 		let _lastAssembledTokens = 0;
+		let recovery = null; // { target, promptPath, strikes, lastTokens }
 
 		// Demote full logging entries from previous loops to summary before
 		// they appear in <previous>. General policy: keep <previous> compact.
@@ -334,6 +335,7 @@ export default class AgentLoop {
 					loopIteration,
 					noRepo,
 					toolSet,
+					inRecovery: recovery !== null,
 					contextSize,
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal,
@@ -351,6 +353,59 @@ export default class AgentLoop {
 				}
 
 				_lastAssembledTokens = result.assembledTokens;
+
+				// Budget recovery: enforce progress toward context target.
+				if (result.budgetRecovery) {
+					if (!recovery) {
+						recovery = {
+							target: result.budgetRecovery.target,
+							promptPath: result.budgetRecovery.promptPath,
+							strikes: 0,
+							lastTokens: result.assembledTokens,
+						};
+					} else {
+						// Re-overflow during recovery — update target, don't strike.
+						recovery.target = Math.min(
+							recovery.target,
+							result.budgetRecovery.target,
+						);
+					}
+				}
+
+				if (recovery !== null) {
+					const current = result.assembledTokens;
+					if (current <= recovery.target) {
+						// Target met: restore full prompt and exit recovery.
+						if (recovery.promptPath) {
+							await this.#knownStore.setFidelity(
+								currentRunId,
+								recovery.promptPath,
+								"full",
+							);
+						}
+						recovery = null;
+					} else {
+						if (current >= recovery.lastTokens && !result.budgetRecovery) {
+							recovery.strikes++;
+							if (recovery.strikes >= 3) {
+								await this.#db.update_run_status.run({
+									id: currentRunId,
+									status: 413,
+								});
+								const out = {
+									run: currentAlias,
+									status: 413,
+									turn: result.turn,
+								};
+								await hook.completed.emit({ projectId, ...out });
+								return out;
+							}
+						} else {
+							recovery.strikes = 0;
+						}
+						recovery.lastTokens = current;
+					}
+				}
 
 				const runUsage = await this.#db.get_run_usage.get({
 					run_id: currentRunId,
@@ -423,6 +478,9 @@ export default class AgentLoop {
 					turn: result.turn,
 					flags: result.flags,
 				});
+
+				// Don't exit while budget recovery is still active.
+				if (recovery !== null) continue;
 
 				const repetition = healer.assessRepetition(result);
 				if (!repetition.continue) {
