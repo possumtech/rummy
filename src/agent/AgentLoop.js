@@ -376,11 +376,11 @@ export default class AgentLoop {
 							run_id: currentRunId,
 						});
 
-					// Budget entry must be small — listing all paths caused a
-					// 25K-token entry that was itself larger than the context.
+					const pathList = demoted413.map((r) => r.path).join("\n");
 					const budgetBody = [
 						"Error 413: Context Size Exceeded",
-						`${demoted413.length} entries demoted to summary.`,
+						`${demoted413.length} entries demoted to summary:`,
+						pathList,
 						"Review your entries and archive what you don't need.",
 					].join("\n");
 

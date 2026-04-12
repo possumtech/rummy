@@ -543,9 +543,11 @@ export default class TurnExecutor {
 					recoveryBudget.assembledTokens - safeLevel,
 				);
 
+				const pathList = demotedEntries.map((r) => r.path).join("\n");
 				const body = [
 					"Error 413: Context Size Exceeded",
-					`${demotedEntries.length} entries demoted to summary.`,
+					`${demotedEntries.length} entries demoted to summary:`,
+					pathList,
 					"Review your entries and archive what you don't need.",
 				].join("\n");
 
