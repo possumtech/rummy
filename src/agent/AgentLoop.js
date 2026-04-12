@@ -381,7 +381,7 @@ export default class AgentLoop {
 						"Error 413: Context Size Exceeded",
 						`${demoted413.length} entries demoted to summary:`,
 						pathList,
-						"Review your entries and archive what you don't need.",
+						"Demote irrelevant entries to free context.",
 					].join("\n");
 
 					await this.#knownStore.upsert(

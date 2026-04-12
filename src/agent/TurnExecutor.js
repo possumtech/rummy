@@ -548,7 +548,7 @@ export default class TurnExecutor {
 					"Error 413: Context Size Exceeded",
 					`${demotedEntries.length} entries demoted to summary:`,
 					pathList,
-					"Review your entries and archive what you don't need.",
+					"Demote irrelevant entries to free context.",
 				].join("\n");
 
 				await this.#knownStore.upsert(

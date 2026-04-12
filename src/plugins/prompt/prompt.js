@@ -3,7 +3,16 @@ export default class Prompt {
 
 	constructor(core) {
 		this.#core = core;
-		core.hooks.tools.onView("prompt", (entry) => entry.body);
+		core.hooks.tools.onView("prompt", (entry) => {
+			if (entry.fidelity === "summary") {
+				const limit = 500;
+				const text = entry.body?.slice(0, limit) || "";
+				return text.length < (entry.body?.length || 0)
+					? `${text}\n[truncated — promote to full to see the complete prompt]`
+					: text;
+			}
+			return entry.body;
+		});
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.filter("assembly.user", this.assemblePrompt.bind(this), 300);
 	}
