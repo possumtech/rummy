@@ -239,9 +239,10 @@ WHERE
 RETURNING path;
 
 -- PREP: demote_all_full_data
--- Batch-demote ALL full data entries to summary.
+-- Batch-demote ALL full model-visible entries to summary.
 -- Fires when pre-turn or LLM context overflow reaches AgentLoop.
--- Aggressive: creates room for the model to run and choose what to restore.
+-- Includes data entries AND file entries (NULL scheme).
+-- Excludes prompt and system entries (needed for the model to function).
 UPDATE known_entries
 SET
 	fidelity = 'summary'
@@ -255,5 +256,9 @@ WHERE
 	run_id = :run_id
 	AND fidelity = 'full'
 	AND status < 400
-	AND scheme IN (SELECT name FROM schemes WHERE category = 'data')
+	AND (
+		scheme IN (SELECT name FROM schemes WHERE category = 'data')
+		OR scheme IS NULL
+	)
+	AND scheme NOT IN ('system', 'prompt', 'instructions')
 RETURNING path;

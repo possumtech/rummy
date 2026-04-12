@@ -294,6 +294,20 @@ Test locations:
 - Integration: `test/integration/`
 - E2E: `test/e2e/` (real model, never mocked)
 
+### Fix 4b: Recovery loop infinite cycle (CRITICAL)
+- **Bug**: The 413 recovery loop ran 193 iterations (387 turns) without exiting.
+  Two causes:
+  1. `demote_all_full_data` SQL only targets data-category schemes. Repo files
+     (NULL scheme) are invisible — they consume all context but never get demoted.
+  2. Each 413 creates a new `budgetRecovery` in `advanceRecovery`, which resets
+     the recovery state instead of counting strikes. The strike system never fires.
+- [ ] Fix demotion SQL: include NULL-scheme (file) entries, or demote by fidelity
+  regardless of category
+- [ ] Fix strike counting: consecutive 413 returns from TurnExecutor must count
+  as strikes even when new budgetRecovery signals arrive
+- [ ] Test: verify hard-413 fires after 3 consecutive unproductive 413s
+- [ ] Test: verify repo file entries can be demoted during recovery
+
 ### Fix 5: Proposal lifecycle — env executed but still blocked
 - **Problem**: `<env>ls -R` dispatched (status 200, results returned) but ALSO
   created an unresolved proposal. All subsequent actions 409'd with "preceding
