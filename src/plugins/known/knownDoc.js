@@ -4,7 +4,7 @@
 const LINES = [
 	// --- Syntax: path = slash-separated topic hierarchy, body = the information to save
 	[
-		'## <known path="known://topic/subtopic">[specific facts, decisions, or plans]</known> - Sort and save what you learn for later recall',
+		'## <known path="topic/subtopic" summary="fact,decision,plan">[specific facts, decisions, or plans]</known> - Sort and save what you learn for later recall',
 	],
 	// --- Examples: explicit slash path first (canonical pattern)
 	[
