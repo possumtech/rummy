@@ -284,20 +284,52 @@ auto-demotion by the system.
 - [x] Budget README updated to reflect simplified design
 - [x] SPEC.md updated (removed `tokens_full`)
 - [x] Tests: 221 unit, 165 integration, 16 E2E — all green
+- [x] Get handler: "loaded into `<knowns>`" → "promoted to full" (was teaching
+  the model that `<get>` migrates files into a separate store)
+- [x] Prompt summary: first 500 chars visible at summary fidelity, truncation
+  notice if truncated (was invisible — model lost its instructions)
+- [x] Budget entry language: "Demote irrelevant entries to free context"
+  (was "archive what you don't need" — wrong vocabulary)
+- [x] Preamble: tool call cap "up to 99" (gemma fired 2001 gets in one turn)
+
+### Demo run failures diagnosed (rummy_dev.db, gemma, rummy.nvim)
+
+**Run 1** (pre-fixes): `<env>ls -R` blocked everything via proposal. Dead run.
+**Run 2**: model promoted 21 files, 413 recovery demoted everything including
+  prompt. Model saw invisible prompt, stalled at "Ready for instructions."
+**Run 3**: model fired 2001 `<get>` calls (empty `<think>`, zero reasoning).
+  413 recovery loop ran 499 times — budget entry itself was 25K tokens.
+  Model never got a turn. Turns 4-6: "Organizing context" with no action.
+
+Root causes identified:
+1. Get handler said "loaded into `<knowns>`" — taught file→known pipeline
+2. Prompt invisible at summary fidelity — model lobotomized after demotion
+3. No tool call cap — degenerate repetition loops
+4. Budget entry listed all paths — entry itself exceeded context
+5. Budget language said "archive" — model doesn't know "archive", knows "demote"
+6. Gemma produced zero reasoning — can't diagnose without thinking output
 
 ### TODO
 
+**Reasoning collection:**
+- [ ] Verify reasoning://N entries are written for gemma (API reasoning vs
+  `<think>` tag). If gemma's reasoning comes through a different field,
+  the telemetry plugin may be missing it.
+- [ ] Check if gemma produces reasoning at all on OpenRouter, or if it
+  needs explicit prompting to use `<think>`
+
 **Demo validation (next):**
-- [ ] Demo run on rummy.nvim project (gemma) — verify model sees accurate
-  token counts and makes informed promotion decisions
-- [ ] Verify model doesn't call `<env>` for directory listing
+- [ ] Fresh demo run with all fixes applied — verify:
+  - Model sees token counts, makes informed promotion decisions
+  - Model doesn't call `<env>` for directory listing
+  - Prompt visible at summary fidelity after demotion
+  - Budget recovery lets model run (not infinite system-only loop)
+  - Model produces reasoning in `<think>` tags
 - [ ] Verify `<previous>` entries get model-written summary tags
-- [ ] Verify budget 413 recovery works in real workflow (not just E2E)
 
 **Prompt Demotion:**
 - [ ] Verify both tiny-prompt (context at 99%) and monster-prompt
   (context at 75%) cases work correctly
-- [ ] Test: summarized prompt fits in 10% headroom, model can run
 
 ### Testing Strategy
 
