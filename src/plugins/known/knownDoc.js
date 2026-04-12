@@ -6,28 +6,27 @@ const LINES = [
 	[
 		'## <known path="known://topic/subtopic" summary="keyword,keyword,keyword">[specific facts, decisions, or plans]</known> - Sort and save what you learn for later recall',
 	],
-	// --- Examples: category-level entries — multiple related facts per entry, not one per item
+	// --- Examples: summary-first (simplest), then explicit path (full control)
 	[
-		'Example: <known path="known://config/database" summary="database,host,port,pool,replica">Host: db.internal. Port: 5432. Pool: 10 connections. Replica: db-replica.internal:5432.</known>',
-		"Category entry: all database config facts in one entry. Path is an address (topic/subtopic), body collects every related fact, summary is comma-separated search keywords — not a description.",
+		'Example: <known summary="hedberg,comedian,death,2005">Mitch Hedberg died on March 30, 2005</known>',
+		"Primary pattern: comma-separated keywords in summary. Path auto-generated from summary. Keywords become searchable path segments.",
 	],
 	[
-		'Example: <known path="known://project/milestones" summary="milestone,deadline,alpha,launch,2026">Alpha: 2026-03-01. Beta cutoff: 2026-04-15. GA launch: 2026-06-01.</known>',
-		"Timeline entry: all milestone dates under one path. Multiple facts per entry reduces fragmentation. Recall by glob or keyword.",
-	],
-	// --- Constraints: summary and grouping first (model forms generation pattern from header + examples)
-	[
-		"* `summary` REQUIRED — at summary fidelity the body is hidden; these keywords are your only description",
-		"Self-interest framing: without summary, the model has a path but no idea what's inside.",
-	],
-	[
-		"* Group related facts by topic — one entry per topic category, not one per input chunk",
-		"Critical behavioral constraint. Topic grouping enables semantic recall; chunk-based filing creates positional, irretrievable entries.",
+		'Example: <known path="known://people/rumsfeld" summary="defense,secretary,born,1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</known>',
+		"Explicit path form: slashed path=category/key, summary=keywords. For when the model wants direct control over taxonomy.",
 	],
 	// --- Lifecycle
 	[
-		'* Recall with <get path="known://config/*">replica</get>',
+		'* Recall with <get path="known://people/*">keyword</get>',
 		"Cross-tool lifecycle: glob by category, filter by keyword. Matches the slashed path convention.",
+	],
+	[
+		"* `summary` keywords survive compression — write keywords you'll search for later",
+		"Teaches WHY summaries matter. Keywords become the path AND the compressed view.",
+	],
+	[
+		"* YOU MUST sort and save all new facts, decisions, and plans in their own <known> entries",
+		"Critical behavioral constraint. 'new' prevents re-saving known facts.",
 	],
 ];
 
