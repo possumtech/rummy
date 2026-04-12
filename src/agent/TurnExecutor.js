@@ -505,7 +505,7 @@ export default class TurnExecutor {
 			});
 			if (postBudget.status === 413) {
 				// Demote this turn's data entries.
-				const demotedEntries = await this.#db.demote_turn_data_entries.all({
+				const demotedEntries = await this.#db.demote_turn_entries.all({
 					run_id: currentRunId,
 					turn,
 				});

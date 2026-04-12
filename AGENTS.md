@@ -22,19 +22,20 @@ HTTP status codes throughout (entries, runs, loops, client RPC).
 13 model tools: get, set, known, unknown, env, sh, rm, cp, mv,
 search, summarize, update, ask_user. Tool priority ordering (get first,
 ask_user last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
-Budget: two declarative demotion events replace per-write BudgetGuard.
-Ceiling: `floor(contextSize × 0.9)`. 413 never reaches the client.
-  - **Prompt Demotion**: first-turn materialization 413s → prompt → summary,
-    re-materialize, continue. Still 413 → genuine failure, return 413.
-  - **Turn Demotion**: end-of-turn materialization 413s → all full data
-    entries at current turn → summary + 413; prompt also summarized; writes
-    `budget://` entry (registered by budget plugin, `category='logging'`);
-    enters in-memory recovery phase. Recovery: model restricted to
-    get/set/known/unknown/rm/cp/mv/summarize/update; 3 consecutive turns
-    without token reduction → hard 413. Token target = ceiling; met when
-    assembled ≤ ceiling; prompt fidelity restored on exit.
-  - **Previous-loop logging demotion**: at loop start, batch-demote all full
-    logging entries from other loops to summary (keeps `<previous>` compact).
+Budget: ceiling = `floor(contextSize × 0.9)`. The 10% headroom is the
+system's operating room for graceful overflow handling.
+  - **Prompt Demotion**: new prompt exceeds ceiling → summarize the prompt,
+    model runs in the headroom and manages its own context.
+  - **Turn Demotion**: post-dispatch context exceeds ceiling → demote all
+    entries from this turn to summary (all schemes except budget), write
+    `budget://` entry listing what was demoted. Model sees it next turn
+    and adapts. No per-write gating — tools run uninterrupted, demotion
+    happens after.
+  - **LLM rejection**: turn-1 token estimate drift causes LLM to reject
+    what the budget check approved → `isContextExceeded` catch, same
+    demotion pattern, uses the 10% headroom for recovery.
+  - **Previous-loop entries**: model-managed. Preamble instructs model to
+    demote `<previous>` entries to summary with descriptive tags.
 Token math: `ceil(text.length / RUMMY_TOKEN_DIVISOR)`. No tiktoken.
 500-token size gate on known entries. Glob matching via picomatch.
 Tool docs in annotated `*Doc.js` line arrays with rationales.
@@ -229,62 +230,89 @@ Publish after Phase 1 (CR full) completes. Tables populated incrementally.
 - Score vs context pressure correlation
 - Folksonomic quality (spot-check known:// paths in DB)
 
-## Active: Post-MAB Fixes
+## Active: Budget Simplification
 
-### Context: What MAB Taught Us
-- Taxonomy quality (paths + summaries) is solved: 7/7 semantic, 6/7 keyword-format
-- Parser bug fixed: XmlParser + TurnExecutor now pass `summary` attr to DB
-- "Folksonomic memory agent" identity fixed MAB taxonomy but broke normal work
-- Budget/recovery system was only tested against benchmarks, not real workflows
+### Design (2026-04-12)
 
-### Demo Run Failure (rummy_dev.db, gemma, rummy.nvim project)
-User asked: "review project, search web for best practices, generate checklist, save to plan.md"
-Result: dead run, never wrote to plan.md, 413 to client.
+One rule: if context exceeds the 90% ceiling at any checkpoint, demote
+and report. The 10% headroom is the system's operating room. No per-write
+gating. Tools run uninterrupted; enforcement happens at boundaries.
 
-Failure chain:
-1. Repo scanner loads 47 files (114K tokens) into context at index/full fidelity
-2. Model fires `<env>ls -R` + 2 `<get>` + 4 `<search>` + 1 `<set>` in one turn
-3. Sequential dispatch runs only `<env>`, 409s the other 7 actions
-4. Loop 2 starts, 47 files + turn 1 logging = context overflow
-5. LLM returns 400 "context exceeded" (52K tokens, 32K limit)
-6. TurnExecutor catches 400, returns 413 (Fix 1 — done)
-7. AgentLoop returns 413 directly to client — no recovery attempted
-8. Dead run. User never got results.
+**Two checkpoints, one pattern:**
 
-### Fix 1: LLM 400→413 error handling
-- [x] Detect context-exceeded 400s in TurnExecutor LLM catch block
-- [x] Return 413 status instead of throwing 500
-- [ ] **AgentLoop line 346**: 413 returns directly to client. Must enter
-  demotion/recovery loop instead. Current budget 413s from TurnExecutor
-  have already attempted Prompt Demotion internally — but LLM 413s
-  haven't tried any demotion. AgentLoop needs to distinguish and
-  trigger demotion before giving up.
+1. **Post-dispatch** (Turn Demotion): model's tools all run. Post-dispatch
+   check: over ceiling? Demote ALL entries from this turn to summary
+   (every scheme except `budget`). Write `budget://` entry listing what
+   was demoted. Model sees it next turn and adapts.
 
-### Fix 2: Preamble rebalancing
-- [x] Changed "all information" → "your findings" (extract, don't ingest)
-- [ ] Demo run to verify model reads files and extracts findings
-  instead of loading everything into known://
+2. **Pre-LLM** (Prompt Demotion): new prompt + existing context exceeds
+   ceiling. Summarize the prompt. Model runs in the 10% headroom with
+   the summarized prompt and manages its own context.
 
-### Fix 3: Previous-entry summarization
-- [x] Added preamble line: "YOU SHOULD demote <previous> entries to
-  summary with descriptive summary tags"
-- [x] Removed auto-demotion in AgentLoop (demotePreviousLoopLogging)
-- [ ] Demo run to verify model manages its own previous entries
+**Safety net**: LLM rejects context on turn 1 (estimate drift) →
+`isContextExceeded` catch → same demotion pattern, same headroom.
 
-### Fix 4: 413 recovery loop (not just detection)
-- **Problem**: AgentLoop line 346 returns 413 to client immediately.
-  The model never gets a chance to free context. This defeats the
-  entire purpose of budget enforcement — the model should self-correct.
-- **Required**: When TurnExecutor returns 413 (from LLM or budget),
-  AgentLoop should enter recovery mode: tell the model to demote
-  entries, give it N turns to free space, only hard-413 after strikes.
-- **This is the panic mode plan** from the existing plan file.
-- [ ] Wire 413 into recovery loop instead of client return
-- [ ] Strike system: 3 turns without progress → hard 413
-- [ ] Test: demo run where context fills, model recovers
+**AgentLoop recovery**: if pre-LLM 413 can't be resolved by Prompt
+Demotion alone, AgentLoop batch-demotes all full entries, writes budget
+entry, gives model recovery turns. Strike system: 3 turns without
+progress → hard 413 to client. This is the only path where 413 reaches
+the client.
+
+**Previous-loop entries**: model-managed via preamble instruction. No
+auto-demotion by the system.
+
+### What Changed
+
+**Done (this session):**
+- [x] XmlParser: `<known>` tag now spreads all attrs (was dropping `summary`)
+- [x] TurnExecutor: passes `attributes` to `upsert()` on both known paths
+- [x] Preamble: "folksonomic memory agent" identity, "extract your findings"
+- [x] Preamble: summary tags info line, `<previous>` demotion instruction
+- [x] Removed auto-demotion of previous loop logging (model-managed now)
+- [x] knownDoc: category-level examples, REQUIRED summary, domain-neutral
+- [x] All tooldocs: consistent category paths, no single-entity examples
+- [x] LLM 400→413: `isContextExceeded` catch in TurnExecutor
+- [x] AgentLoop 413 recovery loop (batch demote + budget entry + strikes)
+- [x] `demote_turn_entries` SQL: all schemes except budget (was data-only)
+- [x] `demote_all_full_data` SQL: includes NULL-scheme file entries
+- [x] BudgetGuard class restored (for `delta` utility + `BudgetExceeded` error)
+- [x] Unit tests: `isContextExceeded` regex (17 cases), BudgetGuard (11 cases)
+- [x] E2E tests: Story 12 (pre-turn recovery), Story 13 (LLM rejection recovery)
+- [x] All tests green: 210 unit, 167 integration, 14 E2E
+
+### TODO
+
+**Turn Demotion scope fix:**
+- [ ] Verify `demote_turn_entries` covers all schemes correctly in practice
+- [ ] Update budget_demotion.test.js for renamed SQL + broader scope
+- [ ] Test: logging entries (get, search) at current turn ARE demoted
+- [ ] Test: file entries (NULL scheme) promoted by `<get>` ARE demoted
+
+**AgentLoop recovery hardening:**
+- [ ] Fix strike counting: consecutive 413s must count strikes even when
+  new `budgetRecovery` signals arrive (caused 193-iteration infinite loop)
+- [ ] Test: hard-413 fires after 3 consecutive unproductive recovery turns
+- [ ] Test: successful demotion by model → recovery exits, prompt restored
+
+**Prompt Demotion:**
+- [ ] Verify Prompt Demotion correctly handles both tiny-prompt (context at
+  99%) and monster-prompt (context at 75%) cases
+- [ ] Test: summarized prompt fits in 10% headroom, model can run
+
+**Demo validation:**
+- [ ] Demo run on rummy.nvim project (gemma) — model should read files,
+  extract findings into `known://`, manage its own context
+- [ ] Verify model doesn't call `<env>` for directory listing (tooldoc
+  already says "YOU MUST NOT use <env/> to read or list files")
+- [ ] Verify `<previous>` entries get model-written summary tags
+
+**Budget README:**
+- [ ] Update `src/plugins/budget/README.md` to reflect new design
+  (no per-write BudgetGuard install/uninstall, post-dispatch enforcement)
 
 ### Testing Strategy
-**Write failing tests BEFORE implementing fixes.** Each fix gets:
+
+Write failing tests BEFORE implementing fixes. Each fix gets:
 1. A failing test that reproduces the bug
 2. The fix that makes it pass
 3. Regression coverage going forward
@@ -294,42 +322,37 @@ Test locations:
 - Integration: `test/integration/`
 - E2E: `test/e2e/` (real model, never mocked)
 
-### Fix 4b: Recovery loop infinite cycle (CRITICAL)
-- **Bug**: The 413 recovery loop ran 193 iterations (387 turns) without exiting.
-  Two causes:
-  1. `demote_all_full_data` SQL only targets data-category schemes. Repo files
-     (NULL scheme) are invisible — they consume all context but never get demoted.
-  2. Each 413 creates a new `budgetRecovery` in `advanceRecovery`, which resets
-     the recovery state instead of counting strikes. The strike system never fires.
-- [ ] Fix demotion SQL: include NULL-scheme (file) entries, or demote by fidelity
-  regardless of category
-- [ ] Fix strike counting: consecutive 413 returns from TurnExecutor must count
-  as strikes even when new budgetRecovery signals arrive
-- [ ] Test: verify hard-413 fires after 3 consecutive unproductive 413s
-- [ ] Test: verify repo file entries can be demoted during recovery
+## Benchmark Plan
 
-### Fix 5: Proposal lifecycle — env executed but still blocked
-- **Problem**: `<env>ls -R` dispatched (status 200, results returned) but ALSO
-  created an unresolved proposal. All subsequent actions 409'd with "preceding
-  <env> requires resolution." Run returned 202 (proposed), never resolved.
-  Model then hallucinated success: `<summarize>Generated 100 checklist items`
-  when the `<set>plan.md` was 409'd.
-- **Questions**: (a) Should env execute before approval? If it requires resolution,
-  it should NOT have run. (b) If it ran, why is it still blocking?
-- [ ] Test: env in act mode — verify it either executes without blocking OR
-  blocks without executing, never both
-- [ ] Fix the dispatch/proposal inconsistency
-- [ ] Consider: should `<env>ls` even require resolution? It's read-only.
+Benchmarks on hold until budget simplification is validated with demo runs.
 
-### Fix 6: Repo scanner context pressure (RESOLVED — scanner is fine)
-- **Problem**: 47 files at full/index = 114K tokens before the model
-  even gets a turn. On a 32K model this guarantees overflow.
-- **Options**: (a) scan at index-only fidelity, (b) cap total file
-  tokens, (c) let the model decide what to promote via `<get>`
-- [ ] Decide approach
-- [ ] Implement
+### Published Baselines (MemoryAgentBench, ICLR 2026)
+
+Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
+
+| Model | CR-SH (single-hop) | CR-MH (multi-hop) |
+|---|---|---|
+| GPT-4o | 60% | **5%** |
+| Claude 3.7 Sonnet | 43% | 2% |
+| Gemini 2.0 Flash | 30% | 3% |
+| Best published | 60% | **6%** |
+
+### MAB Results (Grok, 32K context, Conflict_Resolution row 0)
+
+- Taxonomy: 7/7 semantic paths, 6/7 keyword-format summaries
+- Score: 1/100 (1.0%) — model retrieves correctly but trusts parametric
+  knowledge over planted contradictions. CR-MH tests reasoning policy,
+  not retrieval quality.
+- The retrieval and taxonomy work. The 1% is not a system failure.
+
+Taxonomy health check (fast, no questions):
+```
+npm run test:grok:taxonomy
+npm run test:mab:taxonomy
+```
 
 ## Deferred
 
 - `src/plugins/progress/progress.js` — add recovery guidance
 - Non-git file scanner fallback
+- Community debut post (Latent Space) — after budget validation + LME run

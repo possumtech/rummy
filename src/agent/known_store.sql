@@ -218,9 +218,10 @@ WHERE
 	AND fidelity = 'full'
 	AND scheme IN (SELECT name FROM schemes WHERE category = 'logging');
 
--- PREP: demote_turn_data_entries
--- Demote full data entries from a turn to summary with 413 status.
--- Fires when end-of-turn materialization exceeds the context ceiling.
+-- PREP: demote_turn_entries
+-- Demote all full model-visible entries from a turn to summary with 413 status.
+-- Covers data, logging, AND file entries (NULL scheme). Excludes lifecycle
+-- signals (summarize, update, budget) so the model sees the demotion report.
 UPDATE known_entries
 SET
 	fidelity = 'summary'
@@ -235,7 +236,7 @@ WHERE
 	AND turn = :turn
 	AND fidelity = 'full'
 	AND status < 400
-	AND scheme IN (SELECT name FROM schemes WHERE category = 'data')
+	AND scheme NOT IN ('summarize', 'update', 'budget', 'system', 'prompt', 'instructions')
 RETURNING path;
 
 -- PREP: demote_all_full_data
