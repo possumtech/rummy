@@ -6,11 +6,12 @@
  * via ask prompts, then quiz the agent on each question.
  *
  * Usage:
- *   node test/mab/runner.js                           # all splits
- *   node test/mab/runner.js --split Accurate_Retrieval # one split
- *   node test/mab/runner.js --split Accurate_Retrieval --row 0  # one row
- *   node test/mab/runner.js --row 0-4                  # row range
- *   node test/mab/runner.js --chunk-size 4000          # chars per chunk
+ *   node test/mab/runner.js                                          # all splits
+ *   node test/mab/runner.js --split Accurate_Retrieval              # one split
+ *   node test/mab/runner.js --split Accurate_Retrieval --row 0      # one row
+ *   node test/mab/runner.js --row 0-4                               # row range
+ *   node test/mab/runner.js --chunk-size 4000                       # chars per chunk
+ *   node test/mab/runner.js --split Conflict_Resolution --row 0 --no-questions  # taxonomy check
  */
 import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -41,6 +42,7 @@ const { values: args } = parseArgs({
 		"chunk-size": { type: "string", default: "4000" },
 		model: { type: "string" },
 		"context-limit": { type: "string" },
+		"no-questions": { type: "boolean", default: false },
 	},
 	strict: false,
 });
@@ -52,6 +54,7 @@ const CONTEXT_LIMIT = args["context-limit"]
 	: process.env.RUMMY_CONTEXT_LIMIT
 		? Number.parseInt(process.env.RUMMY_CONTEXT_LIMIT, 10)
 		: null;
+const TAXONOMY_ONLY = args["no-questions"] === true;
 const _TIMEOUT = 600_000;
 
 function parseRowRange(spec) {
@@ -187,6 +190,59 @@ async function askQuestion(client, db, model, run, question) {
 	return "";
 }
 
+// Path is positional if it ends in digits, or contains part/chunk/list/batch + digit.
+const POSITIONAL_PATH = /\/(part|chunk|batch|list|item|block)\d*$|\/-?\d+(-\d+)?$|\/\d/i;
+const LONG_PATH = 80;
+
+function checkTaxonomy(entries) {
+	return entries.map((e) => {
+		const attrs =
+			typeof e.attributes === "string"
+				? JSON.parse(e.attributes || "{}")
+				: (e.attributes ?? {});
+		const summary = attrs?.summary || "";
+
+		const pathLong = e.path.length > LONG_PATH;
+		const pathPositional = POSITIONAL_PATH.test(e.path);
+		const pathPass = !pathLong && !pathPositional;
+		const pathReason = pathLong ? "content in path" : pathPositional ? "positional" : null;
+
+		const summaryPass = !!summary && summary.includes(",") && summary.length <= 80;
+		const summaryReason = !summary
+			? "missing"
+			: !summary.includes(",")
+				? "prose"
+				: summary.length > 80
+					? "too long"
+					: null;
+
+		return { path: e.path, summary, pathPass, pathReason, summaryPass, summaryReason };
+	});
+}
+
+function printTaxonomyReport(run, results) {
+	const W = 50;
+	console.log(`\nTaxonomy — ${run} (${results.length} known entries)`);
+	console.log("─".repeat(W));
+	for (const r of results) {
+		const pm = r.pathPass ? "✓" : "✗";
+		const sm = r.summaryPass ? "✓" : "✗";
+		const shortPath = r.path.length > 36 ? `${r.path.slice(0, 33)}…` : r.path;
+		const shortSum = r.summary
+			? `"${r.summary.slice(0, 28)}${r.summary.length > 28 ? "…" : ""}"`
+			: "(none)";
+		const note = [r.pathReason, r.summaryReason].filter(Boolean).join(", ");
+		console.log(
+			`  path ${pm}  sum ${sm}  ${shortPath.padEnd(36)}  ${shortSum}${note ? `  ← ${note}` : ""}`,
+		);
+	}
+	const pathScore = results.filter((r) => r.pathPass).length;
+	const sumScore = results.filter((r) => r.summaryPass).length;
+	const n = results.length;
+	console.log(`\n  Paths: ${pathScore}/${n} semantic    Summaries: ${sumScore}/${n} keyword-format`);
+	return pathScore === n && sumScore === n;
+}
+
 async function runRow(client, db, model, split, rowIndex, row) {
 	const source = row.metadata?.source || "unknown";
 	console.log(
@@ -217,6 +273,16 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	// Ingest context in chunks
 	const chunks = chunkContext(row.context, CHUNK_SIZE);
 	await ingestContext(client, model, run, chunks);
+
+	// Taxonomy-only mode: check filing quality and stop before questions.
+	if (TAXONOMY_ONLY) {
+		const runRow2 = await db.get_run_by_alias.get({ alias: run });
+		const allEntries = await db.get_known_entries.all({ run_id: runRow2.id });
+		const knownEntries = allEntries.filter((e) => e.scheme === "known");
+		const results = checkTaxonomy(knownEntries);
+		const pass = printTaxonomyReport(run, results);
+		return { split, rowIndex, source, taxonomyPass: pass, entries: results };
+	}
 
 	// Ask each question
 	const questionResults = [];
@@ -273,7 +339,7 @@ async function main() {
 	const splits = args.split ? [args.split] : ALL_SPLITS;
 	const rowRange = parseRowRange(args.row);
 
-	console.log(`MemoryAgentBench Runner`);
+	console.log(`MemoryAgentBench Runner${TAXONOMY_ONLY ? " [taxonomy check]" : ""}`);
 	console.log(`Model: ${MODEL}`);
 	console.log(`Chunk size: ${CHUNK_SIZE} chars`);
 	console.log(`Splits: ${splits.join(", ")}`);
@@ -336,8 +402,7 @@ async function main() {
 		await tdb.cleanup();
 	}
 
-	// Print report
-	printReport(allResults);
+	if (!TAXONOMY_ONLY) printReport(allResults);
 	console.log(`\nResults:  ${resultsPath}`);
 	console.log(`Database: ${join(runDir, "mab.db")}`);
 	console.log(`Run log:  ${join(runDir, "last_run.txt")}`);

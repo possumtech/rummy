@@ -4,7 +4,7 @@
 const LINES = [
 	// --- Syntax: path = slash-separated topic hierarchy, body = the information to save
 	[
-		'## <known path="topic/subtopic" summary="fact,decision,plan">[specific facts, decisions, or plans]</known> - Sort and save what you learn for later recall',
+		'## <known path="known://topic/subtopic" summary="fact,decision,plan">[specific facts, decisions, or plans]</known> - Sort and save what you learn for later recall',
 	],
 	// --- Examples: explicit slash path first (canonical pattern)
 	[
@@ -21,7 +21,7 @@ const LINES = [
 		"Cross-tool lifecycle: glob by category, filter by keyword. Matches the slashed path convention.",
 	],
 	[
-		"* `summary` keywords survive compression — write keywords you'll search for later",
+		"* `summary` keywords survive compression — comma-separated search terms, not descriptions",
 		"Summary is a compression label, not a path generator. Path is always explicit.",
 	],
 	[

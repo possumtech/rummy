@@ -97,6 +97,30 @@ context to confirm context management works at speed:
 npm run test:grok -- --split Conflict_Resolution
 ```
 
+### Published Baselines (MemoryAgentBench, ICLR 2026)
+
+Source: HUST-AI-HYZ/MemoryAgentBench — arXiv 2507.05257
+
+| Model | CR-SH (single-hop) | CR-MH (multi-hop) |
+|---|---|---|
+| GPT-4o | 60% | **5%** |
+| Claude 3.7 Sonnet | 43% | 2% |
+| Gemini 2.0 Flash | 30% | 3% |
+| Best published | 60% | **6%** |
+
+CR-MH (Conflict_Resolution multi-hop) is what the `test:mab` CR split runs.
+**The ceiling is ~5–6%.** Any score is meaningful noise at this difficulty.
+What we're actually measuring: does the model file, retrieve, and reason
+correctly — not the absolute score.
+
+Taxonomy health check (fast, no questions):
+```
+npm run test:grok:taxonomy
+npm run test:mab:taxonomy
+```
+
+---
+
 ### MAB (MemoryAgentBench)
 
 Four splits. Only two are tractable on this hardware for a credible run.
