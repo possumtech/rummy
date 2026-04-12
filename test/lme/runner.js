@@ -36,6 +36,7 @@ const { values: args } = parseArgs({
 		row: { type: "string" },
 		"chunk-size": { type: "string", default: "4000" },
 		model: { type: "string" },
+		"context-limit": { type: "string" },
 		type: { type: "string" },
 	},
 	strict: false,
@@ -43,6 +44,11 @@ const { values: args } = parseArgs({
 
 const CHUNK_SIZE = Number.parseInt(args["chunk-size"], 10);
 const MODEL = args.model || process.env.RUMMY_TEST_MODEL;
+const CONTEXT_LIMIT = args["context-limit"]
+	? Number.parseInt(args["context-limit"], 10)
+	: process.env.RUMMY_CONTEXT_LIMIT
+		? Number.parseInt(process.env.RUMMY_CONTEXT_LIMIT, 10)
+		: null;
 const TYPE_FILTER = args.type || null;
 
 function parseRowRange(spec) {
@@ -265,6 +271,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 			"You are being evaluated on long-term memory. Incoming conversation history follows. When ready, acknowledge.",
 		noRepo: true,
 		noInteraction: true,
+		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
 	});
 	let run = initR.run;
 

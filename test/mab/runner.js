@@ -40,12 +40,18 @@ const { values: args } = parseArgs({
 		row: { type: "string" },
 		"chunk-size": { type: "string", default: "4000" },
 		model: { type: "string" },
+		"context-limit": { type: "string" },
 	},
 	strict: false,
 });
 
 const CHUNK_SIZE = Number.parseInt(args["chunk-size"], 10);
 const MODEL = args.model || process.env.RUMMY_TEST_MODEL;
+const CONTEXT_LIMIT = args["context-limit"]
+	? Number.parseInt(args["context-limit"], 10)
+	: process.env.RUMMY_CONTEXT_LIMIT
+		? Number.parseInt(process.env.RUMMY_CONTEXT_LIMIT, 10)
+		: null;
 const _TIMEOUT = 600_000;
 
 function parseRowRange(spec) {
@@ -200,6 +206,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		prompt:
 			"You are being evaluated on memory and retrieval. Incoming context chunks follow. When ready, acknowledge.",
 		noRepo: true,
+		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
 	});
 	let run = initR.run;
 
