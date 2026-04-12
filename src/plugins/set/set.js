@@ -215,7 +215,7 @@ export default class Set {
 				searchText != null
 					? `<<<<<<< SEARCH\n${searchText}\n=======\n${replaceText}\n>>>>>>> REPLACE`
 					: null;
-			const beforeTokens = match.tokens_full || 0;
+			const beforeTokens = match.tokens || 0;
 			const afterTokens = patch ? countTokens(patch) : beforeTokens;
 
 			await store.upsert(runId, turn, resultPath, match.body, status, {
@@ -282,7 +282,7 @@ export default class Set {
 					? generatePatch(filePath, original, current)
 					: null;
 			const merge = mergeBlocks.length > 0 ? mergeBlocks.join("\n") : null;
-			const beforeTokens = fileEntry[0].tokens_full || 0;
+			const beforeTokens = fileEntry[0].tokens || 0;
 			const afterTokens = current ? countTokens(current) : beforeTokens;
 
 			await store.upsert(runId, turn, entry.path, original, state, {

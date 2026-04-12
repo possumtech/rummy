@@ -13,7 +13,7 @@ visible AS (
 		, ke.turn
 		, ke.updated_at
 		, ke.attributes
-		, ke.tokens AS tokens_full
+		, ke.tokens
 		, COALESCE(s.category, 'logging') AS category
 		, CASE
 			-- Archived entries not in context
@@ -41,7 +41,7 @@ projected AS (
 		, attributes
 		-- Category comes from schemes table — plugins declare it via registerScheme().
 		, category
-		, tokens_full
+		, tokens
 		, CASE
 			WHEN visible_fidelity IN ('full', 'summary') THEN body
 			ELSE ''
@@ -59,7 +59,7 @@ SELECT
 	, attributes
 	, category
 	, turn
-	, tokens_full
+	, tokens
 	, ROW_NUMBER() OVER (
 		PARTITION BY run_id
 		ORDER BY

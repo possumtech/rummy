@@ -85,31 +85,32 @@ describe("Engine integration", () => {
 	});
 
 	describe("tokens accounting", () => {
-		it("promote restores tokens to tokens_full", async () => {
+		it("tokens unchanged through demote and promote cycle", async () => {
 			await store.upsert(RUN_ID, 1, "known://test_entry", pad(200), 200);
-			await store.demote(RUN_ID, "known://test_entry");
 
+			const original = await store.getEntriesByPattern(
+				RUN_ID,
+				"known://test_entry",
+				null,
+			);
+			const originalTokens = original[0].tokens;
+			assert.ok(originalTokens > 0, "tokens set on creation");
+
+			await store.demote(RUN_ID, "known://test_entry");
 			const demoted = await store.getEntriesByPattern(
 				RUN_ID,
 				"known://test_entry",
 				null,
 			);
-			assert.ok(
-				demoted[0].tokens_full > 0,
-				"tokens_full preserved after demote",
-			);
+			assert.strictEqual(demoted[0].tokens, originalTokens, "tokens unchanged after demote");
 
 			await store.promote(RUN_ID, "known://test_entry", 3);
-
 			const promoted = await store.getEntriesByPattern(
 				RUN_ID,
 				"known://test_entry",
 				null,
 			);
-			assert.ok(
-				promoted[0].tokens_full > 0,
-				"tokens_full preserved after promote",
-			);
+			assert.strictEqual(promoted[0].tokens, originalTokens, "tokens unchanged after promote");
 		});
 	});
 

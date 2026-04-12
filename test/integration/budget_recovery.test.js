@@ -198,17 +198,19 @@ describe("restoreSummarizedPrompts", () => {
 		);
 	});
 
-	it("restores tokens to tokens_full on restored prompt", async () => {
+	it("tokens unchanged through demotion and restoration", async () => {
 		const { runId } = await tdb.seedRun({ alias: "rsp_4" });
 
 		const body = "a".repeat(200);
 		await store.upsert(runId, 1, "prompt://act/1", body, 200);
-		await store.setFidelity(runId, "prompt://act/1", "summary");
+		const before = await tdb.db.get_known_entries.all({ run_id: runId });
+		const originalTokens = before.find((e) => e.path === "prompt://act/1").tokens;
 
+		await store.setFidelity(runId, "prompt://act/1", "summary");
 		await store.restoreSummarizedPrompts(runId);
 
 		const after = await tdb.db.get_known_entries.all({ run_id: runId });
 		const entry = after.find((e) => e.path === "prompt://act/1");
-		assert.strictEqual(entry.tokens, entry.tokens_full, "tokens = tokens_full");
+		assert.strictEqual(entry.tokens, originalTokens, "tokens unchanged through cycle");
 	});
 });

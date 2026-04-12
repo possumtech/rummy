@@ -118,7 +118,7 @@ export default class Get {
 				{ loopId },
 			);
 		} else {
-			const total = matches.reduce((s, m) => s + m.tokens_full, 0);
+			const total = matches.reduce((s, m) => s + m.tokens, 0);
 			const paths = matches.map((m) => m.path).join(", ");
 			const body =
 				matches.length > 0

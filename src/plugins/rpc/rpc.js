@@ -178,7 +178,7 @@ export default class Rpc {
 					scheme: e.scheme,
 					status: e.status,
 					fidelity: e.fidelity,
-					tokens: e.tokens_full,
+					tokens: e.tokens,
 				}));
 			},
 			description: "Query entries by pattern.",

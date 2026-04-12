@@ -43,7 +43,7 @@ describe("Get partial read (line/limit)", () => {
 			"\n",
 		);
 		const store = makeStore([
-			{ path: "src/agent/AgentLoop.js", body, tokens_full: 500 },
+			{ path: "src/agent/AgentLoop.js", body, tokens: 500 },
 		]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ line: "10", limit: "5" });
@@ -65,7 +65,7 @@ describe("Get partial read (line/limit)", () => {
 	it("limit only defaults start to line 1", async () => {
 		const body = "a\nb\nc\nd\ne";
 		const store = makeStore([
-			{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 },
+			{ path: "src/agent/AgentLoop.js", body, tokens: 10 },
 		]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ limit: "3" });
@@ -81,7 +81,7 @@ describe("Get partial read (line/limit)", () => {
 	it("clamps end to total lines when limit exceeds file length", async () => {
 		const body = "x\ny\nz";
 		const store = makeStore([
-			{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 },
+			{ path: "src/agent/AgentLoop.js", body, tokens: 10 },
 		]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ line: "2", limit: "999" });
@@ -120,7 +120,7 @@ describe("Get partial read (line/limit)", () => {
 		const store = {
 			upserted: [],
 			getEntriesByPattern: async () => [
-				{ path: "src/agent/AgentLoop.js", body, tokens_full: 10 },
+				{ path: "src/agent/AgentLoop.js", body, tokens: 10 },
 			],
 			promoteByPattern: async () => {
 				promoted = true;

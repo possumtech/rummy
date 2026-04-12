@@ -44,7 +44,7 @@ body, attributes, and state.
 known_entries (
     id, run_id, loop_id, turn, path, body, scheme,
     status INTEGER, fidelity TEXT, hash,
-    attributes, tokens, tokens_full, refs, write_count,
+    attributes, tokens, refs, write_count,
     created_at, updated_at
 )
 ```
@@ -58,8 +58,7 @@ known_entries (
 | `status` | HTTP status code (200, 202, 400, 413, etc.) |
 | `fidelity` | Visibility level: full, summary, index, archive |
 | `hash` | SHA-256 for file change detection |
-| `tokens` | Display-only token count at current fidelity. NEVER used for budget. |
-| `tokens_full` | Cost of raw body at full fidelity |
+| `tokens` | Full-body token cost. Never changes on demotion/promotion. |
 | `turn` | Freshness — when was this entry last touched |
 
 ### 1.2 Schemes, Status & Fidelity

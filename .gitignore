@@ -148,3 +148,4 @@ vite.config.ts.timestamp-*
 *.db*
 .venv/
 audits/
+.claude/

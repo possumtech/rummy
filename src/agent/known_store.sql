@@ -1,12 +1,11 @@
 -- PREP: upsert_known_entry
 INSERT INTO known_entries (
 	run_id, loop_id, turn, path, body, status, fidelity, hash
-	, attributes, tokens, tokens_full, updated_at
+	, attributes, tokens, updated_at
 )
 VALUES (
 	:run_id, :loop_id, :turn, :path, :body, :status, :fidelity, :hash
 	, COALESCE(:attributes, '{}')
-	, countTokens(:body)
 	, countTokens(:body)
 	, COALESCE(:updated_at, CURRENT_TIMESTAMP)
 )
@@ -19,13 +18,12 @@ ON CONFLICT (run_id, path) DO UPDATE SET
 	, loop_id = excluded.loop_id
 	, turn = excluded.turn
 	, tokens = countTokens(excluded.body)
-	, tokens_full = countTokens(excluded.body)
 	, write_count = known_entries.write_count + 1
 	, updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
 
 -- PREP: recount_tokens
 UPDATE known_entries
-SET tokens = :tokens, tokens_full = :tokens
+SET tokens = :tokens
 WHERE run_id = :run_id AND path = :path;
 
 -- PREP: get_stale_tokens
@@ -55,18 +53,6 @@ WHERE run_id = :run_id AND path = :path;
 UPDATE known_entries
 SET
 	fidelity = :fidelity
-	, tokens = CASE
-		WHEN :fidelity = 'archive'
-			THEN 0
-		WHEN :fidelity = 'index'
-			THEN 0
-		WHEN :fidelity = 'summary'
-			THEN COALESCE(
-				countTokens(json_extract(attributes, '$.summary')),
-				countTokens(substr(body, 1, 80))
-			)
-		ELSE tokens_full
-	END
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND hedmatch(:pattern, path) AND scheme IS NULL;
 
@@ -75,7 +61,6 @@ UPDATE known_entries
 SET
 	fidelity = 'full'
 	, turn = :turn
-	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
@@ -83,7 +68,6 @@ WHERE run_id = :run_id AND path = :path;
 UPDATE known_entries
 SET
 	fidelity = 'archive'
-	, tokens = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND path = :path;
 
@@ -139,7 +123,6 @@ UPDATE known_entries
 SET
 	fidelity = 'full'
 	, turn = :turn
-	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
@@ -150,7 +133,6 @@ WHERE
 UPDATE known_entries
 SET
 	fidelity = 'archive'
-	, tokens = 0
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
@@ -158,7 +140,7 @@ WHERE
 	AND (:body IS NULL OR hedsearch(:body, body));
 
 -- PREP: get_entries_by_pattern
-SELECT path, body, scheme, status, fidelity, tokens_full, attributes
+SELECT path, body, scheme, status, fidelity, tokens, attributes
 FROM known_entries
 WHERE
 	run_id = :run_id
@@ -182,7 +164,6 @@ UPDATE known_entries
 SET
 	body = :new_body
 	, tokens = countTokens(:new_body)
-	, tokens_full = countTokens(:new_body)
 	, write_count = write_count + 1
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
@@ -197,7 +178,6 @@ WHERE
 UPDATE known_entries
 SET
 	fidelity = 'full'
-	, tokens = tokens_full
 	, updated_at = CURRENT_TIMESTAMP
 WHERE run_id = :run_id AND scheme = 'prompt' AND fidelity = 'summary';
 
