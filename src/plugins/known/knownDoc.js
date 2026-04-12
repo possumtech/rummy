@@ -15,18 +15,19 @@ const LINES = [
 		'Example: <known path="known://project/milestones" summary="milestone,deadline,alpha,launch,2026">Alpha: 2026-03-01. Beta cutoff: 2026-04-15. GA launch: 2026-06-01.</known>',
 		"Timeline entry: all milestone dates under one path. Multiple facts per entry reduces fragmentation. Recall by glob or keyword.",
 	],
-	// --- Lifecycle
+	// --- Constraints: summary and grouping first (model forms generation pattern from header + examples)
 	[
-		'* Recall with <get path="known://config/*">replica</get>',
-		"Cross-tool lifecycle: glob by category, filter by keyword. Matches the slashed path convention.",
-	],
-	[
-		"* `summary` REQUIRED — comma-separated search keywords that survive at summary fidelity",
-		"Summary is a compression label, not a path generator. Path is always explicit.",
+		"* `summary` REQUIRED — at summary fidelity the body is hidden; these keywords are your only description",
+		"Self-interest framing: without summary, the model has a path but no idea what's inside.",
 	],
 	[
 		"* Group related facts by topic — one entry per topic category, not one per input chunk",
 		"Critical behavioral constraint. Topic grouping enables semantic recall; chunk-based filing creates positional, irretrievable entries.",
+	],
+	// --- Lifecycle
+	[
+		'* Recall with <get path="known://config/*">replica</get>',
+		"Cross-tool lifecycle: glob by category, filter by keyword. Matches the slashed path convention.",
 	],
 ];
 
