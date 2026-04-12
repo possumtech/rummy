@@ -55,19 +55,11 @@ Concurrent loop protection: AbortController created at top of
 chronologically by source_turn (prompt before logging within same turn).
 `progress://` scheme removed; `<progress turn="N">` is structural only.
 `context_tokens` back-filled from LLM `prompt_tokens` post-response.
-
-## In Progress: Recovery System Hardening (2026-04-12)
-
-- [x] **`tokensToFree = 0` message** — suppressed; now says "It will
-  restore automatically." when auto-demotion already cleared the overflow.
-- [x] **Unit tests for recovery state machine** — `advanceRecovery`
-  extracted as named export from `AgentLoop.js`; 10 unit tests in
-  `test/integration/budget_recovery.test.js` covering all strike/restore/
-  hard413 paths.
-- [x] **Crash-during-recovery** — `restoreSummarizedPrompts` called at
-  loop start in `AgentLoop.js`; 4 integration tests confirm orphaned
-  prompt entries are restored. If full prompt overflows on turn 1, Prompt
-  Demotion handles it.
+Budget enforcement uses actual `prompt_tokens` from last API response when
+available — falls back to `ceil(chars / RUMMY_TOKEN_DIVISOR)` on turn 1.
+Audit entries (assistant://, system://, user://, model://, reasoning://,
+content://) written at `fidelity: "archive"` — excluded from model context
+by both model_visible=0 scheme registration and explicit archive filter.
 
 ## Benchmark Plan
 
@@ -82,6 +74,28 @@ Hardware: local llama server, Gemma 4 26B Q3, 32K context, ~45s/chunk.
 Token divisor: 2 (approximate). Results are system + model combined.
 
 ---
+
+### Status
+
+**Bug fixes applied (2026-04-12)**:
+- `budget.enforce` now uses actual `prompt_tokens` from last API response
+  instead of the `ceil(chars/2)` estimate. The estimate was 7x off for
+  structured/XML-heavy content, causing false 413s on the gemma run.
+- Audit entries written at `fidelity: "archive"` — belt-and-suspenders
+  alongside the existing model_visible=0 exclusion.
+- `RUMMY_CONTEXT_LIMIT` / `--context-limit` supported in both MAB and LME
+  runners. `test:grok` script loads `.env.grok` for xAI credentials.
+
+**Next run**: re-run MAB with gemma now that false-413 root cause is fixed:
+```
+npm run test:mab -- --split Conflict_Resolution
+```
+
+**Parallel validation**: run grok against Conflict_Resolution with capped
+context to confirm context management works at speed:
+```
+npm run test:grok -- --split Conflict_Resolution
+```
 
 ### MAB (MemoryAgentBench)
 

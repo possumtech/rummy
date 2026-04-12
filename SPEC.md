@@ -426,6 +426,29 @@ formula, one file (`src/agent/tokens.js`), env-configurable. No
 external dependencies. `contextSize` is the ceiling. Over = 413.
 Under = 200. No margins.
 
+**Three token measures — never conflate them:**
+
+| Measure | Source | Scope | Use |
+|---|---|---|---|
+| SQL entry tokens | `known_entries.tokens` = `ceil(chars / DIVISOR)` | Per entry | Model decision-making: "this entry costs N tokens" |
+| Assembled estimate | `measureMessages(messages)` = sum of entry projections | Full packet | First-turn budget fallback only |
+| Actual API tokens | `turns.context_tokens` = `usage.input_tokens` back-filled from LLM | Per turn | Budget enforcement on turns 2+; ground truth |
+
+`budget.enforce` uses the **actual API tokens** (`get_last_context_tokens`) when
+available (turn 2+) and falls back to the assembled estimate on turn 1. The
+estimate can be 3–7× off for XML/JSON-heavy content — do not rely on it for
+anything that matters.
+
+**`context_tokens` vs `prompt_tokens` in step telemetry:**
+- `context_tokens` in the step JSON = `turns.context_tokens` for that turn =
+  per-turn actual input tokens from the LLM API (e.g. 7900 tokens sent this turn)
+- `prompt_tokens` in the step JSON = `SUM(turns.prompt_tokens)` for the run =
+  **cumulative** total across all turns (cost tracking, not a context size)
+
+These two will diverge rapidly on any multi-turn run. A run at turn 50 might show
+`context_tokens: 8000` (context under control) and `prompt_tokens: 400000`
+(total input tokens billed across the whole run). They are measuring orthogonal things.
+
 ### 4.6 Panic Mode
 
 **The invariant.** A panic is only ever triggered because the
@@ -472,13 +495,13 @@ visible in `<knowns>` entries. These are the granular unit the model
 uses to decide which entries to target: "this entry is 200 tokens;
 if I archive it, I save 200 tokens."
 
-The system makes decisions in *materialized assembled tokens* —
-measured by `budget.enforce → measureMessages(messages)` on the
-fully assembled packet. SQL token sums do not equal materialized
-totals because projections, assembly overhead, and fidelity
-transforms alter the output. **Never use SQL token sums for ceiling
-or panic decisions.** `result.assembledTokens` in all panic logic
-is always the materialized measure.
+The system makes decisions using *actual API tokens* —
+`turns.context_tokens` back-filled from `usage.input_tokens` after
+each LLM call. SQL token sums do not equal actual API counts because
+projections, assembly overhead, and fidelity transforms alter the
+output; and the SQL estimate (`ceil(chars / DIVISOR)`) can be 3–7×
+off for structured content. **Never use SQL token sums for ceiling or
+budget decisions.** See §4.5 Token Measures for the full breakdown.
 
 **Strike system.** After each panic turn, compare
 `result.assembledTokens` (materialized) with `_lastPanicTokens`
