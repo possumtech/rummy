@@ -513,7 +513,7 @@ export default class TurnExecutor {
 					messages: recoveryMat.messages,
 					rows: recoveryMat.rows,
 				});
-				const safeLevel = Math.floor(contextSize * 0.75);
+				const safeLevel = Math.floor(contextSize * 0.9);
 				const tokensToFree = Math.max(
 					0,
 					recoveryBudget.assembledTokens - safeLevel,

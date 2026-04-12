@@ -29,35 +29,17 @@ async function lastResponse(db, runAlias) {
 	const allLoops = [...loops];
 	if (latestLoop) allLoops.push(latestLoop);
 
-	console.log(
-		`[DEBUG lastResponse] run=${runAlias} status=${runRow.status} next_turn=${runRow.next_turn} next_loop=${runRow.next_loop}`,
-	);
-	console.log(
-		`[DEBUG lastResponse] loops: ${JSON.stringify(allLoops.map((l) => ({ id: l.id, seq: l.sequence, status: l.status })))}`,
-	);
-
 	const summary = await db.get_latest_summary.get({
 		run_id: runRow.id,
 		loop_id: latestLoop?.id ?? null,
 	});
-	console.log(
-		`[DEBUG lastResponse] summary (loop_id=${latestLoop?.id ?? null}): ${summary?.body?.slice(0, 120) ?? "NONE"}`,
-	);
 
 	if (summary?.body) return summary.body;
 
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
-	const summaries = entries.filter((e) => e.scheme === "summarize");
 	const content = entries
 		.filter((e) => e.scheme === "content")
 		.toSorted((a, b) => b.turn - a.turn);
-
-	console.log(
-		`[DEBUG lastResponse] all summarize entries: ${JSON.stringify(summaries.map((s) => ({ path: s.path, turn: s.turn, body: s.body?.slice(0, 80) })))}`,
-	);
-	console.log(
-		`[DEBUG lastResponse] content entries: ${content.length}, latest: ${content[0]?.body?.slice(0, 80) ?? "NONE"}`,
-	);
 
 	if (content.length > 0) return content[0].body;
 	return "";
@@ -492,7 +474,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				"Save 10 separate known entries: for each number 1 through 10, save a known entry with the key 'number-N' and value 'The number N is important because it has N digits of history.' Then summarize when done.",
 			noInteraction: true,
 			noRepo: true,
-			contextLimit: 5000,
+			contextLimit: 4500,
 		});
 
 		// Run must complete — Turn Demotion means 413 never reaches the client
