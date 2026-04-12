@@ -122,7 +122,7 @@ export default class Get {
 			const paths = matches.map((m) => m.path).join(", ");
 			const body =
 				matches.length > 0
-					? `${paths} loaded into <knowns> (${total} tokens)`
+					? `${paths} promoted to full (${total} tokens)`
 					: `${target} not found`;
 			await store.upsert(runId, turn, entry.resultPath, body, 200, {
 				loopId,
