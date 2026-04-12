@@ -17,6 +17,7 @@ Info: Your context is limited but your archive is not. Organize and categorize y
 
 Required: YOU MUST promote all relevant "summary" entries to "full".
 Required: YOU MUST demote all irrelevant "full" entries to "summary".
+Required: YOU SHOULD demote <previous> entries to summary with descriptive summary tags.
 
 Required: YOU MUST conclude every turn with EITHER <update></update> if still working OR <summarize></summarize> if done. Never both.
 Required: YOU MUST use one and only one <update></update> or <summarize></summarize> tag, and only at the end.

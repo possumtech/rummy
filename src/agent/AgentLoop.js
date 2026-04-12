@@ -282,12 +282,9 @@ export default class AgentLoop {
 		let _lastAssembledTokens = 0;
 		let recovery = null; // { target, promptPath, strikes, lastTokens }
 
-		// Demote full logging entries from previous loops to summary before
-		// they appear in <previous>. General policy: keep <previous> compact.
-		await this.#knownStore.demotePreviousLoopLogging(
-			currentRunId,
-			currentLoopId,
-		);
+		// Previous loop entries stay at full fidelity — the model is
+		// instructed to summarize and demote them. Budget enforcement
+		// catches overflow if the model fails to manage context.
 
 		// Restore any prompt entries left at summary fidelity by a recovery
 		// phase that was interrupted (server crash, restart). If the full
