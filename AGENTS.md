@@ -261,54 +261,43 @@ the client.
 **Previous-loop entries**: model-managed via preamble instruction. No
 auto-demotion by the system.
 
-### What Changed
+### What Changed (this session)
 
-**Done (this session):**
-- [x] XmlParser: `<known>` tag now spreads all attrs (was dropping `summary`)
+- [x] XmlParser: `<known>` tag spreads all attrs (was dropping `summary`)
 - [x] TurnExecutor: passes `attributes` to `upsert()` on both known paths
-- [x] Preamble: "folksonomic memory agent" identity, "extract your findings"
-- [x] Preamble: summary tags info line, `<previous>` demotion instruction
+- [x] Preamble: folksonomic identity, "extract your findings", token info
+- [x] Preamble: `<previous>` demotion instruction, promote/demote lines
+- [x] Preamble reverted from aggressive MAB-overfit to near-original density
+- [x] knownDoc: reverted to battle-tested examples (hedberg/rumsfeld),
+  kept URI-identity signal (`known://` in header template)
 - [x] Removed auto-demotion of previous loop logging (model-managed now)
-- [x] knownDoc: category-level examples, REQUIRED summary, domain-neutral
-- [x] All tooldocs: consistent category paths, no single-entity examples
 - [x] LLM 400→413: `isContextExceeded` catch in TurnExecutor
 - [x] AgentLoop 413 recovery loop (batch demote + budget entry + strikes)
-- [x] `demote_turn_entries` SQL: all schemes except budget (was data-only)
-- [x] `demote_all_full_data` SQL: includes NULL-scheme file entries
-- [x] BudgetGuard class restored (for `delta` utility + `BudgetExceeded` error)
-- [x] Unit tests: `isContextExceeded` regex (17 cases), BudgetGuard (11 cases)
-- [x] E2E tests: Story 12 (pre-turn recovery), Story 13 (LLM rejection recovery)
-- [x] All tests green: 210 unit, 167 integration, 14 E2E
+- [x] Fixed recovery strike counting (was resetting on each 413)
+- [x] `demote_turn_entries` SQL: no exceptions, demotes everything
+- [x] `demote_all_full` SQL: no exceptions, batch demotes everything
+- [x] Demotion no longer recalculates tokens — tokens is always full cost
+- [x] Removed `tokens_full` column entirely — one concept: `tokens`
+- [x] Preamble Info line: token amounts show full cost, demoted = free
+- [x] `v_model_context` view carries `tokens` through to materialization
+- [x] BudgetGuard class (for `BudgetExceeded` error + `delta` utility)
+- [x] Budget README updated to reflect simplified design
+- [x] SPEC.md updated (removed `tokens_full`)
+- [x] Tests: 221 unit, 165 integration, 16 E2E — all green
 
 ### TODO
 
-**Turn Demotion scope fix:**
-- [ ] Verify `demote_turn_entries` covers all schemes correctly in practice
-- [ ] Update budget_demotion.test.js for renamed SQL + broader scope
-- [ ] Test: logging entries (get, search) at current turn ARE demoted
-- [ ] Test: file entries (NULL scheme) promoted by `<get>` ARE demoted
-
-**AgentLoop recovery hardening:**
-- [ ] Fix strike counting: consecutive 413s must count strikes even when
-  new `budgetRecovery` signals arrive (caused 193-iteration infinite loop)
-- [ ] Test: hard-413 fires after 3 consecutive unproductive recovery turns
-- [ ] Test: successful demotion by model → recovery exits, prompt restored
+**Demo validation (next):**
+- [ ] Demo run on rummy.nvim project (gemma) — verify model sees accurate
+  token counts and makes informed promotion decisions
+- [ ] Verify model doesn't call `<env>` for directory listing
+- [ ] Verify `<previous>` entries get model-written summary tags
+- [ ] Verify budget 413 recovery works in real workflow (not just E2E)
 
 **Prompt Demotion:**
-- [ ] Verify Prompt Demotion correctly handles both tiny-prompt (context at
-  99%) and monster-prompt (context at 75%) cases
+- [ ] Verify both tiny-prompt (context at 99%) and monster-prompt
+  (context at 75%) cases work correctly
 - [ ] Test: summarized prompt fits in 10% headroom, model can run
-
-**Demo validation:**
-- [ ] Demo run on rummy.nvim project (gemma) — model should read files,
-  extract findings into `known://`, manage its own context
-- [ ] Verify model doesn't call `<env>` for directory listing (tooldoc
-  already says "YOU MUST NOT use <env/> to read or list files")
-- [ ] Verify `<previous>` entries get model-written summary tags
-
-**Budget README:**
-- [ ] Update `src/plugins/budget/README.md` to reflect new design
-  (no per-write BudgetGuard install/uninstall, post-dispatch enforcement)
 
 ### Testing Strategy
 
