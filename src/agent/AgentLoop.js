@@ -345,16 +345,12 @@ export default class AgentLoop {
 
 				if (result.status === 413) {
 					if (recovery) {
-						// Already in recovery — let advanceRecovery track strikes.
-						// Synthesize a budgetRecovery so the state machine sees
-						// the re-overflow and tightens or strikes.
+						// Already in recovery — consecutive 413 counts as
+						// no-progress. Do NOT pass budgetRecovery (that resets
+						// strikes). Just assembledTokens so strikes accumulate.
 						const ra = advanceRecovery(recovery, {
 							assembledTokens:
 								result.assembledTokens ?? _lastAssembledTokens,
-							budgetRecovery: {
-								target: Math.floor(contextSize * 0.9),
-								promptPath: recovery.promptPath,
-							},
 						});
 						recovery = ra.next;
 						if (ra.action === "hard413") {
