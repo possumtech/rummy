@@ -820,6 +820,7 @@ export default class TurnExecutor {
 					cmd.body || existing[0].body,
 					200,
 					{
+						attributes,
 						loopId,
 					},
 				);
@@ -832,6 +833,7 @@ export default class TurnExecutor {
 				};
 			}
 			await this.#knownStore.upsert(runId, turn, knownPath, cmd.body, 200, {
+				attributes,
 				loopId,
 			});
 			return {

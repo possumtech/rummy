@@ -103,7 +103,7 @@ function resolveCommand(name, attrs, rawBody) {
 	if (name === "known") {
 		const body = trimmed || a.body || "";
 		const path = a.path || null;
-		return { name, path, body };
+		return { name, ...a, path, body };
 	}
 
 	if (name === "get" || name === "rm") {
