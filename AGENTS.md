@@ -58,23 +58,16 @@ chronologically by source_turn (prompt before logging within same turn).
 
 ## In Progress: Recovery System Hardening (2026-04-12)
 
-- [ ] **`tokensToFree = 0` message** — when auto-demotion alone brings
-  assembled context under ceiling, `budget://` body tells the model
-  "free 0 tokens." Suppress the prompt-restoration line when
-  `tokensToFree === 0`; the work is already done and the instruction
-  is noise. (`src/agent/TurnExecutor.js`)
-- [ ] **Unit tests for recovery state machine** — strike counter
-  increments on no-progress turns, resets on reduction, hard 413 at 3
-  strikes; prompt fidelity restored to `full` when target met. Story 11
-  e2e exits recovery in 0 strikes (auto-demotion was sufficient), so the
-  multi-turn path is untested. (`test/integration/budget_recovery.test.js`)
-- [ ] **Crash-during-recovery** — `recovery` is in-memory in
-  `AgentLoop.#executeLoop`. If the server restarts mid-recovery, `recovery`
-  resets to `null` but the prompt entry remains at `summary` fidelity in
-  the DB. The model never sees the full prompt again. Fix: at loop start,
-  detect any `prompt` entries at `summary` fidelity and restore them to
-  `full` if current assembled tokens are under ceiling.
-  (`src/agent/AgentLoop.js`, `src/agent/KnownStore.js`)
+- [x] **`tokensToFree = 0` message** — suppressed; now says "It will
+  restore automatically." when auto-demotion already cleared the overflow.
+- [x] **Unit tests for recovery state machine** — `advanceRecovery`
+  extracted as named export from `AgentLoop.js`; 10 unit tests in
+  `test/integration/budget_recovery.test.js` covering all strike/restore/
+  hard413 paths.
+- [x] **Crash-during-recovery** — `restoreSummarizedPrompts` called at
+  loop start in `AgentLoop.js`; 4 integration tests confirm orphaned
+  prompt entries are restored. If full prompt overflows on turn 1, Prompt
+  Demotion handles it.
 
 ## Benchmark Plan
 
