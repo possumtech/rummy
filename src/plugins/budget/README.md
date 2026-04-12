@@ -2,30 +2,38 @@
 
 Context ceiling enforcement.
 
+## Design
+
+Ceiling = `floor(contextSize × 0.9)`. The 10% headroom is the system's
+operating room for graceful overflow handling. No per-write gating —
+tools run uninterrupted. Enforcement happens at boundaries.
+
+## Enforcement Points
+
+1. **Pre-LLM enforce** (`budget.enforce`): checks assembled context
+   before the LLM call. If over ceiling → Prompt Demotion (summarize
+   the incoming prompt). Model runs in the headroom.
+
+2. **Post-dispatch Turn Demotion**: after all tools dispatch, check
+   context. If over ceiling → demote ALL entries from this turn to
+   summary (every scheme except `budget`). Write `budget://` entry
+   listing what was demoted. Model sees it next turn and adapts.
+
+3. **LLM rejection** (`isContextExceeded`): turn-1 token estimate
+   drift causes LLM to reject. Same demotion pattern.
+
+4. **AgentLoop recovery**: pre-LLM 413 that Prompt Demotion can't
+   resolve. Batch-demote all full entries, budget entry, model gets
+   recovery turns. 3 strikes without progress → hard 413 to client.
+   Only path where 413 reaches the client.
+
 ## Files
 
-- **budget.js** — Plugin. Pre-LLM enforce, BudgetGuard activation.
-- **BudgetGuard.js** — Write-layer gate. Installed on KnownStore during
-  dispatch. Checks token delta on every upsert, promote, and body update.
+- **budget.js** — Plugin. Pre-LLM enforce hook.
+- **BudgetGuard.js** — `BudgetExceeded` error type, `delta` utility.
 
 ## Registration
 
 - **Hook**: `hooks.budget.enforce` — pre-LLM ceiling check.
-- **Hook**: `hooks.budget.activate(store, contextSize, assembledTokens)` — install guard.
-- **Hook**: `hooks.budget.deactivate(store)` — remove guard.
-
-## Budget Contract
-
-`contextSize` is the ceiling. `countTokens()` is the measurement.
-Over = 413. Under = 200. No margins.
-
-## BudgetGuard
-
-Installed on KnownStore by TurnExecutor before dispatch, cleared in
-`finally`. Gates `upsert()`, `promoteByPattern()`, `updateBodyByPattern()`.
-
-Exemptions: `status >= 400` (error entries), `model_visible = 0` (audit),
-`fidelity = "archive"` (not in context).
-
-On first violation: `BudgetExceeded` thrown, guard trips, all subsequent
-writes fail. TurnExecutor catches per-tool, writes 413 result entry.
+- **Scheme**: `budget://` — logging category, model-visible. `onView`
+  renders body at all fidelity levels (summary shows full content).
