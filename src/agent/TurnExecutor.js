@@ -64,6 +64,7 @@ export default class TurnExecutor {
 		const lastCtx = await this.#db.get_last_context_tokens.get({
 			run_id: runId,
 		});
+		const lastContextTokens = lastCtx?.context_tokens ?? 0;
 		const messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
 			{
@@ -72,12 +73,12 @@ export default class TurnExecutor {
 				contextSize,
 				demoted,
 				toolSet,
-				lastContextTokens: lastCtx?.context_tokens ?? 0,
+				lastContextTokens,
 				turn,
 			},
 			this.#hooks,
 		);
-		return { rows, messages };
+		return { rows, messages, lastContextTokens };
 	}
 
 	async execute({
@@ -187,7 +188,7 @@ export default class TurnExecutor {
 
 		// Materialize turn_context: VIEW rows projected through tools
 		const demoted = [];
-		let { rows, messages } = await this.#materializeTurnContext({
+		let { rows, messages, lastContextTokens } = await this.#materializeTurnContext({
 			runId: currentRunId,
 			loopId: currentLoopId,
 			turn,
@@ -215,6 +216,7 @@ export default class TurnExecutor {
 			contextSize,
 			messages,
 			rows,
+			lastPromptTokens: lastContextTokens,
 		});
 		messages = budgetResult.messages;
 		rows = budgetResult.rows;
@@ -251,6 +253,7 @@ export default class TurnExecutor {
 					contextSize,
 					messages,
 					rows,
+					lastPromptTokens: reMat.lastContextTokens,
 				});
 				messages = recheck.messages;
 				rows = recheck.rows;
@@ -463,6 +466,9 @@ export default class TurnExecutor {
 		// turn's data entries and the incoming prompt to summary, then force a
 		// budget recovery phase before continuing.
 		let budgetRecovery = null;
+		// Use actual prompt_tokens from this turn's LLM response as the ground-truth
+		// token count for post-turn budget checks — more accurate than the estimate.
+		const currentPromptTokens = result.usage?.prompt_tokens ?? 0;
 		if (contextSize) {
 			const postMat = await this.#materializeTurnContext({
 				runId: currentRunId,
@@ -478,6 +484,7 @@ export default class TurnExecutor {
 				contextSize,
 				messages: postMat.messages,
 				rows: postMat.rows,
+				lastPromptTokens: currentPromptTokens,
 			});
 			if (postBudget.status === 413) {
 				// Demote this turn's data entries.
@@ -512,6 +519,7 @@ export default class TurnExecutor {
 					contextSize,
 					messages: recoveryMat.messages,
 					rows: recoveryMat.rows,
+					lastPromptTokens: currentPromptTokens,
 				});
 				const safeLevel = Math.floor(contextSize * 0.9);
 				const tokensToFree = Math.max(

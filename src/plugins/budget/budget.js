@@ -20,15 +20,18 @@ export default class Budget {
 		};
 	}
 
-	async enforce({ contextSize, messages, rows }) {
+	async enforce({ contextSize, messages, rows, lastPromptTokens = 0 }) {
 		if (!contextSize) {
 			return { messages, rows, demoted: [], assembledTokens: 0, status: 200 };
 		}
 
-		const assembledTokens = measureMessages(messages);
+		// Prefer actual prompt_tokens from the last API response — the estimate
+		// from measureMessages can be wildly off for structured/XML-heavy content.
+		const assembledTokens =
+			lastPromptTokens > 0 ? lastPromptTokens : measureMessages(messages);
 
 		console.warn(
-			`[RUMMY] Budget enforce: ${assembledTokens} tokens, ceiling ${contextSize}, ${rows.length} rows`,
+			`[RUMMY] Budget enforce: ${assembledTokens} tokens (${lastPromptTokens > 0 ? "actual" : "estimated"}), ceiling ${contextSize}, ${rows.length} rows`,
 		);
 
 		const ceiling = Math.floor(contextSize * 0.9);
