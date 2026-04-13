@@ -343,7 +343,7 @@ describe("ContextAssembler", () => {
 			assert.ok(system.includes("which database adapter"));
 		});
 
-		it("progress bridges performed to prompt", async () => {
+		it("progress shows token budget", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -356,29 +356,17 @@ describe("ContextAssembler", () => {
 					category: "prompt",
 					source_turn: 1,
 				},
-				{
-					ordinal: 2,
-					path: "get://file.js",
-					scheme: "get",
-					fidelity: "full",
-					state: "read",
-					body: "content",
-					tokens: 3,
-					attributes: JSON.stringify({ path: "file.js" }),
-					category: "logging",
-					source_turn: 1,
-				},
 			];
 			const messages = await ContextAssembler.assembleFromTurnContext(
 				rows,
-				{ systemPrompt: "sys" },
+				{ systemPrompt: "sys", contextSize: 32768 },
 				hooks,
 			);
 			const user = messages[1].content;
 
 			assert.ok(
-				user.includes("The above actions were performed"),
-				"progress bridges to prompt",
+				user.includes("token budget"),
+				"progress shows budget info",
 			);
 		});
 	});

@@ -37,7 +37,6 @@ export default class Instructions {
 			activeTools.has(n),
 		);
 		const tools = sorted.join(", ");
-		let prompt = preamble.replace("[%TOOLS%]", tools);
 		const toolDocs = await this.#core.hooks.instructions.toolDocs.filter(
 			{},
 			{ toolSet: activeTools },
@@ -46,7 +45,9 @@ export default class Instructions {
 			.filter((key) => toolDocs[key])
 			.map((key) => toolDocs[key])
 			.join("\n\n");
-		if (docsText) prompt += `\n\n${docsText}`;
+		let prompt = preamble
+			.replace("[%TOOLS%]", tools)
+			.replace("[%TOOLDOCS%]", docsText);
 		if (attrs.persona) prompt += `\n\n## Persona\n\n${attrs.persona}`;
 		return prompt;
 	}
