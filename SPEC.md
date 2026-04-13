@@ -224,13 +224,24 @@ Client: JSON-RPC  → { method, params }   → #record() → dispatch(scheme, en
 Plugin: rummy.rm({ path })               → #record() → dispatch(scheme, entry, rummy)
 ```
 
-**Lifecycle/action split:** Commands are classified as lifecycle signals
-(`summarize`, `update`, `unknown`, `known`) or action commands (everything
-else). Lifecycle signals always dispatch — they are state declarations that
-cannot be 409'd by sequential dispatch. Action commands dispatch sequentially;
-a 202 proposal or error aborts subsequent actions. If the model sends
-`<summarize>` but actions in the same turn failed, the summarize is
-overridden to an update (the model's assertion that it's done is false).
+**Tool dispatch:** Commands are dispatched sequentially in the order
+the model emitted them. Each tool either succeeds (200), fails (400+),
+or proposes (202). On failure, all remaining tools are aborted. On
+proposal, dispatch pauses, the client resolves (accept/reject), and
+dispatch resumes — the proposal becomes 200 or 400+ like any other
+tool. The model controls ordering; the system respects it.
+
+If the model sends `<summarize>` but a preceding action in the same
+turn failed, the summarize is overridden to an update (the model's
+assertion that it's done is false). Both `<summarize>` and `<update>`
+present → last signal wins.
+
+**Post-dispatch budget check:** After all tools dispatch, the system
+materializes context and checks the budget ceiling. If context exceeds
+the ceiling, Turn Demotion fires — all entries from this turn are
+demoted to summary and a `budget://` entry is written. This is a
+system housekeeping step independent of tool success/failure. The
+tools already ran; their outcomes are settled.
 
 ### 3.3 Plugin Convention
 

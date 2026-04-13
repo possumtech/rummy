@@ -17,8 +17,12 @@ export default class Known {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		const target = entry.attributes.path || entry.resultPath;
-		await store.upsert(runId, turn, target, entry.body, 200, { loopId });
+		let target = entry.attributes.path || entry.resultPath;
+		if (target && !target.includes("://")) target = `known://${target}`;
+		await store.upsert(runId, turn, target, entry.body, 200, {
+			attributes: entry.attributes,
+			loopId,
+		});
 	}
 
 	full(entry) {

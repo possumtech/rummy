@@ -1,5 +1,8 @@
 import { countTokens } from "../../agent/tokens.js";
 
+const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
+if (!CEILING_RATIO) throw new Error("RUMMY_BUDGET_CEILING must be set");
+
 function measureMessages(messages) {
 	return messages.reduce((sum, m) => sum + countTokens(m.content), 0);
 }
@@ -34,7 +37,7 @@ export default class Budget {
 			`[RUMMY] Budget enforce: ${assembledTokens} tokens (${lastPromptTokens > 0 ? "actual" : "estimated"}), ceiling ${contextSize}, ${rows.length} rows`,
 		);
 
-		const ceiling = Math.floor(contextSize * 0.9);
+		const ceiling = Math.floor(contextSize * CEILING_RATIO);
 		if (assembledTokens > ceiling) {
 			const overflow = assembledTokens - ceiling;
 			console.warn(

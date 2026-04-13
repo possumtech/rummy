@@ -6,6 +6,9 @@ import ResponseHealer from "./ResponseHealer.js";
 import { countTokens } from "./tokens.js";
 import XmlParser from "./XmlParser.js";
 
+const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
+if (!CEILING_RATIO) throw new Error("RUMMY_BUDGET_CEILING must be set");
+
 export default class TurnExecutor {
 	#db;
 	#llmProvider;
@@ -536,14 +539,14 @@ export default class TurnExecutor {
 					rows: recoveryMat.rows,
 					lastPromptTokens: currentPromptTokens,
 				});
-				const safeLevel = Math.floor(contextSize * 0.9);
+				const safeLevel = Math.floor(contextSize * CEILING_RATIO);
 				const tokensToFree = Math.max(
 					0,
 					recoveryBudget.assembledTokens - safeLevel,
 				);
 
 				const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
-				const ceiling = Math.floor(contextSize * 0.9);
+				const ceiling = Math.floor(contextSize * CEILING_RATIO);
 				const pathList = demotedEntries
 					.map((r) => `${r.path} (${r.tokens} tokens)`)
 					.join("\n");
