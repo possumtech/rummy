@@ -212,13 +212,14 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 
 async function judgeAnswer(client, db, model, question, expected, response) {
 	const prompt = [
-		"You are a strict evaluator. Does the response correctly answer the question?",
+		"Does the response demonstrate knowledge of the correct answer?",
+		"Accept mathematical equivalences and alternative phrasings of the same fact.",
 		"",
 		`Question: ${question}`,
-		`Expected answer: ${expected}`,
-		`Actual response: ${response}`,
+		`Expected: ${expected}`,
+		`Response: ${response}`,
 		"",
-		"Answer YES or NO, then a one-sentence reason.",
+		"One word: PASS or FAIL.",
 	].join("\n");
 
 	let r = await client.call("ask", {
@@ -246,9 +247,9 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 	}
 
 	const normalized = judgeText.toLowerCase().trim();
-	const yesIdx = normalized.search(/\byes\b/);
-	const noIdx = normalized.search(/\bno\b/);
-	const pass = yesIdx !== -1 && (noIdx === -1 || yesIdx < noIdx);
+	const passIdx = normalized.search(/\bpass\b/);
+	const failIdx = normalized.search(/\bfail\b/);
+	const pass = passIdx !== -1 && (failIdx === -1 || passIdx < failIdx);
 
 	let judgeUsage = { prompt_tokens: 0, completion_tokens: 0, cost: 0 };
 	if (dbRun) {
