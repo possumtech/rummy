@@ -1,23 +1,39 @@
+import fs from "node:fs/promises";
+import { join } from "node:path";
 import RpcClient from "./RpcClient.js";
 
 /**
  * AuditClient wraps RpcClient with per-run audit tracking.
  * Dumps the SPECIFIC failing run's K/V state on assertion failure.
+ * Auto-resolves proposals via run/proposal notifications.
  */
 export default class AuditClient extends RpcClient {
 	#db;
 	#currentRun = null;
+	#projectRoot = null;
 
-	constructor(url, db) {
+	constructor(url, db, { projectRoot } = {}) {
 		super(url);
 		this.#db = db;
+		this.#projectRoot = projectRoot;
 		this.#setupAutoResolve();
+	}
+
+	set projectRoot(path) {
+		this.#projectRoot = path;
 	}
 
 	#setupAutoResolve() {
 		this.on("run/proposal", async ({ run, proposed }) => {
 			for (const p of proposed || []) {
 				try {
+					// Apply file edits to disk before accepting
+					if (p.path?.startsWith("set://") && this.#projectRoot) {
+						await this.#applySetToDisk(run, p.path);
+					}
+					if (p.path?.startsWith("rm://") && this.#projectRoot) {
+						await this.#applyRmToDisk(run, p.path);
+					}
 					await this.call("run/resolve", {
 						run,
 						resolution: {
@@ -31,6 +47,51 @@ export default class AuditClient extends RpcClient {
 		});
 	}
 
+	async #applySetToDisk(run, path) {
+		const runRow = await this.#db.get_run_by_alias.get({ alias: run });
+		if (!runRow) return;
+		const entries = await this.#db.get_known_entries.all({
+			run_id: runRow.id,
+		});
+		const setEntry = entries.find((e) => e.path === path);
+		if (!setEntry) return;
+		const attrs =
+			typeof setEntry.attributes === "string"
+				? JSON.parse(setEntry.attributes)
+				: setEntry.attributes;
+		if (!attrs?.file || !attrs?.merge) return;
+		const filePath = join(this.#projectRoot, attrs.file);
+		const content = await fs.readFile(filePath, "utf8").catch(() => "");
+		const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
+		let patched = content;
+		for (const block of blocks) {
+			const match = block.match(
+				/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
+			);
+			if (match) patched = patched.replace(match[1], match[2]);
+		}
+		if (patched !== content) await fs.writeFile(filePath, patched);
+	}
+
+	async #applyRmToDisk(run, path) {
+		const runRow = await this.#db.get_run_by_alias.get({ alias: run });
+		if (!runRow) return;
+		const entries = await this.#db.get_known_entries.all({
+			run_id: runRow.id,
+		});
+		const rmEntry = entries.find((e) => e.path === path);
+		if (!rmEntry) return;
+		const attrs =
+			typeof rmEntry.attributes === "string"
+				? JSON.parse(rmEntry.attributes)
+				: rmEntry.attributes;
+		if (attrs?.path) {
+			await fs
+				.unlink(join(this.#projectRoot, attrs.path))
+				.catch(() => {});
+		}
+	}
+
 	async call(method, params = {}) {
 		const result = await super.call(method, params);
 
@@ -41,9 +102,6 @@ export default class AuditClient extends RpcClient {
 		return result;
 	}
 
-	/**
-	 * Dump audit for a specific run alias.
-	 */
 	async dumpRun(alias) {
 		const runRow = await this.#db.get_run_by_alias.get({ alias });
 		if (!runRow) {
@@ -73,9 +131,6 @@ export default class AuditClient extends RpcClient {
 		console.log(`\n=== END ${alias} ===\n`);
 	}
 
-	/**
-	 * Assert run result. Dumps the SPECIFIC run on failure.
-	 */
 	async assertRun(result, validStatuses, label) {
 		const statuses = Array.isArray(validStatuses)
 			? validStatuses

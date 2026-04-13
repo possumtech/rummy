@@ -62,6 +62,8 @@ export default class Budget {
 		runId,
 		loopId,
 		turn,
+		db,
+		store,
 	}) {
 		if (!contextSize) return null;
 
@@ -73,9 +75,6 @@ export default class Budget {
 		});
 
 		if (postBudget.status !== 413) return null;
-
-		const db = this.#core.db;
-		const store = this.#core.entries;
 
 		// Demote this turn's entries
 		const demotedEntries = await db.demote_turn_entries.all({

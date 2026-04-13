@@ -167,7 +167,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 
 		tdb = await TestDb.create("stories");
 		tserver = await TestServer.start(tdb.db);
-		client = new AuditClient(tserver.url, tdb.db);
+		client = new AuditClient(tserver.url, tdb.db, { projectRoot });
 		await client.connect();
 		await client.call("init", {
 			name: "StoriesTest",
@@ -223,8 +223,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
 		});
 		await client.assertRun(r, [200, 202], "edit");
-		if (r.status === 202) await acceptAll(client, r, tdb.db, projectRoot);
-
+	
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: r.run });
 		const entries = await tdb.db.get_known_entries.all({
 			run_id: runRow.id,
@@ -245,8 +244,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 				'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
 		});
 		await client.assertRun(r1, [200, 202], "edit-visible");
-		if (r1.status === 202) await acceptAll(client, r1, tdb.db, projectRoot);
-
+	
 		// Verify the edit landed on disk
 		const fileContent = await fs.readFile(
 			join(projectRoot, "src/app.js"),
@@ -308,8 +306,7 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 			noInteraction: true,
 		});
 		await client.assertRun(r, [200, 202], "unknowns");
-		if (r.status === 202) await acceptAll(client, r, tdb.db, projectRoot);
-		// Check that unknowns were registered at some point (may be resolved/removed by now)
+			// Check that unknowns were registered at some point (may be resolved/removed by now)
 		const entries = await allEntries(tdb.db, r.run);
 		const unknowns = entries.filter((e) => e.scheme === "unknown");
 		const rmUnknowns = entries.filter(

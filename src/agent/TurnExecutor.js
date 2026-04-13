@@ -477,6 +477,8 @@ export default class TurnExecutor {
 				runId: currentRunId,
 				loopId: currentLoopId,
 				turn,
+				db: this.#db,
+				store: this.#knownStore,
 			});
 		}
 
