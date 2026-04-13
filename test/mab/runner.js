@@ -132,6 +132,7 @@ async function ingestContext(client, model, run, chunks) {
 			run,
 			noRepo: true,
 			noInteraction: true,
+			noProposals: true,
 			noWeb: true,
 		});
 		if (r.status === 202) r = await resolveAll(client, r);
@@ -159,7 +160,9 @@ async function askQuestion(client, db, model, run, question) {
 		model,
 		prompt: question,
 		run,
+		noRepo: true,
 		noInteraction: true,
+		noProposals: true,
 		noWeb: true,
 	});
 	if (r.status === 202) r = await resolveAll(client, r);
@@ -273,6 +276,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		prompt: "You will read some material and then answer questions about it.",
 		noRepo: true,
 		noInteraction: true,
+		noProposals: true,
 		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
 	});
 	let run = initR.run;
