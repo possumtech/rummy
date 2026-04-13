@@ -120,21 +120,23 @@ async function resolveAll(client, result) {
 	return current;
 }
 
-async function ingestContext(client, model, run, chunks) {
+async function ingestContext(client, model, run, chunks, contextLimit) {
 	for (let i = 0; i < chunks.length; i++) {
 		const chunkNum = i + 1;
 		const total = chunks.length;
-		const prompt = `Read and file what follows.\n\n${chunks[i]}`;
+		const prompt = `Read and remember what follows.\n\n${chunks[i]}`;
 
 		let r = await client.call("ask", {
 			model,
 			prompt,
-			run,
+			...(run ? { run } : {}),
 			noRepo: true,
 			noInteraction: true,
 			noProposals: true,
 			noWeb: true,
+			...(contextLimit ? { contextLimit } : {}),
 		});
+		if (!run) run = r.run;
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status === 413) {
 			console.error(`    chunk ${chunkNum}/${total} REJECTED: context full`);
@@ -149,6 +151,7 @@ async function ingestContext(client, model, run, chunks) {
 		process.stdout.write(`    ingesting ${chunkNum}/${total}\r`);
 	}
 	console.log(`    ingested ${chunks.length} chunks                `);
+	return run;
 }
 
 async function askQuestion(client, db, model, run, question) {
@@ -269,18 +272,9 @@ async function runRow(client, db, model, split, rowIndex, row) {
 
 	const startTime = Date.now();
 
-	// Create a fresh run for this benchmark row
+	// Create a fresh run — first ingestion chunk creates it
 	const splitAbbrev = split.replace(/_/g, "").slice(0, 4).toLowerCase();
-	const initR = await client.call("ask", {
-		model,
-		prompt: "You will read some material and then answer questions about it.",
-		noRepo: true,
-		noInteraction: true,
-		noProposals: true,
-		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
-	});
-	let run = initR.run;
-	if (initR.status === 202) await resolveAll(client, initR);
+	let run = null;
 
 	// Rename to a descriptive alias for easy DB inspection
 	const mabAlias = `mab_${splitAbbrev}_${rowIndex}`;
@@ -289,9 +283,10 @@ async function runRow(client, db, model, split, rowIndex, row) {
 		run = mabAlias;
 	} catch {}
 
-	// Ingest context in chunks
+	// Ingest context in chunks — first chunk creates the run
 	const chunks = chunkContext(row.context, CHUNK_SIZE);
-	await ingestContext(client, model, run, chunks);
+	run = await ingestContext(client, model, run, chunks, CONTEXT_LIMIT);
+	if (!run) throw new Error("Ingestion failed to create run");
 
 	// Taxonomy-only mode: check filing quality and stop before questions.
 	if (TAXONOMY_ONLY) {

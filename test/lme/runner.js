@@ -132,22 +132,25 @@ async function resolveAll(client, result) {
 	return current;
 }
 
-async function ingestSessions(client, model, run, sessions, dates, sessionIds) {
+async function ingestSessions(client, model, run, sessions, dates, sessionIds, contextLimit) {
 	let ingested = 0;
 	for (let i = 0; i < sessions.length; i++) {
 		const session = sessions[i];
 		const date = dates?.[i] || `session ${i + 1}`;
 		const total = sessions.length;
 		const text = formatSession(session, date, sessionIds?.[i]);
-		const prompt = text;
 
 		let r = await client.call("ask", {
 			model,
-			prompt,
-			run,
+			prompt: `Read and remember what follows.\n\n${text}`,
+			...(run ? { run } : {}),
 			noRepo: true,
 			noInteraction: true,
+			noProposals: true,
+			noWeb: true,
+			...(contextLimit ? { contextLimit } : {}),
 		});
+		if (!run) run = r.run;
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status === 413) {
 			console.error(`    session ${i + 1}/${total} REJECTED: context full`);
@@ -175,7 +178,15 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 		.filter(Boolean)
 		.join("\n");
 
-	let r = await client.call("ask", { model, prompt, run, noInteraction: true });
+	let r = await client.call("ask", {
+		model,
+		prompt,
+		run,
+		noRepo: true,
+		noInteraction: true,
+		noProposals: true,
+		noWeb: true,
+	});
 	if (r.status === 202) r = await resolveAll(client, r);
 
 	if (r.status >= 500) return "";
@@ -261,16 +272,7 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const startTime = Date.now();
 
 	const splitAbbrev = split.replace(/longmemeval_|_cleaned/g, "").slice(0, 4);
-	const initR = await client.call("ask", {
-		model,
-		prompt:
-			"You will read some conversations and then answer questions about them.",
-		noRepo: true,
-		noInteraction: true,
-		...(CONTEXT_LIMIT ? { contextLimit: CONTEXT_LIMIT } : {}),
-	});
-	let run = initR.run;
-	if (initR.status === 202) await resolveAll(client, initR);
+	let run = null;
 
 	const lmeAlias = `lme_${splitAbbrev}_${rowIndex}`;
 	try {
