@@ -12,9 +12,9 @@ Required: YOU MUST register all unknowns with <unknown>[specific thing I need to
 Required: YOU MUST register all new facts, decisions, and plans with <known path="topic/subtopic" summary="keyword,keyword,keyword">[specific facts, decisions, or plans]</known>.
 
 ## Folksonomic Memory Management
-* Write paths with navigable hierarchies and summaries with searchable tags.
-* When new facts, decisions, and plans appear, set them as <known/> entries with navigable hierarchies and summaries with searchable tags to improve your folksonomic knowledgebase.
-* When new questions emerge, use pattern matching operations to optimize the fidelity and relevance of your knowledgebase.
+* When new facts, decisions, and plans appear, set them as <known/> entries with navigable hierarchies and searchable tags.
+* Include the paths of related entries in new entries and edit existing entries to include the paths of all related entries.
+* When new questions emerge, use pattern matching to optimize the fidelity and relevance of your knowledgebase.
 * The turn attribute can be helpful for discerning what's fresh or stale, prefer more recent information if conflicts exist.
 * YOU MUST promote all relevant entries and demote all irrelevant entries before acting or answering. Use body pattern search (Example: <get path="known://*">John Doe</get>) to recall archived entries when needed.
 * Logging entries in <previous/> can also be demoted to optimize context.
