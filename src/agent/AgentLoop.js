@@ -344,7 +344,11 @@ export default class AgentLoop {
 				});
 
 				if (result.status === 413) {
-					return {
+					await this.#db.update_run_status.run({
+						id: currentRunId,
+						status: 413,
+					});
+					const out = {
 						run: currentAlias,
 						status: 413,
 						overflow: result.overflow,
@@ -352,6 +356,8 @@ export default class AgentLoop {
 						contextSize: result.contextSize,
 						turn: result.turn,
 					};
+					await hook.completed.emit({ projectId, ...out });
+					return out;
 				}
 
 				_lastAssembledTokens = result.assembledTokens;

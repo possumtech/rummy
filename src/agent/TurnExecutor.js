@@ -501,7 +501,7 @@ export default class TurnExecutor {
 				contextSize,
 				messages: postMat.messages,
 				rows: postMat.rows,
-				lastPromptTokens: currentPromptTokens,
+				lastPromptTokens: 0,
 			});
 			if (postBudget.status === 413) {
 				// Demote this turn's data entries.
