@@ -2,29 +2,24 @@
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
-	// --- Syntax: body = what you need to learn
 	[
-		`## <unknown>[specific thing I need to learn]</unknown> - Track open questions`,
-	],
-
-	// --- Examples: concrete unknowns, not abstract
-	[
-		`Example: <unknown path="unknown://answer">contents of answer.txt</unknown>`,
-		`Specific and actionable. Shows that unknowns are concrete investigation targets.`,
+		"## <unknown>[specific thing I need to learn]</unknown> - Track open questions",
 	],
 	[
-		`Example: <unknown>which database adapter is configured</unknown>`,
-		`Domain question. Shows unknowns for configuration/architecture questions.`,
-	],
-
-	// --- Lifecycle: register → investigate → resolve
-	[
-		`* Investigate with Tool Commands`,
-		`Cross-tool lifecycle: unknowns drive get/env/ask_user actions.`,
+		'Example: <unknown path="unknown://answer">contents of answer.txt</unknown>',
+		"Path form: explicit unknown path for structured tracking.",
 	],
 	[
-		`* When resolved or irrelevant, remove with <rm path="unknown://..."/>`,
-		`Cross-tool lifecycle: rm cleans resolved unknowns from context.`,
+		"Example: <unknown>which database adapter is configured</unknown>",
+		"Body form: question as body, path auto-generated.",
+	],
+	[
+		"* Investigate with Tool Commands",
+		"Unknowns drive action — get, env, search, ask_user.",
+	],
+	[
+		'* When resolved or irrelevant, remove with <set path="unknown://..." fidelity="archive"/>',
+		"Archive instead of delete — preserves the question for context history.",
 	],
 ];
 

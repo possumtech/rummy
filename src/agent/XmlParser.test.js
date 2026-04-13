@@ -406,6 +406,100 @@ I need to check the port.
 		});
 	});
 
+	describe("tag preservation in bodies", () => {
+		it("preserves HTML attributes on non-tool tags", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="test.html"><div class="foo" id="bar">hello</div></set>',
+			);
+			assert.ok(commands[0].body.includes('class="foo"'));
+			assert.ok(commands[0].body.includes('id="bar"'));
+		});
+
+		it("preserves Vue/JSX template attributes", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="App.vue"><template v-if="show"><span :class="active">yes</span></template></set>',
+			);
+			assert.ok(commands[0].body.includes('v-if="show"'));
+			assert.ok(commands[0].body.includes(':class="active"'));
+		});
+
+		it("preserves img src and alt attributes", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="index.html"><img src="photo.png" alt="a photo"/></set>',
+			);
+			assert.ok(commands[0].body.includes('src="photo.png"'));
+			assert.ok(commands[0].body.includes('alt="a photo"'));
+		});
+
+		it("preserves nested tags with mixed attributes", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="page.html"><div data-state="active"><a href="/home" target="_blank">Home</a></div></set>',
+			);
+			assert.ok(commands[0].body.includes('data-state="active"'));
+			assert.ok(commands[0].body.includes('href="/home"'));
+			assert.ok(commands[0].body.includes('target="_blank"'));
+		});
+
+		it("preserves style tags with attributes", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="style.html"><style type="text/css">.foo { color: red; }</style></set>',
+			);
+			assert.ok(commands[0].body.includes('type="text/css"'));
+			assert.ok(commands[0].body.includes(".foo { color: red; }"));
+		});
+
+		it("preserves boolean attributes", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="form.html"><input disabled required type="text"/></set>',
+			);
+			assert.ok(commands[0].body.includes("disabled"));
+			assert.ok(commands[0].body.includes("required"));
+			assert.ok(commands[0].body.includes('type="text"'));
+		});
+
+		it("preserves tags inside known entries", () => {
+			const { commands } = XmlParser.parse(
+				'<known summary="html,snippet">The template uses <div class="container"><slot name="header"/></div></known>',
+			);
+			assert.ok(commands[0].body.includes('class="container"'));
+			assert.ok(commands[0].body.includes('name="header"'));
+		});
+
+		it("preserves tags inside sh heredocs", () => {
+			const { commands } = XmlParser.parse(
+				'<sh>cat <<EOF\n<div class="test">content</div>\nEOF</sh>',
+			);
+			assert.ok(commands[0].command.includes('class="test"'));
+		});
+
+		it("preserves angle brackets in plain text context", () => {
+			const { commands } = XmlParser.parse(
+				"<known>The condition x > 5 && y < 10 is important</known>",
+			);
+			assert.ok(commands[0].body.includes("> 5"));
+		});
+
+		it("preserves multiple nested levels", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="deep.html"><div id="l1"><div id="l2"><div id="l3">deep</div></div></div></set>',
+			);
+			assert.ok(commands[0].body.includes('id="l1"'));
+			assert.ok(commands[0].body.includes('id="l2"'));
+			assert.ok(commands[0].body.includes('id="l3"'));
+		});
+
+		it("still parses tool tags correctly amid HTML content", () => {
+			const { commands } = XmlParser.parse(
+				'<set path="a.html"><div class="x">hello</div></set><get>b.js</get>',
+			);
+			assert.strictEqual(commands.length, 2);
+			assert.strictEqual(commands[0].name, "set");
+			assert.ok(commands[0].body.includes('class="x"'));
+			assert.strictEqual(commands[1].name, "get");
+			assert.strictEqual(commands[1].path, "b.js");
+		});
+	});
+
 	describe("edge cases", () => {
 		it("handles empty content", () => {
 			const { commands } = XmlParser.parse("");

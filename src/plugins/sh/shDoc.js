@@ -2,23 +2,18 @@
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
-	// --- Syntax
 	["## <sh>[command]</sh> - Run a shell command with side effects"],
-
-	// --- Examples: install and test — real mutations
 	[
 		"Example: <sh>npm install express</sh>",
-		"Package install. Shows a real side-effect command.",
+		"Package install. Real side-effect command.",
 	],
 	[
 		"Example: <sh>npm test</sh>",
 		"Test execution. Another common side-effect action.",
 	],
-
-	// --- Constraints
 	[
 		"* YOU MUST NOT use <sh/> to read, create, or edit files — use <get/> and <set/>",
-		"Forces file operations through the entry system. Prevents untracked mutations.",
+		"Forces file operations through the entry system.",
 	],
 	[
 		"* YOU MUST use <env/> for commands without side effects",

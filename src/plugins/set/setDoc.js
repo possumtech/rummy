@@ -2,47 +2,32 @@
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
-	// --- Syntax: path attr + body = edit content
-	['## <set path="[path/to/file]">[edit]</set> - Edit a file or entry'],
-
-	// --- Examples: sed, SEARCH/REPLACE, fidelity control
+	['## <set path="[path/to/file]">[content or edit]</set> - Create, edit, or update a file or entry'],
 	[
-		'Example: <set path="src/config.js">s/port = 3000/port = 8080/g</set>',
-		"Sed syntax: most common edit pattern. Shows s/old/new/ with g flag.",
+		'Example: <set path="known://project/milestones" fidelity="summary" summary="milestone,deadline,2026"/>',
+		"Fidelity control first — most unique capability of set.",
 	],
 	[
-		`Example: <set path="src/app.js"><<<<<<< SEARCH
-// TODO: add error handling
+		'Example: <set path="plan.md">Full file content here</set>',
+		"Create or overwrite: body replaces entire file.",
+	],
+	[
+		'Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/host = 127.0.0.1/host = localhost/g;</set>',
+		"Sed syntax: chained s/old/new/ patterns with semicolons.",
+	],
+	[
+		`Example: <set path="src/app.js">
+<<<<<<< SEARCH
+old text
 =======
-// error handler configured
->>>>>>> REPLACE</set>`,
-		"SEARCH/REPLACE block: literal match and replace. Use when sed escaping is complex.",
-	],
-	[
-		'Example: <set path="known://project/milestones" fidelity="summary" summary="milestone,deadline,2026"/> ... <set path="prompt://3" fidelity="index"/>',
-		"Fidelity control: compress a known entry to keywords, demote a previous prompt to index-only. Both free context while keeping paths visible.",
-	],
-
-	// --- Constraints
-	[
-		'* `fidelity="..."`: `archive`, `summary`, `index`, `full`',
-		"Fidelity control. Archive removes from context but preserves for retrieval.",
-	],
-	[
-		'* `fidelity="summary"` HIDES the body — does NOT require reading or compressing content. Write any short keyword label you already know.',
-		"M-10 fix: model was reading files before compressing to summary, believing it needed semantic content. It does not. The body is preserved on disk; only context visibility changes.",
-	],
-	[
-		'* `summary="..."` (<= 80 chars) persists across fidelity changes',
-		"Model-authored descriptions survive demotion. No janitorial pass needed.",
+new text
+>>>>>>> REPLACE
+</set>`,
+		"SEARCH/REPLACE block on its own lines.",
 	],
 	[
 		"* YOU MUST NOT use <sh/> or <env/> to read, create, or edit files",
-		"Forces file operations through set/get. Prevents untracked mutations.",
-	],
-	[
-		"* Editing: s/old/new/ sed patterns and literal SEARCH/REPLACE blocks",
-		"Both syntaxes supported. Hedberg normalizes either form.",
+		"Forces file operations through set/get.",
 	],
 ];
 

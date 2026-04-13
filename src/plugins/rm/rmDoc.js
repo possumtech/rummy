@@ -2,28 +2,23 @@
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
-	// --- Syntax: path attr, self-closing
 	['## <rm path="[path]"/> - Remove a file or entry'],
-
-	// --- Examples: file, known (with slug path), preview safety
 	['Example: <rm path="src/config.js"/>', "File removal. Simplest form."],
 	[
 		'Example: <rm path="known://config/deprecated_service"/>',
-		"Shows topic-hierarchy path convention. Paths are category/key, not sentence slugs.",
+		"Shows topic-hierarchy path convention.",
 	],
 	[
 		'Example: <rm path="known://temp_*" preview/>',
-		"Preview before deleting. Glob pattern. Safety pattern for bulk operations.",
+		"Preview before deleting. Safety pattern for bulk operations.",
 	],
-
-	// --- Constraints
 	[
 		'* Permanent. Prefer <set fidelity="archive"/> to preserve for later retrieval',
-		"Nudges toward archive over rm. Archive keeps the key; rm deletes permanently.",
+		"Nudges toward archive over rm.",
 	],
 	[
-		"* Paths accept patterns — use `preview` to check matches first",
-		"Reinforces preview safety pattern. Prevents accidental bulk deletion.",
+		"* Use `preview` to check matches before pattern-based bulk deletion",
+		"Reinforces preview safety pattern.",
 	],
 ];
 

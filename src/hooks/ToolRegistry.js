@@ -11,10 +11,10 @@ const TOOL_ORDER = [
 	"rm",
 	"cp",
 	"mv",
-	"search",
-	"summarize",
-	"update",
 	"ask_user",
+	"update",
+	"summarize",
+	"search",
 ];
 
 function sortByPriority(names) {
