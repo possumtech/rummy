@@ -20,6 +20,7 @@ export default class Budget {
 		core.hooks.tools.onView("budget", (entry) => entry.body);
 		core.hooks.budget = {
 			enforce: this.enforce.bind(this),
+			postDispatch: this.postDispatch.bind(this),
 		};
 	}
 
@@ -28,8 +29,6 @@ export default class Budget {
 			return { messages, rows, demoted: [], assembledTokens: 0, status: 200 };
 		}
 
-		// Prefer actual prompt_tokens from the last API response — the estimate
-		// from measureMessages can be wildly off for structured/XML-heavy content.
 		const assembledTokens =
 			lastPromptTokens > 0 ? lastPromptTokens : measureMessages(messages);
 
@@ -54,5 +53,61 @@ export default class Budget {
 		}
 
 		return { messages, rows, demoted: [], assembledTokens, status: 200 };
+	}
+
+	async postDispatch({
+		contextSize,
+		messages,
+		rows,
+		runId,
+		loopId,
+		turn,
+	}) {
+		if (!contextSize) return null;
+
+		const postBudget = await this.enforce({
+			contextSize,
+			messages,
+			rows,
+			lastPromptTokens: 0,
+		});
+
+		if (postBudget.status !== 413) return null;
+
+		const db = this.#core.db;
+		const store = this.#core.entries;
+
+		// Demote this turn's entries
+		const demotedEntries = await db.demote_turn_entries.all({
+			run_id: runId,
+			turn,
+		});
+
+		// Also summarize the prompt
+		const promptRow = rows.find((r) => r.scheme === "prompt");
+		if (promptRow) {
+			await store.setFidelity(runId, promptRow.path, "summary");
+		}
+
+		// Write budget entry
+		const ceiling = Math.floor(contextSize * CEILING_RATIO);
+		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
+		const pathList = demotedEntries
+			.map((r) => `${r.path} (${r.tokens} tokens)`)
+			.join("\n");
+		const body = [
+			`Error 413: Context overflowed by ${postBudget.overflow} tokens.`,
+			`${demotedEntries.length} entries (${totalDemoted} tokens total) demoted. Budget: ${ceiling} tokens.`,
+			pathList,
+		].join("\n");
+
+		await store.upsert(runId, turn, `budget://${loopId}/${turn}`, body, 413, {
+			loopId,
+		});
+
+		return {
+			target: ceiling,
+			promptPath: promptRow?.path ?? null,
+		};
 	}
 }

@@ -6,8 +6,9 @@ import ResponseHealer from "./ResponseHealer.js";
 import { countTokens } from "./tokens.js";
 import XmlParser from "./XmlParser.js";
 
-const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
-if (!CEILING_RATIO) throw new Error("RUMMY_BUDGET_CEILING must be set");
+const ACTION_SCHEMES = new Set(["get", "set", "rm", "mv", "cp", "sh", "env", "search"]);
+const MUTATION_SCHEMES = new Set(["set", "rm", "sh", "mv", "cp"]);
+const READ_SCHEMES = new Set(["get", "env", "search"]);
 
 export default class TurnExecutor {
 	#db;
@@ -457,8 +458,7 @@ export default class TurnExecutor {
 		// budget recovery phase before continuing.
 		let budgetRecovery = null;
 		// Use actual prompt_tokens from this turn's LLM response as the ground-truth
-		// token count for post-turn budget checks — more accurate than the estimate.
-		const currentPromptTokens = result.usage?.prompt_tokens ?? 0;
+		// Post-dispatch budget check — demotion handled by budget plugin
 		if (contextSize) {
 			const postMat = await this.#materializeTurnContext({
 				runId: currentRunId,
@@ -470,77 +470,14 @@ export default class TurnExecutor {
 				contextSize,
 				demoted,
 			});
-			const postBudget = await this.#hooks.budget.enforce({
+			budgetRecovery = await this.#hooks.budget.postDispatch({
 				contextSize,
 				messages: postMat.messages,
 				rows: postMat.rows,
-				lastPromptTokens: 0,
+				runId: currentRunId,
+				loopId: currentLoopId,
+				turn,
 			});
-			if (postBudget.status === 413) {
-				// Demote this turn's data entries.
-				const demotedEntries = await this.#db.demote_turn_entries.all({
-					run_id: currentRunId,
-					turn,
-				});
-
-				// Also summarize the prompt — forces the model to earn it back.
-				const promptRow = postMat.rows.find((r) => r.scheme === "prompt");
-				if (promptRow) {
-					await this.#knownStore.setFidelity(
-						currentRunId,
-						promptRow.path,
-						"summary",
-					);
-				}
-
-				// Re-materialize after both demotions for accurate token count.
-				const recoveryMat = await this.#materializeTurnContext({
-					runId: currentRunId,
-					loopId: currentLoopId,
-					turn,
-					systemPrompt,
-					mode,
-					toolSet: effectiveToolSet,
-					contextSize,
-					demoted,
-				});
-				const recoveryBudget = await this.#hooks.budget.enforce({
-					contextSize,
-					messages: recoveryMat.messages,
-					rows: recoveryMat.rows,
-					lastPromptTokens: currentPromptTokens,
-				});
-				const safeLevel = Math.floor(contextSize * CEILING_RATIO);
-				const tokensToFree = Math.max(
-					0,
-					recoveryBudget.assembledTokens - safeLevel,
-				);
-
-				const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
-				const ceiling = Math.floor(contextSize * CEILING_RATIO);
-				const pathList = demotedEntries
-					.map((r) => `${r.path} (${r.tokens} tokens)`)
-					.join("\n");
-				const body = [
-					`Error 413: Context overflowed by ${postBudget.overflow} tokens.`,
-					`${demotedEntries.length} entries (${totalDemoted} tokens total) demoted. Budget: ${ceiling} tokens.`,
-					pathList,
-				].join("\n");
-
-				await this.#knownStore.upsert(
-					currentRunId,
-					turn,
-					`budget://${currentLoopId}/${turn}`,
-					body,
-					413,
-					{ loopId: currentLoopId },
-				);
-
-				budgetRecovery = {
-					target: safeLevel,
-					promptPath: promptRow?.path ?? null,
-				};
-			}
 		}
 
 		const summaryEntry = recorded.findLast((e) => e.scheme === "summarize");
@@ -587,11 +524,7 @@ export default class TurnExecutor {
 
 		// --- Classify for return value ---
 
-		const actionCalls = recorded.filter((e) =>
-			["get", "set", "rm", "mv", "cp", "sh", "env", "search"].includes(
-				e.scheme,
-			),
-		);
+		const actionCalls = recorded.filter((e) => ACTION_SCHEMES.has(e.scheme));
 		const writeCalls = recorded.filter(
 			(e) =>
 				e.scheme === "known" ||
@@ -599,12 +532,8 @@ export default class TurnExecutor {
 		);
 		const unknownCalls = recorded.filter((e) => e.scheme === "unknown");
 
-		const hasAct = actionCalls.some((c) =>
-			["set", "rm", "sh", "mv", "cp"].includes(c.scheme),
-		);
-		const hasReads = actionCalls.some((c) =>
-			["get", "env", "search"].includes(c.scheme),
-		);
+		const hasAct = actionCalls.some((c) => MUTATION_SCHEMES.has(c.scheme));
+		const hasReads = actionCalls.some((c) => READ_SCHEMES.has(c.scheme));
 		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
 		const flags = { hasAct, hasReads, hasWrites };
 
