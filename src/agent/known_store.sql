@@ -226,5 +226,5 @@ WHERE
 	run_id = :run_id
 	AND fidelity = 'full'
 	AND status < 400
-	AND scheme NOT IN ('instructions', 'system', 'prompt')
+	AND COALESCE(scheme, '') NOT IN ('instructions', 'system', 'prompt')
 RETURNING path;
