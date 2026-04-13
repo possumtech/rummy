@@ -455,7 +455,6 @@ export default class TurnExecutor {
 			});
 			if (row?.status === 202) {
 				hasProposed = true;
-				abortAfter = entry.scheme;
 			} else if (row?.status >= 400) {
 				hasErrors = true;
 				abortAfter = entry.scheme;

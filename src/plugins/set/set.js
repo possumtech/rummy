@@ -99,10 +99,15 @@ export default class Set {
 
 			const scheme = KnownStore.scheme(target);
 			if (scheme === null) {
-				// File write — create proposal
-				const udiff = generatePatch(target, "", entry.body || "");
-				const merge = `<<<<<<< SEARCH\n=======\n${entry.body || ""}\n>>>>>>> REPLACE`;
-				await store.upsert(runId, turn, entry.resultPath, "", 202, {
+				// File write — diff against existing content
+				const existing = await store.getBody(runId, target);
+				const oldContent = existing ?? "";
+				const newContent = entry.body || "";
+				const udiff = generatePatch(target, oldContent, newContent);
+				const merge = oldContent
+					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
+					: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`;
+				await store.upsert(runId, turn, entry.resultPath, oldContent, 202, {
 					attributes: { file: target, patch: udiff, merge },
 					loopId,
 				});
