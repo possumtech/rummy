@@ -311,41 +311,32 @@ Root causes identified:
 
 ### TODO (in order)
 
-**Recovery loop rewrite:**
-- [ ] Exclude structural entries from batch demotion (`instructions`,
-  `system`, `prompt`). These can't be demoted — the model can't
-  function without them. Prompt has its own demotion path.
-- [ ] Three strikes of no reduction → hard 413. Now works because
-  structural entries don't cycle (they're excluded from demotion).
-- [ ] Budget entry path listing bounded by 99 operation cap (see below).
-
-**99 operation enforcement:**
-- [ ] Enforce 99 tool call cap in XmlParser or TurnExecutor — drop
-  commands past 99 with a message. Prevents 2001-get scenario.
-- [ ] Budget entry path listing ≤ 99 paths by definition. Fits in
-  10% headroom at any context size ≥ 8K.
-
-**Tool summary/full wiring:**
-- [ ] Audit all tool handlers — every scheme needs `summary()` that
-  returns readable content. Most `full()` methods already produce
-  compact output (`# get src/app.js`). Wire `summary()` to call
-  `full()` where missing. No blank summary entries.
+**Done (latest):**
+- [x] Removed AgentLoop recovery loop — was bypassing all existing
+  safety systems (stall detection, cycle detection, update repeats)
+  via `continue`. Caused every infinite loop seen in demo runs.
+- [x] 99 tool call cap enforced in XmlParser (`RUMMY_MAX_COMMANDS`).
+  Bounds budget entry path listing by definition.
+- [x] NULL scheme fix in `demote_all_full` (`COALESCE(scheme, '')`)
+- [x] Think plugin: proper tooldoc, gated by `RUMMY_THINK` env var,
+  first in tool order. Crashes if not set.
+- [x] Unknown: wired `summary()` to `full()` (compact output)
+- [x] Tool ordering: think → unknown → known → get → set → ...
+- [x] E2E Story 13 rewritten for Turn Demotion (not recovery loop)
 
 **Reasoning collection:**
-- [ ] Verify reasoning://N entries are written for gemma. Check if
-  llama.cpp needs server-side config for Gemma 4 thinking output.
-- [ ] If gemma can't produce reasoning, consider making `<think>`
-  Required instead of Optional in the preamble.
+- [ ] Verify reasoning output with `RUMMY_THINK=0` — does the model
+  reason via API field when `<think>` tag is absent?
+- [ ] Check llama.cpp server config for thinking budget
 
 **Demo validation:**
-- [ ] Fresh demo run with all fixes — verify:
-  - Recovery loop exits (3 strikes or success, not infinite)
-  - Structural entries survive demotion
+- [ ] Fresh demo run with recovery loop removed — verify:
+  - No infinite loops
+  - Turn Demotion catches model-caused overflow
   - Model sees token counts, promotes selectively
-  - Budget entry fits in headroom
-  - Prompt visible at summary fidelity
+  - Prompt visible at summary fidelity after demotion
+  - Budget entries bounded (≤99 paths)
   - No `<env>` for directory listing
-  - Model produces reasoning
 - [ ] Verify `<previous>` entries get model-written summary tags
 
 **Prompt Demotion:**
