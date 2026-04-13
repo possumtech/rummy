@@ -16,7 +16,7 @@ Required: YOU MUST register all new facts, decisions, and plans with <known path
 * When new facts, decisions, and plans appear, set them as <known/> entries with navigable hierarchies and summaries with searchable tags to improve your folksonomic knowledgebase.
 * When new questions emerge, use pattern matching operations to optimize the fidelity and relevance of your knowledgebase.
 * The turn attribute can be helpful for discerning what's fresh or stale, prefer more recent information if conflicts exist.
-* Path and summary information is approximate. YOU MUST promote to "full" to verify before acting on summarized content.
+* YOU MUST promote all relevant entries and demote all irrelevant entries before acting or answering.
 * Logging entries in <previous/> can also be demoted to optimize context.
 
 ## Fidelity Management

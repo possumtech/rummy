@@ -167,6 +167,7 @@ async function ingestSessions(client, model, run, sessions, dates, sessionIds, c
 		console.log(`    ${i + 1}/${total} ${date}: ${preview}`);
 	}
 	console.log(`    ingested ${ingested} of ${sessions.length} sessions`);
+	return run;
 }
 
 async function askQuestion(client, db, model, run, question, questionDate) {
@@ -274,20 +275,22 @@ async function runRow(client, db, model, split, rowIndex, row) {
 	const splitAbbrev = split.replace(/longmemeval_|_cleaned/g, "").slice(0, 4);
 	let run = null;
 
-	const lmeAlias = `lme_${splitAbbrev}_${rowIndex}`;
-	try {
-		await client.call("run/rename", { run, name: lmeAlias });
-		run = lmeAlias;
-	} catch {}
-
-	await ingestSessions(
+	run = await ingestSessions(
 		client,
 		model,
 		run,
 		row.haystack_sessions,
 		row.haystack_dates,
 		row.haystack_session_ids,
+		CONTEXT_LIMIT,
 	);
+	if (!run) throw new Error("Ingestion failed to create run");
+
+	const lmeAlias = `lme_${splitAbbrev}_${rowIndex}`;
+	try {
+		await client.call("run/rename", { run, name: lmeAlias });
+		run = lmeAlias;
+	} catch {}
 
 	const answer =
 		typeof row.answer === "string" ? row.answer : String(row.answer);
