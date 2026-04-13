@@ -56,7 +56,7 @@ known_entries (
 | `attributes` | Tag attributes as JSON. Handler-private workspace. `CHECK (json_valid)` |
 | `scheme` | Generated from path via `schemeOf()`. Drives dispatch and view routing |
 | `status` | HTTP status code (200, 202, 400, 413, etc.) |
-| `fidelity` | Visibility level: full, summary, index, archive |
+| `fidelity` | Visibility level: full, summary, archive |
 | `hash` | SHA-256 for file change detection |
 | `tokens` | Full-body token cost. Never changes on demotion/promotion. |
 | `turn` | Freshness — when was this entry last touched |
@@ -292,7 +292,7 @@ Two messages per turn. System = stable truth. User = active task.
         [skills/]
     [/instructions]
     <knowns>
-        ...entries sorted by fidelity (index, summary, full), then by scheme
+        ...entries sorted by fidelity (summary, full), then by scheme
     </knowns>
     <previous>
         (pre-loop entries, each with turn, status, summary, fidelity, tokens)
@@ -530,7 +530,7 @@ ask_user. `noRepo: true` — no file scanning during panic.
 `budget.panicPrompt()`: the assembled token count, the target, and
 the exact number of tokens to free. Turn 2+ receives a continuation
 prompt. The model uses `<set fidelity="archive">`, `<mv
-fidelity="index">`, and similar fidelity operations to free space,
+fidelity="summary">`, and similar fidelity operations to free space,
 concluding with `<summarize>` when done or `<update>` while working.
 
 ---
@@ -659,7 +659,7 @@ simple to powerful — weak models learn from examples 1-2, strong models
 pick up the pattern from example 3.
 
 **Lifecycle continuity.** Examples weave stories across tools. The get
-docs end with `<set path="..." fidelity="index"/>`. The known docs
+docs end with `<set path="..." fidelity="summary"/>`. The known docs
 reference `<get path="known://*">keyword</get>` for recall and
 `<set path="known://..." archive/>` for archiving. The unknown docs
 reference `<get/>` for investigation and `<rm/>` for cleanup. A model

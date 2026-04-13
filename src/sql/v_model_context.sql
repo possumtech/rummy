@@ -72,9 +72,8 @@ SELECT
 			END
 			, CASE scheme WHEN 'skill' THEN 0 ELSE 1 END
 			, CASE fidelity
-				WHEN 'index' THEN 0
-				WHEN 'summary' THEN 1
-				ELSE 2
+				WHEN 'summary' THEN 0
+				ELSE 1
 			END
 			, turn
 			, updated_at

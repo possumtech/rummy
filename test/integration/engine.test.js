@@ -115,9 +115,9 @@ describe("Engine integration", () => {
 	});
 
 	describe("symbol file fidelity via VIEW", () => {
-		it("files at state index have index fidelity", async () => {
+		it("files at summary fidelity appear in turn_context", async () => {
 			await store.upsert(RUN_ID, 1, "src/demoted.js", pad(100), 200, {
-				fidelity: "index",
+				fidelity: "summary",
 				attributes: { symbols: "function foo()" },
 			});
 
@@ -132,11 +132,11 @@ describe("Engine integration", () => {
 				turn: 1,
 			});
 			const demoted = rows.find((r) => r.path === "src/demoted.js");
-			assert.ok(demoted, "index file should appear in turn_context");
+			assert.ok(demoted, "summary file should appear in turn_context");
 			assert.strictEqual(
 				demoted.fidelity,
-				"index",
-				"index fidelity should be preserved",
+				"summary",
+				"summary fidelity should be preserved",
 			);
 		});
 

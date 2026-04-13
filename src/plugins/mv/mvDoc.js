@@ -14,7 +14,7 @@ const LINES = [
 		"File rename.",
 	],
 	[
-		'Example: <mv path="known://project/*" fidelity="index"/>',
+		'Example: <mv path="known://project/*" fidelity="summary"/>',
 		"Batch fidelity change via pattern. No destination = fidelity in place.",
 	],
 	[

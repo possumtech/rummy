@@ -92,7 +92,6 @@ export default class Get {
 		const VALID_FIDELITY = {
 			stored: 1,
 			summary: 1,
-			index: 1,
 			full: 1,
 			archive: 1,
 		};

@@ -163,13 +163,13 @@ describe("KnownStore integration", () => {
 	describe("promote and demote", () => {
 		it("promote sets fidelity to full and updates turn", async () => {
 			await store.upsert(RUN_ID, 0, "src/promoted.js", "content", 200, {
-				fidelity: "index",
+				fidelity: "summary",
 			});
 			let row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/promoted.js",
 			});
-			assert.strictEqual(row.fidelity, "index");
+			assert.strictEqual(row.fidelity, "summary");
 
 			await store.promote(RUN_ID, "src/promoted.js", 10);
 			row = await tdb.db.get_entry_state.get({

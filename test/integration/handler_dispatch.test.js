@@ -79,7 +79,7 @@ describe("Handler dispatch", () => {
 	describe("get handler", () => {
 		it("promotes target and writes confirmation", async () => {
 			await store.upsert(RUN_ID, 0, "src/target.js", "const x = 1;", 200, {
-				fidelity: "index",
+				fidelity: "summary",
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
@@ -429,7 +429,7 @@ describe("Handler dispatch", () => {
 			// Core get handler is already at priority 10
 			// We just need to verify our priority-5 handler ran first
 			await store.upsert(RUN_ID, 1, "src/priority_test.js", "x", 200, {
-				fidelity: "index",
+				fidelity: "summary",
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });

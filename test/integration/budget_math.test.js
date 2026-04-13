@@ -56,11 +56,10 @@ describe("Budget math", () => {
 			);
 		});
 
-		it("index entry tokens reflect actual context cost, not full cost", async () => {
+		it("archived entry does not appear in turn_context", async () => {
 			const body = pad(200);
-			const fullCost = countTokens(body);
 			await store.upsert(RUN_ID, 1, "test_file.js", body, 200, {
-				fidelity: "index",
+				fidelity: "archive",
 			});
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -72,11 +71,7 @@ describe("Budget math", () => {
 				turn: 1,
 			});
 			const entry = rows.find((r) => r.path === "test_file.js");
-			if (!entry) return; // index entries may not appear in turn_context
-			assert.ok(
-				entry.tokens < fullCost,
-				`index entry tokens (${entry.tokens}) should be much less than full cost (${fullCost})`,
-			);
+			assert.strictEqual(entry, undefined, "archived entry excluded from context");
 		});
 
 		it("summary entry body in view is full (onView transforms at runtime)", async () => {
@@ -110,9 +105,9 @@ describe("Budget math", () => {
 		it("budget enforce measures assembled messages, not stored tokens", async () => {
 			const { runId } = await tdb.seedRun({ alias: "math_enforce" });
 
-			// Create a large entry at index — should NOT count toward budget
-			await store.upsert(runId, 1, "big_index_file.js", pad(500), 200, {
-				fidelity: "index",
+			// Create a large entry at archive — should NOT count toward budget
+			await store.upsert(runId, 1, "big_archive_file.js", pad(500), 200, {
+				fidelity: "archive",
 			});
 			// Create a small entry at full — should count
 			await store.upsert(runId, 1, "known://small", "tiny fact", 200, {
@@ -240,7 +235,7 @@ describe("Budget math", () => {
 			);
 		});
 
-		it("turn_context.tokens at index is zero", async () => {
+		it("turn_context excludes archived entries", async () => {
 			const { runId } = await tdb.seedRun({ alias: "math_tc" });
 			const body = pad(100);
 
@@ -261,8 +256,8 @@ describe("Budget math", () => {
 			const fullTcTokens = tc?.tokens ?? 0;
 			assert.ok(fullTcTokens > 0, "full entry has tokens");
 
-			// Demote to index
-			await store.setFidelity(runId, "known://tc_test", "index");
+			// Archive — should disappear from turn_context
+			await store.setFidelity(runId, "known://tc_test", "archive");
 			await materialize(tdb.db, {
 				runId,
 				turn: 2,
@@ -273,12 +268,11 @@ describe("Budget math", () => {
 				turn: 2,
 			});
 			tc = rows.find((r) => r.path === "known://tc_test");
-			const indexTcTokens = tc?.tokens ?? 0;
 
 			assert.strictEqual(
-				indexTcTokens,
-				0,
-				"index entry costs nothing in turn_context",
+				tc,
+				undefined,
+				"archived entry excluded from turn_context",
 			);
 		});
 	});

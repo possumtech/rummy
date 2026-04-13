@@ -20,7 +20,7 @@ describe("turn_context distribution bucket correctness", () => {
 		// Populate known_entries
 		await store.upsert(RUN_ID, 1, "src/app.js", "const x = 1;", 200);
 		await store.upsert(RUN_ID, 1, "readme.md", "# Hello", 200, {
-			fidelity: "index",
+			fidelity: "summary",
 		});
 		await store.upsert(RUN_ID, 1, "known://auth_flow", "JWT tokens", 200);
 		await store.upsert(RUN_ID, 1, "search://1", "search results", 200);

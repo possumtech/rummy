@@ -4,7 +4,7 @@ import Hedberg, { generatePatch } from "../hedberg/hedberg.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
-const VALID_FIDELITY = { archive: 1, summary: 1, index: 1, full: 1 };
+const VALID_FIDELITY = { archive: 1, summary: 1, full: 1 };
 
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {

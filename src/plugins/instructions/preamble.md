@@ -22,7 +22,6 @@ Required: YOU MUST register all new facts, decisions, and plans with <known path
 ## Fidelity Management
 * full: Entire contents are shown (consumes token budget)
 * summary: Only path and summary are shown. (<= 80 chars, saves token budget)
-* index: Only path is shown (saves token budget, loses summary visibility, use caution)
 * archive: Archived in an unlimited archive. Entries can be recalled with path recall or pattern search. (use caution)
 
 ## Token Budget Management
