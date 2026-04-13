@@ -120,13 +120,6 @@ export default class TurnExecutor {
 			sequence: turn,
 		});
 
-		const unresolved = await this.#knownStore.getUnresolved(currentRunId);
-		if (unresolved.length > 0) {
-			throw new Error(
-				msg("error.unresolved_proposed", { count: unresolved.length }),
-			);
-		}
-
 		// Build RummyContext before turn.started so plugins can write entries
 		const rummy = new RummyContext(
 			{

@@ -72,7 +72,6 @@ export default class ClientConnection {
 				summary: payload.summary,
 				history: payload.history,
 				unknowns: payload.unknowns,
-				proposed: payload.proposed,
 				telemetry: payload.telemetry,
 			});
 		}

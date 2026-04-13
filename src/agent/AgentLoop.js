@@ -70,14 +70,15 @@ export default class AgentLoop {
 			const existing = this.#activeRuns.get(existingRun.id);
 			if (existing) existing.abort();
 
+			// Clean up stale proposals from interrupted runs
 			const unresolved = await this.#knownStore.getUnresolved(existingRun.id);
-			if (unresolved.length > 0) {
-				return {
-					runId: existingRun.id,
-					alias: existingRun.alias,
-					blocked: true,
-					proposed: unresolved,
-				};
+			for (const u of unresolved) {
+				await this.#knownStore.resolve(
+					existingRun.id,
+					u.path,
+					499,
+					"Stale proposal from interrupted run",
+				);
 			}
 			return { runId: existingRun.id, alias: existingRun.alias };
 		}
@@ -125,15 +126,6 @@ export default class AgentLoop {
 		const requestedModel = model;
 
 		const runInfo = await this.#ensureRun(projectId, model, run, options);
-		if (runInfo.blocked) {
-			return {
-				run: runInfo.alias,
-				status: 202,
-				remainingCount: runInfo.proposed.length,
-				proposed: runInfo.proposed,
-			};
-		}
-
 		const { runId: currentRunId, alias: currentAlias } = runInfo;
 
 		const loopSeq = await this.#db.next_loop.get({ run_id: currentRunId });
@@ -396,8 +388,6 @@ export default class AgentLoop {
 				const unknowns = await this.#db.get_unknowns.all({
 					run_id: currentRunId,
 				});
-				const unresolved = await this.#knownStore.getUnresolved(currentRunId);
-
 				const latestSummary = history
 					.filter((e) => e.status === 200 && e.path?.startsWith("summarize://"))
 					.at(-1);
@@ -406,15 +396,10 @@ export default class AgentLoop {
 					projectId,
 					run: currentAlias,
 					turn: result.turn,
-					status: unresolved.length > 0 ? 202 : 102,
+					status: 102,
 					summary: latestSummary?.body || "",
 					history,
 					unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
-					proposed: unresolved.map((p) => ({
-						path: p.path,
-						type: KnownStore.toolFromPath(p.path) || "unknown",
-						attributes: p.attributes ? JSON.parse(p.attributes) : null,
-					})),
 					telemetry: {
 						modelAlias: result.modelAlias,
 						model: result.model,
@@ -439,21 +424,6 @@ export default class AgentLoop {
 						}),
 					},
 				});
-				if (unresolved.length > 0) {
-					await this.#db.update_run_status.run({
-						id: currentRunId,
-						status: 202,
-					});
-					const out = {
-						run: currentAlias,
-						status: 202,
-						turn: result.turn,
-						proposed: unresolved,
-					};
-					await hook.completed.emit({ projectId, ...out });
-					return out;
-				}
-
 				await this.#hooks.run.step.completed.emit({
 					projectId,
 					run: currentAlias,
