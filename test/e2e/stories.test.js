@@ -382,26 +382,25 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 
 	// Story 8: Reject a proposal, verify file survives, then accept a different one.
 	it("rejection and recovery", { timeout: TIMEOUT }, async () => {
+		// Reject rm proposals for notes.md via custom resolve handler
+		client.resolveHandler = async (c, run, proposal) => {
+			const action = proposal.path?.startsWith("rm://") ? "reject" : "accept";
+			await c.call("run/resolve", {
+				run,
+				resolution: {
+					path: proposal.path,
+					action,
+					output: action === "reject" ? "Do not delete." : "",
+				},
+			});
+		};
+
 		const r1 = await client.call("act", {
 			model,
 			prompt: "Delete the file notes.md from the project.",
 		});
-		await client.assertRun(r1, [200, 202], "reject-1");
 
-		if (r1.status === 202) {
-			let current = r1;
-			while (current.status === 202) {
-				const next = current.proposed[0];
-				current = await client.call("run/resolve", {
-					run: r1.run,
-					resolution: {
-						path: next.path,
-						action: "reject",
-						output: "Do not delete.",
-					},
-				});
-			}
-		}
+		client.resolveHandler = null;
 
 		// Verify file survives on disk (rejection should not delete)
 		const fileExists = await fs

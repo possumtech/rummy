@@ -11,6 +11,7 @@ export default class AuditClient extends RpcClient {
 	#db;
 	#currentRun = null;
 	#projectRoot = null;
+	#resolveHandler = null;
 
 	constructor(url, db, { projectRoot } = {}) {
 		super(url);
@@ -23,10 +24,19 @@ export default class AuditClient extends RpcClient {
 		this.#projectRoot = path;
 	}
 
+	set resolveHandler(fn) {
+		this.#resolveHandler = fn;
+	}
+
 	#setupAutoResolve() {
 		this.on("run/proposal", async ({ run, proposed }) => {
 			for (const p of proposed || []) {
 				try {
+					// Custom handler overrides auto-accept
+					if (this.#resolveHandler) {
+						await this.#resolveHandler(this, run, p);
+						continue;
+					}
 					// Apply file edits to disk before accepting
 					if (p.path?.startsWith("set://") && this.#projectRoot) {
 						await this.#applySetToDisk(run, p.path);

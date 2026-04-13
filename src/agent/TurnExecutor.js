@@ -426,30 +426,36 @@ export default class TurnExecutor {
 			// Materialize proposals for this entry (set revisions → 202)
 			await this.#hooks.turn.proposing.emit({ rummy, recorded: [entry] });
 
-			const entryPath = entry.resultPath || entry.path;
-			let row = await this.#db.get_entry_state.get({
-				run_id: currentRunId,
-				path: entryPath,
-			});
-
-			// Proposal: notify client, wait for resolution
-			if (row?.status === 202) {
-				const proposed = await this.#knownStore.getUnresolved(currentRunId);
+			// Check for any proposals created by this entry's dispatch
+			const proposed = await this.#knownStore.getUnresolved(currentRunId);
+			for (const p of proposed) {
 				await this.#hooks.turn.proposal.emit({
 					projectId,
 					run: currentAlias,
-					proposed,
+					proposed: [p],
 				});
-				await this.#knownStore.waitForResolution(currentRunId, entryPath);
-				row = await this.#db.get_entry_state.get({
+				await this.#knownStore.waitForResolution(currentRunId, p.path);
+				const resolved = await this.#db.get_entry_state.get({
+					run_id: currentRunId,
+					path: p.path,
+				});
+				if (resolved?.status >= 400) {
+					hasErrors = true;
+					abortAfter = entry.scheme;
+				}
+			}
+
+			// Also check the entry itself for direct failures
+			if (!hasErrors) {
+				const entryPath = entry.resultPath || entry.path;
+				const row = await this.#db.get_entry_state.get({
 					run_id: currentRunId,
 					path: entryPath,
 				});
-			}
-
-			if (row?.status >= 400) {
-				hasErrors = true;
-				abortAfter = entry.scheme;
+				if (row?.status >= 400) {
+					hasErrors = true;
+					abortAfter = entry.scheme;
+				}
 			}
 		}
 

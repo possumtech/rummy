@@ -551,6 +551,12 @@ export default class AgentLoop {
 			}
 
 			if (action === "accept") {
+				const projectId = runRow.project_id;
+				const project = await this.#db.get_project_by_id.get({
+					id: projectId,
+				});
+				const projectRoot = project?.project_root;
+
 				if (path.startsWith("set://") && attrs?.file && attrs?.merge) {
 					const fileBody = await this.#knownStore.getBody(runId, attrs.file);
 					if (fileBody != null) {
@@ -571,12 +577,25 @@ export default class AgentLoop {
 							patched,
 							200,
 						);
+						// Write patched content to disk
+						if (projectRoot) {
+							const { writeFile } = await import("node:fs/promises");
+							const { join } = await import("node:path");
+							await writeFile(join(projectRoot, attrs.file), patched).catch(
+								() => {},
+							);
+						}
 					}
 				}
 
 				if (path.startsWith("rm://")) {
 					if (attrs?.path) {
 						await this.#knownStore.remove(runId, attrs.path);
+						if (projectRoot) {
+							const { unlink } = await import("node:fs/promises");
+							const { join } = await import("node:path");
+							await unlink(join(projectRoot, attrs.path)).catch(() => {});
+						}
 					}
 				}
 
