@@ -8,14 +8,6 @@ const LINES = [
 		"Fidelity control first — most unique capability of set.",
 	],
 	[
-		'Example: <set path="plan.md">Full file content here</set>',
-		"Create or overwrite: body replaces entire file.",
-	],
-	[
-		'Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/host = 127.0.0.1/host = localhost/g;</set>',
-		"Sed syntax: chained s/old/new/ patterns with semicolons.",
-	],
-	[
 		`Example: <set path="src/app.js">
 <<<<<<< SEARCH
 old text
@@ -23,7 +15,15 @@ old text
 new text
 >>>>>>> REPLACE
 </set>`,
-		"SEARCH/REPLACE block on its own lines.",
+		"SEARCH/REPLACE block — primary edit pattern for existing files.",
+	],
+	[
+		'Example: <set path="src/config.js">s/port = 3000/port = 8080/g;s/host = 127.0.0.1/host = localhost/g;</set>',
+		"Sed syntax: chained s/old/new/ patterns with semicolons.",
+	],
+	[
+		'Example: <set path="example.md">Full file content here</set>',
+		"Create or overwrite: body replaces entire file.",
 	],
 	[
 		"* YOU MUST NOT use <sh/> or <env/> to read, create, or edit files",
