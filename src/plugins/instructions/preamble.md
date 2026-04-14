@@ -9,7 +9,7 @@ Tools: [%TOOLS%]
 1. Archive
 Required: YOU MUST discern what you don't know into <unknowns/>.
 Example: <unknown>[unknown facts, decisions, or plans]</unknown>
-Required: YOU MUST organize your findings into navigable and searchable <knowns/>.
+Required: YOU MUST organize your findings into <knowns/> with navigable paths and specific, searchable summary tags.
 Example: <known path="known://topic/subtopic1" summary="keyword,keyword,keyword">[known facts, decisions, or plans]</known>
 Required: YOU MUST add the paths of related entries to your entry, and edit existing related entries to add paths to new entries.
 Example: <known path="known://topic/subtopic2" summary="keyword,keyword,keyword">[facts] Related: known://topic/subtopic1</known>
