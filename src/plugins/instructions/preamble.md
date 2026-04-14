@@ -20,11 +20,11 @@ Required: YOU MUST use bulk pattern operations to demote irrelevant findings and
 Example: <get path="known://*" fidelity="full">John Doe</get>
 Example: <set path="known://*" fidelity="summary">Jane Doe</set>
 Required: YOU MUST conclude with a brief <update></update> if still working or briefly <summarize></summarize> if finished.
-Example: <update>Optimizing token budget</update>
+Example: <update>Demoting to previous entries to summary to optimize token budget</update>
 Example: <summarize>John Doe is 42 years old.</summarize>
 
 # Fidelity and Token Budget
-Required: YOU MUST adjust fidelity (full, summary, archive) to budget and optimize context relevance.
+Required: YOU MUST adjust fidelity (full, summary, archive) to optimize for relevance and the token budget limit.
 * fidelity="full": Entire contents are shown (consumes token budget)
 * fidelity="summary": Only path and summary are shown (conserves token budget)
 * fidelity="archive": Archived (fully hidden). Entries can be recalled with path recall or pattern search. (use with caution)

@@ -44,16 +44,18 @@ async function renderToolTag(entry, _core) {
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 
-	// Previous entries render at summary. Prompts get 512 chars for orientation.
-	const limit = entry.scheme === "prompt" ? 512 : 80;
+	// Honor entry fidelity. Model manages its own context.
+	if (entry.fidelity === "full") {
+		const body = entry.body || "";
+		return `<${entry.scheme} path="${target}"${turn}${status}${fidelity}${tokens}>${body}</${entry.scheme}>`;
+	}
+
+	// summary fidelity — compact tag with summary attribute, no body.
 	const rawSummary =
-		(typeof attrs?.summary === "string" ? attrs.summary : null) ||
-		entry.body?.slice(0, limit) ||
-		"";
-	// Strip internal dedup namespace prefixes (e.g. "get://turn_3/src/app.js" → "src/app.js")
+		typeof attrs?.summary === "string" ? attrs.summary : "";
 	const summaryText = rawSummary.replace(/\b\w+:\/\/turn_\d+\//g, "");
 	const summaryAttr = summaryText
-		? ` summary="${summaryText.replace(/"/g, "'").slice(0, limit)}"`
+		? ` summary="${summaryText.replace(/"/g, "'")}"`
 		: "";
 
 	return `<${entry.scheme} path="${target}"${turn}${status}${summaryAttr}${fidelity}${tokens}/>`;
