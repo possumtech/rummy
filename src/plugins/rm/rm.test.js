@@ -28,11 +28,7 @@ describe("Rm", () => {
 		assert.ok(result.includes("known://chunk_3"));
 	});
 
-	it("summary renders rm path", () => {
-		const result = plugin.summary({
-			attributes: { path: "known://old" },
-			body: "",
-		});
-		assert.ok(result.includes("known://old"));
+	it("summary returns empty — tag attributes carry the path", () => {
+		assert.strictEqual(plugin.summary(), "");
 	});
 });

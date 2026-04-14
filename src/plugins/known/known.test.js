@@ -9,9 +9,13 @@ describe("Known", () => {
 		filter() {},
 	});
 
-	it("full renders path and body", () => {
+	it("full returns body only (no prefix — tag attributes carry the path)", () => {
 		const result = plugin.full({ path: "known://auth", body: "JWT tokens" });
-		assert.ok(result.includes("known://auth"));
-		assert.ok(result.includes("JWT tokens"));
+		assert.strictEqual(result, "JWT tokens");
+	});
+
+	it("summary returns empty body — tag carries summary attribute", () => {
+		const result = plugin.summary();
+		assert.strictEqual(result, "");
 	});
 });

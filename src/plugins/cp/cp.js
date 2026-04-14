@@ -53,7 +53,7 @@ export default class Cp {
 		return `# cp ${entry.attributes.from || ""} ${entry.attributes.to || ""}`;
 	}
 
-	summary(entry) {
-		return this.full(entry);
+	summary() {
+		return "";
 	}
 }

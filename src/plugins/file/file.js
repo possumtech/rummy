@@ -16,13 +16,8 @@ export default class File {
 		this.#core = core;
 		// "file" scheme covers bare paths (scheme IS NULL in DB)
 		core.registerScheme({ category: "data" });
-		core.registerScheme({ name: "http", category: "data" });
-		core.registerScheme({ name: "https", category: "data" });
 		core.on("full", this.full.bind(this));
 		core.on("summary", this.summary.bind(this));
-		// Default identity views for http/https — rummy.web overrides these
-		core.hooks.tools.onView("http", (entry) => entry.body);
-		core.hooks.tools.onView("https", (entry) => entry.body);
 	}
 
 	full(entry) {

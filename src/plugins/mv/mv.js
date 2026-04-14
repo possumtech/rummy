@@ -71,7 +71,7 @@ export default class Mv {
 		return `# mv ${entry.attributes.from || ""} ${entry.attributes.to || ""}`;
 	}
 
-	summary(entry) {
-		return this.full(entry);
+	summary() {
+		return "";
 	}
 }

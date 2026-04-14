@@ -73,11 +73,11 @@ export default class Known {
 	}
 
 	full(entry) {
-		return `# known ${entry.path}\n${entry.body}`;
+		return entry.body;
 	}
 
-	summary(entry) {
-		return this.full(entry);
+	summary() {
+		return "";
 	}
 
 	async assembleKnown(content, ctx) {
@@ -108,9 +108,8 @@ function renderKnownTag(entry, demotedSet) {
 			? ` summary="${attrs.summary.replace(/"/g, "'").slice(0, 80)}"`
 			: "";
 
-	if (entry.fidelity === "archive") return "";
-	if (entry.fidelity === "summary") {
-		return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}/>`;
+	if (entry.body) {
+		return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}>${entry.body}</${tag}>`;
 	}
-	return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}>${entry.body}</${tag}>`;
+	return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}/>`;
 }

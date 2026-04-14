@@ -168,8 +168,8 @@ export default class Set {
 		return `# set ${file}${tokens}\n${attrs.merge}`;
 	}
 
-	summary(entry) {
-		return entry.attributes.merge || "";
+	summary() {
+		return "";
 	}
 
 	async #processEdit(rummy, entry, attrs) {

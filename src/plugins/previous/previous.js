@@ -43,20 +43,14 @@ async function renderToolTag(entry, _core) {
 	const status = entry.status ? ` status="${entry.status}"` : "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
+	const summary =
+		typeof attrs?.summary === "string"
+			? ` summary="${attrs.summary.replace(/"/g, "'")}"`
+			: "";
 
-	// Honor entry fidelity. Model manages its own context.
-	if (entry.fidelity === "full") {
-		const body = entry.body || "";
-		return `<${entry.scheme} path="${target}"${turn}${status}${fidelity}${tokens}>${body}</${entry.scheme}>`;
+	// Trust the projected body. Plugin decided per-fidelity what to show.
+	if (entry.body) {
+		return `<${entry.scheme} path="${target}"${turn}${status}${summary}${fidelity}${tokens}>${entry.body}</${entry.scheme}>`;
 	}
-
-	// summary fidelity — compact tag with summary attribute, no body.
-	const rawSummary =
-		typeof attrs?.summary === "string" ? attrs.summary : "";
-	const summaryText = rawSummary.replace(/\b\w+:\/\/turn_\d+\//g, "");
-	const summaryAttr = summaryText
-		? ` summary="${summaryText.replace(/"/g, "'")}"`
-		: "";
-
-	return `<${entry.scheme} path="${target}"${turn}${status}${summaryAttr}${fidelity}${tokens}/>`;
+	return `<${entry.scheme} path="${target}"${turn}${status}${summary}${fidelity}${tokens}/>`;
 }

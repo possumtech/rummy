@@ -35,11 +35,11 @@ export default class Unknown {
 	}
 
 	full(entry) {
-		return `# unknown\n${entry.body}`;
+		return entry.body;
 	}
 
-	summary(entry) {
-		return this.full(entry);
+	summary() {
+		return "";
 	}
 
 	async assembleUnknowns(content, ctx) {
@@ -49,7 +49,10 @@ export default class Unknown {
 		const lines = entries.map((u) => {
 			const fidelity = u.fidelity ? ` fidelity="${u.fidelity}"` : "";
 			const tokens = u.tokens ? ` tokens="${u.tokens}"` : "";
-			return `<unknown path="${u.path}" turn="${u.source_turn || u.turn}"${fidelity}${tokens}>${u.body}</unknown>`;
+			if (u.body) {
+				return `<unknown path="${u.path}" turn="${u.source_turn || u.turn}"${fidelity}${tokens}>${u.body}</unknown>`;
+			}
+			return `<unknown path="${u.path}" turn="${u.source_turn || u.turn}"${fidelity}${tokens}/>`;
 		});
 		return `${content}\n\n<unknowns>\n${lines.join("\n")}\n</unknowns>`;
 	}

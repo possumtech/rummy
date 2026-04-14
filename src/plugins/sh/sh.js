@@ -27,7 +27,7 @@ export default class Sh {
 		return `# sh ${entry.attributes.command || ""}\n${entry.body}`;
 	}
 
-	summary(entry) {
-		return entry.attributes.command || "";
+	summary() {
+		return "";
 	}
 }

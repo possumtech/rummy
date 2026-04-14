@@ -18,7 +18,7 @@ describe("Env", () => {
 		assert.ok(result.includes("v25.8.1"));
 	});
 
-	it("summary returns command", () => {
-		assert.strictEqual(plugin.summary({ attributes: { command: "ls" } }), "ls");
+	it("summary returns empty — tag attributes carry the command", () => {
+		assert.strictEqual(plugin.summary(), "");
 	});
 });

@@ -74,7 +74,7 @@ export default class Rm {
 		return entry.body ? `${header}\n${entry.body}` : header;
 	}
 
-	summary(entry) {
-		return this.full(entry);
+	summary() {
+		return "";
 	}
 }
