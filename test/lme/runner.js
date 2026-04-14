@@ -38,6 +38,7 @@ const { values: args } = parseArgs({
 		model: { type: "string" },
 		"context-limit": { type: "string" },
 		type: { type: "string" },
+		"row-delay": { type: "string", default: "0" },
 	},
 	strict: false,
 });
@@ -50,6 +51,7 @@ const CONTEXT_LIMIT = args["context-limit"]
 		? Number.parseInt(process.env.RUMMY_CONTEXT_LIMIT, 10)
 		: null;
 const TYPE_FILTER = args.type || null;
+const ROW_DELAY_MS = Number.parseInt(args["row-delay"], 10) * 1000;
 
 function parseRowRange(spec) {
 	if (!spec) return null;
@@ -108,6 +110,20 @@ function _chunkSessions(sessions, dates, sessionIds, maxSize) {
 	return chunks;
 }
 
+async function askWithRetry(client, params, label = "ask") {
+	const RETRY_INTERVAL_MS = 30_000;
+	let attempts = 0;
+	while (true) {
+		const r = await client.call("ask", params);
+		if (r.status < 500) return r;
+		attempts++;
+		console.error(
+			`    ⚠ ${label} got status ${r.status} (${r.error || "unknown"}). Model unreachable — pausing ${RETRY_INTERVAL_MS / 1000}s (attempt ${attempts}).`,
+		);
+		await new Promise((resolve) => setTimeout(resolve, RETRY_INTERVAL_MS));
+	}
+}
+
 async function resolveAll(client, result) {
 	let current = result;
 	let resolves = 0;
@@ -148,7 +164,7 @@ async function ingestSessions(
 		const total = sessions.length;
 		const text = formatSession(session, date, sessionIds?.[i]);
 
-		let r = await client.call("ask", {
+		let r = await askWithRetry(client, {
 			model,
 			prompt: `Read and remember what follows.\n\n${text}`,
 			...(run ? { run } : {}),
@@ -157,17 +173,11 @@ async function ingestSessions(
 			noProposals: true,
 			noWeb: true,
 			...(contextLimit ? { contextLimit } : {}),
-		});
+		}, `session ${i + 1}/${total}`);
 		if (!run) run = r.run;
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status === 413) {
 			console.error(`    session ${i + 1}/${total} REJECTED: context full`);
-			break;
-		}
-		if (r.status >= 500) {
-			console.error(
-				`    session ${i + 1}/${total} FAILED: ${r.error || "unknown"}`,
-			);
 			break;
 		}
 		ingested++;
@@ -187,7 +197,7 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 		.filter(Boolean)
 		.join("\n");
 
-	let r = await client.call("ask", {
+	let r = await askWithRetry(client, {
 		model,
 		prompt,
 		run,
@@ -195,10 +205,8 @@ async function askQuestion(client, db, model, run, question, questionDate) {
 		noInteraction: true,
 		noProposals: true,
 		noWeb: true,
-	});
+	}, "question");
 	if (r.status === 202) r = await resolveAll(client, r);
-
-	if (r.status >= 500) return "";
 
 	const runRow = await db.get_run_by_alias.get({ alias: r.run });
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
@@ -230,14 +238,13 @@ async function judgeAnswer(client, db, model, question, expected, response) {
 		"One word: PASS or FAIL.",
 	].join("\n");
 
-	let r = await client.call("ask", {
+	let r = await askWithRetry(client, {
 		model,
 		prompt,
 		noRepo: true,
 		noInteraction: true,
-	});
+	}, "judge");
 	if (r.status === 202) r = await resolveAll(client, r);
-	if (r.status >= 500) return { pass: false, reason: "judge call failed" };
 
 	const alias = r.run;
 	const dbRun = await db.get_run_by_alias.get({ alias });
@@ -445,6 +452,10 @@ async function main() {
 				allResults.push(result);
 
 				await fs.appendFile(resultsPath, `${JSON.stringify(result)}\n`);
+
+				if (ROW_DELAY_MS > 0 && i < end) {
+					await new Promise((resolve) => setTimeout(resolve, ROW_DELAY_MS));
+				}
 			}
 		}
 	} finally {

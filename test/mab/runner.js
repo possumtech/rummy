@@ -43,6 +43,7 @@ const { values: args } = parseArgs({
 		model: { type: "string" },
 		"context-limit": { type: "string" },
 		"no-questions": { type: "boolean", default: false },
+		"row-delay": { type: "string", default: "0" },
 	},
 	strict: false,
 });
@@ -55,6 +56,7 @@ const CONTEXT_LIMIT = args["context-limit"]
 		? Number.parseInt(process.env.RUMMY_CONTEXT_LIMIT, 10)
 		: null;
 const TAXONOMY_ONLY = args["no-questions"] === true;
+const ROW_DELAY_MS = Number.parseInt(args["row-delay"], 10) * 1000;
 const _TIMEOUT = 600_000;
 
 function parseRowRange(spec) {
@@ -96,6 +98,20 @@ function chunkContext(context, size) {
 	return chunks;
 }
 
+async function askWithRetry(client, params, label = "ask") {
+	const RETRY_INTERVAL_MS = 30_000;
+	let attempts = 0;
+	while (true) {
+		const r = await client.call("ask", params);
+		if (r.status < 500) return r;
+		attempts++;
+		console.error(
+			`    ⚠ ${label} got status ${r.status} (${r.error || "unknown"}). Model unreachable — pausing ${RETRY_INTERVAL_MS / 1000}s (attempt ${attempts}).`,
+		);
+		await new Promise((resolve) => setTimeout(resolve, RETRY_INTERVAL_MS));
+	}
+}
+
 async function resolveAll(client, result) {
 	let current = result;
 	let resolves = 0;
@@ -126,7 +142,7 @@ async function ingestContext(client, model, run, chunks, contextLimit) {
 		const total = chunks.length;
 		const prompt = `Read and remember what follows.\n\n${chunks[i]}`;
 
-		let r = await client.call("ask", {
+		let r = await askWithRetry(client, {
 			model,
 			prompt,
 			...(run ? { run } : {}),
@@ -135,17 +151,11 @@ async function ingestContext(client, model, run, chunks, contextLimit) {
 			noProposals: true,
 			noWeb: true,
 			...(contextLimit ? { contextLimit } : {}),
-		});
+		}, `chunk ${chunkNum}/${total}`);
 		if (!run) run = r.run;
 		if (r.status === 202) r = await resolveAll(client, r);
 		if (r.status === 413) {
 			console.error(`    chunk ${chunkNum}/${total} REJECTED: context full`);
-			break;
-		}
-		if (r.status >= 500) {
-			console.error(
-				`    chunk ${chunkNum}/${total} FAILED: ${r.error || "unknown"}`,
-			);
 			break;
 		}
 		process.stdout.write(`    ingesting ${chunkNum}/${total}\r`);
@@ -159,7 +169,7 @@ async function askQuestion(client, db, model, run, question) {
 	const preRun = await db.get_run_by_alias.get({ alias: run });
 	const turnBefore = preRun.next_turn;
 
-	let r = await client.call("ask", {
+	let r = await askWithRetry(client, {
 		model,
 		prompt: question,
 		run,
@@ -167,10 +177,9 @@ async function askQuestion(client, db, model, run, question) {
 		noInteraction: true,
 		noProposals: true,
 		noWeb: true,
-	});
+	}, "question");
 	if (r.status === 202) r = await resolveAll(client, r);
 
-	if (r.status >= 500) return "";
 	if (r.status === 413)
 		throw new Error("Context overflow — panic failed. Benchmark aborted.");
 
@@ -410,6 +419,10 @@ async function main() {
 
 				// Append incrementally so partial results survive crashes
 				await fs.appendFile(resultsPath, `${JSON.stringify(result)}\n`);
+
+				if (ROW_DELAY_MS > 0 && i < end) {
+					await new Promise((resolve) => setTimeout(resolve, ROW_DELAY_MS));
+				}
 			}
 		}
 	} finally {
