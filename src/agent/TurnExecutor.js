@@ -76,6 +76,35 @@ export default class TurnExecutor {
 			run_id: runId,
 		});
 		const lastContextTokens = lastCtx?.context_tokens ?? 0;
+
+		// Baseline materialization — assemble with model's promoted spending
+		// removed (promoted data, promoted logging). The resulting size is the
+		// fixed overhead the model can't reduce without further demotion.
+		const baselineRows = rows.filter(
+			(r) =>
+				!(
+					(r.category === "data" || r.category === "logging") &&
+					r.fidelity === "promoted"
+				),
+		);
+		const baselineMessages = await ContextAssembler.assembleFromTurnContext(
+			baselineRows,
+			{
+				type: mode,
+				systemPrompt,
+				contextSize,
+				demoted,
+				toolSet,
+				lastContextTokens,
+				turn,
+			},
+			this.#hooks,
+		);
+		const baselineTokens = baselineMessages.reduce(
+			(sum, m) => sum + countTokens(m.content),
+			0,
+		);
+
 		const messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
 			{
@@ -86,6 +115,7 @@ export default class TurnExecutor {
 				toolSet,
 				lastContextTokens,
 				turn,
+				baselineTokens,
 			},
 			this.#hooks,
 		);

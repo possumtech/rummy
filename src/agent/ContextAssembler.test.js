@@ -364,7 +364,10 @@ describe("ContextAssembler", () => {
 			);
 			const user = messages[1].content;
 
-			assert.ok(user.includes("token budget"), "progress shows budget info");
+			assert.ok(
+				user.includes("tokens remaining"),
+				"progress shows budget info",
+			);
 		});
 	});
 });

@@ -1,3 +1,6 @@
+const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
+if (!CEILING_RATIO) throw new Error("RUMMY_BUDGET_CEILING must be set");
+
 export default class Progress {
 	#core;
 
@@ -7,13 +10,16 @@ export default class Progress {
 	}
 
 	async assembleProgress(content, ctx) {
-		const { lastContextTokens: usedTokens, contextSize } = ctx;
-		const pct = contextSize ? Math.round((usedTokens / contextSize) * 100) : 0;
-
+		const { lastContextTokens, contextSize, baselineTokens } = ctx;
 		const lines = [];
+
 		if (contextSize) {
+			const ceiling = Math.floor(contextSize * CEILING_RATIO);
+			const tokenBudget = Math.max(0, ceiling - (baselineTokens || 0));
+			const used = Math.max(0, lastContextTokens - (baselineTokens || 0));
+			const remaining = Math.max(0, tokenBudget - used);
 			lines.push(
-				`Using ${usedTokens} tokens (${pct}%) of ${contextSize} token budget. Promote entries with <get/> or set fidelity="promoted" to spend tokens. Set fidelity="demoted" to save tokens.`,
+				`Using ${used} of ${tokenBudget} tokens. ${remaining} tokens remaining. Promote relevant entries with <get/> or set fidelity="promoted" to spend tokens. Demote irrelevant entries with set fidelity="demoted" to save tokens.`,
 			);
 		}
 		lines.push(

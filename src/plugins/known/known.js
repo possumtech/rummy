@@ -103,10 +103,13 @@ function renderKnownTag(entry, demotedSet) {
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
-	const summary =
+	// Always render summary attribute on knowns — empty value hints the model
+	// it forgot to add searchable keywords.
+	const summaryText =
 		typeof attrs?.summary === "string"
-			? ` summary="${attrs.summary.replace(/"/g, "'").slice(0, 80)}"`
+			? attrs.summary.replace(/"/g, "'").slice(0, 80)
 			: "";
+	const summary = ` summary="${summaryText}"`;
 
 	if (entry.body) {
 		return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}>${entry.body}</${tag}>`;
