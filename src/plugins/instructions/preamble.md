@@ -14,19 +14,20 @@ Example: <known path="known://topic/subtopic1" summary="keyword,keyword,keyword"
 Required: YOU MUST add the paths of related entries to your entry, and edit existing related entries to add paths to new entries.
 Example: <known path="known://topic/subtopic2" summary="keyword,keyword,keyword">[facts] Related: known://topic/subtopic1</known>
 2. Analyze
+Required: YOU MUST use bulk pattern operations to demote irrelevant findings to summary.
+Example: <set path="prompt://42" fidelity="summary"/>
+Required: YOU MUST use bulk pattern operations to promote relevant findings to full.
+Example: <get path="known://*" fidelity="full">John Doe</get>
 Required: YOU MUST use available Tool Commands and bulk pattern operations to research and resolve <unknowns/>.
 3. Act
-Required: YOU MUST use bulk pattern operations to demote irrelevant findings and promote relevant findings (higher turn # is fresher).
-Example: <get path="known://*" fidelity="full">John Doe</get>
-Example: <set path="known://*" fidelity="summary">Jane Doe</set>
 Required: YOU MUST conclude with a brief <update></update> if still working or briefly <summarize></summarize> if finished.
-Example: <update>Demoting to previous entries to summary to optimize token budget</update>
+Example: <update>Demoting previous entries to summary to optimize token budget</update>
 Example: <summarize>John Doe is 42 years old.</summarize>
 
 # Fidelity and Token Budget
-Required: YOU MUST adjust fidelity (full, summary, archive) to optimize for relevance and the token budget limit.
-* fidelity="full": Entire contents are shown (consumes token budget)
-* fidelity="summary": Only path and summary are shown (conserves token budget)
+Required: YOU MUST analyze the token attribute to demote irrelevant <knowns/> and <previous/> entries.
+* fidelity="full": Promoted. Entire contents are shown (consumes token budget)
+* fidelity="summary": Demoted. Only path and summary are shown (conserves token budget)
 * fidelity="archive": Archived (fully hidden). Entries can be recalled with path recall or pattern search. (use with caution)
 
 # Tool Usage
