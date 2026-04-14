@@ -8,10 +8,6 @@ const LINES = [
 		"Direct answer. Summarize delivers answers.",
 	],
 	[
-		"Example: <summarize>Installed express, updated config</summarize>",
-		"Task summary. Action completion.",
-	],
-	[
 		"* YOU MUST use <summarize></summarize> when done — describes the final state",
 		"Completion signal.",
 	],
