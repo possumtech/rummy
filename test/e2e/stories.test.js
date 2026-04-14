@@ -421,14 +421,18 @@ describe("E2E Stories", { concurrency: 1 }, () => {
 		assertContains(content, "phoenix", "reject-survive");
 	});
 
-	// Story 9b: Model answers correctly with tight context.
-	// Verifies the model can work within a limited context window.
-	it("model works within tight context", { timeout: TIMEOUT }, async () => {
+	// Story 9b: Model answers correctly under real budget pressure.
+	// contextLimit forces the model to manage promotion/demotion to fit
+	// the answer's source file alongside the system prompt + scaffolding.
+	it("model answers under tight context limit", {
+		timeout: TIMEOUT,
+	}, async () => {
 		const r1 = await client.call("ask", {
 			model,
 			prompt:
 				"What is the project codename in notes.md? Reply ONLY with the word.",
 			noInteraction: true,
+			contextLimit: 6000,
 		});
 		await client.assertRun(r1, 200, "tight-context");
 		assertContains(

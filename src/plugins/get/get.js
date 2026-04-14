@@ -55,7 +55,7 @@ export default class Get {
 					entry.resultPath,
 					"line/limit requires a single path, not a glob or body filter",
 					400,
-					{ loopId },
+					{ loopId, attributes: { path: target } },
 				);
 				return;
 			}
@@ -66,7 +66,7 @@ export default class Get {
 					entry.resultPath,
 					`${target} not found`,
 					200,
-					{ loopId },
+					{ loopId, attributes: { path: target } },
 				);
 				return;
 			}
@@ -84,15 +84,15 @@ export default class Get {
 				entry.resultPath,
 				`${header}\n${slice}`,
 				200,
-				{ loopId },
+				{ loopId, attributes: { path: target } },
 			);
 			return;
 		}
 
 		const VALID_FIDELITY = {
-			summary: 1,
-			full: 1,
-			archive: 1,
+			demoted: 1,
+			promoted: 1,
+			archived: 1,
 		};
 		const fidelityAttr = VALID_FIDELITY[entry.attributes.fidelity]
 			? entry.attributes.fidelity
@@ -113,7 +113,7 @@ export default class Get {
 				target,
 				bodyFilter,
 				matches,
-				{ loopId },
+				{ loopId, attributes: { path: target } },
 			);
 		} else {
 			const total = matches.reduce((s, m) => s + m.tokens, 0);

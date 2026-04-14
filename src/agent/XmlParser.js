@@ -274,12 +274,26 @@ export default class XmlParser {
 		);
 
 		// Qwen/gemma: <|tool_call>call:NAME{key:"value"}<tool_call|>
+		// Handles three observed value forms: key="v" / key:"v" / key:v (unquoted)
 		result = result.replace(
 			/<\|tool_call>call:(\w+)\{([^}]*)\}<(?:tool_call\||\|tool_call)>/g,
-			(_, name, params) => {
-				if (!ALL_TOOLS.has(name)) return _;
-				const valueMatch = params.match(/["']([^"']+)["']/);
-				const body = valueMatch?.[1] || "";
+			(match, name, params) => {
+				if (!ALL_TOOLS.has(name)) {
+					return `<error>Unknown tool '${name}' in <|tool_call> format. Use XML tool commands listed above.</error>`;
+				}
+				// Match value: double-quoted, single-quoted, or unquoted up to , or }
+				const valueMatch = params.match(
+					/[=:]\s*(?:"([^"]*)"|'([^']*)'|([^,}]+))/,
+				);
+				const body = (
+					valueMatch?.[1] ??
+					valueMatch?.[2] ??
+					valueMatch?.[3] ??
+					""
+				).trim();
+				if (!body) {
+					return `<error>Could not extract argument from <|tool_call> ${match}. Use XML format like <${name}>value</${name}>.</error>`;
+				}
 				return `<${name}>${body}</${name}>`;
 			},
 		);

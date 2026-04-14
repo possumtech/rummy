@@ -10,13 +10,24 @@ export default class Progress {
 	}
 
 	async assembleProgress(content, ctx) {
-		const { lastContextTokens, contextSize, baselineTokens } = ctx;
+		const { rows, contextSize, baselineTokens } = ctx;
 		const lines = [];
 
 		if (contextSize) {
 			const ceiling = Math.floor(contextSize * CEILING_RATIO);
 			const tokenBudget = Math.max(0, ceiling - (baselineTokens || 0));
-			const used = Math.max(0, lastContextTokens - (baselineTokens || 0));
+			// Used = sum of promoted controllable entries' tokens. Same units as
+			// per-entry tokens="N" so the model can predict the effect of a
+			// promote/demote: change is exactly the entry's tokens attribute.
+			const used = rows.reduce((sum, r) => {
+				if (
+					(r.category === "data" || r.category === "logging") &&
+					r.fidelity === "promoted"
+				) {
+					return sum + (r.tokens || 0);
+				}
+				return sum;
+			}, 0);
 			const remaining = Math.max(0, tokenBudget - used);
 			lines.push(
 				`Using ${used} of ${tokenBudget} tokens. ${remaining} tokens remaining. Promote relevant entries with <get/> or set fidelity="promoted" to spend tokens. Demote irrelevant entries with set fidelity="demoted" to save tokens.`,
