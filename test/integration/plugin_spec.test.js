@@ -270,7 +270,7 @@ describe("PLUGINS.md Spec Compliance", () => {
 			);
 			await store.upsert(runId, 1, "known://fidelity_test", "body", 200);
 			events.length = 0;
-			await store.setFidelity(runId, "known://fidelity_test", "summary");
+			await store.setFidelity(runId, "known://fidelity_test", "demoted");
 			assert.ok(
 				events.some((e) => e.changeType === "fidelity"),
 				"onChanged should fire with changeType=fidelity",

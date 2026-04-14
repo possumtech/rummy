@@ -140,15 +140,15 @@ describe("Engine integration", () => {
 				turn: 1,
 			});
 			const demoted = rows.find((r) => r.path === "src/demoted.js");
-			assert.ok(demoted, "summary file should appear in turn_context");
+			assert.ok(demoted, "demoted file should appear in turn_context");
 			assert.strictEqual(
 				demoted.fidelity,
-				"summary",
-				"summary fidelity should be preserved",
+				"demoted",
+				"demoted fidelity should be preserved",
 			);
 		});
 
-		it("summary files have summary fidelity with body passed through", async () => {
+		it("demoted files have demoted fidelity with body passed through (engine symbol view)", async () => {
 			await store.upsert(RUN_ID, 3, "src/active.js", "function bar() {}", 200, {
 				fidelity: "demoted",
 			});
@@ -164,19 +164,19 @@ describe("Engine integration", () => {
 				turn: 4,
 			});
 			const active = rows.find((r) => r.path === "src/active.js");
-			assert.ok(active, "active summary file should appear in turn_context");
+			assert.ok(active, "demoted file should appear in turn_context");
 			assert.strictEqual(
 				active.fidelity,
-				"summary",
-				"active symbols should have summary fidelity",
+				"demoted",
+				"demoted fidelity preserved",
 			);
 			assert.ok(
 				active.body.includes("function bar()"),
-				"body should pass through at summary fidelity",
+				"engine plugin's symbol view shows body at demoted fidelity",
 			);
 		});
 
-		it("model-authored summary shows in known tag at full fidelity", async () => {
+		it("promoted view returns body", async () => {
 			await store.upsert(RUN_ID, 5, "src/described.js", "const x = 1;", 200, {
 				fidelity: "promoted",
 				attributes: { summary: "Utility module for X" },
@@ -190,16 +190,13 @@ describe("Engine integration", () => {
 				attributes: { summary: "Utility module for X" },
 				category: "data",
 			});
-			// At full fidelity, summary is in the tag attribute, not the body
 			assert.ok(
 				viewResult.includes("const x = 1;"),
-				"full view should include body",
+				"promoted view should include body",
 			);
 		});
 
-		it("summary attribute used as fallback at summary fidelity", async () => {
-			// File plugin registers a summary view that returns body
-			// rummy.repo would override with symbols when installed
+		it("demoted view returns empty body (tag attribute carries summary)", async () => {
 			await store.upsert(RUN_ID, 6, "src/noview.js", "const y = 2;", 200, {
 				fidelity: "demoted",
 				attributes: { summary: "Helper for Y calculations" },
@@ -213,10 +210,10 @@ describe("Engine integration", () => {
 				attributes: { summary: "Helper for Y calculations" },
 				category: "data",
 			});
-			// File plugin summary view returns body; summary attr goes in tag
-			assert.ok(
-				viewResult.length > 0,
-				"summary fidelity should produce content",
+			assert.strictEqual(
+				viewResult,
+				"",
+				"file plugin returns empty at demoted fidelity — renderer wraps with summary attr",
 			);
 		});
 	});

@@ -220,7 +220,7 @@ describe("Budget math", () => {
 			assert.strictEqual(entry.tokens, expectedTokens, "tokens at full");
 
 			// Demote to summary — tokens should NOT change
-			await store.setFidelity(runId, "known://fact", "summary");
+			await store.setFidelity(runId, "known://fact", "demoted");
 			entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			entry = entries.find((e) => e.path === "known://fact");
 			assert.strictEqual(
@@ -262,7 +262,7 @@ describe("Budget math", () => {
 			assert.ok(fullTcTokens > 0, "full entry has tokens");
 
 			// Archive — should disappear from turn_context
-			await store.setFidelity(runId, "known://tc_test", "archive");
+			await store.setFidelity(runId, "known://tc_test", "archived");
 			await materialize(tdb.db, {
 				runId,
 				turn: 2,

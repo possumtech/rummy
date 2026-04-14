@@ -153,7 +153,7 @@ describe("restoreSummarizedPrompts", () => {
 		const before = await tdb.db.get_known_entries.all({ run_id: runId });
 		assert.strictEqual(
 			before.find((e) => e.path === "prompt://act/1")?.fidelity,
-			"summary",
+			"demoted",
 		);
 
 		await store.restoreSummarizedPrompts(runId);
@@ -161,11 +161,11 @@ describe("restoreSummarizedPrompts", () => {
 		const after = await tdb.db.get_known_entries.all({ run_id: runId });
 		assert.strictEqual(
 			after.find((e) => e.path === "prompt://act/1")?.fidelity,
-			"full",
+			"promoted",
 		);
 	});
 
-	it("does not touch prompt entries already at full fidelity", async () => {
+	it("does not touch prompt entries already at promoted fidelity", async () => {
 		const { runId } = await tdb.seedRun({ alias: "rsp_2" });
 
 		await store.upsert(runId, 1, "prompt://act/1", "full prompt", 200, {
@@ -177,11 +177,11 @@ describe("restoreSummarizedPrompts", () => {
 		const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 		assert.strictEqual(
 			entries.find((e) => e.path === "prompt://act/1")?.fidelity,
-			"full",
+			"promoted",
 		);
 	});
 
-	it("does not touch non-prompt entries at summary fidelity", async () => {
+	it("does not touch non-prompt entries at demoted fidelity", async () => {
 		const { runId } = await tdb.seedRun({ alias: "rsp_3" });
 
 		await store.upsert(runId, 1, "known://some-fact", "fact body", 200, {
@@ -193,7 +193,7 @@ describe("restoreSummarizedPrompts", () => {
 		const entries = await tdb.db.get_known_entries.all({ run_id: runId });
 		assert.strictEqual(
 			entries.find((e) => e.path === "known://some-fact")?.fidelity,
-			"summary",
+			"demoted",
 			"non-prompt entry untouched",
 		);
 	});
@@ -208,7 +208,7 @@ describe("restoreSummarizedPrompts", () => {
 			(e) => e.path === "prompt://act/1",
 		).tokens;
 
-		await store.setFidelity(runId, "prompt://act/1", "summary");
+		await store.setFidelity(runId, "prompt://act/1", "demoted");
 		await store.restoreSummarizedPrompts(runId);
 
 		const after = await tdb.db.get_known_entries.all({ run_id: runId });
