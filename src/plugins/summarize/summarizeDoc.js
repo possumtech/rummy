@@ -7,14 +7,6 @@ const LINES = [
 		"Example: <summarize>The port is 8080</summarize>",
 		"Direct answer. Summarize delivers answers.",
 	],
-	[
-		"* YOU MUST use <summarize></summarize> when done — describes the final state",
-		"Completion signal.",
-	],
-	[
-		"* YOU MUST NOT use <summarize> if still working — use <update/> instead",
-		"Mutual exclusion with update.",
-	],
 	["* YOU MUST keep <summarize> to <= 80 characters", "Length cap."],
 ];
 

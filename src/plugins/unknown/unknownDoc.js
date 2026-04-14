@@ -3,15 +3,11 @@
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
 	[
-		"## <unknown>[specific thing I need to learn]</unknown> - Track open questions",
+		"## <unknown>[specific thing I need to learn]</unknown> - Register gaps for research",
 	],
 	[
 		'Example: <unknown path="unknown://answer">contents of answer.txt</unknown>',
 		"Path form: explicit unknown path for structured tracking.",
-	],
-	[
-		"Example: <unknown>which database adapter is configured</unknown>",
-		"Body form: question as body, path auto-generated.",
 	],
 	[
 		"* Investigate with Tool Commands",
