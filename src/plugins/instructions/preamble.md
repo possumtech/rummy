@@ -21,13 +21,14 @@ Example: <get path="facts.txt"/>
 Example: <set path="prompt://42" fidelity="demoted"/>
 Example: <get path="known://*" preview>John Doe</get>
 Info: Entries with higher turn numbers are more recent and relevant.
-Info: Only promoted entries take up tokens.
+Info: Only promoted entries use up tokens.
 
-Required: YOU MUST conclude with a brief <update></update> if not done.
+Required: Conclude with <update></update> to continue. Conclude with <summarize></summarize> when complete.
 Example: <update>Demoting irrelevant entries</update>
-Required: YOU MUST issue a lone <summarize></summarize> if done.
 Example: <summarize>John Doe is 42 years old.</summarize>
 
 # Tool Usage
+
+Required: Use these XML Command Tools to get, set, and edit entries (including files -- files are a type of entry).
 
 [%TOOLDOCS%]
