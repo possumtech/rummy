@@ -370,6 +370,23 @@ export default class XmlParser {
 			},
 		);
 
+		// Catch-all: any remaining <|tool_call> tokens are malformed native
+		// attempts (no {} block, missing close, wrong shape entirely). Replace
+		// each with an <error> so the model gets feedback on its next turn and
+		// learns to switch to XML. Lazy-match up to the next native close, the
+		// next XML close tag, or end of input — preserves any trailing valid XML.
+		// Error body must NOT contain literal <get>/<set>/etc. — those would
+		// re-enter the parser as phantom tool calls. Describe the format in
+		// prose instead and point at the tool docs above.
+		result = result.replace(
+			/<\|tool_call>[\s\S]*?(?:<\|?tool_call\|?>|<\/\w+>|$)/g,
+			() =>
+				"<error>Native tool call format not supported. Use the XML tool commands listed above (e.g. a get tag with a path attribute, or a set tag with path and body).</error>",
+		);
+
+		// Strip any orphan chat-format quote tokens left after replacement.
+		result = result.replace(/<\|"\|>/g, '"');
+
 		return result;
 	}
 }
