@@ -117,7 +117,7 @@ export default class Budget {
 		const body = [
 			`413 Token Budget Error: overflowed by ${postBudget.overflow} tokens. Token Budget: ${ceiling}.`,
 			`Your ${demotedEntries.length} promotions from last turn (${totalDemoted} tokens total) were demoted to fit.`,
-			`Required: sum your promotions before emitting. A single turn must promote no more than 50% of remaining Token Budget.`,
+			`Required: sum the tokens="N" of your promotions and new entries before emitting. A single turn must add no more than 50% of remaining Token Budget.`,
 		].join("\n");
 
 		await store.upsert(runId, turn, `budget://${loopId}/${turn}`, body, 413, {
