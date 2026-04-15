@@ -1,5 +1,3 @@
-import docs from "./unknownDoc.js";
-
 export default class Unknown {
 	#core;
 
@@ -13,10 +11,9 @@ export default class Unknown {
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);
-		core.filter("instructions.toolDocs", async (docsMap) => {
-			docsMap.unknown = docs;
-			return docsMap;
-		});
+		// Tooldoc + tools-list registration removed — <unknown> is now an
+		// internal scheme written via <set path="unknown://...">. Handler still
+		// dispatches if the model emits <unknown> directly.
 	}
 
 	async handler(entry, rummy) {

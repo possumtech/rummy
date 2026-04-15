@@ -1,5 +1,4 @@
 import { countTokens } from "../../agent/tokens.js";
-import docs from "./knownDoc.js";
 
 const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS) || 512;
 
@@ -13,10 +12,9 @@ export default class Known {
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
 		core.filter("assembly.system", this.assembleKnown.bind(this), 100);
-		core.filter("instructions.toolDocs", async (docsMap) => {
-			docsMap.known = docs;
-			return docsMap;
-		});
+		// Tooldoc + tools-list registration removed — <known> is now an
+		// internal scheme written via <set path="known://...">. Handler still
+		// dispatches if the model emits <known> directly.
 	}
 
 	async handler(entry, rummy) {

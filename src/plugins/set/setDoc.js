@@ -27,6 +27,10 @@ new text
 		'Example: <set path="example.md">Full file content here</set>',
 		"Create: body contents are entire file.",
 	],
+	[
+		"* YOU MUST NOT use <sh/> or <env/> to list, create, read, or edit files — use <get/> and <set/>",
+		"Reinforces at the decision point — model reading setDoc for file ops sees the prohibition here, not just buried in shDoc/envDoc which it may not be reading.",
+	],
 ];
 
 export default LINES.map(([text]) => text).join("\n");
