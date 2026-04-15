@@ -112,7 +112,7 @@ export default class Budget {
 		const body = [
 			`Error 413: Context overflowed by ${postBudget.overflow} tokens. Budget: ${ceiling} tokens.`,
 			`${demotedEntries.length} entries (${totalDemoted} tokens total) demoted from previous turn.`,
-			`You have ~${freeTokens} free tokens. Demote irrelevant entries and promote fewer entries next time.`,
+			`You have ${freeTokens} free tokens. Demote irrelevant entries and promote fewer entries next time.`,
 		].join("\n");
 
 		await store.upsert(runId, turn, `budget://${loopId}/${turn}`, body, 413, {
