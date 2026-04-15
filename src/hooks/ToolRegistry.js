@@ -32,10 +32,19 @@ export default class ToolRegistry {
 	#tools = new Map();
 	#handlers = new Map();
 	#views = new Map();
+	#hidden = new Set();
 
 	ensureTool(scheme) {
 		if (this.#tools.has(scheme)) return;
 		this.#tools.set(scheme, Object.freeze({}));
+	}
+
+	// Mark a tool as hidden — handler still dispatches if the model emits the
+	// tag, but the tool is excluded from all model-facing tool lists. Used for
+	// legacy/internal schemes (e.g. <known>, <unknown>) we want to retire
+	// without deleting.
+	markHidden(scheme) {
+		this.#hidden.add(scheme);
 	}
 
 	get(name) {
@@ -92,15 +101,23 @@ export default class ToolRegistry {
 		return sortByPriority([...this.#tools.keys()]);
 	}
 
+	// Names advertised to the model — registered tools minus hidden ones.
+	// Use this anywhere a tool list is shown to the model.
+	get advertisedNames() {
+		return sortByPriority(
+			[...this.#tools.keys()].filter((n) => !this.#hidden.has(n)),
+		);
+	}
+
 	/**
 	 * Compute the active tool set for a loop.
-	 * All exclusions — mode, flags — handled here. One mechanism.
+	 * All exclusions — mode, flags, hidden — handled here. One mechanism.
 	 */
 	resolveForLoop(
 		mode,
 		{ noInteraction = false, noWeb = false, noProposals = false } = {},
 	) {
-		const excluded = new Set();
+		const excluded = new Set(this.#hidden);
 		if (mode === "ask") excluded.add("sh");
 		if (noInteraction) excluded.add("ask_user");
 		if (noWeb) excluded.add("search");

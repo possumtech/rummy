@@ -12,9 +12,10 @@ export default class Known {
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
 		core.filter("assembly.system", this.assembleKnown.bind(this), 100);
-		// Tooldoc + tools-list registration removed — <known> is now an
-		// internal scheme written via <set path="known://...">. Handler still
-		// dispatches if the model emits <known> directly.
+		// <known> is internal — written via <set path="known://...">. Hidden
+		// from all model-facing tool lists. Handler still dispatches if the
+		// model emits <known> directly out of habit.
+		core.markHidden();
 	}
 
 	async handler(entry, rummy) {

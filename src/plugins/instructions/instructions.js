@@ -37,14 +37,15 @@ export default class Instructions {
 			{},
 			{ toolSet: activeTools },
 		);
-		// Tool visibility = doc presence. A tool with no registered doc is
-		// dispatchable but not advertised to the model — used for legacy/internal
-		// schemes (e.g. <known>, <unknown>) we want to hide without deleting.
-		const sorted = this.#core.hooks.tools.names
-			.filter((n) => activeTools.has(n))
-			.filter((n) => toolDocs[n]);
+		// Hidden tools are excluded at the registry level (see ToolRegistry).
+		const sorted = this.#core.hooks.tools.advertisedNames.filter((n) =>
+			activeTools.has(n),
+		);
 		const tools = sorted.join(", ");
-		const docsText = sorted.map((key) => toolDocs[key]).join("\n\n");
+		const docsText = sorted
+			.filter((key) => toolDocs[key])
+			.map((key) => toolDocs[key])
+			.join("\n\n");
 		let prompt = preamble
 			.replace("[%TOOLS%]", tools)
 			.replace("[%TOOLDOCS%]", docsText);

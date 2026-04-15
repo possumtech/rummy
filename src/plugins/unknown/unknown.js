@@ -11,9 +11,10 @@ export default class Unknown {
 		core.on("promoted", this.full.bind(this));
 		core.on("demoted", this.summary.bind(this));
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 300);
-		// Tooldoc + tools-list registration removed — <unknown> is now an
-		// internal scheme written via <set path="unknown://...">. Handler still
-		// dispatches if the model emits <unknown> directly.
+		// <unknown> is internal — written via <set path="unknown://...">. Hidden
+		// from all model-facing tool lists. Handler still dispatches if the
+		// model emits <unknown> directly out of habit.
+		core.markHidden();
 	}
 
 	async handler(entry, rummy) {

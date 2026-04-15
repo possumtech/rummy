@@ -69,6 +69,12 @@ export default class PluginContext {
 		this.#hooks.tools.ensureTool(this.#name);
 	}
 
+	// Mark this plugin's tool as hidden from model-facing tool lists.
+	// Handler still dispatches if the model emits the tag.
+	markHidden() {
+		this.#hooks.tools.markHidden(this.#name);
+	}
+
 	/**
 	 * Register a named callback for this plugin.
 	 * "handler" registers the tool handler.

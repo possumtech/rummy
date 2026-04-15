@@ -154,6 +154,11 @@ export default class XmlParser {
 		const commands = [];
 		const warnings = [];
 		const textChunks = [];
+
+		// Pre-flight: balance unclosed attribute quotes that would otherwise
+		// cause htmlparser2 to consume the rest of input as a single attribute
+		// value, silently dropping every subsequent tool call.
+		const balanced = XmlParser.#balanceAttrQuotes(normalized, warnings);
 		let current = null;
 		let ended = false;
 		let capped = false;
@@ -238,7 +243,7 @@ export default class XmlParser {
 			},
 		);
 
-		parser.write(normalized);
+		parser.write(balanced);
 		ended = true;
 		parser.end();
 
@@ -259,6 +264,36 @@ export default class XmlParser {
 
 		const unparsed = textChunks.join("").trim();
 		return { commands, warnings, unparsed };
+	}
+
+	/**
+	 * Repair a specific malformed-tag pattern: an attribute value opened with
+	 * `="` that never closes before the next tag. Without repair, htmlparser2
+	 * consumes the rest of input as one giant attribute value and silently
+	 * drops every subsequent tool call.
+	 *
+	 * Pattern matched:  <TAG ... ATTR="text-with-no-quote</NEXT>
+	 * Repair:           <TAG ... ATTR="text-with-no-quote"></NEXT>
+	 *
+	 * Conservative — only triggers when the value contains no quote, no `>`,
+	 * and is followed by another tag opening or close. Well-formed input is
+	 * untouched.
+	 */
+	static #balanceAttrQuotes(content, warnings) {
+		let fixes = 0;
+		const repaired = content.replace(
+			/(<\w+\s[^<>]*?\w+=")([^"<>]*?)(<\/?\w+)/g,
+			(_, opening, value, nextTag) => {
+				fixes++;
+				return `${opening}${value}">${nextTag}`;
+			},
+		);
+		if (fixes > 0) {
+			warnings.push(
+				`Repaired ${fixes} malformed attribute(s) — close all attribute values with a quote.`,
+			);
+		}
+		return repaired;
 	}
 
 	/**

@@ -7,6 +7,7 @@ describe("Known", () => {
 		registerScheme() {},
 		on() {},
 		filter() {},
+		markHidden() {},
 	});
 
 	it("full returns body only (no prefix — tag attributes carry the path)", () => {
