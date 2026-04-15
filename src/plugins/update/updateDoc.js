@@ -15,14 +15,17 @@ const LINES = [
 		"Multi-step progress. Ongoing work.",
 	],
 	[
-		"* Urgent: ONE <update/> per turn, AT THE END. Not inline narration between tools.",
+		"* Urgent: ONE <update></update> per turn, AT THE END. Not inline narration between tools.",
 		"Single-update-per-turn is the missing rule. Model was emitting 3-6 updates per turn as progress commentary.",
 	],
 	[
-		"* If you'd repeat the same <update/> as last turn, the work is either stuck or done. Take a different action or <summarize/>.",
+		"* If you'd repeat the same <update></update> as last turn, the work is either stuck or done. Take a different action or <summarize></summarize>.",
 		"Points at the zombie-loop failure mode directly. Gives the model a trigger (same-text-as-prior-update) and two remedies.",
 	],
-	["* YOU MUST keep <update> to <= 80 characters", "Length cap."],
+	[
+		"* YOU MUST keep <update></update> to <= 80 characters",
+		"Length cap.",
+	],
 ];
 
 export default LINES.map(([text]) => text).join("\n");

@@ -10,7 +10,7 @@ const LINES = [
 		"Positive framing. Shows what ask_user IS for.",
 	],
 	[
-		"* YOU SHOULD use <get> to find information before asking the user",
+		"* YOU SHOULD use <get></get> to find information before asking the user",
 		"Gentle redirect. Encourages self-sufficiency.",
 	],
 	[
