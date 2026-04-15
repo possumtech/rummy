@@ -41,13 +41,14 @@ export default class Prompt {
 				: promptEntry?.attributes;
 		const mode = attrs?.mode || ctx.type;
 		const body = promptEntry?.body || "";
-		const toolNames = ctx.toolSet
-			? [...ctx.toolSet]
-			: [...this.#core.hooks.tools.resolveForLoop(mode)];
-		const tools = toolNames.join(",");
+		// No tools="..." attribute. The OpenAI-shaped
+		// `<prompt mode tools="x,y,z">` rendering was priming gemma's
+		// native-tool-call training prior — A/B test confirmed removing
+		// the attribute dropped native-format emissions from ~50% to 0%.
+		// Tools list lives in the system prompt as "XML Command Tools:".
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
 
-		return `${content}<prompt mode="${mode}" tools="${tools}"${warn}>${body}</prompt>`;
+		return `${content}<prompt mode="${mode}"${warn}>${body}</prompt>`;
 	}
 }

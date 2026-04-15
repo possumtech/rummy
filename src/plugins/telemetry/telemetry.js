@@ -136,12 +136,12 @@ export default class Telemetry {
 			);
 		}
 
-		// content://N — unparsed text. Visible to the model so it sees parser
-		// feedback (e.g. malformed native tool call errors) on its next turn.
-		// Without this visibility, the model emits the same broken format
-		// repeatedly with no signal that anything went wrong.
+		// content://N — unparsed text. 400 Bad Request because anything in
+		// unparsed is text the parser couldn't dispatch (malformed XML, native
+		// tool call attempts, reasoning bleed). Visible to the model so it
+		// sees the rejection on its next turn and can correct.
 		if (unparsed) {
-			await store.upsert(runId, turn, `content://${turn}`, unparsed, 200, {
+			await store.upsert(runId, turn, `content://${turn}`, unparsed, 400, {
 				loopId,
 				fidelity: "promoted",
 			});

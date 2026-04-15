@@ -167,33 +167,50 @@ export default class XmlParser {
 			{
 				onopentag(name, attrs) {
 					if (capped) return;
-					if (!ALL_TOOLS.has(name)) {
-						if (current) {
+
+					if (current) {
+						// Empty-body case: current tool opened but got no text
+						// content before a new tag. The model likely meant current
+						// to self-close but typed it in paired form, or emitted a
+						// mismatched close tag that htmlparser2 silently dropped.
+						// Close current, open new.
+						const hasBody = current.rawBody.trim() !== "";
+						const hasNestedOpens = (current.nested || []).length > 0;
+						if (!hasBody && !hasNestedOpens && ALL_TOOLS.has(name)) {
+							warnings.push(
+								`Unclosed <${current.name}> before <${name}> — recovered`,
+							);
+							commands.push(
+								resolveCommand(current.name, current.attrs, current.rawBody),
+							);
+							current = null;
+						} else {
+							// Nested tag inside a body with content — treat as body
+							// text. Tool bodies are opaque: the model writing a plan
+							// with <get/> in it, SEARCH/REPLACE in <set>, or XML
+							// examples in <known> all need to survive intact. Track
+							// nested opens on a stack so matching closes pop off and
+							// orphan closes (typos) still trigger recovery.
 							const attrStr = Object.entries(attrs)
 								.map(([k, v]) => (v === "" ? k : `${k}="${v}"`))
 								.join(" ");
-							current.rawBody += attrStr ? `<${name} ${attrStr}>` : `<${name}>`;
+							current.rawBody += attrStr
+								? `<${name} ${attrStr}>`
+								: `<${name}>`;
+							current.nested ||= [];
+							current.nested.push(name);
+							return;
 						}
-						return;
 					}
 
-					// Known tool opened while another is still open — close the old one.
-					if (current) {
-						warnings.push(
-							`Unclosed <${current.name}> before <${name}> — recovered`,
-						);
-						commands.push(
-							resolveCommand(current.name, current.attrs, current.rawBody),
-						);
-					}
+					if (!ALL_TOOLS.has(name)) return;
 
 					if (commands.length >= XmlParser.MAX_COMMANDS) {
 						capped = true;
-						current = null;
 						return;
 					}
 
-					current = { name, attrs, rawBody: "" };
+					current = { name, attrs, rawBody: "", nested: [] };
 				},
 
 				ontext(text) {
@@ -207,28 +224,52 @@ export default class XmlParser {
 
 				onclosetag(name, isImplied) {
 					if (capped) return;
-					if (current && name === current.name) {
-						if (ended) {
-							warnings.push(`Unclosed <${name}> tag — content captured anyway`);
+
+					if (current) {
+						// Matching nested close — pop stack, keep as text.
+						const nested = current.nested;
+						if (
+							nested.length > 0 &&
+							nested[nested.length - 1] === name
+						) {
+							nested.pop();
+							current.rawBody += `</${name}>`;
+							return;
 						}
-						commands.push(
-							resolveCommand(current.name, current.attrs, current.rawBody),
-						);
-						current = null;
-					} else if (current && ALL_TOOLS.has(name)) {
-						// Mismatched close tag for a known tool — close current tag,
-						// don't swallow subsequent commands as body text.
-						warnings.push(
-							`Mismatched </${name}> closing <${current.name}> — recovered`,
-						);
-						commands.push(
-							resolveCommand(current.name, current.attrs, current.rawBody),
-						);
-						current = null;
-					} else if (current) {
+
+						// Matching close for outer tool — finalize.
+						if (name === current.name && nested.length === 0) {
+							if (ended) {
+								warnings.push(
+									`Unclosed <${name}> tag — content captured anyway`,
+								);
+							}
+							commands.push(
+								resolveCommand(current.name, current.attrs, current.rawBody),
+							);
+							current = null;
+							return;
+						}
+
+						// Orphan close for a known tool (likely typo) — recover.
+						if (ALL_TOOLS.has(name)) {
+							warnings.push(
+								`Mismatched </${name}> closing <${current.name}> — recovered`,
+							);
+							commands.push(
+								resolveCommand(current.name, current.attrs, current.rawBody),
+							);
+							current = null;
+							return;
+						}
+
+						// Unknown orphan close — text.
 						current.rawBody += `</${name}>`;
-					} else if (isImplied && ALL_TOOLS.has(name)) {
-						// Self-closing tag that htmlparser2 auto-closed
+						return;
+					}
+
+					if (isImplied && ALL_TOOLS.has(name)) {
+						// Self-closing tag that htmlparser2 auto-closed at top level
 					}
 				},
 

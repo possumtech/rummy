@@ -297,5 +297,57 @@ describe("ResponseHealer", () => {
 			const result = healer.assessRepetition(turn);
 			assert.strictEqual(result.continue, false);
 		});
+
+		it("path stagnation: same path touched in 5 consecutive turns force-completes", () => {
+			const healer = new ResponseHealer();
+			// Each turn touches the same path but with varying commands so
+			// fingerprints differ and the exact-cycle detector doesn't fire.
+			const P = "known://project_review/plan";
+			const setCmd = {
+				scheme: "set",
+				path: P,
+				attributes: { path: P, summary: "plan,a" },
+			};
+			const getCmd = {
+				scheme: "get",
+				path: P,
+				attributes: { path: P },
+			};
+			// 4 varied turns — no fingerprint cycle, no stagnation yet.
+			for (const fp of ["a", "b", "c", "d"]) {
+				const r = healer.assessRepetition({
+					actionCalls: [getCmd],
+					writeCalls: [{ ...setCmd, attributes: { ...setCmd.attributes, summary: fp } }],
+				});
+				assert.strictEqual(r.continue, true);
+			}
+			// 5th turn — path has been touched 5 consecutive turns, flag.
+			const result = healer.assessRepetition({
+				actionCalls: [getCmd],
+				writeCalls: [setCmd],
+			});
+			assert.strictEqual(result.continue, false);
+			assert.ok(result.reason.includes("Path stagnation"));
+			assert.ok(result.reason.includes(P));
+		});
+
+		it("path stagnation does not flag when paths change", () => {
+			const healer = new ResponseHealer();
+			// Each turn touches a different path — no stagnation.
+			for (const p of [
+				"src/a.js",
+				"src/b.js",
+				"src/c.js",
+				"src/d.js",
+				"src/e.js",
+				"src/f.js",
+			]) {
+				const r = healer.assessRepetition({
+					actionCalls: [{ scheme: "get", path: p, attributes: { path: p } }],
+					writeCalls: [],
+				});
+				assert.strictEqual(r.continue, true);
+			}
+		});
 	});
 });
