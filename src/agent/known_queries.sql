@@ -5,7 +5,7 @@ WHERE run_id = :run_id
 ORDER BY path;
 
 -- PREP: get_results
-SELECT tool, target, status, path, body
+SELECT tool, target, status, path, body, turn
 FROM v_run_log
 WHERE run_id = :run_id;
 
@@ -65,11 +65,11 @@ LIMIT 1;
 -- PREP: get_history
 SELECT ke.path, ke.status, ke.body, ke.attributes, ke.turn
 FROM known_entries AS ke
-JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
+JOIN schemes AS s ON s.name = ke.scheme
 WHERE
 	ke.run_id = :run_id
-	AND ke.scheme IS NOT NULL
-	AND s.category NOT IN ('knowledge', 'file', 'audit')
+	AND s.category IN ('logging', 'prompt')
+	AND ke.status != 202
 ORDER BY ke.id;
 
 -- PREP: get_content

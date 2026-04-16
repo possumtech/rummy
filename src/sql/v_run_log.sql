@@ -5,7 +5,8 @@ SELECT
 	, ke.path
 	, ke.body
 	, ke.status
-	, COALESCE(ke.scheme, 'file') AS tool
+	, ke.turn
+	, ke.scheme AS tool
 	, COALESCE(
 		json_extract(ke.attributes, '$.command')
 		, json_extract(ke.attributes, '$.file')
@@ -14,10 +15,8 @@ SELECT
 		, ''
 	) AS target
 FROM known_entries AS ke
-JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
+JOIN schemes AS s ON s.name = ke.scheme
 WHERE
-	ke.scheme IS NOT NULL
+	s.category IN ('logging', 'prompt')
 	AND ke.status != 202
-	AND s.category NOT IN ('knowledge', 'file')
-	AND ke.scheme NOT IN ('system', 'reasoning', 'model', 'content')
 ORDER BY ke.id;
