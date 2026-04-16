@@ -299,6 +299,73 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		assert.ok(logEntry.body.startsWith("aborted 'yes'"));
 	});
 
+	it("stream/cancel transitions channels to 499 server-side", async () => {
+		const start = await client.call("startRun", { model: "gemma" });
+		const run = start.run;
+		const path = await seedShProposal(run, "cancel_test", "make build");
+		await client.call("run/resolve", {
+			run,
+			resolution: { path, action: "accept" },
+		});
+
+		await client.call("stream", {
+			run,
+			path,
+			channel: 1,
+			chunk: "compiling...\n",
+		});
+		await client.call("stream/cancel", {
+			run,
+			path,
+			reason: "budget exceeded",
+		});
+
+		const entries = await allEntries(run);
+		const logEntry = entries.find((e) => e.path === path);
+		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
+		const stderrEntry = entries.find((e) => e.path === `${path}_2`);
+
+		assert.strictEqual(stdoutEntry.status, 499, "stdout → 499");
+		assert.strictEqual(stderrEntry.status, 499, "stderr → 499");
+		assert.strictEqual(
+			stdoutEntry.body,
+			"compiling...\n",
+			"partial output preserved",
+		);
+
+		assert.ok(
+			logEntry.body.startsWith("cancelled "),
+			`log body notes cancel: ${logEntry.body}`,
+		);
+		assert.ok(
+			logEntry.body.includes("budget exceeded"),
+			`log body has reason: ${logEntry.body}`,
+		);
+	});
+
+	it("stream/cancel works for stale 102 cleanup (no prior chunks)", async () => {
+		const start = await client.call("startRun", { model: "gemma" });
+		const run = start.run;
+		const path = await seedShProposal(run, "stale_test", "hang");
+		await client.call("run/resolve", {
+			run,
+			resolution: { path, action: "accept" },
+		});
+
+		// No stream chunks — simulates client dying immediately after accept.
+		await client.call("stream/cancel", {
+			run,
+			path,
+			reason: "stale cleanup",
+		});
+
+		const entries = await allEntries(run);
+		const stdoutEntry = entries.find((e) => e.path === `${path}_1`);
+
+		assert.strictEqual(stdoutEntry.status, 499);
+		assert.strictEqual(stdoutEntry.body, "", "empty body preserved");
+	});
+
 	it("env scheme follows identical streaming pattern", async () => {
 		const start = await client.call("startRun", { model: "gemma" });
 		const run = start.run;

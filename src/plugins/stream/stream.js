@@ -192,5 +192,79 @@ export default class Stream {
 			},
 			requiresInit: true,
 		});
+
+		// stream/cancel: server-initiated cancellation. Any client (or
+		// internal server code) can cancel a streaming producer — the server
+		// transitions channels to 499 immediately and pushes a
+		// stream/cancelled notification so connected clients can kill their
+		// local processes. Also serves as stale 102 cleanup: if the client
+		// died mid-stream, call stream/cancel to mark orphaned entries terminal.
+		r.register("stream/cancel", {
+			handler: async (params, ctx) => {
+				if (!params.run) throw new Error("run is required");
+				if (!params.path) throw new Error("path is required");
+
+				const runRow = await ctx.db.get_run_by_alias.get({
+					alias: params.run,
+				});
+				if (!runRow) throw new Error(`run not found: ${params.run}`);
+				const runId = runRow.id;
+
+				const reason = params.reason ?? null;
+
+				const channels = await ctx.projectAgent.entries.getEntriesByPattern(
+					runId,
+					`${params.path}_*`,
+					null,
+				);
+				for (const ch of channels) {
+					await ctx.db.resolve_known_entry.run({
+						run_id: runId,
+						path: ch.path,
+						body: ch.body,
+						status: 499,
+					});
+				}
+
+				const logEntry = await ctx.projectAgent.entries.getAttributes(
+					runId,
+					params.path,
+				);
+				const command = logEntry?.command || logEntry?.summary || "";
+				const channelSummary = channels
+					.map((c) => {
+						const size = c.body ? `${c.tokens} tokens` : "empty";
+						return `${c.path} (${size})`;
+					})
+					.join(", ");
+				const qualifier = reason ? ` (${reason})` : "";
+				const body = `cancelled '${command}'${qualifier}. Output: ${channelSummary}`;
+				await ctx.db.resolve_known_entry.run({
+					run_id: runId,
+					path: params.path,
+					body,
+					status: 200,
+				});
+
+				// Notify connected clients so they can kill local processes.
+				hooks.stream.cancelled.emit({
+					projectId: ctx.projectId,
+					run: params.run,
+					path: params.path,
+					reason,
+				});
+
+				return { status: "ok", channels: channels.length };
+			},
+			description:
+				"Server-initiated cancellation. Transitions all `{path}_*` data channels to status 499 and pushes a stream/cancelled notification to connected clients. Also used for stale 102 cleanup when the originating client is gone.",
+			params: {
+				run: "string — run alias",
+				path: "string — base path of the streaming producer",
+				reason:
+					"string? — cancellation reason (e.g. 'budget exceeded', 'stale cleanup', 'user cancelled from another client')",
+			},
+			requiresInit: true,
+		});
 	}
 }

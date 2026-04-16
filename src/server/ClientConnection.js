@@ -63,6 +63,16 @@ export default class ClientConnection {
 		}
 	};
 
+	#onStreamCancelled = (payload) => {
+		if (payload.projectId === this.#context.projectId) {
+			this.#sendNotification("stream/cancelled", {
+				run: payload.run,
+				path: payload.path,
+				reason: payload.reason,
+			});
+		}
+	};
+
 	#onState = (payload) => {
 		if (payload.projectId === this.#context.projectId) {
 			this.#sendNotification("run/state", {
@@ -83,6 +93,7 @@ export default class ClientConnection {
 		this.#hooks.ui.render.on(this.#onRender);
 		this.#hooks.ui.notify.on(this.#onNotify);
 		this.#hooks.run.state.on(this.#onState);
+		this.#hooks.stream.cancelled.on(this.#onStreamCancelled);
 	}
 
 	#teardown() {
@@ -91,6 +102,7 @@ export default class ClientConnection {
 		this.#hooks.ui.render.off(this.#onRender);
 		this.#hooks.ui.notify.off(this.#onNotify);
 		this.#hooks.run.state.off(this.#onState);
+		this.#hooks.stream.cancelled.off(this.#onStreamCancelled);
 	}
 
 	#buildHandlerContext() {

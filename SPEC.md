@@ -692,6 +692,7 @@ be added explicitly by the client).
 | `stream` | `{ run, path, channel, chunk }` |
 | `stream/completed` | `{ run, path, exit_code?, duration? }` |
 | `stream/aborted` | `{ run, path, reason?, duration? }` |
+| `stream/cancel` | `{ run, path, reason? }` |
 
 Producer-agnostic RPC for streaming output into data entries created by
 any plugin (sh/env today; search/fetch/watch as future consumers). The
@@ -699,7 +700,9 @@ any plugin (sh/env today; search/fetch/watch as future consumers). The
 transitions all `{path}_*` channels to terminal status (200/500) and
 finalizes the log entry body; `stream/aborted` is the client-initiated
 cancellation counterpart, transitioning channels to **499** (Client
-Closed Request).
+Closed Request); `stream/cancel` is the server-initiated counterpart
+(transitions to 499 and pushes `stream/cancelled` notification to
+connected clients). `stream/cancel` also handles stale 102 cleanup.
 
 #### Queries
 

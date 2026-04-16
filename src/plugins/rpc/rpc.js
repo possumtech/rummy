@@ -480,6 +480,11 @@ export default class Rpc {
 
 		r.registerNotification("run/state", "Turn state update.");
 		r.registerNotification("run/progress", "Turn status.");
+		r.registerNotification("run/proposal", "Proposal awaiting resolution.");
+		r.registerNotification(
+			"stream/cancelled",
+			"Server-initiated stream cancellation.",
+		);
 		r.registerNotification("ui/render", "Streaming output.");
 		r.registerNotification("ui/notify", "Toast notification.");
 

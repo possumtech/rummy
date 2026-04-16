@@ -506,7 +506,7 @@ pure RPC plumbing shared across all streaming producers.
 | `cp` | Core tool | Copy entry |
 | `sh` | Core tool | Shell command (act mode only). Streaming producer — see §8.1 |
 | `env` | Core tool | Exploratory command. Streaming producer — see §8.1 |
-| `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`) for sh/env and future producers |
+| `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`, `stream/cancel`) for sh/env and future producers |
 | `ask_user` | Core tool | Ask the user |
 | `search` | Core tool | Web search (via external plugin) |
 | `summarize` | Structural | Signal completion |

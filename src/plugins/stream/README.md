@@ -34,6 +34,17 @@ Client contract: kill the underlying process first, then call
 `stream/aborted`. Body of each data channel is preserved at whatever
 content was streamed before the kill.
 
+### `stream/cancel { run, path, reason? }`
+
+Server-initiated cancellation. Any client (or internal server code) can
+cancel a streaming producer — the server transitions channels to **499**
+immediately and pushes a `stream/cancelled` notification to all connected
+clients so they can kill their local processes.
+
+Also serves as **stale 102 cleanup**: if the originating client died
+mid-stream (`stream/completed` never arrived), any client can call
+`stream/cancel` to mark orphaned entries terminal.
+
 ## Producer Plugin Contract
 
 A streaming producer plugin:
