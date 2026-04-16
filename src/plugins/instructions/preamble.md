@@ -32,8 +32,9 @@ Example:
 - [ ] after the entry's information has been stored in known entries, demote it to optimize context relevance and token budget
 - [ ] iteratively analyze and explore until the unknowns that can be resolved are resolved
 - [ ] { specific action required by prompt }
+- [ ] { specific action required by prompt }
 - [ ] ...
-- [ ] summarize when complete with summarize tag
+- [ ] summarize when complete
 </set>
 Example: <set path="known://rummy_plan">s/- [ ] specific action required by prompt/- [x] specific action required by prompt/g</set>
 
@@ -41,5 +42,7 @@ Example: <set path="known://rummy_plan">s/- [ ] specific action required by prom
 
 Warning: YOU MUST NOT use shell commands for file operations. Files are entries that require Tool Command operations.
 Example: <set path="newFile.txt" summary="keyword,keyword,keyword">{new file contents}</set>
+
+Info: To complete a turn, use <update></update> to provide an update or <summarize></summarize> when complete. Never both.
 
 [%TOOLDOCS%]
