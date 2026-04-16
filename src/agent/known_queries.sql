@@ -68,7 +68,7 @@ FROM known_entries AS ke
 JOIN schemes AS s ON s.name = ke.scheme
 WHERE
 	ke.run_id = :run_id
-	AND s.category IN ('logging', 'prompt')
+	AND s.category IN ('logging', 'prompt', 'unknown')
 	AND ke.status != 202
 ORDER BY ke.id;
 

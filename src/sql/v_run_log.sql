@@ -17,6 +17,6 @@ SELECT
 FROM known_entries AS ke
 JOIN schemes AS s ON s.name = ke.scheme
 WHERE
-	s.category IN ('logging', 'prompt')
+	s.category IN ('logging', 'prompt', 'unknown')
 	AND ke.status != 202
 ORDER BY ke.id;
