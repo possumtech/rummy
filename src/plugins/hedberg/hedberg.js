@@ -57,7 +57,13 @@ export default class Hedberg {
 					searchText,
 					flags.includes("g") ? flags : `${flags}g`,
 				);
-				patch = body.replace(re, replaceText);
+				// Unescape regex metacharacter escapes in the replacement string.
+				// The model writes `\[x\]` meaning literal `[x]` in both search
+				// and replace. RegExp handles this in search; in the replacement
+				// string we must strip the backslashes ourselves since
+				// String.replace only interprets `$` sequences, not `\`.
+				const unescaped = replaceText.replace(/\\([[\](){}.*+?^$|\\])/g, "$1");
+				patch = body.replace(re, unescaped);
 				if (patch === body) patch = null;
 			} catch {
 				// Invalid regex — fall through to literal/heuristic interpretation
