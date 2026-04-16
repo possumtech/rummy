@@ -312,6 +312,61 @@ All tools are available by default. In ask mode, the core removes
 act-only tools (`sh`, file-scheme `set`) from the tool list. This is
 a core concern — plugins do not declare their modes.
 
+### 3.5 Streaming Entries
+
+Producers that generate output over time (shell commands, web fetches,
+log tails, file watches) use the streaming-entry pattern. Entry
+lifecycle extends beyond the synchronous 202→200/400+ flow.
+
+**Lifecycle:**
+
+```
+202 Proposal (user decision pending)
+  → accept → 200 (log entry: action complete) + 102 data entries
+  → reject → 403
+```
+
+**Entry shape for a streaming producer:**
+
+```
+{scheme}://turn_N/{slug}     category=logging   status=200
+                             body: "ran 'command', exit=0, Output: {paths}"
+                             (renders in <performed>)
+
+{scheme}://turn_N/{slug}_1   category=data      status=102 → 200/500
+                             body: primary stream (stdout for shell)
+                             summary="{command}" fidelity=demoted
+                             (renders in <knowns>)
+
+{scheme}://turn_N/{slug}_2   category=data      status=102 → 200/500
+                             body: alt stream (stderr for shell)
+                             (renders in <knowns>, often empty)
+```
+
+**Channel numbering follows Unix file descriptor convention.** Channel
+1 is primary output (stdout for shell); channel 2 is alternate/error
+output (stderr); higher numbers for additional producer-specific
+channels. Non-process producers (search, fetch) map their streams onto
+the same numeric space: `_1` for the primary data stream, `_2` for
+anomalies/errors, `_3`+ for auxiliary streams.
+
+**Status 102 ("Processing") marks an entry in mid-stream:** body is
+partial, will change; tokens grow as chunks arrive. Agents reading a
+102 entry use `<get>` with `line`/`limit` (including negative `line`
+for tail) to sample without promoting full body.
+
+**Status transition on completion** is terminal: 200 (exit_code=0 or
+N/A for non-process producers) or 500 (non-zero exit). The log entry
+is rewritten with final stats (exit code, duration, channel sizes).
+
+**Budget demotion preserves status.** A 102 entry demoted by budget
+panic stays at 102 — status reflects operation outcome, fidelity
+reflects visibility. See §1.X status-vs-lifecycle separation.
+
+**Stream plugin (§6) owns the append and completion RPCs.** Producer
+plugins (sh, env) create the proposal and data entries; the stream
+plugin handles the subsequent growth and terminal transitions.
+
 ---
 
 ## 4. Message Structure
@@ -628,6 +683,19 @@ on `get` also sets a project-level file constraint (operator privilege).
 be added explicitly by the client).
 `noInteraction` removes `ask_user` from the tool list.
 `noWeb` removes `search` from the tool list.
+
+#### Streaming (§3.5)
+
+| Method | Params |
+|--------|--------|
+| `stream` | `{ run, path, channel, chunk }` |
+| `stream/completed` | `{ run, path, exit_code?, duration? }` |
+
+Producer-agnostic RPC for streaming output into data entries created by
+any plugin (sh/env today; search/fetch/watch as future consumers). The
+`stream` method appends `chunk` to `{path}_{channel}`; `stream/completed`
+transitions all `{path}_*` channels to terminal status and finalizes
+the log entry body.
 
 #### Queries
 

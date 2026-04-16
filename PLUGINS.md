@@ -449,6 +449,48 @@ Entries at `index` fidelity render as path-only tags (no body).
 Entries at `summary` fidelity render with `attributes.summary`
 prepended above the plugin's summary view output.
 
+### §8.1 Streaming Entries
+
+Producers whose output arrives over time (shell commands, web fetches,
+log tails, file watches) use the **streaming entry pattern**. The
+lifecycle extends beyond 202→200:
+
+```
+202 Proposal (user decision pending)
+  → accept → 200 (log entry: action happened)
+           + 102 data entries (one per channel, growing)
+                  → 200/500 on completion
+```
+
+**Producer plugin contract:**
+
+1. On dispatch, create a **proposal entry** at `{scheme}://turn_N/{slug}`
+   at status=202, category=logging. Body empty; `summary=command` attr.
+2. On user accept, `AgentLoop.resolve()` transitions the proposal entry
+   to status=200 (it becomes the **log entry**) and creates **data
+   entries** at `{path}_1`, `{path}_2`, etc. at status=102,
+   category=data, fidelity=demoted, empty body.
+3. Producer/client calls `stream { run, path, channel, chunk }` RPC to
+   append chunks to the appropriate channel.
+4. When the producer is done, `stream/completed { run, path, exit_code? }`
+   transitions all `{path}_*` data entries to terminal status (200 on
+   exit_code=0 or omitted; 500 otherwise) and rewrites the log entry
+   body with final stats.
+
+**Channel numbering:** Unix file descriptor convention — `_1` is the
+primary stream (stdout for shell, body for fetch, lines for tail);
+`_2` is alternate/error (stderr, redirects, anomalies); `_3`+ for
+additional producer-specific streams.
+
+**The `stream` plugin** owns the RPC infrastructure. Producer plugins
+only need to:
+- Create the proposal entry on dispatch (status=202)
+- Rely on `AgentLoop.resolve()` to create data channels on accept
+- Let clients/external producers call `stream` and `stream/completed`
+
+No scheme registration or tooldoc for the stream plugin itself — it's
+pure RPC plumbing shared across all streaming producers.
+
 ## §9 Bundled Plugins
 
 | Plugin | Type | Description |
@@ -459,8 +501,9 @@ prepended above the plugin's summary view output.
 | `rm` | Core tool | Delete permanently |
 | `mv` | Core tool | Move entry |
 | `cp` | Core tool | Copy entry |
-| `sh` | Core tool | Shell command (act mode only) |
-| `env` | Core tool | Exploratory command |
+| `sh` | Core tool | Shell command (act mode only). Streaming producer — see §8.1 |
+| `env` | Core tool | Exploratory command. Streaming producer — see §8.1 |
+| `stream` | Internal | Generic streaming-entry RPC (`stream`, `stream/completed`) for sh/env and future producers |
 | `ask_user` | Core tool | Ask the user |
 | `search` | Core tool | Web search (via external plugin) |
 | `summarize` | Structural | Signal completion |
