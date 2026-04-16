@@ -155,10 +155,18 @@ export default class XmlParser {
 		const warnings = [];
 		const textChunks = [];
 
+		// Pre-flight: fix mismatched close tags that htmlparser2 silently
+		// drops (making our onclosetag recovery code unreachable). Must run
+		// before balanceAttrQuotes since the mismatch scan needs clean tags.
+		const mismatchFixed = XmlParser.#correctMismatchedCloses(
+			normalized,
+			warnings,
+		);
+
 		// Pre-flight: balance unclosed attribute quotes that would otherwise
 		// cause htmlparser2 to consume the rest of input as a single attribute
 		// value, silently dropping every subsequent tool call.
-		const balanced = XmlParser.#balanceAttrQuotes(normalized, warnings);
+		const balanced = XmlParser.#balanceAttrQuotes(mismatchFixed, warnings);
 		let current = null;
 		let ended = false;
 		let capped = false;
@@ -330,6 +338,46 @@ export default class XmlParser {
 			);
 		}
 		return repaired;
+	}
+
+	/**
+	 * Correct mismatched close tags before htmlparser2 sees them.
+	 *
+	 * htmlparser2 silently drops close tags that don't match the currently
+	 * open element (e.g. `<set>body</known>` — `</known>` vanishes). This
+	 * makes the explicit mismatch recovery in onclosetag unreachable and
+	 * causes all subsequent sibling commands to be absorbed as body text.
+	 *
+	 * Conservative: only corrects when the mismatch is at the outermost
+	 * tool depth (stack.length === 1). Nested mismatches inside body text
+	 * are left for htmlparser2 + body opacity to handle normally.
+	 */
+	static #correctMismatchedCloses(content, warnings) {
+		const stack = [];
+		return content.replace(
+			/<(\/?)(\w+)([^>]*?)(\/?)>/g,
+			(match, slash, tag, _attrs, selfClose) => {
+				if (!ALL_TOOLS.has(tag)) return match;
+				if (selfClose === "/") return match;
+				if (slash === "/") {
+					if (stack.length === 0) return match;
+					if (stack[stack.length - 1] === tag) {
+						stack.pop();
+						return match;
+					}
+					if (stack.length === 1) {
+						const top = stack.pop();
+						warnings.push(
+							`Mismatched </${tag}> closing <${top}> — corrected to </${top}>`,
+						);
+						return `</${top}>`;
+					}
+					return match;
+				}
+				stack.push(tag);
+				return match;
+			},
+		);
 	}
 
 	/**

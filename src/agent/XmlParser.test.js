@@ -329,7 +329,7 @@ I need to check the port.
 			assert.ok(unparsed.includes("I need to check the port"));
 		});
 
-		it("recovers from mismatched close tag", () => {
+		it("recovers from mismatched close tag (empty body)", () => {
 			const input = `<rm path="unknown://foo"></unknown>
 <update>Starting research.</update>
 <search>Mitch Hedberg cultural impact</search>`;
@@ -347,6 +347,47 @@ I need to check the port.
 					(w) => w.includes("Unclosed") || w.includes("Mismatched"),
 				),
 			);
+		});
+
+		it("recovers from mismatched close tag (with body content)", () => {
+			const input =
+				`<set path="known://task_plan" summary="plan">- [x] find codename\n- [x] reply</set>
+<set path="known://project_info" summary="codename">The project codename is: phoenix</set>
+<rm path="unknown://project_codename"/>
+<summarize>phoenix</summarize>`.replace("</set>\n<set", "</known>\n<set");
+			const { commands, warnings } = XmlParser.parse(input);
+			assert.strictEqual(
+				commands.length,
+				4,
+				`expected 4 commands, got ${commands.length}: ${commands.map((c) => c.name)}`,
+			);
+			assert.strictEqual(commands[0].name, "set");
+			assert.strictEqual(commands[0].path, "known://task_plan");
+			assert.strictEqual(commands[1].name, "set");
+			assert.strictEqual(commands[1].path, "known://project_info");
+			assert.strictEqual(commands[2].name, "rm");
+			assert.strictEqual(commands[3].name, "summarize");
+			assert.strictEqual(commands[3].body, "phoenix");
+			assert.ok(
+				warnings.some(
+					(w) => w.includes("Mismatched") && w.includes("corrected"),
+				),
+			);
+		});
+
+		it("preserves legitimate nested tool tags in body text", () => {
+			const input = `<set path="known://plan" summary="plan,steps">checklist:
+- use <get path="data.txt"/> to read
+- use <set> for writes
+</set>`;
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(
+				commands.length,
+				1,
+				"one command, nested tags are body",
+			);
+			assert.strictEqual(commands[0].name, "set");
+			assert.ok(commands[0].body.includes("<get"));
 		});
 
 		it("normalizes native tool call format", () => {

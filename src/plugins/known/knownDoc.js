@@ -1,12 +1,13 @@
-// Tool doc for <known/>. Each entry: [text, rationale].
+// Tool doc for known:// entries. Each entry: [text, rationale].
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
 	[
-		'## <known path="known://topic/subtopic" summary="keyword,keyword,keyword">[specific facts, decisions, or plans]</known> - Sort and save what you learn for later recall',
+		'## <set path="known://topic/subtopic" summary="keyword,keyword,keyword">[specific facts, decisions, or plans]</set> - Sort and save what you learn for later recall',
+		"Use <set> to write known entries (not <known>). Matches preamble examples.",
 	],
 	[
-		'Example: <known path="known://people/rumsfeld" summary="defense,secretary,born,1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</known>',
+		'Example: <set path="known://people/rumsfeld" summary="defense,secretary,born,1932">Donald Rumsfeld was born in 1932 and served as Secretary of Defense</set>',
 		"Explicit path form: slashed path=category/key, summary=keywords.",
 	],
 	[

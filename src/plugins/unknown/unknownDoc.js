@@ -1,12 +1,13 @@
-// Tool doc for <unknown>. Each entry: [text, rationale].
+// Tool doc for unknown:// entries. Each entry: [text, rationale].
 // Text goes to the model. Rationale stays in source.
 // Changing ANY line requires reading ALL rationales first.
 const LINES = [
 	[
-		"## <unknown>[specific thing I need to learn]</unknown> - Register gaps for research",
+		'## <set path="unknown://{question}">[specific thing I need to learn]</set> - Register gaps for research',
+		"Use <set> to write unknown entries (not <unknown>). Matches preamble examples.",
 	],
 	[
-		'Example: <unknown path="unknown://answer">contents of answer.txt</unknown>',
+		'Example: <set path="unknown://answer" summary="answer,contents">contents of answer.txt</set>',
 		"Path form: explicit unknown path for structured tracking.",
 	],
 	[
