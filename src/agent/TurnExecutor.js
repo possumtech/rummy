@@ -468,6 +468,22 @@ export default class TurnExecutor {
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 
+			// Push incremental state so the client waterfall builds live.
+			const history = await this.#knownStore.getLog(currentRunId);
+			const unknowns = await this.#db.get_unknowns.all({
+				run_id: currentRunId,
+			});
+			await this.#hooks.run.state.emit({
+				projectId,
+				run: currentAlias,
+				turn,
+				status: 102,
+				summary: "",
+				history,
+				unknowns: unknowns.map((u) => ({ path: u.path, body: u.body })),
+				telemetry: null,
+			});
+
 			// Materialize proposals for this entry (set revisions → 202)
 			await this.#hooks.turn.proposing.emit({ rummy, recorded: [entry] });
 
