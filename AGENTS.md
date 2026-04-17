@@ -23,9 +23,11 @@ Assembly via `assembly.system` / `assembly.user` filter chains.
 Loops table (projects > runs > loops > turns).
 HTTP status codes throughout (entries, runs, loops, client RPC).
 
-14 model tools: think, unknown, known, get, set, env, sh, rm, cp, mv,
-ask_user, update, summarize, search. Tool priority ordering (think first,
-search last). Unified tool exclusion via `resolveForLoop(mode, flags)`.
+11 model tools: think, get, set, env, sh, rm, cp, mv, ask_user, update,
+search. Tool priority ordering (think first, search last). Unified tool
+exclusion via `resolveForLoop(mode, flags)`. `known` and `unknown` retired
+as emission tags (model uses `<set path="known://...">` and
+`<set path="unknown://...">`); plugins remain for rendering and filters.
 
 Three fidelity levels: full, summary, archive.
 
@@ -45,7 +47,7 @@ them. No lifecycle/action split. No reordering.
   resolution inline, continue dispatch
 - `ask`/`act` RPC response sent only when all tools complete
 - Post-dispatch: budget check (independent of tool outcomes)
-- Lifecycle: last summarize/update wins
+- Lifecycle: `<update status="200">` terminates, `<update status="102">` continues
 
 ### Budget
 
@@ -79,7 +81,7 @@ TurnExecutor orchestrates the pipeline; plugins handle specifics:
 
 - `known` — size gate, slug path, dedup, scheme prefix
 - `unknown` — dedup, slug path
-- `summarize` / `update` — slug path recording
+- `update` — slug path recording, status attribute for lifecycle
 - `budget` — enforce, postDispatch (Turn Demotion)
 - `policy` — ask-mode restrictions via entry.recording filter
 - `think` — gated by RUMMY_THINK, tooldoc registration
@@ -301,43 +303,74 @@ distinction is semantic data the model reads, not an API boundary the
 system enforces. Parallel execution, cancellation, timeout — all
 uniform operations on entries rather than per-tool machinery.
 
+## Next: Error Logging & Progress Elimination
+
+### error:// scheme — model-visible feedback
+
+The `error` scheme is currently `category: "audit", model_visible: 0`.
+The model never sees system feedback. Warnings go to console.warn,
+errors go to error:// entries the model can't read, and the model
+repeats the same mistakes because it gets no signal.
+
+**Change:** `error` scheme → `category: "logging", model_visible: 1`.
+Every system correction becomes a model-visible entry.
+
+- [ ] Switch `error` scheme to `category: "logging", model_visible: 1`
+- [ ] Write error entry when `<update>` missing `status` attribute
+- [ ] Write error entry for XmlParser corrections (mismatch, code span)
+- [ ] Write error entry for budget 413 (replace or supplement budget://)
+- [ ] Write error entry for ResponseHealer interventions
+- [ ] Write error entry for dispatch crashes (already exists, just visible now)
+- [ ] Remove `console.warn` calls that duplicate error entries
+
+### progress:// elimination — budget as prompt attributes
+
+The progress plugin assembles a per-turn text block with budget info
+and the "conclude with update" reminder. Both are redundant:
+- Budget → `<prompt tokenBudget="N" tokenUsage="N">` attributes
+- Conclude reminder → already in updateDoc
+
+- [ ] Add `tokenBudget` and `tokenUsage` attributes to prompt assembly
+- [ ] Remove progress plugin (`src/plugins/progress/`)
+- [ ] Remove `progress` from PROMPT_SCHEMES in `src/plugins/index.js`
+- [ ] Update `assembly.user` filter chain (prompt plugin handles attrs)
+- [ ] Budget warnings → error:// entries (only when tight or exceeded)
+- [ ] Update LME system.md benchmark prompt to match
+
+### Cleanup from this session
+
+- [ ] Update SPEC.md for: summarize removal, update status codes,
+  error:// visibility, unified history shape, streaming RPCs
+- [ ] Update PLUGINS.md plugin table (summarize gone, update updated)
+- [ ] Update FIDELITY_CONTRACT.md (summarize references)
+- [ ] Run full E2E and investigate remaining failures as system bugs
+
 ## Road to Production
 
-### E2E Test Fixes (blocking)
-- [ ] Fix `accepted edits visible on next turn` — AuditClient auto-resolve
-  must apply file patches to disk before accepting
-- [ ] Fix `rejection and recovery` — test needs ability to reject
-  proposals (AuditClient currently auto-accepts everything)
-- [ ] Fix `autonomous web search` — 300s timeout, proposal hang.
-  Debug the notification → auto-resolve → waitForResolution chain
-- [ ] Fix `model works within tight context` — investigate failure cause
-- [ ] Confirm all 16 E2E stories pass
+### E2E Reliability
+- [ ] All 26 E2E tests must pass consistently (not "mostly")
+- [ ] Each failure investigated to root cause — no "model variance" dismissals
+- [ ] Tests that depend on model behavior must have recovery assertions
 
 ### Client Contract Update
-- [ ] Document `run/proposal` notification for rummy.nvim client
-- [ ] `ask`/`act` no longer returns 202 — always returns final result
-- [ ] Client listens for `run/proposal`, presents to user, calls
-  `run/resolve` as before
-- [ ] Update rummy.nvim to handle new contract
+- [ ] CLIENT_CHANGES.md delivered to rummy.nvim team
+- [ ] rummy.nvim updated for: unified history shape, incremental
+  run/state, stream/cancelled notification, update status codes
+- [ ] rummy.web published with: scheme registration, prefetch,
+  persistent browser, failed prefetch suppression
 
 ### Demo Validation
 - [ ] Fresh demo run on rummy.nvim project — verify:
-  - File edits via SEARCH/REPLACE (not bare body overwrites)
-  - Budget overflow handled gracefully
-  - Model reasoning visible (RUMMY_THINK)
-  - No `<env>` for directory listing
-  - Multiple file edits in one turn (sequential proposal resolution)
+  - File edits via SEARCH/REPLACE
+  - Budget compliance with prefetched web pages
+  - New file creation auto-activates
+  - Multi-turn research with web search
+  - Streaming shell commands with abort/cancel
 
 ### Benchmark Runs
-- [ ] MAB CR full split with DeepSeek (`npm run test:mab -- --split Conflict_Resolution`)
-- [ ] MAB taxonomy health check (`npm run test:mab:taxonomy`)
-- [ ] LME oracle split (`npm run test:lme -- --split longmemeval_oracle --row 0-49`)
-
-### Documentation
-- [ ] SPEC.md: verify all sections match current implementation
-- [ ] PLUGINS.md: verify third-party developer guide accuracy
-- [ ] Plugin READMEs: update for current behavior
-- [ ] README.md: final review for public consumption
+- [ ] MAB CR full split with current preamble
+- [ ] MAB taxonomy health check
+- [ ] LME oracle split with updated system.md
 
 ## Published Baselines (MemoryAgentBench, ICLR 2026)
 

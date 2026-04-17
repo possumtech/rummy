@@ -94,30 +94,32 @@ export default class ResponseHealer {
 
 		// No commands + plain text = answered. Treat as summary.
 		if (commands.length === 0 && trimmed && !looksGlitched) {
-			console.warn("[RUMMY] Healed: plain text response treated as summary");
-			return { summaryText: trimmed.slice(0, 500), updateText: null };
+			return {
+				summaryText: trimmed.slice(0, 500),
+				updateText: null,
+				warning:
+					"Plain text response with no tool commands. Treated as final answer.",
+			};
 		}
 
 		// Only write/unknown commands + no investigation tools = completed action.
-		// The model did the thing without saying <update status="200">. Treat as summary.
 		const hasInvestigation = commands.some((c) =>
 			["get", "env", "search", "ask_user"].includes(c.name),
 		);
 		if (!hasInvestigation && commands.length > 0) {
 			const names = commands.map((c) => c.name).join(", ");
-			console.warn(
-				`[RUMMY] Healed: action-only response (${names}) treated as summary`,
-			);
 			return {
 				summaryText: trimmed.slice(0, 500) || "Done.",
 				updateText: null,
+				warning: `Action-only response (${names}) with no update. Treated as final answer. Use update with status="200".`,
 			};
 		}
 
-		console.warn(
-			`[RUMMY] Healed: missing <update>/<update status="200">. Tools: ${commands.map((c) => c.name).join(", ") || "none"}`,
-		);
-		return { summaryText: null, updateText: "..." };
+		return {
+			summaryText: null,
+			updateText: "...",
+			warning: `Missing update. Tools: ${commands.map((c) => c.name).join(", ") || "none"}. Use update with status="102" to continue.`,
+		};
 	}
 
 	/**

@@ -32,7 +32,6 @@ const AUDIT_SCHEMES = [
 	"system",
 	"reasoning",
 	"model",
-	"error",
 	"user",
 	"assistant",
 	"content",
@@ -59,6 +58,11 @@ export async function initPlugins(db, store, hooks) {
 			category: "prompt",
 		});
 	}
+	await db.upsert_scheme.run({
+		name: "error",
+		model_visible: 1,
+		category: "logging",
+	});
 
 	for (const ctx of instances.values()) {
 		ctx.db = db;

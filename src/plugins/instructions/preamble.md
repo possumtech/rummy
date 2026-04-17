@@ -36,6 +36,8 @@ Example: <get path="known://people/donald_rumsfeld" line="42" limit="12"/>
 
 ## Phase 4: Respond
 
+Resolve the prompt.
+
 # Tool Usage
 
 Warning: YOU MUST NOT use shell commands for project file operations. Project files are entries that require Tool Command operations.

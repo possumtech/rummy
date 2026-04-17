@@ -257,6 +257,12 @@ export default class KnownStore {
 		this.#emitChanged(runId, "prompt://batch", "fidelity");
 	}
 
+	async logError(runId, turn, message, loopId = null) {
+		const slug = message.slice(0, 60).replace(/[^a-zA-Z0-9_]/g, "_");
+		const path = `error://turn_${turn}/${slug}`;
+		await this.upsert(runId, turn, path, message, 422, { loopId });
+	}
+
 	async getLog(runId) {
 		return this.#db.get_results.all({ run_id: runId });
 	}

@@ -397,7 +397,15 @@ export default class TurnExecutor {
 		});
 
 		// Parse and emit — plugins handle audit storage
-		const { commands, unparsed } = XmlParser.parse(content);
+		const { commands, warnings, unparsed } = XmlParser.parse(content);
+		for (const warning of warnings) {
+			await this.#knownStore.logError(
+				currentRunId,
+				turn,
+				warning,
+				currentLoopId,
+			);
+		}
 
 		// Ensure reasoning_content captures both API field and <think> tag
 		if (responseMessage) {
@@ -575,6 +583,15 @@ export default class TurnExecutor {
 		let summaryText = isTerminal ? updateEntry?.body || null : null;
 		let updateText = !isTerminal ? updateEntry?.body || null : null;
 
+		if (updateEntry && !updateEntry.attributes?.status) {
+			await this.#knownStore.logError(
+				currentRunId,
+				turn,
+				'update missing status attribute. Use status="102" to continue or status="200" when done.',
+				currentLoopId,
+			);
+		}
+
 		// If model says "done" (status=200) but actions failed, override
 		if (summaryText && hasErrors) {
 			console.warn(
@@ -599,6 +616,14 @@ export default class TurnExecutor {
 			summaryText = healed.summaryText;
 			updateText = healed.updateText;
 			statusHealed = true;
+			if (healed.warning) {
+				await this.#knownStore.logError(
+					currentRunId,
+					turn,
+					healed.warning,
+					currentLoopId,
+				);
+			}
 		}
 
 		// --- Classify for return value ---
