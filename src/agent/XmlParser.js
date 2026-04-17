@@ -155,11 +155,17 @@ export default class XmlParser {
 		const warnings = [];
 		const textChunks = [];
 
+		// Pre-flight: neutralize tool tags inside markdown code spans.
+		// Models quote instructions containing `<get/>` etc. — the parser
+		// would treat them as real tool calls. Replace the angle brackets
+		// inside backtick spans so htmlparser2 ignores them.
+		const codeNeutralized = XmlParser.#neutralizeCodeSpans(normalized);
+
 		// Pre-flight: fix mismatched close tags that htmlparser2 silently
 		// drops (making our onclosetag recovery code unreachable). Must run
 		// before balanceAttrQuotes since the mismatch scan needs clean tags.
 		const mismatchFixed = XmlParser.#correctMismatchedCloses(
-			normalized,
+			codeNeutralized,
 			warnings,
 		);
 
@@ -352,6 +358,18 @@ export default class XmlParser {
 	 * tool depth (stack.length === 1). Nested mismatches inside body text
 	 * are left for htmlparser2 + body opacity to handle normally.
 	 */
+	/**
+	 * Neutralize XML tags inside markdown code spans so the parser
+	 * doesn't treat quoted tool names as real commands.
+	 * `<get/>` → `&lt;get/&gt;`  (htmlparser2 ignores entities)
+	 */
+	static #neutralizeCodeSpans(content) {
+		return content.replace(/`([^`]*)`/g, (match, inner) => {
+			if (!/<\/?[\w]/.test(inner)) return match;
+			return `\`${inner.replace(/</g, "&lt;").replace(/>/g, "&gt;")}\``;
+		});
+	}
+
 	static #correctMismatchedCloses(content, warnings) {
 		const stack = [];
 		return content.replace(

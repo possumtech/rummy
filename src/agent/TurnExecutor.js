@@ -449,6 +449,8 @@ export default class TurnExecutor {
 		let abortAfter = null;
 
 		for (const entry of recorded) {
+			if (entry.status >= 400) continue;
+
 			if (abortAfter) {
 				const errorMsg = `Aborted — preceding <${abortAfter}> failed.`;
 				await this.#knownStore.upsert(

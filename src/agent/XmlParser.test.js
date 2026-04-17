@@ -375,6 +375,19 @@ I need to check the port.
 			);
 		});
 
+		it("ignores tool tags inside markdown code spans", () => {
+			const input =
+				"Required: YOU MUST promote entries with `<get/>` to verify.\n<summarize>done</summarize>";
+			const { commands } = XmlParser.parse(input);
+			assert.strictEqual(
+				commands.length,
+				1,
+				"only the summarize, not the backtick-quoted get",
+			);
+			assert.strictEqual(commands[0].name, "summarize");
+			assert.strictEqual(commands[0].body, "done");
+		});
+
 		it("preserves legitimate nested tool tags in body text", () => {
 			const input = `<set path="known://plan" summary="plan,steps">checklist:
 - use <get path="data.txt"/> to read

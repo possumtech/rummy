@@ -69,8 +69,8 @@ export default class AuditClient extends RpcClient {
 			typeof setEntry.attributes === "string"
 				? JSON.parse(setEntry.attributes)
 				: setEntry.attributes;
-		if (!attrs?.file || !attrs?.merge) return;
-		const filePath = join(this.#projectRoot, attrs.file);
+		if (!attrs?.target || !attrs?.merge) return;
+		const filePath = join(this.#projectRoot, attrs.target);
 		const content = await fs.readFile(filePath, "utf8").catch(() => "");
 		const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
 		let patched = content;

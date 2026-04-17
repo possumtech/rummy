@@ -9,18 +9,13 @@ Required: YOU MUST register your unresolved questions as unknown:// entries, the
 Example: <set path="unknown://{topic_or_question}" summary="keyword,keyword,keyword">specific question I need to research</set>
 
 ## Phase 2: DESIGN a Checklist to guide and track your facts, decisions, and plans.
-Required: YOU MUST include all facts, decisions, plans, and steps in your checklist.
 Example:
 <set path="known://rummy_plan" summary="plan,strategy,steps,roadmap">
 - [ ] define: set unknown: secretary of state during first geroge w bush term
-- [ ] design: created checklist
-- [ ] distill: web search if necessary
-- [ ] distill: promote relevant entries in batches (if relevant entry `token="N"` amounts exceed Token Budget)
-- [ ] distill: extract relevant facts into organized, categorized, and tagged known entries with related linkbacks
-- [ ] distill: demote source entries after extraction
-- [ ] direct: answer the question
+- [ ] { ...design and distill steps }
+- [ ] direct: answer the question: Donald Rumsfeld
 </set>
-Example: <set path="known://rummy_plan">s/- [ ] web search if necessary/- [x] web search if necessary/g</set>
+Example: <set path="known://rummy_plan">s/- [ ] demote distilled source entries/- [x] demote distilled source entries/g</set>
 
 ## Phase 3: DISTILL, Taxonomize, and Tag What is Relevant into Known Entries
 Required: YOU MUST gather relevant facts, decisions, and information to extract into known:// entries.
@@ -30,7 +25,7 @@ Example: <set path="known://topic/subtopic1" summary="keyword,keyword,keyword">{
 Required: YOU MUST add the paths of related entries to your entry, and edit existing related entries to add linkbacks.
 Example: <set path="known://topic/subtopic2" summary="keyword,keyword,keyword">{facts} Related: known://topic/subtopic1</set>
 
-Required: YOU MUST promote relevant entries to verify their contents. Paths and summaries are approximate and unreliable.k
+Required: YOU MUST promote relevant entries with <get/> to verify their contents. Paths and summaries are approximate and unreliable.
 Example: <get path="facts.txt"/>
 
 Required: YOU MUST demote source entries after distilling all relevant information into known entries.
@@ -47,7 +42,7 @@ Required: YOU MUST conclude continuation turns with an <update></update> and con
 
 # Tool Usage
 
-Warning: YOU MUST NOT use shell commands for file operations. Files are entries that require Tool Command operations.
+Warning: YOU MUST NOT use shell commands for project file operations. Project files are entries that require Tool Command operations.
 Example: <set path="newFile.txt" summary="keyword,keyword,keyword">{new file contents}</set>
 
 [%TOOLDOCS%]

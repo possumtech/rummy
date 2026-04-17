@@ -24,26 +24,31 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function lastResponse(db, runAlias) {
 	const runRow = await db.get_run_by_alias.get({ alias: runAlias });
-	const loops = await db.get_pending_loops.all({ run_id: runRow.id });
 	const latestLoop = await db.get_latest_completed_loop.get({
 		run_id: runRow.id,
 	});
-	const allLoops = [...loops];
-	if (latestLoop) allLoops.push(latestLoop);
 
+	// 1. Summarize entry (the intended terminal signal)
 	const summary = await db.get_latest_summary.get({
 		run_id: runRow.id,
 		loop_id: latestLoop?.id ?? null,
 	});
-
 	if (summary?.body) return summary.body;
 
 	const entries = await db.get_known_entries.all({ run_id: runRow.id });
+
+	// 2. Content entry (raw model text)
 	const content = entries
 		.filter((e) => e.scheme === "content")
 		.toSorted((a, b) => b.turn - a.turn);
-
 	if (content.length > 0) return content[0].body;
+
+	// 3. Latest known entry (model stored the answer but didn't summarize)
+	const known = entries
+		.filter((e) => e.scheme === "known" && e.status === 200)
+		.toSorted((a, b) => b.turn - a.turn);
+	if (known.length > 0) return known[0].body;
+
 	return "";
 }
 
@@ -78,8 +83,8 @@ async function _acceptAll(client, result, db, projectRoot) {
 							typeof setEntry.attributes === "string"
 								? JSON.parse(setEntry.attributes)
 								: setEntry.attributes;
-						if (attrs?.file && attrs?.merge) {
-							const filePath = join(projectRoot, attrs.file);
+						if (attrs?.target && attrs?.merge) {
+							const filePath = join(projectRoot, attrs.target);
 							const content = await fs
 								.readFile(filePath, "utf8")
 								.catch(() => "");
