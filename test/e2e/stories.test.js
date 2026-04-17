@@ -94,7 +94,12 @@ async function _acceptAll(client, result, db, projectRoot) {
 								const match = block.match(
 									/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
 								);
-								if (match) patched = patched.replace(match[1], match[2]);
+								if (!match) continue;
+								if (match[1] === "") {
+									patched = match[2];
+								} else {
+									patched = patched.replace(match[1], match[2]);
+								}
 							}
 							if (patched !== content) await fs.writeFile(filePath, patched);
 						}

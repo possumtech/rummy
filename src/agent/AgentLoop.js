@@ -556,34 +556,47 @@ export default class AgentLoop {
 				});
 				const projectRoot = project?.project_root;
 
-				if (path.startsWith("set://") && attrs?.file && attrs?.merge) {
-					const fileBody = await this.#knownStore.getBody(runId, attrs.file);
-					if (fileBody != null) {
-						const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
-						let patched = fileBody;
-						for (const block of blocks) {
-							const m = block.match(
-								/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
-							);
-							if (m) patched = patched.replace(m[1], m[2]);
-						}
-						const turn = (await this.#db.get_run_by_id.get({ id: runId }))
-							.next_turn;
-						await this.#knownStore.upsert(
-							runId,
-							turn,
-							attrs.file,
-							patched,
-							200,
+				if (path.startsWith("set://") && attrs?.target && attrs?.merge) {
+					const existing = await this.#knownStore.getBody(runId, attrs.target);
+					const isNewFile = existing == null;
+					const fileBody = existing ?? "";
+					const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
+					let patched = fileBody;
+					for (const block of blocks) {
+						const m = block.match(
+							/<<<<<<< SEARCH\n?([\s\S]*?)\n?=======\n?([\s\S]*?)\n?>>>>>>> REPLACE/,
 						);
-						// Write patched content to disk
-						if (projectRoot) {
-							const { writeFile } = await import("node:fs/promises");
-							const { join } = await import("node:path");
-							await writeFile(join(projectRoot, attrs.file), patched).catch(
-								() => {},
-							);
+						if (!m) continue;
+						if (m[1] === "") {
+							patched = m[2];
+						} else {
+							patched = patched.replace(m[1], m[2]);
 						}
+					}
+					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
+						.next_turn;
+					await this.#knownStore.upsert(
+						runId,
+						turn,
+						attrs.target,
+						patched,
+						200,
+					);
+					if (projectRoot) {
+						const { writeFile } = await import("node:fs/promises");
+						const { join } = await import("node:path");
+						await writeFile(join(projectRoot, attrs.target), patched).catch(
+							() => {},
+						);
+					}
+					if (isNewFile && projectId) {
+						const File = (await import("../plugins/file/file.js")).default;
+						await File.setConstraint(
+							this.#db,
+							projectId,
+							attrs.target,
+							"active",
+						);
 					}
 				}
 

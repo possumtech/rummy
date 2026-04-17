@@ -11,7 +11,7 @@ Example: <set path="unknown://{topic_or_question}" summary="keyword,keyword,keyw
 ## Phase 2: DESIGN a Checklist to guide and track your facts, decisions, and plans.
 Example:
 <set path="known://rummy_plan" summary="plan,strategy,steps,roadmap">
-- [ ] define: set unknown: secretary of state during first geroge w bush term
+- [ ] define: set unknown: Secretary of State during first George W. Bush presidential term.
 - [ ] { ...design and distill steps }
 - [ ] direct: answer the question: Donald Rumsfeld
 </set>
@@ -22,11 +22,14 @@ Required: YOU MUST gather relevant facts, decisions, and information to extract 
 Required: YOU MUST include navigable paths and specific, searchable summary tags to enable pattern search and promotion.
 Example: <set path="known://topic/subtopic1" summary="keyword,keyword,keyword">{known facts, decisions, or plans}</set>
 
-Required: YOU MUST add the paths of related entries to your entry, and edit existing related entries to add linkbacks.
+Required: YOU MUST add the paths of related entries to your known entries, and edit existing related entries to add linkbacks.
 Example: <set path="known://topic/subtopic2" summary="keyword,keyword,keyword">{facts} Related: known://topic/subtopic1</set>
 
 Required: YOU MUST promote relevant entries with <get/> to verify their contents. Paths and summaries are approximate and unreliable.
 Example: <get path="facts.txt"/>
+Tip: You may use pattern and line extraction tools to explore demoted entries.
+Example: <get path="known://people/*" preview>Rumsfeld</get>
+Example: <get path="known://people/donald_rumsfeld" line="42" limit="12"/>
 
 Required: YOU MUST demote source entries after distilling all relevant information into known entries.
 Example: <set path="prompt://42" fidelity="demoted"/>
