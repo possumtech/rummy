@@ -303,74 +303,137 @@ distinction is semantic data the model reads, not an API boundary the
 system enforces. Parallel execution, cancellation, timeout — all
 uniform operations on entries rather than per-tool machinery.
 
-## Next: Error Logging & Progress Elimination
+## Completed This Session (2026-04-15 — 2026-04-17)
 
-### error:// scheme — model-visible feedback
+### Streaming v1
+- [x] `stream/aborted` — client-initiated cancellation (→ 499)
+- [x] `stream/cancel` — server-initiated cancellation + notification
+- [x] Stale 102 cleanup via `stream/cancel`
 
-The `error` scheme is currently `category: "audit", model_visible: 0`.
-The model never sees system feedback. Warnings go to console.warn,
-errors go to error:// entries the model can't read, and the model
-repeats the same mistakes because it gets no signal.
+### Client contract unification
+- [x] Unified history shape: `{ tool, path, status, body, turn, attributes }`
+- [x] Incremental `run/state` after every tool dispatch
+- [x] History includes prompt, unknown, and logging entries
+- [x] `get_history` retired — one query, one view, one contract
 
-**Change:** `error` scheme → `category: "logging", model_visible: 1`.
-Every system correction becomes a model-visible entry.
+### Parser hardening
+- [x] Retired `<known>`/`<unknown>` emission tags from tooldocs
+- [x] `#correctMismatchedCloses` preprocess in XmlParser
+- [x] `#neutralizeCodeSpans` — backtick-quoted tool tags ignored
+- [x] Removed `known` and `unknown` from ALL_TOOLS
 
-- [ ] Switch `error` scheme to `category: "logging", model_visible: 1`
-- [ ] Write error entry when `<update>` missing `status` attribute
-- [ ] Write error entry for XmlParser corrections (mismatch, code span)
-- [ ] Write error entry for budget 413 (replace or supplement budget://)
-- [ ] Write error entry for ResponseHealer interventions
-- [ ] Write error entry for dispatch crashes (already exists, just visible now)
-- [ ] Remove `console.warn` calls that duplicate error entries
+### `<summarize>` → `<update status="200">`
+- [x] Update tool carries status attribute for lifecycle
+- [x] Summarize plugin deleted, scheme retired
+- [x] All SQL queries, tests, benchmark runners updated
+- [x] ResponseHealer returns warning strings, no console.warn
 
-### progress:// elimination — budget as prompt attributes
+### Error plugin
+- [x] `error` scheme: `category: "logging", model_visible: 1`
+- [x] Error plugin: `hooks.error.log.emit()` → entry creation
+- [x] XmlParser warnings, missing status, healer, dispatch crashes,
+  cycle detection, stall detection — all emit error hook
+- [x] ResponseHealer: zero console calls, all feedback via entries
 
-The progress plugin assembles a per-turn text block with budget info
-and the "conclude with update" reminder. Both are redundant:
-- Budget → `<prompt tokenBudget="N" tokenUsage="N">` attributes
-- Conclude reminder → already in updateDoc
+### Set handler unification
+- [x] Uniform result shape for file writes and scheme writes
+- [x] `attrs.file` → `attrs.path` everywhere
+- [x] Direct scheme writes produce SEARCH/REPLACE diffs
+- [x] New file proposals auto-activate via file constraint
+
+### rummy.web
+- [x] `http`/`https` scheme registration (content was invisible)
+- [x] Search prefetch with real token counts
+- [x] Persistent browser context with 15-min idle timeout
+- [x] 5-second prefetch timeout, failed pages suppressed
+- [x] Get handler: prefetched URLs promote without refetch
+
+### Bug fixes
+- [x] Policy-rejected entries no longer dispatched (SQLite crash)
+- [x] Empty SEARCH block = full replacement, not prepend
+- [x] Sed replacement unescapes regex metacharacters (`\[x\]` → `[x]`)
+- [x] Resolve handler applies patches to new files (null body → "")
+- [x] Dispatch crash recovery (try/catch, error entry, abort cascade)
+
+## Next: Modularization & Dead Code Review
+
+### Goal
+
+TurnExecutor is an orchestrator. It should dispatch to plugins via
+hooks and receive results. It should not contain budget math, context
+materialization, or recovery state machines. Every concern that has a
+plugin home should live there.
+
+### Phase 1: Kill the budget recovery loop
+
+The `advanceRecovery` state machine in `recovery.js` + the recovery
+tracking in AgentLoop (`recovery` variable, `if (recovery !== null)
+continue`) is superseded by:
+- Budget plugin mass-demotes on overflow (already works)
+- `error://` entries tell the model what happened (new this session)
+- ResponseHealer catches non-progress (cycle/stall detection)
+
+The recovery loop actively harms by disabling safety checks during
+recovery. Remove it.
+
+- [ ] Delete `src/plugins/budget/recovery.js`
+- [ ] Remove `recovery` variable and `advanceRecovery` from AgentLoop
+- [ ] Remove `if (recovery !== null) continue` bypass
+- [ ] Remove `budgetRecovery` from TurnExecutor return value
+- [ ] Budget 413s become error:// entries (same as other errors)
+- [ ] Verify budget E2E tests still pass without recovery loop
+
+### Phase 2: Progress plugin → prompt attributes
 
 - [ ] Add `tokenBudget` and `tokenUsage` attributes to prompt assembly
 - [ ] Remove progress plugin (`src/plugins/progress/`)
 - [ ] Remove `progress` from PROMPT_SCHEMES in `src/plugins/index.js`
-- [ ] Update `assembly.user` filter chain (prompt plugin handles attrs)
-- [ ] Budget warnings → error:// entries (only when tight or exceeded)
-- [ ] Update LME system.md benchmark prompt to match
+- [ ] Budget warnings → error:// entries (only when exceeded)
+- [ ] Update LME system.md benchmark prompt
 
-### Cleanup from this session
+### Phase 3: Budget code out of TurnExecutor
 
-- [ ] Update SPEC.md for: summarize removal, update status codes,
-  error:// visibility, unified history shape, streaming RPCs
-- [ ] Update PLUGINS.md plugin table (summarize gone, update updated)
-- [ ] Update FIDELITY_CONTRACT.md (summarize references)
-- [ ] Run full E2E and investigate remaining failures as system bugs
+TurnExecutor currently:
+- Materializes context twice (pre-LLM and post-dispatch)
+- Calls `budget.enforce` and `budget.postDispatch` directly
+- Handles Prompt Demotion inline
+- Passes budget results back to AgentLoop
+
+All of this should be budget plugin concern:
+- [ ] `budget.enforce` moves to a `turn.started` or `llm.request` hook
+- [ ] `budget.postDispatch` moves to a `turn.completed` hook
+- [ ] Prompt Demotion moves into budget plugin
+- [ ] TurnExecutor drops all budget imports and variables
+
+### Phase 4: Dead code and stale patterns
+
+- [ ] `console.warn`/`console.error` audit — every remaining call
+  either becomes an error:// entry or is truly infrastructure logging
+- [ ] `COALESCE(ke.scheme, 'file')` in SQL — 3 remaining instances
+- [ ] `filePath` variable naming — rename to `entryPath` or `targetPath`
+- [ ] `generatePatch(filePath, ...)` parameter naming in matcher.js
+- [ ] Stale SPEC.md sections (summarize, old status codes, old history)
+- [ ] Stale PLUGINS.md entries
+- [ ] Stale FIDELITY_CONTRACT.md references
+
+### Phase 5: E2E reliability
+
+- [ ] All 26+ E2E tests pass consistently
+- [ ] Each failure investigated to root cause
+- [ ] Persona/fork timeout investigated (120s on trivial question)
+- [ ] Budget recovery tests updated for new approach
 
 ## Road to Production
 
-### E2E Reliability
-- [ ] All 26 E2E tests must pass consistently (not "mostly")
-- [ ] Each failure investigated to root cause — no "model variance" dismissals
-- [ ] Tests that depend on model behavior must have recovery assertions
-
-### Client Contract Update
+### Client handoff
 - [ ] CLIENT_CHANGES.md delivered to rummy.nvim team
-- [ ] rummy.nvim updated for: unified history shape, incremental
-  run/state, stream/cancelled notification, update status codes
-- [ ] rummy.web published with: scheme registration, prefetch,
-  persistent browser, failed prefetch suppression
+- [ ] rummy.web published with all session changes
+- [ ] rummy.nvim updated for new contract
 
-### Demo Validation
-- [ ] Fresh demo run on rummy.nvim project — verify:
-  - File edits via SEARCH/REPLACE
-  - Budget compliance with prefetched web pages
-  - New file creation auto-activates
-  - Multi-turn research with web search
-  - Streaming shell commands with abort/cancel
-
-### Benchmark Runs
+### Benchmark validation
 - [ ] MAB CR full split with current preamble
-- [ ] MAB taxonomy health check
 - [ ] LME oracle split with updated system.md
+- [ ] Compare against pre-session baselines
 
 ## Published Baselines (MemoryAgentBench, ICLR 2026)
 
