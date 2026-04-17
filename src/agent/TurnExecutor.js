@@ -398,12 +398,14 @@ export default class TurnExecutor {
 
 		// Parse and emit — plugins handle audit storage
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
-		for (const warning of warnings) {
-			await this.#knownStore.logError(
+		for (const w of warnings) {
+			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				warning,
-				currentLoopId,
+				await this.#knownStore.dedup(currentRunId, "error", w, turn),
+				w,
+				422,
+				{ loopId: currentLoopId },
 			);
 		}
 
@@ -584,11 +586,15 @@ export default class TurnExecutor {
 		let updateText = !isTerminal ? updateEntry?.body || null : null;
 
 		if (updateEntry && !updateEntry.attributes?.status) {
-			await this.#knownStore.logError(
+			const msg =
+				'update missing status attribute. Use status="102" to continue or status="200" when done.';
+			await this.#knownStore.upsert(
 				currentRunId,
 				turn,
-				'update missing status attribute. Use status="102" to continue or status="200" when done.',
-				currentLoopId,
+				await this.#knownStore.dedup(currentRunId, "error", msg, turn),
+				msg,
+				422,
+				{ loopId: currentLoopId },
 			);
 		}
 
@@ -617,11 +623,18 @@ export default class TurnExecutor {
 			updateText = healed.updateText;
 			statusHealed = true;
 			if (healed.warning) {
-				await this.#knownStore.logError(
+				await this.#knownStore.upsert(
 					currentRunId,
 					turn,
+					await this.#knownStore.dedup(
+						currentRunId,
+						"error",
+						healed.warning,
+						turn,
+					),
 					healed.warning,
-					currentLoopId,
+					422,
+					{ loopId: currentLoopId },
 				);
 			}
 		}
