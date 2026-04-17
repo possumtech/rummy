@@ -399,14 +399,12 @@ export default class TurnExecutor {
 		// Parse and emit — plugins handle audit storage
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
 		for (const w of warnings) {
-			await this.#knownStore.upsert(
-				currentRunId,
+			await this.#hooks.error.log.emit({
+				runId: currentRunId,
 				turn,
-				await this.#knownStore.dedup(currentRunId, "error", w, turn),
-				w,
-				422,
-				{ loopId: currentLoopId },
-			);
+				message: w,
+				loopId: currentLoopId,
+			});
 		}
 
 		// Ensure reasoning_content captures both API field and <think> tag
@@ -479,17 +477,12 @@ export default class TurnExecutor {
 			try {
 				await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			} catch (dispatchErr) {
-				console.error(
-					`[RUMMY] Dispatch crash <${entry.scheme}>: ${dispatchErr.message}`,
-				);
-				await this.#knownStore.upsert(
-					currentRunId,
+				await this.#hooks.error.log.emit({
+					runId: currentRunId,
 					turn,
-					entry.resultPath || entry.path,
-					dispatchErr.message,
-					500,
-					{ loopId: currentLoopId },
-				);
+					loopId: currentLoopId,
+					message: `Dispatch crash in ${entry.scheme}: ${dispatchErr.message}`,
+				});
 				hasErrors = true;
 				abortAfter = entry.scheme;
 				continue;
@@ -586,16 +579,13 @@ export default class TurnExecutor {
 		let updateText = !isTerminal ? updateEntry?.body || null : null;
 
 		if (updateEntry && !updateEntry.attributes?.status) {
-			const msg =
-				'update missing status attribute. Use status="102" to continue or status="200" when done.';
-			await this.#knownStore.upsert(
-				currentRunId,
+			await this.#hooks.error.log.emit({
+				runId: currentRunId,
 				turn,
-				await this.#knownStore.dedup(currentRunId, "error", msg, turn),
-				msg,
-				422,
-				{ loopId: currentLoopId },
-			);
+				loopId: currentLoopId,
+				message:
+					'update missing status attribute. Use status="102" to continue or status="200" when done.',
+			});
 		}
 
 		// If model says "done" (status=200) but actions failed, override
@@ -623,19 +613,12 @@ export default class TurnExecutor {
 			updateText = healed.updateText;
 			statusHealed = true;
 			if (healed.warning) {
-				await this.#knownStore.upsert(
-					currentRunId,
+				await this.#hooks.error.log.emit({
+					runId: currentRunId,
 					turn,
-					await this.#knownStore.dedup(
-						currentRunId,
-						"error",
-						healed.warning,
-						turn,
-					),
-					healed.warning,
-					422,
-					{ loopId: currentLoopId },
-				);
+					loopId: currentLoopId,
+					message: healed.warning,
+				});
 			}
 		}
 

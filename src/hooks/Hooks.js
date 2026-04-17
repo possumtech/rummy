@@ -100,6 +100,9 @@ export default function createHooks(debug = false) {
 			materialized: createEvent("context.materialized"),
 		},
 		action: {},
+		error: {
+			log: createEvent("error.log"),
+		},
 		stream: {
 			cancelled: createEvent("stream.cancelled"),
 		},
