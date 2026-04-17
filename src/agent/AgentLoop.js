@@ -556,8 +556,8 @@ export default class AgentLoop {
 				});
 				const projectRoot = project?.project_root;
 
-				if (path.startsWith("set://") && attrs?.target && attrs?.merge) {
-					const existing = await this.#knownStore.getBody(runId, attrs.target);
+				if (path.startsWith("set://") && attrs?.path && attrs?.merge) {
+					const existing = await this.#knownStore.getBody(runId, attrs.path);
 					const isNewFile = existing == null;
 					const fileBody = existing ?? "";
 					const blocks = attrs.merge.split(/(?=<<<<<<< SEARCH)/);
@@ -575,28 +575,17 @@ export default class AgentLoop {
 					}
 					const turn = (await this.#db.get_run_by_id.get({ id: runId }))
 						.next_turn;
-					await this.#knownStore.upsert(
-						runId,
-						turn,
-						attrs.target,
-						patched,
-						200,
-					);
+					await this.#knownStore.upsert(runId, turn, attrs.path, patched, 200);
 					if (projectRoot) {
 						const { writeFile } = await import("node:fs/promises");
 						const { join } = await import("node:path");
-						await writeFile(join(projectRoot, attrs.target), patched).catch(
+						await writeFile(join(projectRoot, attrs.path), patched).catch(
 							() => {},
 						);
 					}
 					if (isNewFile && projectId) {
 						const File = (await import("../plugins/file/file.js")).default;
-						await File.setConstraint(
-							this.#db,
-							projectId,
-							attrs.target,
-							"active",
-						);
+						await File.setConstraint(this.#db, projectId, attrs.path, "active");
 					}
 				}
 

@@ -26,7 +26,7 @@ function renderToolTag(entry) {
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
 
-	const target = attrs?.path || attrs?.target || attrs?.command || "";
+	const target = attrs?.path || attrs?.command || "";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const status = entry.status ? ` status="${entry.status}"` : "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";

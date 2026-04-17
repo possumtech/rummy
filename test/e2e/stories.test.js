@@ -83,8 +83,8 @@ async function _acceptAll(client, result, db, projectRoot) {
 							typeof setEntry.attributes === "string"
 								? JSON.parse(setEntry.attributes)
 								: setEntry.attributes;
-						if (attrs?.target && attrs?.merge) {
-							const filePath = join(projectRoot, attrs.target);
+						if (attrs?.path && attrs?.merge) {
+							const filePath = join(projectRoot, attrs.path);
 							const content = await fs
 								.readFile(filePath, "utf8")
 								.catch(() => "");

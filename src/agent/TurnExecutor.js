@@ -466,7 +466,24 @@ export default class TurnExecutor {
 			}
 
 			await this.#hooks.tool.before.emit({ entry, rummy });
-			await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+			try {
+				await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
+			} catch (dispatchErr) {
+				console.error(
+					`[RUMMY] Dispatch crash <${entry.scheme}>: ${dispatchErr.message}`,
+				);
+				await this.#knownStore.upsert(
+					currentRunId,
+					turn,
+					entry.resultPath || entry.path,
+					dispatchErr.message,
+					500,
+					{ loopId: currentLoopId },
+				);
+				hasErrors = true;
+				abortAfter = entry.scheme;
+				continue;
+			}
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 

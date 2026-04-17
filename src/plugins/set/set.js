@@ -106,7 +106,7 @@ export default class Set {
 					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
 					: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`;
 				await store.upsert(runId, turn, entry.resultPath, oldContent, 202, {
-					attributes: { target, patch: udiff, merge },
+					attributes: { path: target, patch: udiff, merge },
 					loopId,
 				});
 			} else if (attrs.filter || target.includes("*")) {
@@ -153,7 +153,7 @@ export default class Set {
 				await store.upsert(runId, turn, entry.resultPath, oldContent, 200, {
 					loopId,
 					attributes: {
-						target,
+						path: target,
 						patch: udiff,
 						merge,
 						beforeTokens,
@@ -178,7 +178,7 @@ export default class Set {
 
 	full(entry) {
 		const attrs = entry.attributes;
-		const target = attrs.target || entry.path;
+		const target = attrs.path || entry.path;
 		if (attrs.error) return `# set ${target}\n${attrs.error}`;
 		const tokens =
 			attrs.beforeTokens != null
@@ -199,7 +199,7 @@ export default class Set {
 
 		if (matches.length === 0) {
 			await store.upsert(runId, turn, entry.resultPath, "", 404, {
-				attributes: { target, error: `${target} not found in context` },
+				attributes: { path: target, error: `${target} not found in context` },
 				loopId,
 			});
 			return;
@@ -213,7 +213,7 @@ export default class Set {
 				const revisions = existingAttrs?.revisions || [];
 				revisions.push(revision);
 				await store.upsert(runId, turn, canonicalPath, "", 200, {
-					attributes: { target: match.path, revisions },
+					attributes: { path: match.path, revisions },
 					loopId,
 				});
 				if (KnownStore.normalizePath(entry.resultPath) !== canonicalPath) {
@@ -237,7 +237,7 @@ export default class Set {
 
 			await store.upsert(runId, turn, resultPath, match.body, status, {
 				attributes: {
-					target: match.path,
+					path: match.path,
 					patch: udiff,
 					merge,
 					beforeTokens,
@@ -267,7 +267,7 @@ export default class Set {
 					: entry.attributes;
 			if (!attrs?.revisions?.length) continue;
 
-			const filePath = attrs.target;
+			const filePath = attrs.path;
 			const fileEntry = await store.getEntriesByPattern(runId, filePath);
 			if (fileEntry.length === 0) continue;
 
@@ -304,7 +304,7 @@ export default class Set {
 
 			await store.upsert(runId, turn, entry.path, original, state, {
 				attributes: {
-					file: filePath,
+					path: filePath,
 					patch: udiff,
 					merge,
 					beforeTokens,
