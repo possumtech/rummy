@@ -267,26 +267,7 @@ hooks and receive results. It should not contain budget math, context
 materialization, or recovery state machines. Every concern that has a
 plugin home should live there.
 
-### Phase 1: Kill the budget recovery loop
-
-The `advanceRecovery` state machine in `recovery.js` + the recovery
-tracking in AgentLoop (`recovery` variable, `if (recovery !== null)
-continue`) is superseded by:
-- Budget plugin mass-demotes on overflow (already works)
-- `error://` entries tell the model what happened (new this session)
-- ResponseHealer catches non-progress (cycle/stall detection)
-
-The recovery loop actively harms by disabling safety checks during
-recovery. Remove it.
-
-- [ ] Delete `src/plugins/budget/recovery.js`
-- [ ] Remove `recovery` variable and `advanceRecovery` from AgentLoop
-- [ ] Remove `if (recovery !== null) continue` bypass
-- [ ] Remove `budgetRecovery` from TurnExecutor return value
-- [ ] Budget 413s become error:// entries (same as other errors)
-- [ ] Verify budget E2E tests still pass without recovery loop
-
-### Phase 2: Progress plugin → prompt attributes
+### Phase 1: Progress plugin → prompt attributes
 
 - [ ] Add `tokenBudget` and `tokenUsage` attributes to prompt assembly
 - [ ] Remove progress plugin (`src/plugins/progress/`)
@@ -294,7 +275,7 @@ recovery. Remove it.
 - [ ] Budget warnings → error:// entries (only when exceeded)
 - [ ] Update LME system.md benchmark prompt
 
-### Phase 3: Plugin code out of TurnExecutor
+### Phase 2: Plugin code out of TurnExecutor
 
 **Principle:** TurnExecutor is an orchestrator. Its only jobs are turn
 row creation, RummyContext skeleton, hook emission sequencing, and the
@@ -341,7 +322,7 @@ core.
 - [ ] LLM retry loop (338-378): 503/429/timeout backoff and
   context-exceeded detection → `llm.request` hook chain or provider
   wrapper. Carries two of the remaining `console.warn` calls flagged
-  in Phase 4.
+  in Phase 3.
 - [ ] Incremental `run.state` push after each dispatch (494-507):
   plausibly a `state` plugin concern, but currently tightly coupled
   to the dispatch loop's waterfall semantics. Leave for now.
@@ -350,7 +331,7 @@ core.
 think, update, nor scheme classification tables. What remains is hook
 emission and sequential queue mechanics.
 
-### Phase 4: Dead code and stale patterns
+### Phase 3: Dead code and stale patterns
 
 - [ ] `console.warn`/`console.error` audit — every remaining call
   either becomes an error:// entry or is truly infrastructure logging
@@ -361,12 +342,11 @@ emission and sequential queue mechanics.
 - [ ] Stale PLUGINS.md entries
 - [ ] Stale FIDELITY_CONTRACT.md references
 
-### Phase 5: E2E reliability
+### Phase 4: E2E reliability
 
 - [ ] All 26+ E2E tests pass consistently
 - [ ] Each failure investigated to root cause
 - [ ] Persona/fork timeout investigated (120s on trivial question)
-- [ ] Budget recovery tests updated for new approach
 
 ## Road to Production
 
