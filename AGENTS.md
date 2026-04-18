@@ -15,6 +15,17 @@
 > designed test conditions, insufficient reinforcement of correct behavior.
 > Every failure is a system bug until proven otherwise.
 
+> **Reference + feedback over broadcast.** Steer the model through
+> three channels, in priority order: (1) tooldocs, at the decision
+> point — the model reads setDoc when writing `<set>`; (2) error://
+> entries, dynamic feedback when something goes wrong; (3) preamble,
+> only for what's genuinely cross-cutting and unreachable from the
+> other two (identity, per-turn tool cap, Token Budget invariant).
+> Preamble is a broadcast channel that pays context every turn for
+> behavior the other two channels shape more cheaply. If behavior
+> regresses, the fix isn't "add it back to preamble" — it's "which
+> tooldoc or error entry should have caught this?"
+
 ## Current State
 
 Plugin-driven architecture. Instantiated classes, constructor receives
@@ -267,15 +278,7 @@ hooks and receive results. It should not contain budget math, context
 materialization, or recovery state machines. Every concern that has a
 plugin home should live there.
 
-### Phase 1: Progress plugin → prompt attributes
-
-- [ ] Add `tokenBudget` and `tokenUsage` attributes to prompt assembly
-- [ ] Remove progress plugin (`src/plugins/progress/`)
-- [ ] Remove `progress` from PROMPT_SCHEMES in `src/plugins/index.js`
-- [ ] Budget warnings → error:// entries (only when exceeded)
-- [ ] Update LME system.md benchmark prompt
-
-### Phase 2: Plugin code out of TurnExecutor
+### Phase 1: Plugin code out of TurnExecutor
 
 **Principle:** TurnExecutor is an orchestrator. Its only jobs are turn
 row creation, RummyContext skeleton, hook emission sequencing, and the
@@ -339,7 +342,7 @@ gutted its API):
 - [ ] LLM retry loop (338-378): 503/429/timeout backoff and
   context-exceeded detection → `llm.request` hook chain or provider
   wrapper. Carries two of the remaining `console.warn` calls flagged
-  in Phase 3.
+  in Phase 2.
 - [ ] Incremental `run.state` push after each dispatch (494-507):
   plausibly a `state` plugin concern, but currently tightly coupled
   to the dispatch loop's waterfall semantics. Leave for now.
@@ -349,7 +352,7 @@ think, update, nor scheme classification tables. What remains is hook
 emission and sequential queue mechanics. Current: 462 lines
 (from 730 at Phase 2 start).
 
-### Phase 3: Dead code and stale patterns
+### Phase 2: Dead code and stale patterns
 
 - [ ] `console.warn`/`console.error` audit — every remaining call
   either becomes an error:// entry or is truly infrastructure logging
@@ -360,7 +363,7 @@ emission and sequential queue mechanics. Current: 462 lines
 - [ ] Stale PLUGINS.md entries
 - [ ] Stale FIDELITY_CONTRACT.md references
 
-### Phase 4: E2E reliability
+### Phase 3: E2E reliability
 
 - [ ] All 26+ E2E tests pass consistently
 - [ ] Each failure investigated to root cause

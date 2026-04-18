@@ -1,17 +1,17 @@
 /**
- * Progress message math verification.
+ * Prompt attrs math verification.
  *
- * The progress message tells the model:
- *   "Using <used> of <budget> tokens. <remaining> tokens remaining."
+ * The `<prompt>` element carries two numeric attrs the model reads to
+ * do budget arithmetic:
+ *   tokenBudget="N" tokenUsage="M"
  *
  * Contract:
- * - used = sum of entry.tokens for entries where
+ * - tokenUsage = sum of entry.tokens for entries where
  *     (category === "data" || category === "logging") && fidelity === "promoted"
- * - budget = floor(contextSize * CEILING_RATIO) - baselineTokens
- * - remaining = max(0, budget - used)
+ * - tokenBudget = floor(contextSize * CEILING_RATIO) - baselineTokens
  *
  * The model can predict the effect of promote/demote actions exactly:
- * promoting an entry adds entry.tokens to used; demoting subtracts it.
+ * promoting an entry adds entry.tokens to tokenUsage; demoting subtracts it.
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
@@ -27,15 +27,13 @@ function pad(n) {
 	return Array(n).fill("hello world test data").join(" ");
 }
 
-function parseProgressNumbers(userMessage) {
-	const m = userMessage.match(
-		/Token Budget: (\d+)\. Using (\d+)\. (\d+) remaining/,
-	);
-	if (!m) return null;
+function parsePromptAttrs(userMessage) {
+	const budget = userMessage.match(/tokenBudget="(\d+)"/);
+	const usage = userMessage.match(/tokenUsage="(\d+)"/);
+	if (!budget || !usage) return null;
 	return {
-		used: Number(m[2]),
-		budget: Number(m[1]),
-		remaining: Number(m[3]),
+		used: Number(usage[1]),
+		budget: Number(budget[1]),
 	};
 }
 
@@ -88,8 +86,8 @@ describe("Progress math", () => {
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 			const { messages } = await assemble(tdb, runId, 1);
-			const nums = parseProgressNumbers(messages[1].content);
-			assert.ok(nums, "progress numbers parsed");
+			const nums = parsePromptAttrs(messages[1].content);
+			assert.ok(nums, "prompt attrs parsed");
 			assert.strictEqual(nums.used, 0);
 		});
 
@@ -109,7 +107,7 @@ describe("Progress math", () => {
 			});
 			const knownRow = rows.find((r) => r.path === "known://fact");
 			const { messages } = await assemble(tdb, runId, 1);
-			const nums = parseProgressNumbers(messages[1].content);
+			const nums = parsePromptAttrs(messages[1].content);
 			assert.strictEqual(nums.used, knownRow.tokens);
 		});
 
@@ -133,7 +131,7 @@ describe("Progress math", () => {
 				rows.find((r) => r.path === "known://a").tokens +
 				rows.find((r) => r.path === "known://b").tokens;
 			const { messages } = await assemble(tdb, runId, 1);
-			const nums = parseProgressNumbers(messages[1].content);
+			const nums = parsePromptAttrs(messages[1].content);
 			assert.strictEqual(nums.used, expected);
 		});
 
@@ -155,7 +153,7 @@ describe("Progress math", () => {
 			});
 			const promotedTokens = rows.find((r) => r.path === "known://kept").tokens;
 			const { messages } = await assemble(tdb, runId, 1);
-			const nums = parseProgressNumbers(messages[1].content);
+			const nums = parsePromptAttrs(messages[1].content);
 			assert.strictEqual(
 				nums.used,
 				promotedTokens,
@@ -173,7 +171,7 @@ describe("Progress math", () => {
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 			const { messages } = await assemble(tdb, runId, 1);
-			const nums = parseProgressNumbers(messages[1].content);
+			const nums = parsePromptAttrs(messages[1].content);
 			assert.strictEqual(nums.used, 0, "no promoted data/logging → used = 0");
 		});
 	});
@@ -193,24 +191,8 @@ describe("Progress math", () => {
 				1,
 				contextSize,
 			);
-			const nums = parseProgressNumbers(messages[1].content);
+			const nums = parsePromptAttrs(messages[1].content);
 			assert.strictEqual(nums.budget, Math.max(0, ceiling - baselineTokens));
-		});
-	});
-
-	describe("remaining", () => {
-		it("remaining = budget - used", async () => {
-			const { runId } = await tdb.seedRun({ alias: "p_remaining" });
-			await store.upsert(runId, 1, "prompt://1", "do thing", 200, {
-				attributes: { mode: "ask" },
-			});
-			await store.upsert(runId, 1, "known://a", pad(50), 200, {
-				fidelity: "promoted",
-			});
-			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
-			const { messages } = await assemble(tdb, runId, 1);
-			const nums = parseProgressNumbers(messages[1].content);
-			assert.strictEqual(nums.remaining, Math.max(0, nums.budget - nums.used));
 		});
 	});
 
@@ -225,7 +207,7 @@ describe("Progress math", () => {
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 
-			const before = parseProgressNumbers(
+			const before = parsePromptAttrs(
 				(await assemble(tdb, runId, 1)).messages[1].content,
 			);
 			const rows = await tdb.db.get_turn_context.all({
@@ -238,7 +220,7 @@ describe("Progress math", () => {
 			await store.setFidelity(runId, "known://x", "promoted");
 			await materialize(tdb.db, { runId, turn: 2, systemPrompt: "sys" });
 
-			const after = parseProgressNumbers(
+			const after = parsePromptAttrs(
 				(await assemble(tdb, runId, 2)).messages[1].content,
 			);
 			assert.strictEqual(
@@ -258,7 +240,7 @@ describe("Progress math", () => {
 			});
 			await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 
-			const before = parseProgressNumbers(
+			const before = parsePromptAttrs(
 				(await assemble(tdb, runId, 1)).messages[1].content,
 			);
 			const rows = await tdb.db.get_turn_context.all({
@@ -271,7 +253,7 @@ describe("Progress math", () => {
 			await store.setFidelity(runId, "known://y", "demoted");
 			await materialize(tdb.db, { runId, turn: 2, systemPrompt: "sys" });
 
-			const after = parseProgressNumbers(
+			const after = parsePromptAttrs(
 				(await assemble(tdb, runId, 2)).messages[1].content,
 			);
 			assert.strictEqual(

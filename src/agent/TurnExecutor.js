@@ -69,7 +69,7 @@ export default class TurnExecutor {
 				loopPrompt,
 			},
 		);
-		// Plugins write prompt/progress/instructions entries
+		// Plugins write prompt/instructions entries
 		await this.#hooks.turn.started.emit({
 			rummy,
 			mode,

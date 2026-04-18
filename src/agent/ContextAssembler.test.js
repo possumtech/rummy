@@ -106,10 +106,8 @@ describe("ContextAssembler", () => {
 
 			const user = messages[1].content;
 			const performedPos = user.indexOf("<performed>");
-			const progressPos = user.indexOf("<progress");
 			const promptPos = user.indexOf("<prompt");
-			assert.ok(performedPos < progressPos, "performed before progress");
-			assert.ok(progressPos < promptPos, "progress before prompt");
+			assert.ok(performedPos < promptPos, "performed before prompt");
 			assert.ok(user.endsWith("</prompt>"), "prompt is last");
 		});
 
@@ -255,7 +253,7 @@ describe("ContextAssembler", () => {
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].content, "sys");
 			assert.strictEqual(messages[1].role, "user");
-			assert.ok(messages[1].content.includes("<progress"));
+			assert.ok(messages[1].content.includes("<prompt"));
 		});
 
 		it("renders known entries in row order", async () => {
@@ -343,7 +341,7 @@ describe("ContextAssembler", () => {
 			assert.ok(system.includes("which database adapter"));
 		});
 
-		it("progress shows token budget", async () => {
+		it("prompt element carries tokenBudget and tokenUsage attrs", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -365,8 +363,12 @@ describe("ContextAssembler", () => {
 			const user = messages[1].content;
 
 			assert.ok(
-				user.includes("Token Budget:"),
-				"progress shows Token Budget info",
+				/tokenBudget="\d+"/.test(user),
+				"prompt element carries tokenBudget",
+			);
+			assert.ok(
+				/tokenUsage="\d+"/.test(user),
+				"prompt element carries tokenUsage",
 			);
 		});
 	});

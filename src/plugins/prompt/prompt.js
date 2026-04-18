@@ -1,3 +1,6 @@
+const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
+if (!CEILING_RATIO) throw new Error("RUMMY_BUDGET_CEILING must be set");
+
 export default class Prompt {
 	#core;
 
@@ -31,7 +34,8 @@ export default class Prompt {
 	}
 
 	async assemblePrompt(content, ctx) {
-		const promptEntry = ctx.rows.findLast(
+		const { rows, contextSize, baselineTokens } = ctx;
+		const promptEntry = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
 
@@ -49,6 +53,26 @@ export default class Prompt {
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
 
-		return `${content}<prompt mode="${mode}"${warn}>${body}</prompt>`;
+		let budget = "";
+		if (contextSize) {
+			const ceiling = Math.floor(contextSize * CEILING_RATIO);
+			const tokenBudget = Math.max(0, ceiling - (baselineTokens || 0));
+			// Usage = sum of promoted controllable entries' tokens. Same
+			// units as per-entry tokens="N" so the model can predict the
+			// effect of a promote/demote: change is exactly the entry's
+			// tokens attribute.
+			const tokenUsage = rows.reduce((sum, r) => {
+				if (
+					(r.category === "data" || r.category === "logging") &&
+					r.fidelity === "promoted"
+				) {
+					return sum + (r.tokens || 0);
+				}
+				return sum;
+			}, 0);
+			budget = ` tokenBudget="${tokenBudget}" tokenUsage="${tokenUsage}"`;
+		}
+
+		return `${content}<prompt mode="${mode}"${warn}${budget}>${body}</prompt>`;
 	}
 }

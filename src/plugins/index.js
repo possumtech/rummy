@@ -37,7 +37,7 @@ const AUDIT_SCHEMES = [
 	"content",
 ];
 
-const PROMPT_SCHEMES = ["prompt", "progress"];
+const PROMPT_SCHEMES = ["prompt"];
 
 /**
  * After DB is ready, inject db and store into all PluginContext instances,
