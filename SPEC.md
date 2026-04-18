@@ -233,16 +233,20 @@ client picks for every run.
 
 ### 2.1 Run State Machine
 
-All status fields are HTTP integer codes:
+All status fields are HTTP integer codes. `runs.status` transitions
+are enforced by `trg_run_state_transition` (see initial migration):
 
 ```
-100 (queued) → 200 (running) → 202 (proposed) → 200 (running) → 200 (completed)
-                              → 200 (completed)
-                              → 500 (failed) → 200 (running)
-                              → 499 (aborted) → 200 (running)
+100 queued    → 102 running, 499 aborted
+102 running   → 200 completed, 202 proposed, 500 failed, 499 aborted
+202 proposed  → 102 running, 200 completed, 499 aborted
+200 completed → 102 running, 499 aborted
+500 failed    → 102 running, 499 aborted
+499 aborted   → 102 running
 ```
 
-All terminal states allow transition back to `running`. Runs are long-lived.
+All terminal states (200/500/499) allow transition back to running.
+Runs are long-lived.
 
 ### 2.2 Loops Table
 
@@ -254,14 +258,17 @@ the current loop; pending loops survive. Projects > runs > loops > turns.
 
 The `file_constraints` table is project-level configuration — it
 defines which files a project cares about. This is backbone, not tool
-dispatch. Constraints have three visibilities: `active` (promoted to
-full), `readonly` (promoted but not editable), `ignore` (demoted).
+dispatch. Constraints have three visibilities:
+
+- `active` — matching files are promoted into the run's context
+- `readonly` — promoted but not editable by the model
+- `ignore` — demoted (excluded from context)
 
 **Boundary:** Setting a constraint (`File.setConstraint`) is a
 project-config write. Promoting/demoting the matching entries is tool
 dispatch that goes through the handler chain with budget enforcement.
 These are separate operations: constraint persists across runs, entry
-promotion is scoped to a run and subject to the same budget rules as
+fidelity is scoped to a run and subject to the same budget rules as
 a model `<get>`.
 
 `store` RPC manages constraints directly — it is not a model tool.
@@ -273,16 +280,14 @@ a model `<get>`.
 
 ### 3.1 Unified API
 
-Three callers, one interface. Each tier is a superset of the one below.
+Three callers share a tool vocabulary. The invocation shape is
+per-tier; params shape is not uniform across tiers.
 
-| Tier | Transport | Invocation shape |
-|------|-----------|-----------------|
-| Model | XML tags | `{ name: "rm", path: "file.txt" }` |
+| Tier | Transport | Invocation |
+|------|-----------|-----------|
+| Model | XML tags | `<rm path="file.txt"/>` |
 | Client | JSON-RPC | `{ method: "rm", params: { path: "file.txt" } }` |
-| Plugin | PluginContext | `rummy.rm({ path: "file.txt" })` |
-
-`name` (model) = `method` (client) = method name (plugin). The params
-object is the same shape at every tier.
+| Plugin | RummyContext verbs | `rummy.rm("file.txt")` (each verb takes what's natural — see `src/hooks/RummyContext.js`) |
 
 | Method | Model | Client | Plugin |
 |--------|-------|--------|--------|
@@ -303,13 +308,25 @@ Client tier requires project init. Plugin tier has no restrictions.
 
 ### 3.2 Dispatch Path
 
-All three tiers feed the same handler chain:
+Each tier feeds into the shared tool handler chain, but through a
+different entry point:
 
 ```
-Model:  XmlParser → { name, path, ... } → #record() → dispatch(scheme, entry, rummy)
-Client: JSON-RPC  → { method, params }   → #record() → dispatch(scheme, entry, rummy)
-Plugin: rummy.rm({ path })               → #record() → dispatch(scheme, entry, rummy)
+Model:  XmlParser → { name, path, ... } → TurnExecutor.#record()
+                  → hooks.tools.dispatch(scheme, entry, rummy)
+Client: JSON-RPC  → rpc.js dispatchTool(hooks, rummy, scheme, ...)
+                  → hooks.tools.dispatch(scheme, entry, rummy)
+Plugin: rummy.set({path, body, ...}) / rummy.rm(path) / etc.
+                  → direct entries.* store calls (bypasses the handler chain)
 ```
+
+Model and client tiers both land in `hooks.tools.dispatch`, which
+invokes the scheme's registered handler. Model-tier additionally
+passes through `TurnExecutor.#record()` (adds turn-scoped recording,
+policy filtering, abort cascade). Plugin-tier convenience verbs
+(`rummy.rm`, `rummy.set`, ...) are thin wrappers over the store — they
+don't invoke the handler chain. Plugin code that wants full handler
+semantics calls `hooks.tools.dispatch` directly.
 
 **Tool dispatch:** Commands are dispatched sequentially in the order
 the model emitted them. Each tool either succeeds (200), fails (400+),
@@ -328,12 +345,13 @@ to a continuation (the model's claim of doneness is false); the update
 plugin resolves the update entry to 409 and surfaces it to the next
 turn as a continuation. Multiple `<update>` tags → last signal wins.
 
-**Post-dispatch budget check:** After all tools dispatch, the system
-materializes context and checks the budget ceiling. If context exceeds
-the ceiling, Turn Demotion fires — all entries from this turn are
-demoted to summary and a `budget://` entry is written. This is a
-system housekeeping step independent of tool success/failure. The
-tools already ran; their outcomes are settled.
+**Post-dispatch budget check:** After all tools dispatch, the budget
+plugin re-materializes context and checks the ceiling
+(`hooks.budget.postDispatch`). If context exceeds the ceiling, Turn
+Demotion fires — all promoted `run_views` rows for the current turn
+have their `fidelity` flipped to `demoted`, and a `budget://` entry is
+written. Status is NOT touched (see §1.2). The tools already ran;
+their outcomes are settled.
 
 ### 3.3 Plugin Convention
 
@@ -347,36 +365,58 @@ export default class Rm {
 
     constructor(core) {
         this.#core = core;
+        core.ensureTool();
+        core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("full", this.full.bind(this));
+        core.on("promoted", this.full.bind(this));
+        core.on("demoted", this.summary.bind(this));
     }
 
     async handler(entry, rummy) {
         // rummy here is per-turn RummyContext (not the startup PluginContext)
     }
 
-    full(entry) {
-        return `# rm ${entry.attributes.path}`;
-    }
+    full(entry)    { return `# rm ${entry.attributes.path}`; }
+    summary(entry) { return ""; }
 }
 ```
+
+**Registration verbs on PluginContext:**
+- `"handler"` — tool handler (dispatches when a matching entry is recorded).
+- `"promoted"` / `"demoted"` — fidelity view projections. Return the
+  projected body string for the given fidelity level.
+- Any hook name (e.g. `"turn.started"`, `"entry.created"`) — subscribes
+  to that event.
+- `core.filter(name, callback, priority)` — subscribes to a filter chain.
 
 **Two objects:**
 - `this.#core` — PluginContext (startup). For registration: `on()`, `filter()`.
 - `rummy` argument — RummyContext (per-turn). For runtime: tool verbs, queries.
 
 **Plugin types:**
-- **Tool plugins**: register `handler` + `full`/`summary`. Model-invokable.
-- **Assembly plugins**: register `core.filter("assembly.system", ...)`. Own a packet tag.
-- **Infrastructure plugins**: register `core.on("turn", ...)`. Background work.
+- **Tool plugins**: register `handler` + `promoted`/`demoted`. Model-invokable.
+- **Assembly plugins**: register `core.filter("assembly.system"|"assembly.user", ...)`. Own a packet tag.
+- **Infrastructure plugins**: subscribe to lifecycle events
+  (`turn.started`, `turn.response`, `turn.completed`, `entry.created`,
+  `loop.started`, etc.). Background work.
 
 A plugin can be multiple types. Known is a tool AND an assembly plugin.
 
 ### 3.4 Mode Enforcement
 
-All tools are available by default. In ask mode, the core removes
-act-only tools (`sh`, file-scheme `set`) from the tool list. This is
-a core concern — plugins do not declare their modes.
+Two mechanisms, operating at different layers:
+
+1. **Tool-list exclusion** — `hooks.tools.resolveForLoop(mode, flags)`
+   computes the active tool set at loop start. Ask mode excludes `sh`.
+   Flag-driven exclusions: `noInteraction` removes `ask_user`; `noWeb`
+   removes `search`; `noProposals` removes `ask_user`/`env`/`sh`. The
+   excluded tools don't appear in the system prompt's tool list.
+2. **Per-invocation filtering** — the `policy` plugin subscribes to
+   `entry.recording` and inspects individual emissions for ask-mode
+   violations that the tool-list alone can't catch (file-scheme `<set>`
+   edits, file `<rm>`, file-destination `<mv>`/`<cp>`). Rejects with
+   status 403 and emits `error://`. The tool remains advertised; the
+   specific invocation is blocked.
 
 ### 3.5 Streaming Entries
 
@@ -426,9 +466,9 @@ N/A for non-process producers), 500 (non-zero exit), or 499 (client
 aborted via `stream/aborted`). The log entry is rewritten with final
 stats (exit code, duration, channel sizes, or abort reason).
 
-**Budget demotion preserves status.** A 102 entry demoted by budget
-panic stays at 102 — status reflects operation outcome, fidelity
-reflects visibility. See §1.X status-vs-lifecycle separation.
+**Budget demotion preserves status.** A 102 entry demoted by Turn
+Demotion stays at 102 — status reflects operation outcome, fidelity
+reflects visibility. See §1.2 for the status-vs-fidelity separation.
 
 **Stream plugin (§6) owns the append and completion RPCs.** Producer
 plugins (sh, env) create the proposal and data entries; the stream
@@ -443,29 +483,25 @@ Two messages per turn. System = stable truth. User = active task.
 ### 4.1 Packet Structure
 
 ```
-[system]
-    [instructions]
-        [sacred_prompt/]
-        [toolDescriptions/]
-        [persona/]
-        [skills/]
-    [/instructions]
+[system message]
+    instructions text
+        (preamble.md + tool docs injected via
+         instructions.toolDocs filter; optional persona appended)
     <knowns>
-        ...entries sorted by fidelity (summary, full), then by scheme
+        entries sorted by category → skill-first → demoted-first
+        → turn → updated_at
     </knowns>
     <previous>
-        (pre-loop entries, each with turn, status, summary, fidelity, tokens)
+        (pre-loop entries, each with turn, status, fidelity, tokens)
     </previous>
     <unknowns>
         (open questions, each with path, turn, fidelity, tokens)
     </unknowns>
-[/system]
-[user]
+[user message]
     <performed>
-        (current loop entries, each with turn, status, summary, fidelity, tokens)
+        (current loop entries, each with turn, status, fidelity, tokens)
     </performed>
     <prompt mode="ask|act" tokenBudget="N" tokenUsage="M">user prompt</prompt>
-[/user]
 ```
 
 **System** contains everything the model needs to know.
@@ -500,7 +536,7 @@ continues (next turn), new results append to `<performed>`.
 
 | Path | Lifetime | Body | Attributes |
 |------|----------|------|-----------|
-| `instructions://system` | One per run (mutable) | Empty (projection builds from preamble + plugins) | `{ persona }` |
+| `instructions://system` | One per run (mutable) | Empty (projection builds from preamble + tool docs + optional persona) | `{ persona, toolSet }` |
 | `system://N` | Audit, one per turn | Full assembled system message | — |
 | `user://N` | Audit, one per turn | Full assembled user message | — |
 | `assistant://N` | Audit, one per turn | Model's raw response | — |
@@ -514,76 +550,89 @@ text from body + attributes.
 
 Each turn:
 
-1. Write `instructions://system` (empty body, attributes = { persona })
+1. Write `instructions://system` (empty body, attributes = { persona, toolSet })
 2. Emit `turn.started` — plugins write prompt/instructions entries
-3. Project `instructions://system` → instructions text
-4. Query `v_model_context` VIEW → visible entries
-5. Project each entry through its tool's `full`/`summary` projection
+3. Resolve the instructions system prompt (`hooks.instructions.resolveSystemPrompt`)
+4. Query `v_model_context` VIEW → visible entries (joined from
+   `run_views` + `entries` + `schemes`)
+5. Project each entry through its scheme's `promoted`/`demoted` projection
 6. Insert projected rows into `turn_context`
 7. Invoke `assembly.system` filter chain (instructions text as base):
-   - Known plugin (priority 100) → `<known>` section
+   - Known plugin (priority 100) → `<knowns>` section
    - Previous plugin (priority 200) → `<previous>` section
    - Unknown plugin (priority 300) → `<unknowns>` section
 8. Invoke `assembly.user` filter chain (empty string as base):
    - Performed plugin (priority 100) → `<performed>` section
    - Prompt plugin (priority 300) → `<prompt>` element (carries
      `tokenBudget` / `tokenUsage` attrs when `contextSize` is set)
-9. Store as `system://N` and `user://N` audit entries
+9. Store as `system://N` and `user://N` audit entries (telemetry plugin)
 
 The VIEW determines visibility from `fidelity` and `status`:
-- `full` → body visible
-- `summary` → summary visible (model-authored `summary` attribute if set)
-- `index` → path listed, no content
-- `archive` → invisible (retrievable via `<get>`)
+- `fidelity = 'promoted'` → full body visible in `<knowns>` / `<performed>`.
+- `fidelity = 'demoted'` → demoted projection visible (typically path +
+  summary attr). Promote with `<get>` to expand.
+- `fidelity = 'archived'` → invisible. Discoverable via pattern search
+  (`<get path="known://*">keyword</get>`); promote to bring back into view.
+- `status = 202` → invisible (proposed, pending client resolution).
+- `model_visible = 0` → invisible (audit schemes: instructions, system,
+  reasoning, model, user, assistant, content, tool).
 
-**Partial read:** `<get path="..." line="N" limit="M"/>` returns lines N through
-N+M−1 of the entry body as the log item without changing fidelity or promoting
-the entry to context. Use after reading `summary` fidelity (which gives line
-numbers via repomap) to target a specific symbol. Single-path only — glob or
-body filter with `line`/`limit` is a 400 error.
-- `status = 202` → invisible (proposed, pending client)
-- `model_visible = 0` → invisible (audit, tool, instructions)
+**Partial read:** `<get path="..." line="N" limit="M"/>` returns lines N
+through N+M−1 of the entry body as the log item without changing
+fidelity or promoting the entry to context. Use after reading a
+demoted entry (which shows path + summary) to target a specific slice.
+Single-path only — glob or body filter with `line`/`limit` is a 400 error.
 
-Model controls fidelity via `<set>` attributes: `archive`, `summary`,
-`index`, `full`. The `summary="..."` attribute attaches a description
-(<= 80 chars) that persists across fidelity changes.
+Model controls fidelity via `<set>` attributes:
+`fidelity="archived|demoted|promoted"`. The `summary="..."` attribute
+attaches a description (≤ 80 chars) that persists across fidelity
+changes.
 
 ### 4.5 Budget Enforcement
 
 The model owns its context. The system enforces a hard ceiling and
-provides advisory warnings — it does not automatically manage entries.
+surfaces the numbers — it does not automatically manage entries.
 
-**Pre-LLM check:** The budget plugin measures `countTokens()` on the
-assembled messages. If assembled tokens exceed `contextSize`, the turn
-returns 413 without calling the LLM. This triggers panic mode (see
-§4.6).
+**Ceiling.** `ceiling = floor(contextSize × RUMMY_BUDGET_CEILING)`
+(default `RUMMY_BUDGET_CEILING = 0.9`, i.e. 10% headroom). All budget
+decisions compare `assembledTokens` against `ceiling`, never against
+`contextSize` directly.
 
-**Write-layer gate:** BudgetGuard on KnownStore gates every write
-during dispatch. `upsert()`, `promoteByPattern()`, and
-`updateBodyByPattern()` check token delta against remaining headroom.
-Exceeding the budget throws `BudgetExceeded` — the tool 413s, the
-guard trips, and all subsequent tools in the turn fail.
+**Pre-LLM enforce** (`hooks.budget.enforce`, in TurnExecutor before
+the LLM call). Measures the assembled messages (using
+`turns.context_tokens` from the prior turn when available,
+`countTokens(messages)` as a first-turn estimate).
 
-BudgetGuard ceiling = `floor(contextSize × 0.9) − 500`. The 500-token
-buffer below the enforce ceiling absorbs two sources of overhead that
-BudgetGuard cannot see: (a) `#record()`-phase writes that bypass the
-guard (~15 tokens per command), and (b) loop transition overhead —
-when a loop completes and a new one starts, entries shift from
-`<performed>` to `<previous>` format, adding ~200–300 tokens to the
-next assembly. Without this buffer, the base context can accumulate
-to exactly the enforce ceiling, making it impossible for the panic
-loop to start (panic prompt + loop overhead > ceiling).
+- `assembledTokens ≤ ceiling` → return 200, proceed to LLM.
+- `assembledTokens > ceiling` on the first turn of a loop → **Prompt
+  Demotion**: demote the incoming `prompt://N` entry to `fidelity =
+  demoted`, re-materialize, re-check. If the retry fits, proceed.
+- `assembledTokens > ceiling` on a non-first turn, or still over after
+  Prompt Demotion → return 413. AgentLoop exits the loop with 413.
 
-**Exemptions:** `status >= 400` entries (error results), `model_visible
-= 0` entries (audit), `fidelity = "archive"` entries (not in context).
+**Post-dispatch Turn Demotion** (`hooks.budget.postDispatch`, after
+all tool dispatches complete). Re-materializes end-of-turn context
+and re-checks. If still over the ceiling, flips every `run_views` row
+for this turn from `fidelity = promoted` to `fidelity = demoted`
+(status preserved — see §1.2) and writes a `budget://{loopId}/{turn}`
+entry summarizing what was demoted and stating the 50% rule for the
+next turn. The model sees the `budget://` entry next turn and adjusts.
 
-**Size gate:** Known entries exceeding 500 tokens are rejected with
-413, forcing atomic entries.
+**LLM-reported context exceeded.** If the LLM rejects the request
+with a "context too long" error (detected via the regex in
+`src/llm/errors.js`), the LlmProvider raises `ContextExceededError`
+which TurnExecutor catches and converts to a 413 exit — same terminal
+path as pre-LLM 413 on a non-first turn.
 
-**Advisory warnings**: model reads `tokenUsage` / `tokenBudget` on
-`<prompt>` every turn and self-regulates. No threshold warnings; budget
-feedback is the numbers themselves plus `budget://` Turn Demotion
-entries when the ceiling is actually breached.
+**Known-scheme size gate** (in the `known` plugin). Writes to
+`known://` entries exceeding `RUMMY_MAX_ENTRY_TOKENS` (default 512)
+are rejected at the handler with an instructive error message. Forces
+atomic entries instead of dumping transcripts into a single `known://`.
+
+**Advisory feedback.** The model reads `tokenBudget` / `tokenUsage`
+attributes on `<prompt>` every turn and self-regulates. No threshold-
+based warnings. When the ceiling is actually breached the `budget://`
+entry is the feedback.
 
 **Token math:** `Math.ceil(text.length / RUMMY_TOKEN_DIVISOR)`. One
 formula, one file (`src/agent/tokens.js`), env-configurable. No
@@ -613,85 +662,33 @@ These two will diverge rapidly on any multi-turn run. A run at turn 50 might sho
 `context_tokens: 8000` (context under control) and `prompt_tokens: 400000`
 (total input tokens billed across the whole run). They are measuring orthogonal things.
 
-### 4.6 Panic Mode
+### 4.6 Two Token Measures
 
-**The invariant.** A panic is only ever triggered because the
-assembled context was under the ceiling — and the new prompt pushed
-it over. The existing context fit; the incoming prompt did not.
-Panic mode replaces that too-large incoming prompt with a small
-panic prompt on the same context. Therefore: the first turn of a
-panic loop cannot 413. If it does, it is a bug.
+The model and the system count tokens in two different units — never
+conflate them.
 
-**Trigger.** `TurnExecutor.execute()` assembles the full packet
-(context + incoming prompt) before calling the LLM. If
-`assembledTokens > contextSize`, it returns 413 without calling
-the LLM. `#drainQueue` intercepts this and enters panic mode.
+- **Per-entry SQL tokens** (`entries.tokens`) = `countTokens(body)` =
+  `ceil(chars / RUMMY_TOKEN_DIVISOR)`. Visible to the model as the
+  `tokens="N"` attribute on `<knowns>` entries. The granular unit the
+  model reasons with: "this entry is 200 tokens; demoting it saves 200."
+- **Actual API tokens** (`turns.context_tokens`, back-filled from
+  `usage.input_tokens` after each LLM call). The ground-truth count
+  of what the API actually billed for the prior turn's input.
+  `budget.enforce` uses this for non-first-turn checks.
 
-**Flow.**
-1. Complete the failed loop with status 413 (audit trail).
-2. Enqueue a panic loop (`mode = "panic"`, `noRepo = true`,
-   `prompt = panicPrompt`, `panicTarget` in config).
-3. Re-enqueue the original loop with `panicAttempted: true` in
-   its config JSON. This flag persists across drain cycles.
-4. `continue` — the drain loop claims the panic loop next.
-
-After panic completes (model freed enough space), the retry loop
-runs. If the retry also 413s, hard-fail to client. One panic
-attempt per drain cycle — `panicAttempted` is checked both as a
-local variable and on the re-enqueued loop's config.
-
-**Panic target.** The model must compress context to below:
-
-```
-panicTarget = MIN(contextSize × 0.75, contextSize − incomingTokens) − cushion
-```
-
-`incomingTokens` is the raw token count of the original prompt.
-`cushion` is a small safety margin (500 tokens) to absorb
-materialization overhead. The target is expressed in materialized
-token units — the same unit the system uses to measure completion
-(see Token Math below).
-
-**Two token contexts.**
-
-The model reasons in *per-entry SQL tokens* — the token counts
-visible in `<knowns>` entries. These are the granular unit the model
-uses to decide which entries to target: "this entry is 200 tokens;
-if I archive it, I save 200 tokens."
-
-The system makes decisions using *actual API tokens* —
-`turns.context_tokens` back-filled from `usage.input_tokens` after
-each LLM call. SQL token sums do not equal actual API counts because
+Summing SQL entry tokens does not equal the actual API count —
 projections, assembly overhead, and fidelity transforms alter the
-output; and the SQL estimate (`ceil(chars / DIVISOR)`) can be 3–7×
-off for structured content. **Never use SQL token sums for ceiling or
-budget decisions.** See §4.5 Token Measures for the full breakdown.
+output, and the SQL estimate can be 3–7× off for XML/JSON-heavy
+content. **Never use SQL token sums for ceiling decisions.** See §4.5
+three-measures table for the full breakdown.
 
-**Strike system.** After each panic turn, compare
-`result.assembledTokens` (materialized) with `_lastPanicTokens`
-(previous turn's materialized total):
-- Decreased → reset strike counter to 0.
-- Same or increased → increment strikes.
-- 3 consecutive strikes → return 413 to `#drainQueue` → hard-fail.
-
-Progress (any reduction) resets the counter. The model has
-unlimited turns as long as it makes progress.
-
-**Panic success.** After each turn, if `result.assembledTokens
-<= panicTarget`, the panic loop exits with 200. The retry loop
-then runs with the original prompt on the now-compressed context.
-
-**Tool set.** `resolveForLoop("panic")` includes: get, set, rm, mv, cp,
-update. Excludes: sh, env, search, ask_user. `noRepo: true` — no file
-scanning during panic.
-
-**What the model sees.** Turn 1 receives the panic prompt from
-`budget.panicPrompt()`: the assembled token count, the target, and
-the exact number of tokens to free. Turn 2+ receives a continuation
-prompt. The model uses `<set fidelity="archived">`, `<mv
-fidelity="demoted">`, and similar fidelity operations to free space,
-concluding with `<update status="200">` when done or
-`<update status="102">` while working.
+Historical note: earlier designs introduced a "panic mode" loop that
+the drainer would schedule when context exceeded the ceiling, with a
+dedicated tool set and a strike counter. That machinery was retired;
+the current system is the two-moment model described in §4.5 —
+Prompt Demotion at the pre-LLM check, Turn Demotion at the
+post-dispatch check — both inside the budget plugin, no separate
+loop mode.
 
 ---
 

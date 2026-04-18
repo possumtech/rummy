@@ -83,7 +83,7 @@ export default class Known {
 		const entries = ctx.rows.filter((r) => r.category === "data");
 		if (entries.length === 0) return content;
 
-		// Rows arrive pre-sorted by SQL: summary → full, then by recency
+		// Rows arrive pre-sorted by SQL: demoted → promoted, then by recency
 		const demotedSet = new Set(ctx.demoted || []);
 		const lines = entries.map((e) => renderKnownTag(e, demotedSet));
 		return `${content}\n\n<knowns>\n${lines.join("\n")}\n</knowns>`;

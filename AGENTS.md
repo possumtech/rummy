@@ -446,6 +446,92 @@ Six phases, roughly sequential:
 
 Currently in Phase 1.
 
+### Phase 1 Audit Progress
+
+Walk order through SPEC.md. Sections checked off are audited + aligned
+with code; tests added where testable at the current layer.
+
+- [x] §0.1 "Everything Is an Entry" — rewrote for honesty; entries +
+  run_views + compat VIEW called out; acknowledged relational infra.
+- [x] §0.2 "Events & Filters" — `<known>` → `<knowns>`; ContextAssembler
+  (not TurnExecutor) owns the filter-chain invocation.
+- [x] §1.1 Schema — complete rewrite; documented entries + run_views
+  + known_entries compat VIEW with per-column tables.
+- [x] §1.2 Schemes, Status & Fidelity — fixed fidelity vocabulary
+  (`promoted|demoted|archived`, not `full|summary|index|archive`);
+  deduped `error://` row; added `writable_by` column to scheme table.
+- [x] §1.3 Scheme Registry — added `default_scope` + `writable_by`.
+- [x] §1.4 UPSERT Semantics — rewrote for two-prep flow (upsert_entry
+  → upsert_run_view).
+- [x] §2.1 Run State Machine — corrected HTTP codes (100/102/200/202/
+  499/500 semantics were muddled; diagram now matches the trigger).
+- [x] §2.3 File Constraints — dropped stale "promoted to full" fidelity
+  language.
+- [x] §3.1 Unified API — acknowledged that `RummyContext` verb shapes
+  are per-verb, not uniform across tiers.
+- [x] §3.2 Dispatch Path — corrected: client-tier uses `dispatchTool`
+  in rpc.js (not `#record`); plugin-tier verbs are direct store calls
+  that bypass the handler chain.
+- [x] §3.3 Plugin Convention — fixed stale event names (`"full"` →
+  `"promoted"`; no generic `"turn"` hook — use `turn.started` etc.);
+  added `core.ensureTool()` / `registerScheme` to the example.
+- [x] §3.4 Mode Enforcement — corrected: `resolveForLoop` removes only
+  `sh` in ask mode; file-scheme rejections are the policy plugin's
+  per-invocation job.
+- [x] §3.5 Streaming Entries — `§1.X` ref fixed; content accurate.
+- [x] §4.1 Packet Structure — stripped the fictional
+  sacred_prompt/toolDescriptions/persona/skills sub-tags; corrected
+  fidelity vocab in sort description.
+- [x] §4.2 Loops, Previous, and Performed — already accurate.
+- [x] §4.3 Key Entries — `instructions://system` attrs updated
+  (`{ persona, toolSet }`).
+- [x] §4.4 Materialization — fidelity vocab updated
+  (promoted/demoted/archived, no more `full/summary/index/archive`);
+  `<known>` → `<knowns>`; materialization steps match current flow.
+- [x] §4.5 Budget Enforcement — full rewrite. BudgetGuard
+  references deleted. Current flow documented: Prompt Demotion
+  (first-turn 413), Turn Demotion (post-dispatch), known-scheme size
+  gate (`RUMMY_MAX_ENTRY_TOKENS`), `ContextExceededError` as the
+  LLM-side 413 path.
+- [x] §4.6 Panic Mode — renamed to "Two Token Measures"; retired
+  the panic-loop description. Historical note preserved at the end.
+  Also fixed `src/plugins/known/known.js` comment that used stale
+  fidelity vocab ("summary → full" → "demoted → promoted").
+- [ ] §5 RPC Protocol — not yet audited. Suspect `run/inject` and
+  similar — methods listed may be stale.
+- [ ] §6 Plugin System — not yet audited.
+- [ ] §7 Tool Documentation Design — not yet audited.
+- [ ] §8 Hedberg — not yet audited.
+- [ ] §9 Response Healing — heavily simplified this session; spec
+  probably describes the old classification taxonomy.
+- [ ] §10 Testing — not yet audited.
+- [ ] §11 SQL Functions — likely accurate.
+- [ ] §12 Configuration — likely mostly accurate; may miss new env vars.
+- [ ] §13 Debugging — not yet audited.
+
+Then PLUGINS.md (paired with SPEC.md audit) and FIDELITY_CONTRACT.md
+(small, already mostly current after this session's Schema V2 work).
+
+Tests added so far: `test/integration/schema_v2.test.js` — 4 tests:
+fidelity accepts the three canonical values, rejects stale ones,
+entries land at `scope=run:${runId}` by default, two runs writing the
+same path create distinct scopes. Total 246+183 = 429 tests green.
+
+### Audit-adjacent cleanups waiting their turn
+
+Emerging from the audit; will address as the relevant section surfaces:
+
+- §4.5 overhaul: describe current Prompt Demotion + Turn Demotion,
+  delete BudgetGuard references everywhere they appear (spec, PLUGINS,
+  any code comments).
+- §4.6 delete or rewrite as "Overflow Handling" — Prompt Demotion
+  is first-turn, Turn Demotion is post-dispatch. No panic loop.
+- Error-type consistency (reviewer flag): typed `ContextExceededError`
+  vs bare-string 403 permission failure. Unify or document the
+  intentional divergence.
+- Plugin-dep system has no callers — may keep, may delete — audit when
+  we hit §6 Plugin System.
+
 ### Phase 3: E2E reliability (superseded by Hardening Roadmap)
 
 - [ ] All 26+ E2E tests pass consistently
