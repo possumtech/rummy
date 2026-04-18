@@ -41,28 +41,33 @@ Six phases. Each phase has a clear scope and a verification gate. No
 phase is complete until its gate is green. No "deferred debt" — items
 either land in a phase or get cut from scope.
 
-### Phase 1 — Schema
+### Phase 1 — Schema ✓ landed
 
-Make the schema tell the truth about the contract.
+Made the schema tell the truth about the contract.
 
-- `run_views.state` replaces `run_views.status`. Enum:
-  `proposed | streaming | resolved | failed | cancelled`. No HTTP
-  codes at the DB layer — transport detail belongs to transport.
-- `run_views.outcome` added (TEXT, nullable). Populated when
-  `state ∈ {failed, cancelled}` with a short reason string. Plugins
-  that care (budget, error, permission) parse the prefix; opaque to
-  others.
-- `fidelity` unchanged: `promoted | demoted | archived`.
-- `schemes.writable_by` gains `client` as a valid tier (four-way).
-- `schemes.capability_class` added — which restriction class this
-  scheme belongs to. Used by the policy plugin to compute the
-  effective toolset when a run's restriction list names a class.
-- `v_unresolved` rewritten: `WHERE state IN ('proposed','streaming')`.
-- Edit `migrations/001_initial_schema.sql` in place. No migration
-  shim. Nuke DB and rebuild.
+- `run_views.state` replaces `run_views.status` (5-value CHECK:
+  `proposed | streaming | resolved | failed | cancelled`). HTTP codes
+  gone from the entry-view DB layer; they still exist at transport
+  (RPC wire, runs/loops queue) and inside `run_views.outcome` TEXT
+  prefixes where diagnostic (e.g. `"overflow:413"`, `"permission:403"`).
+- `run_views.outcome` added. Populated when `state ∈ {failed, cancelled}`.
+- `turn_context.state` + `.outcome` match `run_views`.
+- `schemes.writable_by` now accepts `client` as a valid tier (four-way).
+- `schemes.capability_class` added.
+- `v_unresolved`, `v_model_context`, `v_run_log`, `known_entries`
+  compat VIEW all rewritten against the new columns.
+- `KnownStore.upsert` / `resolve` now take state + outcome. All ~30
+  call sites in plugins, agent, hooks, and tests updated.
+- Model-facing tag rendering preserved: `<performed>`, `<knowns>`,
+  `<previous>` still emit `status="NNN"` via `src/agent/httpStatus.js`
+  — the state → HTTP mapping lives in one place.
+- Boot env-file resolution: `service.js` now skips `$RUMMY_HOME/.env*`
+  loading when CWD has a rummy-shaped `.env.example` (sniffed by
+  presence of any `RUMMY_*` var). Local configs no longer collide
+  with machine-wide config. Multiple instances on one box are now
+  independent by default.
 
-**Gate:** schema compiles, all preps rewritten against the new
-columns, `npm run test:unit` green.
+Gate: lint + 259 unit + 189 integration green.
 
 ### Phase 2 — Primitives
 
