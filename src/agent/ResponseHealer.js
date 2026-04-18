@@ -2,25 +2,20 @@ const MAX_STALLS = Number(process.env.RUMMY_MAX_STALLS) || 3;
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES) || 3;
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD) || 4;
 const MAX_UPDATE_REPEATS = Number(process.env.RUMMY_MAX_UPDATE_REPEATS) || 3;
-const MAX_PATH_STAGNATION = Number(process.env.RUMMY_MAX_PATH_STAGNATION) || 5;
 
 /**
- * Build a stable fingerprint for a single recorded entry.
- * Uses scheme + original command target + all op-defining attributes.
- * Excludes body (content too granular; same operation ≠ same content).
+ * Build a stable fingerprint for a single recorded entry: scheme + all
+ * attributes, sorted. No body, no target normalization, no classification.
+ * Identical tag+attrs across turns signals repetition regardless of what
+ * the tool does.
  */
-function cmdFingerprint(entry) {
-	const attrs = { ...(entry.attributes ?? {}) };
-	delete attrs.body;
-	const target =
-		attrs.path ?? attrs.command ?? attrs.query ?? attrs.question ?? "";
-	delete attrs.path;
-	const extra = Object.keys(attrs)
+function fingerprint(entry) {
+	const attrs = entry.attributes ?? {};
+	const parts = Object.keys(attrs)
 		.toSorted()
 		.filter((k) => attrs[k] != null)
-		.map((k) => `${k}=${attrs[k]}`)
-		.join(",");
-	return `${entry.scheme}:${target}${extra ? `[${extra}]` : ""}`;
+		.map((k) => `${k}=${attrs[k]}`);
+	return `${entry.scheme}:${parts.join(",")}`;
 }
 
 /**
@@ -48,33 +43,12 @@ function detectCycle(history) {
 	return { detected: false };
 }
 
-/**
- * Extract the target paths a command touches for stagnation detection.
- * Same target logic as cmdFingerprint but returns the raw path for set
- * comparison across turns.
- */
-function cmdPaths(entry) {
-	const attrs = entry.attributes ?? {};
-	const paths = [];
-	if (attrs.path) paths.push(attrs.path);
-	if (attrs.to) paths.push(attrs.to);
-	if (attrs.command) paths.push(attrs.command);
-	if (attrs.query) paths.push(attrs.query);
-	if (attrs.question) paths.push(attrs.question);
-	return paths;
-}
-
 export default class ResponseHealer {
 	#stallCount = 0;
 	#turnHistory = [];
 	#lastUpdateText = null;
 	#updateRepeatCount = 0;
-	#pathRuns = new Map(); // path → consecutive turns touched
 
-	/**
-	 * Heal a missing status tag. Called when the model emits
-	 * neither <update status="200"/> nor <update/>.
-	 */
 	/**
 	 * Heal a missing status tag. Called when the model emits
 	 * neither <update status="200"/> nor <update/>.
@@ -123,21 +97,17 @@ export default class ResponseHealer {
 	}
 
 	/**
-	 * Detect cyclic tool patterns across turns.
-	 * Returns { continue: boolean, reason?: string }
+	 * Detect cyclic tool patterns across turns. Fingerprints every recorded
+	 * entry uniformly. Appends the turn's sorted fingerprint tuple to
+	 * history; flags if the tail forms a cycle of period 1..MAX_CYCLE_PERIOD
+	 * with at least MIN_CYCLES consecutive repetitions.
 	 *
-	 * Appends this turn's fingerprint to history, then checks whether the
-	 * history ends in a repeating cycle of period 1..MAX_CYCLE_PERIOD with
-	 * at least MIN_CYCLES consecutive repetitions.
-	 *
-	 * Catches AAAA (period 1), ABABAB (period 2), ABCABC (period 3), etc.
-	 * Turns with no tool calls are skipped — they don't contribute to a cycle.
+	 * Turns with no recorded entries are skipped (don't contribute to history).
 	 */
-	assessRepetition({ actionCalls, writeCalls }) {
-		const commands = [...(actionCalls || []), ...(writeCalls || [])];
-		if (commands.length === 0) return { continue: true };
+	assessRepetition(recorded) {
+		if (!recorded || recorded.length === 0) return { continue: true };
 
-		const fp = commands.map(cmdFingerprint).toSorted().join("|");
+		const fp = recorded.map(fingerprint).toSorted().join("|");
 		this.#turnHistory.push(fp);
 
 		const cycle = detectCycle(this.#turnHistory);
@@ -145,48 +115,20 @@ export default class ResponseHealer {
 			const reason = `Cyclic tool pattern (period ${cycle.period}, ${cycle.cycles} repetitions)`;
 			return { continue: false, reason };
 		}
-
-		// Distinct-paths stagnation: the model might vary commands turn-to-turn
-		// (avoiding exact-cycle detection) but still churn on a single path.
-		// Track per-path consecutive touches; flag if any path is touched in
-		// MAX_PATH_STAGNATION consecutive turns. Catches semantic stagnation
-		// where the fingerprints differ in micro-detail but the work is stuck
-		// on one entry (e.g. endlessly re-setting/re-getting the same plan).
-		const touchedPaths = new Set();
-		for (const cmd of commands) {
-			for (const p of cmdPaths(cmd)) touchedPaths.add(p);
-		}
-		// Paths not touched this turn — run broken, remove from map.
-		for (const path of [...this.#pathRuns.keys()]) {
-			if (!touchedPaths.has(path)) this.#pathRuns.delete(path);
-		}
-		// Paths touched this turn — increment run.
-		for (const path of touchedPaths) {
-			this.#pathRuns.set(path, (this.#pathRuns.get(path) || 0) + 1);
-		}
-		for (const [path, run] of this.#pathRuns) {
-			if (run >= MAX_PATH_STAGNATION) {
-				const reason = `Path stagnation: ${path} touched ${run} consecutive turns`;
-				return { continue: false, reason };
-			}
-		}
-
 		return { continue: true };
 	}
 
 	/**
 	 * Assess whether the run should continue.
 	 *
-	 * Returns { continue: boolean, reason?: string }
-	 *
 	 * Rules:
 	 *   <update status="200"/> present → done (terminate)
-	 *   <update status="200"/> + failed actions → overridden to <update> (continue)
 	 *   <update/> present  → continue (model says it's working)
-	 *   neither present    → warn, increment stall counter, continue
+	 *   neither present    → warn, increment stall counter
 	 *   stall counter hits MAX_STALLS → force-complete
+	 *   same update text N turns with no other work → force-complete
 	 */
-	assessProgress({ summaryText, updateText, statusHealed, flags }) {
+	assessProgress({ summaryText, updateText, statusHealed, recorded }) {
 		if (summaryText) {
 			this.#stallCount = 0;
 			return { continue: false };
@@ -194,10 +136,11 @@ export default class ResponseHealer {
 
 		if (updateText && !statusHealed) {
 			this.#stallCount = 0;
-			// Track repeated update text — model stuck declaring readiness
-			// But if the model created new entries this turn, it's making
-			// progress even if the update text is the same.
-			const madeProgress = flags?.hasWrites || flags?.hasReads;
+			// Same update text N turns running without any non-update work =
+			// stuck declaring readiness. `update` is the only scheme special-
+			// cased here: it's the status-reporting channel, not work.
+			const madeProgress =
+				recorded?.some((e) => e.scheme !== "update") ?? false;
 			if (updateText === this.#lastUpdateText && !madeProgress) {
 				this.#updateRepeatCount++;
 				if (this.#updateRepeatCount >= MAX_UPDATE_REPEATS) {
@@ -233,6 +176,5 @@ export default class ResponseHealer {
 		this.#turnHistory = [];
 		this.#lastUpdateText = null;
 		this.#updateRepeatCount = 0;
-		this.#pathRuns = new Map();
 	}
 }

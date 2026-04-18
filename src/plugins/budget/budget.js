@@ -1,3 +1,4 @@
+import materializeContext from "../../agent/materializeContext.js";
 import { countTokens } from "../../agent/tokens.js";
 
 const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
@@ -24,68 +25,108 @@ export default class Budget {
 		};
 	}
 
-	async enforce({ contextSize, messages, rows, lastPromptTokens = 0 }) {
-		if (!contextSize) {
-			return { messages, rows, demoted: [], assembledTokens: 0, status: 200 };
-		}
-
+	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
 		const assembledTokens =
 			lastPromptTokens > 0 ? lastPromptTokens : measureMessages(messages);
-
-		console.warn(
-			`[RUMMY] Budget enforce: ${assembledTokens} tokens (${lastPromptTokens > 0 ? "actual" : "estimated"}), ceiling ${contextSize}, ${rows.length} rows`,
-		);
-
 		const ceiling = Math.floor(contextSize * CEILING_RATIO);
 		if (assembledTokens > ceiling) {
-			const overflow = assembledTokens - ceiling;
-			console.warn(
-				`[RUMMY] Budget 413: ${assembledTokens} tokens > ${contextSize} ceiling (${overflow} over)`,
-			);
 			return {
 				messages,
 				rows,
-				demoted: [],
 				assembledTokens,
 				status: 413,
-				overflow,
+				overflow: assembledTokens - ceiling,
 			};
 		}
-
-		return { messages, rows, demoted: [], assembledTokens, status: 200 };
+		return { messages, rows, assembledTokens, status: 200 };
 	}
 
-	async postDispatch({
-		contextSize,
-		messages,
-		rows,
-		runId,
-		loopId,
-		turn,
-		db,
-		store,
-	}) {
-		if (!contextSize) return null;
+	/**
+	 * Pre-LLM budget enforcement. On first-turn overflow, demotes the
+	 * incoming prompt and re-materializes; re-checks and returns the
+	 * post-demotion result. On non-first-turn overflow, returns 413 so
+	 * TurnExecutor can exit the loop.
+	 *
+	 * ctx = { runId, loopId, turn, systemPrompt, mode, toolSet, demoted,
+	 *         loopIteration }
+	 */
+	async enforce({ contextSize, messages, rows, lastPromptTokens = 0, ctx }) {
+		if (!contextSize) {
+			return { messages, rows, assembledTokens: 0, status: 200 };
+		}
 
-		const postBudget = await this.enforce({
-			contextSize,
-			messages,
-			rows,
-			lastPromptTokens: 0,
-		});
+		const first = this.#check({ contextSize, messages, rows, lastPromptTokens });
+		if (first.status !== 413) return first;
+		if (ctx?.loopIteration !== 1) return first;
 
-		if (postBudget.status !== 413) return null;
-
-		// Demote this turn's entries
-		const demotedEntries = await db.demote_turn_entries.all({
-			run_id: runId,
-			turn,
-		});
-
-		// Also demote the prompt
-		const promptRow = rows.find((r) => r.scheme === "prompt");
+		const promptRow = rows.findLast(
+			(r) => r.category === "prompt" && r.scheme === "prompt",
+		);
 		if (promptRow) {
-			await store.setFidelity(runId, promptRow.path, "demoted");
+			await this.#core.entries.setFidelity(
+				ctx.runId,
+				promptRow.path,
+				"demoted",
+			);
+		}
+		const reMat = await materializeContext({
+			db: this.#core.db,
+			hooks: this.#core.hooks,
+			runId: ctx.runId,
+			loopId: ctx.loopId,
+			turn: ctx.turn,
+			systemPrompt: ctx.systemPrompt,
+			mode: ctx.mode,
+			toolSet: ctx.toolSet,
+			contextSize,
+			demoted: ctx.demoted,
+		});
+		return this.#check({
+			contextSize,
+			messages: reMat.messages,
+			rows: reMat.rows,
+			lastPromptTokens: reMat.lastContextTokens,
+		});
+	}
+
+	/**
+	 * Post-dispatch Turn Demotion. Re-materializes end-of-turn context and
+	 * checks against the ceiling. On overflow, demotes this turn's promoted
+	 * entries and writes a budget:// entry. No return value — the model
+	 * reads the budget:// entry next turn.
+	 *
+	 * ctx = { runId, loopId, turn, systemPrompt, mode, toolSet, demoted }
+	 */
+	async postDispatch({ contextSize, ctx }) {
+		if (!contextSize) return;
+		const postMat = await materializeContext({
+			db: this.#core.db,
+			hooks: this.#core.hooks,
+			runId: ctx.runId,
+			loopId: ctx.loopId,
+			turn: ctx.turn,
+			systemPrompt: ctx.systemPrompt,
+			mode: ctx.mode,
+			toolSet: ctx.toolSet,
+			contextSize,
+			demoted: ctx.demoted,
+		});
+		const post = this.#check({
+			contextSize,
+			messages: postMat.messages,
+			rows: postMat.rows,
+		});
+		if (post.status !== 413) return;
+
+		const db = this.#core.db;
+		const store = this.#core.entries;
+		const demotedEntries = await db.demote_turn_entries.all({
+			run_id: ctx.runId,
+			turn: ctx.turn,
+		});
+		const promptRow = postMat.rows.find((r) => r.scheme === "prompt");
+		if (promptRow) {
+			await store.setFidelity(ctx.runId, promptRow.path, "demoted");
 		}
 
 		// NOTE: we do NOT rewrite get-result bodies or flip their status.
@@ -97,13 +138,6 @@ export default class Budget {
 		// consistent signals: status=200 (get worked), fidelity=demoted (it's
 		// out of context now), budget://... (this turn overflowed).
 
-		// Write budget entry — terse, actionable. Path list dropped since
-		// demoted entries already render at fidelity="demoted" in <knowns>/<files>.
-		// "tokens remaining" dropped too — the number was over-optimistic (it
-		// treated re-demoted files as freeing their full-body tokens when their
-		// demoted-view renderings return to baseline). Model reads the truthful
-		// remaining in next turn's progress line.
-		//
 		// The 50% rule is the key directive: it forces the model to sum
 		// promotion costs (which is the behavior we want), and the threshold
 		// gives a concrete ceiling for the next try. Twofer — abiding by the
@@ -111,13 +145,18 @@ export default class Budget {
 		const ceiling = Math.floor(contextSize * CEILING_RATIO);
 		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
 		const body = [
-			`413 Token Budget Error: overflowed by ${postBudget.overflow} tokens. Token Budget: ${ceiling}.`,
+			`413 Token Budget Error: overflowed by ${post.overflow} tokens. Token Budget: ${ceiling}.`,
 			`Your ${demotedEntries.length} promotions from last turn (${totalDemoted} tokens total) were demoted to fit.`,
 			`Required: sum the tokens="N" of your promotions and new entries before emitting. A single turn must add no more than 50% of remaining Token Budget.`,
 		].join("\n");
 
-		await store.upsert(runId, turn, `budget://${loopId}/${turn}`, body, 413, {
-			loopId,
-		});
+		await store.upsert(
+			ctx.runId,
+			ctx.turn,
+			`budget://${ctx.loopId}/${ctx.turn}`,
+			body,
+			413,
+			{ loopId: ctx.loopId },
+		);
 	}
 }

@@ -13,10 +13,6 @@ function search(query) {
 	return { scheme: "search", path: null, attributes: { query } };
 }
 
-function calls(...entries) {
-	return { actionCalls: entries, writeCalls: [] };
-}
-
 describe("ResponseHealer", () => {
 	describe("healStatus", () => {
 		it("plain text with no commands becomes summary", () => {
@@ -182,21 +178,50 @@ describe("ResponseHealer", () => {
 				true,
 			);
 		});
+
+		it("repeated update text without non-update work terminates", () => {
+			const healer = new ResponseHealer();
+			const updateOnly = [{ scheme: "update", attributes: { status: 102 } }];
+			for (let i = 0; i < 2; i++) {
+				const r = healer.assessProgress({
+					updateText: "still working",
+					recorded: updateOnly,
+				});
+				assert.strictEqual(r.continue, true);
+			}
+			const result = healer.assessProgress({
+				updateText: "still working",
+				recorded: updateOnly,
+			});
+			assert.strictEqual(result.continue, false);
+			assert.ok(result.reason.includes("repeated"));
+		});
+
+		it("repeated update text with non-update work does not terminate", () => {
+			const healer = new ResponseHealer();
+			for (let i = 0; i < 5; i++) {
+				const r = healer.assessProgress({
+					updateText: "investigating",
+					recorded: [
+						{ scheme: "update", attributes: { status: 102 } },
+						{ scheme: "get", attributes: { path: `src/file${i}.js` } },
+					],
+				});
+				assert.strictEqual(r.continue, true);
+			}
+		});
 	});
 
 	describe("assessRepetition", () => {
 		it("no commands does not contribute to cycle history", () => {
 			const healer = new ResponseHealer();
-			const result = healer.assessRepetition({
-				actionCalls: [],
-				writeCalls: [],
-			});
+			const result = healer.assessRepetition([]);
 			assert.strictEqual(result.continue, true);
 		});
 
 		it("AAAA — same turn repeated 3x force-completes (period 1)", () => {
 			const healer = new ResponseHealer();
-			const turn = calls(get("src/app.js"));
+			const turn = [get("src/app.js")];
 			healer.assessRepetition(turn);
 			healer.assessRepetition(turn);
 			const result = healer.assessRepetition(turn);
@@ -206,8 +231,8 @@ describe("ResponseHealer", () => {
 
 		it("ABABAB — alternating pattern force-completes after 3 cycles (period 2)", () => {
 			const healer = new ResponseHealer();
-			const A = calls(get("src/app.js"));
-			const B = calls(sh("grep TODO src/app.js"));
+			const A = [get("src/app.js")];
+			const B = [sh("grep TODO src/app.js")];
 			// First 5 turns (incomplete — only 2 full cycles of AB at most)
 			for (let i = 0; i < 5; i++) {
 				const r = healer.assessRepetition(i % 2 === 0 ? A : B);
@@ -221,9 +246,9 @@ describe("ResponseHealer", () => {
 
 		it("ABCABCABC — 3-period cycle force-completes after 3 cycles", () => {
 			const healer = new ResponseHealer();
-			const A = calls(get("src/app.js"));
-			const B = calls(sh("grep TODO src/app.js"));
-			const C = calls(search("error handler"));
+			const A = [get("src/app.js")];
+			const B = [sh("grep TODO src/app.js")];
+			const C = [search("error handler")];
 			const pattern = [A, B, C];
 			// 8 turns (2 full cycles + 2 — not yet 3 full cycles)
 			for (let i = 0; i < 8; i++) {
@@ -239,12 +264,12 @@ describe("ResponseHealer", () => {
 		it("varied commands with no repeating cycle continue indefinitely", () => {
 			const healer = new ResponseHealer();
 			const turns = [
-				calls(get("a.js")),
-				calls(get("b.js")),
-				calls(get("a.js")),
-				calls(search("query")),
-				calls(get("a.js")),
-				calls(get("c.js")),
+				[get("a.js")],
+				[get("b.js")],
+				[get("a.js")],
+				[search("query")],
+				[get("a.js")],
+				[get("c.js")],
 			];
 			for (const turn of turns) {
 				const r = healer.assessRepetition(turn);
@@ -254,8 +279,8 @@ describe("ResponseHealer", () => {
 
 		it("order of commands within a turn does not matter", () => {
 			const healer = new ResponseHealer();
-			const fwd = { actionCalls: [get("a.js"), get("b.js")], writeCalls: [] };
-			const rev = { actionCalls: [get("b.js"), get("a.js")], writeCalls: [] };
+			const fwd = [get("a.js"), get("b.js")];
+			const rev = [get("b.js"), get("a.js")];
 			healer.assessRepetition(fwd);
 			healer.assessRepetition(rev);
 			const result = healer.assessRepetition(fwd);
@@ -265,16 +290,20 @@ describe("ResponseHealer", () => {
 
 		it("fidelity attribute differentiates otherwise identical operations", () => {
 			const healer = new ResponseHealer();
-			const full = calls({
-				scheme: "get",
-				path: "src/app.js",
-				attributes: { path: "src/app.js", fidelity: "promoted" },
-			});
-			const summary = calls({
-				scheme: "get",
-				path: "src/app.js",
-				attributes: { path: "src/app.js", fidelity: "demoted" },
-			});
+			const full = [
+				{
+					scheme: "get",
+					path: "src/app.js",
+					attributes: { path: "src/app.js", fidelity: "promoted" },
+				},
+			];
+			const summary = [
+				{
+					scheme: "get",
+					path: "src/app.js",
+					attributes: { path: "src/app.js", fidelity: "demoted" },
+				},
+			];
 			// ABABAB — different fingerprints due to fidelity, should be period 2
 			for (let i = 0; i < 5; i++) {
 				healer.assessRepetition(i % 2 === 0 ? full : summary);
@@ -286,7 +315,7 @@ describe("ResponseHealer", () => {
 
 		it("reset clears cycle history", () => {
 			const healer = new ResponseHealer();
-			const turn = calls(get("src/app.js"));
+			const turn = [get("src/app.js")];
 			healer.assessRepetition(turn);
 			healer.assessRepetition(turn);
 			healer.reset();
@@ -295,60 +324,6 @@ describe("ResponseHealer", () => {
 			healer.assessRepetition(turn);
 			const result = healer.assessRepetition(turn);
 			assert.strictEqual(result.continue, false);
-		});
-
-		it("path stagnation: same path touched in 5 consecutive turns force-completes", () => {
-			const healer = new ResponseHealer();
-			// Each turn touches the same path but with varying commands so
-			// fingerprints differ and the exact-cycle detector doesn't fire.
-			const P = "known://project_review/plan";
-			const setCmd = {
-				scheme: "set",
-				path: P,
-				attributes: { path: P, summary: "plan,a" },
-			};
-			const getCmd = {
-				scheme: "get",
-				path: P,
-				attributes: { path: P },
-			};
-			// 4 varied turns — no fingerprint cycle, no stagnation yet.
-			for (const fp of ["a", "b", "c", "d"]) {
-				const r = healer.assessRepetition({
-					actionCalls: [getCmd],
-					writeCalls: [
-						{ ...setCmd, attributes: { ...setCmd.attributes, summary: fp } },
-					],
-				});
-				assert.strictEqual(r.continue, true);
-			}
-			// 5th turn — path has been touched 5 consecutive turns, flag.
-			const result = healer.assessRepetition({
-				actionCalls: [getCmd],
-				writeCalls: [setCmd],
-			});
-			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason.includes("Path stagnation"));
-			assert.ok(result.reason.includes(P));
-		});
-
-		it("path stagnation does not flag when paths change", () => {
-			const healer = new ResponseHealer();
-			// Each turn touches a different path — no stagnation.
-			for (const p of [
-				"src/a.js",
-				"src/b.js",
-				"src/c.js",
-				"src/d.js",
-				"src/e.js",
-				"src/f.js",
-			]) {
-				const r = healer.assessRepetition({
-					actionCalls: [{ scheme: "get", path: p, attributes: { path: p } }],
-					writeCalls: [],
-				});
-				assert.strictEqual(r.continue, true);
-			}
 		});
 	});
 });

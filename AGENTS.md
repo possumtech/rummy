@@ -286,23 +286,38 @@ plugin that owns it. Rough target: ~250 orchestration lines, down from
 same rule applies to every plugin whose knowledge currently lives in
 core.
 
-**Tier 1 — core orchestration that's actually plugin work:**
+**Tier 1 — DONE this session.**
 
-- [ ] `#materializeTurnContext` (lines 37-128) moves into budget or a
-  dedicated context plugin. TurnExecutor emits a hook and receives
-  messages. Currently called three times inline with budget logic
-  around each — the clearest smell.
-- [ ] `budget.enforce` call (255-265) moves to a `turn.started` or
-  `llm.request` hook
-- [ ] `budget.postDispatch` call (551-572) moves to a `turn.completed` hook
-- [ ] Prompt Demotion (267-324): first-turn 413 → demote prompt →
-  re-materialize → re-enforce — moves into budget plugin
-- [ ] Scheme classification constants (`ACTION_SCHEMES`,
-  `MUTATION_SCHEMES`, `READ_SCHEMES` at 7-18; `hasAct/hasReads/hasWrites`
-  at 627-638) die. Each plugin declares its scheme's category and
-  mutation/read flags at registration. Core queries via
-  `hooks.tools.classify(scheme)` or equivalent.
-- [ ] TurnExecutor drops all budget imports and variables
+Materialization extracted to `src/agent/materializeContext.js` — a
+neutral module that TurnExecutor and the budget plugin both import.
+(Not a new plugin; materialization is infrastructure, not scheme-owned.)
+
+Budget plugin now owns Prompt Demotion and post-dispatch
+re-materialization internally. TurnExecutor passes a `ctx` bag
+`{runId, loopId, turn, systemPrompt, mode, toolSet, demoted, loopIteration}`
+to `budget.enforce` / `budget.postDispatch`; plugin re-materializes via
+`core.db` + `core.entries` when it needs fresh numbers.
+
+**Design decision:** `budget.enforce`/`budget.postDispatch` stay as
+direct method calls on `core.hooks.budget`, not filter hooks. The
+existing namespace works and formalizing as pub/sub filters would be
+overhead for marginal benefit (only one subscriber ever).
+
+Scheme classification (ACTION/MUTATION/READ_SCHEMES,
+actionCalls/writeCalls/unknownCalls, hasAct/hasReads/hasWrites) deleted
+outright — not replaced with plugin-declared classification.
+
+**ResponseHealer simplified** (folded in since classification removal
+gutted its API):
+- Fingerprint is now `tag + sortedAttrs`. No body, no target
+  normalization, no theory of mind about what tools do.
+- `cmdPaths`, `#pathRuns`, path-stagnation detection removed. Cycle
+  detection alone catches the same patterns a few turns later.
+- `assessRepetition(recorded)` takes the raw array.
+- `assessProgress` takes `recorded` and derives "did the turn do
+  non-update work?" as `recorded.some(e => e.scheme !== "update")`.
+  One scheme special-cased; update is the status-reporting channel,
+  everything else is work.
 
 **Tier 2 — plugin-specific logic leaking into core:**
 

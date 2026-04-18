@@ -1,21 +1,7 @@
 import RummyContext from "../hooks/RummyContext.js";
-import ContextAssembler from "./ContextAssembler.js";
+import materializeContext from "./materializeContext.js";
 import ResponseHealer from "./ResponseHealer.js";
-import { countTokens } from "./tokens.js";
 import XmlParser from "./XmlParser.js";
-
-const ACTION_SCHEMES = new Set([
-	"get",
-	"set",
-	"rm",
-	"mv",
-	"cp",
-	"sh",
-	"env",
-	"search",
-]);
-const MUTATION_SCHEMES = new Set(["set", "rm", "sh", "mv", "cp"]);
-const READ_SCHEMES = new Set(["get", "env", "search"]);
 
 export default class TurnExecutor {
 	#db;
@@ -28,103 +14,6 @@ export default class TurnExecutor {
 		this.#llmProvider = llmProvider;
 		this.#hooks = hooks;
 		this.#knownStore = knownStore;
-	}
-
-	/**
-	 * Rebuild turn_context from v_model_context, then assemble messages.
-	 * Called at turn start and again after any fidelity demotion within the turn.
-	 */
-	async #materializeTurnContext({
-		runId,
-		loopId,
-		turn,
-		systemPrompt,
-		mode,
-		toolSet,
-		contextSize,
-		demoted,
-	}) {
-		await this.#db.clear_turn_context.run({ run_id: runId, turn });
-		const viewRows = await this.#db.get_model_context.all({ run_id: runId });
-		for (const row of viewRows) {
-			const scheme = row.scheme || "file";
-			const projectedBody = await this.#hooks.tools.view(scheme, {
-				path: row.path,
-				scheme,
-				body: row.body,
-				attributes: row.attributes ? JSON.parse(row.attributes) : null,
-				fidelity: row.fidelity,
-				category: row.category,
-			});
-			await this.#db.insert_turn_context.run({
-				run_id: runId,
-				loop_id: loopId,
-				turn,
-				ordinal: row.ordinal,
-				path: row.path,
-				fidelity: row.fidelity,
-				status: row.status,
-				body: projectedBody ?? "",
-				// Full-body token count, not projected. This is the cost to
-				// promote the entry — the number the model needs to do Token
-				// Budget math. Projecting the demoted symbol-preview (145
-				// tokens for a 2108-token file) was misleading the model into
-				// promotes that blew the Token Budget by 10-30× per entry.
-				tokens: countTokens(row.body ?? ""),
-				attributes: row.attributes,
-				category: row.category,
-				source_turn: row.turn,
-			});
-		}
-		const rows = await this.#db.get_turn_context.all({ run_id: runId, turn });
-		const lastCtx = await this.#db.get_last_context_tokens.get({
-			run_id: runId,
-		});
-		const lastContextTokens = lastCtx?.context_tokens ?? 0;
-
-		// Baseline materialization — assemble with model's promoted spending
-		// removed (promoted data, promoted logging). The resulting size is the
-		// fixed overhead the model can't reduce without further demotion.
-		const baselineRows = rows.filter(
-			(r) =>
-				!(
-					(r.category === "data" || r.category === "logging") &&
-					r.fidelity === "promoted"
-				),
-		);
-		const baselineMessages = await ContextAssembler.assembleFromTurnContext(
-			baselineRows,
-			{
-				type: mode,
-				systemPrompt,
-				contextSize,
-				demoted,
-				toolSet,
-				lastContextTokens,
-				turn,
-			},
-			this.#hooks,
-		);
-		const baselineTokens = baselineMessages.reduce(
-			(sum, m) => sum + countTokens(m.content),
-			0,
-		);
-
-		const messages = await ContextAssembler.assembleFromTurnContext(
-			rows,
-			{
-				type: mode,
-				systemPrompt,
-				contextSize,
-				demoted,
-				toolSet,
-				lastContextTokens,
-				turn,
-				baselineTokens,
-			},
-			this.#hooks,
-		);
-		return { rows, messages, lastContextTokens };
 	}
 
 	async execute({
@@ -215,22 +104,27 @@ export default class TurnExecutor {
 
 		// Materialize turn_context: VIEW rows projected through tools
 		const demoted = [];
-		let { rows, messages, lastContextTokens } =
-			await this.#materializeTurnContext({
-				runId: currentRunId,
-				loopId: currentLoopId,
-				turn,
-				systemPrompt,
-				mode,
-				toolSet,
-				contextSize,
-				demoted,
-			});
+		const budgetCtx = {
+			runId: currentRunId,
+			loopId: currentLoopId,
+			turn,
+			systemPrompt,
+			mode,
+			toolSet,
+			demoted,
+			loopIteration,
+		};
+		const initial = await materializeContext({
+			db: this.#db,
+			hooks: this.#hooks,
+			contextSize,
+			...budgetCtx,
+		});
 
 		await this.#hooks.context.materialized.emit({
 			runId: currentRunId,
 			turn,
-			rowCount: rows.length,
+			rowCount: initial.rows.length,
 		});
 
 		await this.#hooks.run.progress.emit({
@@ -242,73 +136,23 @@ export default class TurnExecutor {
 
 		const budgetResult = await this.#hooks.budget.enforce({
 			contextSize,
-			messages,
-			rows,
-			lastPromptTokens: lastContextTokens,
+			messages: initial.messages,
+			rows: initial.rows,
+			lastPromptTokens: initial.lastContextTokens,
+			ctx: budgetCtx,
 		});
-		messages = budgetResult.messages;
-		rows = budgetResult.rows;
-		let assembledTokens =
-			budgetResult.assembledTokens ??
-			messages.reduce((sum, m) => sum + countTokens(m.content), 0);
+		const messages = budgetResult.messages;
+		const assembledTokens = budgetResult.assembledTokens;
 
 		if (budgetResult.status === 413) {
-			if (loopIteration === 1) {
-				// Prompt Demotion: first-turn overflow — demote incoming prompt to summary
-				const promptRow = rows.findLast(
-					(r) => r.category === "prompt" && r.scheme === "prompt",
-				);
-				if (promptRow) {
-					await this.#knownStore.setFidelity(
-						currentRunId,
-						promptRow.path,
-						"demoted",
-					);
-				}
-				const reMat = await this.#materializeTurnContext({
-					runId: currentRunId,
-					loopId: currentLoopId,
-					turn,
-					systemPrompt,
-					mode,
-					toolSet,
-					contextSize,
-					demoted,
-				});
-				rows = reMat.rows;
-				messages = reMat.messages;
-				const recheck = await this.#hooks.budget.enforce({
-					contextSize,
-					messages,
-					rows,
-					lastPromptTokens: reMat.lastContextTokens,
-				});
-				messages = recheck.messages;
-				rows = recheck.rows;
-				assembledTokens =
-					recheck.assembledTokens ??
-					messages.reduce((sum, m) => sum + countTokens(m.content), 0);
-				if (recheck.status === 413) {
-					return {
-						turn,
-						turnId: turnRow.id,
-						status: 413,
-						assembledTokens,
-						contextSize,
-						overflow: recheck.overflow,
-					};
-				}
-			} else {
-				// Base context too large even without new prompt — genuine failure
-				return {
-					turn,
-					turnId: turnRow.id,
-					status: 413,
-					assembledTokens,
-					contextSize,
-					overflow: budgetResult.overflow,
-				};
-			}
+			return {
+				turn,
+				turnId: turnRow.id,
+				status: 413,
+				assembledTokens,
+				contextSize,
+				overflow: budgetResult.overflow,
+			};
 		}
 
 		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
@@ -530,31 +374,12 @@ export default class TurnExecutor {
 			}
 		}
 
-		// Turn Demotion: if end-of-turn context exceeds ceiling, demote this
-		// turn's promoted entries. Budget plugin writes the budget:// entry;
-		// model reads it next turn and adjusts.
-		if (contextSize) {
-			const postMat = await this.#materializeTurnContext({
-				runId: currentRunId,
-				loopId: currentLoopId,
-				turn,
-				systemPrompt,
-				mode,
-				toolSet,
-				contextSize,
-				demoted,
-			});
-			await this.#hooks.budget.postDispatch({
-				contextSize,
-				messages: postMat.messages,
-				rows: postMat.rows,
-				runId: currentRunId,
-				loopId: currentLoopId,
-				turn,
-				db: this.#db,
-				store: this.#knownStore,
-			});
-		}
+		// Turn Demotion: budget plugin re-materializes end-of-turn context,
+		// demotes this turn's promoted entries on overflow, writes budget://.
+		await this.#hooks.budget.postDispatch({
+			contextSize,
+			ctx: budgetCtx,
+		});
 
 		const updateEntry = recorded.findLast((e) => e.scheme === "update");
 		const updateStatus = updateEntry?.attributes?.status ?? 102;
@@ -607,34 +432,16 @@ export default class TurnExecutor {
 			}
 		}
 
-		// --- Classify for return value ---
-
-		const actionCalls = recorded.filter((e) => ACTION_SCHEMES.has(e.scheme));
-		const writeCalls = recorded.filter(
-			(e) =>
-				e.scheme === "known" ||
-				(e.scheme === "set" && !e.attributes?.blocks && !e.attributes?.search),
-		);
-		const unknownCalls = recorded.filter((e) => e.scheme === "unknown");
-
-		const hasAct = actionCalls.some((c) => MUTATION_SCHEMES.has(c.scheme));
-		const hasReads = actionCalls.some((c) => READ_SCHEMES.has(c.scheme));
-		const hasWrites = writeCalls.length > 0 || unknownCalls.length > 0;
-		const flags = { hasAct, hasReads, hasWrites };
-
 		const askUserEntry = recorded.find((e) => e.scheme === "ask_user");
 
 		const turnResult = {
 			turn,
 			turnId: turnRow.id,
-			actionCalls,
-			writeCalls,
-			unknownCalls,
+			recorded,
 			summaryText,
 			updateText,
 			statusHealed,
 			askUserCmd: askUserEntry || null,
-			flags,
 			model: result.model || requestedModel,
 			modelAlias: requestedModel,
 			temperature: options?.temperature,

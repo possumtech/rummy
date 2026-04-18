@@ -403,10 +403,9 @@ export default class AgentLoop {
 					projectId,
 					run: currentAlias,
 					turn: result.turn,
-					flags: result.flags,
 				});
 
-				const repetition = healer.assessRepetition(result);
+				const repetition = healer.assessRepetition(result.recorded);
 				if (!repetition.continue) {
 					await this.#hooks.error.log.emit({
 						runId: currentRunId,
