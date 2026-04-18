@@ -352,16 +352,17 @@ think, update, nor scheme classification tables. What remains is hook
 emission and sequential queue mechanics. Current: 462 lines
 (from 730 at Phase 2 start).
 
-### Phase 2: Dead code and stale patterns
+### Phase 2: COALESCE(scheme, 'file') unification
 
-- [ ] `console.warn`/`console.error` audit — every remaining call
-  either becomes an error:// entry or is truly infrastructure logging
-- [ ] `COALESCE(ke.scheme, 'file')` in SQL — 3 remaining instances
-- [ ] `filePath` variable naming — rename to `entryPath` or `targetPath`
-- [ ] `generatePatch(filePath, ...)` parameter naming in matcher.js
-- [ ] Stale SPEC.md sections (summarize, old status codes, old history)
-- [ ] Stale PLUGINS.md entries
-- [ ] Stale FIDELITY_CONTRACT.md references
+Deferred from dead-code sweep — bigger than the "3 instances" the
+previous plan claimed. Bare file paths have `scheme=NULL` in DB (via
+`schemeOf(path)` generated column returning null); JOINs map NULL →
+`'file'` via COALESCE. Unifying would require `schemeOf` to return
+`'file'` for bare paths, updating ~10 call sites (SQL JOINs, `scheme
+IS NULL` queries, JS `row.scheme || "file"` fallbacks, test fixtures),
+plus a DB nuke to recompute the STORED generated column. Working
+infrastructure, not dead code. Skip unless the NULL-as-magic-value
+actively bites.
 
 ### Phase 3: E2E reliability
 

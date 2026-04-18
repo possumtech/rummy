@@ -36,9 +36,10 @@ pipeline is a hookable checkpoint. Plugins subscribe to events
 that thread a value through subscribers in priority order).
 
 **Every `<tag>` the model sees is a plugin.** The `<known>` section
-of the system message is rendered by the known plugin. The `<progress>`
-section is rendered by the progress plugin. The `<prompt>` tag is
-rendered by the prompt plugin. No monolithic assembler decides what goes where.
+of the system message is rendered by the known plugin. The `<prompt
+tokenBudget tokenUsage>` tag is rendered by the prompt plugin (which
+also carries the Token Budget math as attributes). No monolithic
+assembler decides what goes where.
 Each plugin filters for its own data from the shared row set, renders
 its section, and returns.
 
@@ -118,7 +119,9 @@ Every entry plays one of four roles:
 | `unknown://` | unknown | Unresolved questions. |
 | `prompt://` | prompt | User prompt with `mode` attribute (`ask`/`act`). |
 | `set://`, `get://`, `sh://`, `env://`, `rm://`, `mv://`, `cp://`, `ask_user://`, `search://` | logging | Tool result entries. |
-| `summarize://`, `update://` | logging | Lifecycle signals. |
+| `update://` | logging | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
+| `budget://` | logging | Turn Demotion panic record (413 overflow). |
+| `error://` | logging | Runtime errors (policy rejection, healer warnings, dispatch crashes, etc.). |
 | `tool://` | audit | Internal plugin metadata. `model_visible = 0`. |
 | `system://`, `reasoning://`, `model://`, `error://`, `user://`, `assistant://`, `content://` | audit | Audit entries. `model_visible = 0`. |
 
@@ -223,8 +226,8 @@ object is the same shape at every tier.
 
 | Method | Model | Client | Plugin |
 |--------|-------|--------|--------|
-| `get`, `set`, `rm`, `mv`, `cp`, `sh`, `env`, `search` | ✓ | ✓ | ✓ |
-| `known`, `unknown`, `ask_user`, `summarize`, `update` | ✓ | ✓ | ✓ |
+| `think`, `get`, `set`, `rm`, `mv`, `cp`, `sh`, `env`, `search` | ✓ | ✓ | ✓ |
+| `ask_user`, `update` | ✓ | ✓ | ✓ |
 | `ask`, `act`, `resolve`, `abort`, `startRun` | — | ✓ | ✓ |
 | `getRuns`, `getModels`, `getEntries` | — | ✓ | ✓ |
 | `on()`, `filter()`, db/store access | — | — | ✓ |
@@ -232,8 +235,10 @@ object is the same shape at every tier.
 Model tier restrictions enforced by unified `resolveForLoop(mode, flags)`.
 Ask mode excludes `sh`. Flags: `noInteraction` excludes `ask_user`,
 `noWeb` excludes `search`, `noProposals` excludes `ask_user`/`env`/`sh`.
-14 model tools: think, unknown, known, get, set, env, sh, rm, cp, mv,
-ask_user, update, summarize, search.
+11 model tools: think, get, set, env, sh, rm, cp, mv, ask_user, update,
+search. `known` and `unknown` are retired as emission tags — the model
+writes them via `<set path="known://...">` and `<set path="unknown://...">`;
+the plugins remain for rendering and filters.
 Client tier requires project init. Plugin tier has no restrictions.
 
 ### 3.2 Dispatch Path
@@ -257,10 +262,11 @@ when all tools have completed. Proposals are NOT batched — each is
 sent and resolved inline during dispatch. The model controls tool
 ordering; the system respects it.
 
-If the model sends `<summarize>` but a preceding action in the same
-turn failed, the summarize is overridden to an update (the model's
-assertion that it's done is false). Both `<summarize>` and `<update>`
-present → last signal wins.
+If the model sends `<update status="200">` (terminal) but a preceding
+action in the same turn failed, the terminal assertion is overridden
+to a continuation (the model's claim of doneness is false); the update
+plugin resolves the update entry to 409 and surfaces it to the next
+turn as a continuation. Multiple `<update>` tags → last signal wins.
 
 **Post-dispatch budget check:** After all tools dispatch, the system
 materializes context and checks the budget ceiling. If context exceeds
@@ -398,8 +404,7 @@ Two messages per turn. System = stable truth. User = active task.
     <performed>
         (current loop entries, each with turn, status, summary, fidelity, tokens)
     </performed>
-    <progress turn="N">token budget, fidelity stats, causal bridge</progress>
-    <prompt mode="ask|act" tools="...">user prompt</prompt>
+    <prompt mode="ask|act" tokenBudget="N" tokenUsage="M">user prompt</prompt>
 [/user]
 ```
 
@@ -409,13 +414,13 @@ Two messages per turn. System = stable truth. User = active task.
 The `<prompt>` tag is present on every turn — first turn and
 continuations alike. The model always sees its task. The active prompt
 is extracted from its chronological position and placed last for maximum
-recency. `<progress>` bridges the gap, narrating the causal relationship
-between `<performed>` (the work) and the prompt (the cause).
+recency. The `<prompt>` element carries `tokenBudget` / `tokenUsage`
+attributes so the model can do budget arithmetic in-line with the cause.
 
 ### 4.2 Loops, Previous, and Performed
 
 A **loop** is one `ask` or `act` invocation and all its continuation
-turns until summarize, fail, or abort.
+turns until `<update status="200">`, fail, or abort.
 
 **Previous** = all completed loops on this run. The user prompt, model
 responses, tool results, agent warnings — the full chronicle in order.
@@ -461,8 +466,8 @@ Each turn:
    - Unknown plugin (priority 300) → `<unknowns>` section
 8. Invoke `assembly.user` filter chain (empty string as base):
    - Performed plugin (priority 100) → `<performed>` section
-   - Progress plugin (priority 200) → `<progress>` section
-   - Prompt plugin (priority 300) → `<prompt>` section
+   - Prompt plugin (priority 300) → `<prompt>` element (carries
+     `tokenBudget` / `tokenUsage` attrs when `contextSize` is set)
 9. Store as `system://N` and `user://N` audit entries
 
 The VIEW determines visibility from `fidelity` and `status`:
@@ -515,9 +520,10 @@ loop to start (panic prompt + loop overhead > ceiling).
 **Size gate:** Known entries exceeding 500 tokens are rejected with
 413, forcing atomic entries.
 
-**Advisory warnings** (progress plugin):
-- 50%: "You may free space by lowering the fidelity of entries"
-- 75%: "YOU MUST free space... or the run will fail"
+**Advisory warnings**: model reads `tokenUsage` / `tokenBudget` on
+`<prompt>` every turn and self-regulates. No threshold warnings; budget
+feedback is the numbers themselves plus `budget://` Turn Demotion
+entries when the ceiling is actually breached.
 
 **Token math:** `Math.ceil(text.length / RUMMY_TOKEN_DIVISOR)`. One
 formula, one file (`src/agent/tokens.js`), env-configurable. No
@@ -615,16 +621,17 @@ unlimited turns as long as it makes progress.
 <= panicTarget`, the panic loop exits with 200. The retry loop
 then runs with the original prompt on the now-compressed context.
 
-**Tool set.** `resolveForLoop("panic")` includes: get, set, known,
-unknown, rm, mv, cp, summarize, update. Excludes: sh, env, search,
-ask_user. `noRepo: true` — no file scanning during panic.
+**Tool set.** `resolveForLoop("panic")` includes: get, set, rm, mv, cp,
+update. Excludes: sh, env, search, ask_user. `noRepo: true` — no file
+scanning during panic.
 
 **What the model sees.** Turn 1 receives the panic prompt from
 `budget.panicPrompt()`: the assembled token count, the target, and
 the exact number of tokens to free. Turn 2+ receives a continuation
-prompt. The model uses `<set fidelity="archive">`, `<mv
-fidelity="summary">`, and similar fidelity operations to free space,
-concluding with `<summarize>` when done or `<update>` while working.
+prompt. The model uses `<set fidelity="archived">`, `<mv
+fidelity="demoted">`, and similar fidelity operations to free space,
+concluding with `<update status="200">` when done or
+`<update status="102">` while working.
 
 ---
 
@@ -739,8 +746,8 @@ Skills loaded from `RUMMY_HOME/skills/{name}.md`. Personas from
 | Resolution | Model signal | Outcome |
 |-----------|-------------|---------|
 | reject | any | `completed` — rejection stops the bus |
-| accept | `<update>` | `running` — model has more work |
-| accept | `<summarize>` | `completed` |
+| accept | `<update status="102">` | `running` — model has more work |
+| accept | `<update status="200|204|422">` | `completed` — terminal |
 | accept | neither | `running` — healer decides |
 | error | any | `running` — error state, model retries |
 
@@ -854,15 +861,16 @@ acceptable explanation. Recovery order:
 3. Did our structure cause this? Check formatting, prompts.
 
 Termination protocol:
-- `<summarize>` → run terminates
-- `<summarize>` + failed actions → overridden to `<update>` (continue)
-- `<update>` → run continues
-- Both → last signal wins (respects the model's final intent)
-- Neither + investigation tools → stall counter (RUMMY_MAX_STALLS)
-- Neither + action-only tools → healed to summarize
-- Neither + plain text → healed to summarize
+- `<update status="200|204|422">` → run terminates
+- `<update status="200">` + failed actions → overridden to continuation
+  (the claim of doneness is refuted by the failures)
+- `<update status="102">` → run continues
+- Multiple `<update>` → last one wins
+- No `<update>` + investigation tools → stall counter (RUMMY_MAX_STALLS)
+- No `<update>` + action-only tools → healer infers terminal from body
+- No `<update>` + plain text → healer infers terminal from body
 - Repeated commands → cycle detection (RUMMY_MIN_CYCLES, RUMMY_MAX_CYCLE_PERIOD)
-- Repeated update text → stall (RUMMY_MAX_UPDATE_REPEATS)
+- Repeated update text without non-update work → stall (RUMMY_MAX_UPDATE_REPEATS)
 
 Format normalization:
 - Gemma `\`\`\`tool_code` fences → stripped before parsing

@@ -267,11 +267,11 @@ export default class Set {
 					: entry.attributes;
 			if (!attrs?.revisions?.length) continue;
 
-			const filePath = attrs.path;
-			const fileEntry = await store.getEntriesByPattern(runId, filePath);
-			if (fileEntry.length === 0) continue;
+			const entryPath = attrs.path;
+			const targetEntry = await store.getEntriesByPattern(runId, entryPath);
+			if (targetEntry.length === 0) continue;
 
-			const original = fileEntry[0].body;
+			const original = targetEntry[0].body;
 			let current = original;
 			const mergeBlocks = [];
 			let lastError = null;
@@ -296,15 +296,15 @@ export default class Set {
 			const state = lastError ? 409 : 202;
 			const udiff =
 				current !== original
-					? generatePatch(filePath, original, current)
+					? generatePatch(entryPath, original, current)
 					: null;
 			const merge = mergeBlocks.length > 0 ? mergeBlocks.join("\n") : null;
-			const beforeTokens = fileEntry[0].tokens || 0;
+			const beforeTokens = targetEntry[0].tokens || 0;
 			const afterTokens = current ? countTokens(current) : beforeTokens;
 
 			await store.upsert(runId, turn, entry.path, original, state, {
 				attributes: {
-					path: filePath,
+					path: entryPath,
 					patch: udiff,
 					merge,
 					beforeTokens,

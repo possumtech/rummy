@@ -23,7 +23,12 @@ export default class Unknown {
 		// Deduplicate — if this exact body already exists, skip
 		const existingValues = await store.getUnknownValues(runId);
 		if (existingValues.has(entry.body)) {
-			console.warn(`[RUMMY] Unknown deduped: "${entry.body.slice(0, 60)}"`);
+			await this.#core.hooks.error.log.emit({
+				runId,
+				turn,
+				loopId,
+				message: `Unknown deduped: "${entry.body.slice(0, 60)}"`,
+			});
 			return;
 		}
 

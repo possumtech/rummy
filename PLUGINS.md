@@ -514,8 +514,7 @@ pure RPC plumbing shared across all streaming producers.
 | `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` |
 | `previous` | Assembly | Render `<previous>` loop history |
 | `performed` | Assembly | Render `<performed>` active loop work |
-| `progress` | Assembly | Render `<progress>` telemetry + warnings |
-| `prompt` | Assembly | Render `<prompt mode="ask|act">` tag |
+| `prompt` | Assembly | Render `<prompt mode="ask|act" tokenBudget="N" tokenUsage="M">` tag; token budget math via attrs |
 | `hedberg` | Utility | Pattern matching, interpretation, normalization |
 | `instructions` | Internal | Preamble + tool docs + persona assembly |
 | `file` | Internal | File entry projections and constraints |

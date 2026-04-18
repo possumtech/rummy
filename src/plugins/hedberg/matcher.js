@@ -1,9 +1,9 @@
 import { createTwoFilesPatch } from "diff";
 
-export function generatePatch(filePath, oldContent, newContent) {
+export function generatePatch(entryPath, oldContent, newContent) {
 	return createTwoFilesPatch(
-		`${filePath}\told`,
-		`${filePath}\tnew`,
+		`${entryPath}\told`,
+		`${entryPath}\tnew`,
 		oldContent,
 		newContent,
 		"",
@@ -13,37 +13,37 @@ export function generatePatch(filePath, oldContent, newContent) {
 }
 
 export default class HeuristicMatcher {
-	static matchAndPatch(filePath, fileContent, searchBlock, replaceBlock) {
+	static matchAndPatch(entryPath, entryBody, searchBlock, replaceBlock) {
 		// Unescape common regex escapes (models often escape brackets, parens, etc.)
 		const unescaped = searchBlock.replace(/\\([[\](){}.*+?^$|\\])/g, "$1");
-		if (unescaped !== searchBlock && fileContent.includes(unescaped)) {
+		if (unescaped !== searchBlock && entryBody.includes(unescaped)) {
 			searchBlock = unescaped;
 		}
 
 		const searchLines = searchBlock.split(/\r?\n/);
-		const fileLines = fileContent.split(/\r?\n/);
+		const fileLines = entryBody.split(/\r?\n/);
 
 		// 1. Exact Match Attempt (line-boundary substring search)
-		let exactIdx = fileContent.indexOf(searchBlock);
+		let exactIdx = entryBody.indexOf(searchBlock);
 		let lastExactIdx = -1;
 		let exactCount = 0;
 		while (exactIdx !== -1) {
 			const atLineBoundary =
-				exactIdx === 0 || fileContent[exactIdx - 1] === "\n";
+				exactIdx === 0 || entryBody[exactIdx - 1] === "\n";
 			if (atLineBoundary) {
 				exactCount++;
 				lastExactIdx = exactIdx;
 			}
-			exactIdx = fileContent.indexOf(searchBlock, exactIdx + 1);
+			exactIdx = entryBody.indexOf(searchBlock, exactIdx + 1);
 		}
 
 		if (exactCount > 0) {
 			const useIdx = lastExactIdx;
 			const newContent =
-				fileContent.slice(0, useIdx) +
+				entryBody.slice(0, useIdx) +
 				replaceBlock +
-				fileContent.slice(useIdx + searchBlock.length);
-			const patch = generatePatch(filePath, fileContent, newContent);
+				entryBody.slice(useIdx + searchBlock.length);
+			const patch = generatePatch(entryPath, entryBody, newContent);
 			const warning =
 				exactCount > 1
 					? `SEARCH block matched ${exactCount} locations. Edit was applied to the last occurrence. Use more surrounding context in future edits to avoid ambiguity.`
@@ -59,9 +59,9 @@ export default class HeuristicMatcher {
 
 		if (searchTokens.length === 0) {
 			// Empty SEARCH = append REPLACE to end of file
-			const trailing = fileContent.endsWith("\n") ? "" : "\n";
-			const newContent = `${fileContent + trailing + replaceBlock}\n`;
-			const patch = generatePatch(filePath, fileContent, newContent);
+			const trailing = entryBody.endsWith("\n") ? "" : "\n";
+			const newContent = `${entryBody + trailing + replaceBlock}\n`;
+			const patch = generatePatch(entryPath, entryBody, newContent);
 			return { patch, newContent, warning: null, error: null };
 		}
 
@@ -149,7 +149,7 @@ export default class HeuristicMatcher {
 		];
 		const newContent = newFileLines.join("\n");
 
-		const patch = generatePatch(filePath, fileContent, newContent);
+		const patch = generatePatch(entryPath, entryBody, newContent);
 
 		if (fuzzyAmbiguous) {
 			warning =
