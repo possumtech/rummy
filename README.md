@@ -22,13 +22,24 @@ Rummy is the only LLM agent service inspired by and dedicated to the memory of f
 
 ## Installation
 
+Set `RUMMY_HOME` (e.g. `~/.rummy`) in your shell environment. On first
+run, Rummy creates `${RUMMY_HOME}/.env.example` from the package
+defaults and loads it on every start, so the lazy path works:
+
 ```bash
+# In your shell rc:
+export RUMMY_HOME=~/.rummy
+
 npm i -g @possumtech/rummy
-cd ~/.rummy
-cp .env.example .env
-vim .env # set up at least one model alias
-npm start
+rummy           # first run seeds ~/.rummy/.env.example
+$EDITOR ~/.rummy/.env.example   # set a model alias, tweak defaults
+rummy           # run again; picks up edits
 ```
+
+For per-user overrides without touching the seeded defaults, create
+`${RUMMY_HOME}/.env` with only the keys you want to change. Both
+files are loaded on boot; `.env.example` is baseline, `.env` extends.
+Shell env beats both.
 
 ## Usage
 

@@ -1,15 +1,45 @@
-import { mkdirSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-// Helper to expand ~ in paths since node --env-file doesn't do it
 // 0. Pre-flight Check: Environment and Dependencies
 const rummyHome = process.env.RUMMY_HOME;
 
 if (!rummyHome) {
 	console.error("RUMMY Configuration Error: RUMMY_HOME is not defined in environment.");
 	process.exit(1);
+}
+
+// 0a. Seed and load env from RUMMY_HOME.
+//
+// The cascade is: `${RUMMY_HOME}/.env.example` (canonical defaults,
+// shipped with the package) → `${RUMMY_HOME}/.env` (user overrides) →
+// existing process.env (wins). On first run we copy the bundled
+// .env.example into RUMMY_HOME so the user has a file to edit. Users
+// who edit .env.example directly just change the defaults — no silent
+// no-op; it's forgiving by design.
+//
+// For repo-local development (`npm start`), env is already populated
+// by the npm script's `--env-file-if-exists` flags before node starts,
+// so these loads are either no-ops or reinforce the same values.
+{
+	mkdirSync(rummyHome, { recursive: true });
+	const homeExample = join(rummyHome, ".env.example");
+	const homeEnv = join(rummyHome, ".env");
+	const bundledExample = fileURLToPath(new URL("./.env.example", import.meta.url));
+	if (!existsSync(homeExample) && existsSync(bundledExample)) {
+		copyFileSync(bundledExample, homeExample);
+		console.log(`[RUMMY] Seeded ${homeExample} from package defaults.`);
+	}
+	for (const path of [homeExample, homeEnv]) {
+		if (!existsSync(path)) continue;
+		try {
+			process.loadEnvFile(path);
+		} catch (err) {
+			console.warn(`[RUMMY] Failed to load ${path}: ${err.message}`);
+		}
+	}
 }
 
 // Check for optional system dependencies

@@ -441,8 +441,10 @@ Six phases, roughly sequential:
    READMEs). Each scratch pad gets read, relevant content folded into
    its proper home, then the scratch pad is deleted. Staleness sweep
    over the survivors.
-3. **Linting** — code hygiene pass. Unused imports, dead code,
-   formatting, naming consistency.
+3. **Linting + Coverage** — all deterministic code-quality and
+   coverage tools at green light. Lint (unused imports, dead code,
+   formatting, naming consistency) plus unit-test coverage targets
+   met. Nothing in the red before moving to feature drills.
 4. **Demo Drills** — real end-to-end use cases exercised. Validates
    the system works for the workflows it claims to support.
 5. **MAB Budget Drills** — MemoryAgentBench runs focused on budget
