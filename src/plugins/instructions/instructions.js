@@ -12,6 +12,33 @@ export default class Instructions {
 		this.#core = core;
 		core.on("promoted", this.full.bind(this));
 		core.on("turn.started", this.onTurnStarted.bind(this));
+		core.hooks.instructions.resolveSystemPrompt =
+			this.resolveSystemPrompt.bind(this);
+	}
+
+	/**
+	 * Materialize the system prompt for a run: look up the
+	 * instructions://system entry, project it through the promoted view.
+	 * TurnExecutor calls this once per turn before context assembly.
+	 */
+	async resolveSystemPrompt(runId) {
+		const store = this.#core.entries;
+		const entries = await store.getEntriesByPattern(
+			runId,
+			"instructions://system",
+			null,
+		);
+		const attributes = entries[0]
+			? await store.getAttributes(runId, "instructions://system")
+			: null;
+		return this.#core.hooks.tools.view("instructions", {
+			path: "instructions://system",
+			scheme: "instructions",
+			body: entries[0]?.body || "",
+			attributes,
+			fidelity: "promoted",
+			category: "system",
+		});
 	}
 
 	async onTurnStarted({ rummy }) {

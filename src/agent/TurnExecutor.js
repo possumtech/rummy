@@ -1,6 +1,5 @@
 import RummyContext from "../hooks/RummyContext.js";
 import materializeContext from "./materializeContext.js";
-import ResponseHealer from "./ResponseHealer.js";
 import XmlParser from "./XmlParser.js";
 
 export default class TurnExecutor {
@@ -82,25 +81,8 @@ export default class TurnExecutor {
 		await this.#hooks.processTurn(rummy);
 
 		// Project instructions://system through the instructions tool's projection
-		const instrEntry = await this.#knownStore.getEntriesByPattern(
-			currentRunId,
-			"instructions://system",
-			null,
-		);
-		const instrAttrs = instrEntry[0]
-			? await this.#knownStore.getAttributes(
-					currentRunId,
-					"instructions://system",
-				)
-			: null;
-		const systemPrompt = await this.#hooks.tools.view("instructions", {
-			path: "instructions://system",
-			scheme: "instructions",
-			body: instrEntry[0]?.body || "",
-			attributes: instrAttrs,
-			fidelity: "promoted",
-			category: "system",
-		});
+		const systemPrompt =
+			await this.#hooks.instructions.resolveSystemPrompt(currentRunId);
 
 		// Materialize turn_context: VIEW rows projected through tools
 		const demoted = [];
@@ -381,56 +363,16 @@ export default class TurnExecutor {
 			ctx: budgetCtx,
 		});
 
-		const updateEntry = recorded.findLast((e) => e.scheme === "update");
-		const updateStatus = updateEntry?.attributes?.status ?? 102;
-		const isTerminal =
-			updateStatus === 200 || updateStatus === 204 || updateStatus === 422;
-		let summaryText = isTerminal ? updateEntry?.body || null : null;
-		let updateText = !isTerminal ? updateEntry?.body || null : null;
-
-		if (updateEntry && !updateEntry.attributes?.status) {
-			await this.#hooks.error.log.emit({
+		const { summaryText, updateText, statusHealed } =
+			await this.#hooks.update.resolve({
+				recorded,
+				hasErrors,
+				content,
+				commands,
 				runId: currentRunId,
 				turn,
 				loopId: currentLoopId,
-				message:
-					'update missing status attribute. Use status="102" to continue or status="200" when done.',
 			});
-		}
-
-		// If model says "done" (status=200) but actions failed, override
-		if (summaryText && hasErrors) {
-			console.warn(
-				'[RUMMY] Overriding <update status="200"> — actions in this turn failed. Continuing.',
-			);
-			if (updateEntry?.path) {
-				await this.#knownStore.resolve(
-					currentRunId,
-					updateEntry.path,
-					409,
-					"Overridden — actions in this turn failed. Continue with <update/>.",
-				);
-			}
-			updateText = summaryText;
-			summaryText = null;
-		}
-
-		// If model sent no update, heal from content
-		let statusHealed = false;
-		if (!summaryText && !updateText) {
-			const healed = ResponseHealer.healStatus(content, commands);
-			summaryText = healed.summaryText;
-			updateText = healed.updateText;
-			statusHealed = true;
-			if (healed.warning) {
-				await this.#hooks.error.log.emit({
-					runId: currentRunId,
-					turn,
-					loopId: currentLoopId,
-					message: healed.warning,
-				});
-			}
-		}
 
 		const askUserEntry = recorded.find((e) => e.scheme === "ask_user");
 

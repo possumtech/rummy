@@ -319,18 +319,20 @@ gutted its API):
   One scheme special-cased; update is the status-reporting channel,
   everything else is work.
 
-**Tier 2 — plugin-specific logic leaking into core:**
+**Tier 2 — mostly done this session.**
 
-- [ ] `instructions://system` projection (208-226): path, scheme, and
-  category all hardcoded in core → `instructions` plugin exposes
-  `resolveSystemPrompt` or emits via hook
-- [ ] `<think>` tag → `reasoning_content` merge (411-421) → `think`
-  plugin subscribes to `turn.response` filter
-- [ ] `<update status="200">` override when actions failed (591-606):
-  core reaches into `knownStore.resolve` to force 409 → `update`
-  plugin owns this lifecycle rule via a post-dispatch hook
-- [ ] ResponseHealer "no update entry, heal from content" fallback
-  (608-623) → `update` plugin subscribes and fills the gap
+- [x] `instructions://system` projection → `instructions` plugin
+  exposes `hooks.instructions.resolveSystemPrompt(runId)`; TurnExecutor
+  calls it in one line.
+- [x] `<update>` lifecycle (status classification, 200-with-errors
+  override, missing-status error, healer fallback) → `Update.resolve()`
+  exposed via `hooks.update.resolve({recorded, hasErrors, content,
+  commands, runId, turn, loopId})`. Returns
+  `{summaryText, updateText, statusHealed}`.
+- [ ] `<think>` tag → `reasoning_content` merge (lines remaining in
+  TurnExecutor) — DEFERRED. Moving it cleanly needs new filter-hook
+  plumbing for ~10 lines of output-field cleanup that aren't really
+  scheme-behavior. Revisit if another reason arises.
 
 **Tier 3 — arguable, defer until Tier 1+2 land:**
 
@@ -344,7 +346,8 @@ gutted its API):
 
 **Exit criterion:** TurnExecutor imports neither budget, instructions,
 think, update, nor scheme classification tables. What remains is hook
-emission and sequential queue mechanics.
+emission and sequential queue mechanics. Current: 462 lines
+(from 730 at Phase 2 start).
 
 ### Phase 3: Dead code and stale patterns
 

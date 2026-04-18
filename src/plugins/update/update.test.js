@@ -8,6 +8,7 @@ describe("Update", () => {
 		registerScheme() {},
 		on() {},
 		filter() {},
+		hooks: {},
 	});
 
 	it("full returns body", () => {
