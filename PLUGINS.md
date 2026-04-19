@@ -34,7 +34,7 @@ export default class Ping {
         await rummy.set({
             path: entry.resultPath,
             body: `pong ${now}`,
-            status: 200,
+            state: "resolved",
             attributes: { path: entry.path },
         });
     }
@@ -112,25 +112,28 @@ Three tiers share the tool vocabulary, but the invocation shape and
 dispatch path differ.
 
 ```
-Model:  <rm path="file.txt"/>     → { name: "rm", path: "file.txt" }
-                                  → TurnExecutor.#record()
-                                  → hooks.tools.dispatch("rm", entry, rummy)
-Client: { method: "rm", params: { path: "file.txt" } }
-                                  → rpc.js dispatchTool(...)
-                                  → hooks.tools.dispatch("rm", entry, rummy)
-Plugin: rummy.rm("file.txt")      → rummy.entries.remove(...) (direct store)
+Model:   <rm path="file.txt"/>               → { name: "rm", path: "file.txt" }
+                                             → TurnExecutor.#record()
+                                             → hooks.tools.dispatch("rm", entry, rummy)
+Client:  { method: "rm", params: {...} }     → rpc.js #dispatchRm(...)
+                                             → Repository.rm({...})
+Plugin:  rummy.rm(path) / rummy.set({...})   → Repository.set / Repository.rm
+                                             → (Repository also fires entry events)
 ```
 
-Model and client tiers both land in `hooks.tools.dispatch` and invoke
-the scheme's handler. Model-tier additionally goes through
-`TurnExecutor.#record()` (policy filtering, turn-scoped recording,
-abort cascade) and the surrounding budget-check lifecycle (pre-LLM
-`budget.enforce`, post-dispatch `budget.postDispatch`). Client-tier
-`dispatchTool` is synchronous — no budget enforcement; the caller is
-responsible for not blowing context. Plugin-tier convenience verbs
-(`rummy.rm`, `rummy.set`, ...) are thin wrappers over the store — they
-don't invoke the handler chain. Plugin code that wants full handler
-semantics calls `hooks.tools.dispatch` directly.
+Three surfaces, one grammar (SPEC §0.3). The model dispatches through
+the handler chain (`TurnExecutor.#record()` → `hooks.tools.dispatch`
+→ policy filter → turn-scoped recording → abort cascade → budget
+lifecycle around it). The client primitives (`set`/`get`/`rm`/`cp`/
+`mv`/`update` RPCs) talk directly to Repository — `writer: "client"`
+on every call, permissions enforced per-scheme. Plugins use
+RummyContext verbs; the `rummy.entries` accessor is a Proxy that
+auto-binds `writer: rummy.writer` on every write, so a plugin writing
+on behalf of the model gets `writer: "model"` without opt-in.
+
+Plugin code wanting full handler semantics (policy filter, proposal
+flow, turn recording) calls `hooks.tools.dispatch` directly instead
+of going through a primitive.
 
 Verb signatures vary. See §4.1.
 
@@ -153,11 +156,11 @@ constructor.
 
 ```js
 core.registerScheme({
-    name:         "mytool",             // defaults to plugin name
-    modelVisible: 1,                    // 1 or 0 — appears in v_model_context
-    category:     "logging",            // "data" | "logging" | "unknown" | "prompt"
-    scope:        "run",                // "run" | "project" | "global" — default scope
-    writableBy:   ["model", "plugin"],  // allowed writer types
+    name:         "mytool",                     // defaults to plugin name
+    modelVisible: 1,                            // 1 or 0 — appears in v_model_context
+    category:     "logging",                    // "data" | "logging" | "unknown" | "prompt"
+    scope:        "run",                        // "run" | "project" | "global" — default scope
+    writableBy:   ["model", "plugin"],          // subset of: system | plugin | client | model
 });
 ```
 
@@ -165,10 +168,12 @@ All fields optional. `core.registerScheme()` with no args gives a
 sensible result-type scheme (logging category, run scope, writable by
 model + plugin).
 
-`scope` determines where entries at this scheme land (see SPEC §1.1 /
-§1.3). `writableBy` is enforced at `KnownStore.upsert` — writes from
-a writer not in the list are rejected with 403 and an `error://`
-entry is emitted.
+`scope` determines where entries at this scheme land (see SPEC §0.1 /
+§0.7). `writableBy` is enforced at `Repository.set` — writes from a
+writer not in the list throw a typed `PermissionError` (importable
+from `src/agent/errors.js`). The four writer tiers (SPEC §0.4) form
+a strict hierarchy: **system > plugin > client > model**. Each tier
+is a superset of what's below.
 
 ### §3.3 core.on(event, callback, priority?)
 
@@ -184,7 +189,7 @@ entry is emitted.
 | `"turn.completed"` | `(turnResult)` | Turn resolved — full turnResult |
 | `"entry.created"` | `(entry)` | Entry created during dispatch |
 | `"entry.changed"` | `({runId, path, changeType})` | Entry content, fidelity, or status modified |
-| `"run.state"` | `({projectId, run, turn, status, summary, history, unknowns, telemetry})` | Incremental client-facing state push |
+| `"run.state"` | `({projectId, run, turn, status, summary, history, unknowns, telemetry})` | Incremental client-facing state push (wire-layer `status` HTTP code stays; DB stores the 5-value state enum) |
 | `"error.log"` | `({runId, turn, loopId, message})` | Runtime error — creates an `error://` entry |
 | Any `"dotted.name"` | varies | Resolves to the matching hook in `src/hooks/Hooks.js` |
 
@@ -207,6 +212,7 @@ core.on("entry.changed", ({ runId, path, changeType }) => { /* react */ });
 | `"assembly.user"` | `(content, ctx) → content` | Contribute to user message |
 | `"llm.messages"` | `(messages) → messages` | Transform final messages before LLM call |
 | `"llm.response"` | `(response) → response` | Transform LLM response |
+| `"llm.reasoning"` | `(reasoning, {commands}) → reasoning` | Contribute to `reasoning_content` (the think plugin subscribes here to merge `<think>` tag bodies) |
 | Any `"dotted.name"` | varies | Resolves to the matching filter in the hook tree |
 
 ```js
@@ -296,25 +302,28 @@ invocation. Has tool verbs, per-turn state, database access.
 
 ### §4.1 Tool Verbs (on RummyContext)
 
-Convenience wrappers over `rummy.entries.*`. Signatures vary per verb
-— each takes what's natural. For full handler-chain semantics
-(including policy filtering and post-dispatch hooks), use
-`rummy.hooks.tools.dispatch(scheme, entry, rummy)` instead.
+Convenience wrappers that bind `runId`, `turn`, `loopId` from context
+and delegate to Repository. Signatures vary per verb. For full
+handler-chain semantics (policy filtering, proposal flow, abort
+cascade), call `rummy.hooks.tools.dispatch(scheme, entry, rummy)`
+instead.
 
 | Method | Effect |
 |--------|--------|
-| `rummy.set({ path?, body?, status?, fidelity?, attributes? })` | Create/update entry. If `path` omitted, slugifies from body/summary. |
-| `rummy.get(path)` | Promote entries matching a pattern to promoted fidelity |
-| `rummy.rm(path)` | Delete entry |
-| `rummy.mv(from, to)` | Move entry |
-| `rummy.cp(from, to)` | Copy entry |
+| `rummy.set({ path?, body?, state?, fidelity?, outcome?, attributes? })` | Create/update entry. If `path` omitted, slugifies from body/summary. State defaults to `"resolved"`. |
+| `rummy.get(path)` | Promote entries matching a pattern (default fidelity `"promoted"`). |
+| `rummy.rm(path)` | Remove entry's view. |
+| `rummy.mv(from, to)` | Rename entry. |
+| `rummy.cp(from, to)` | Copy entry to a new path. |
+| `rummy.update(body, { status?, attributes? })` | Write the once-per-turn lifecycle signal to `update://<slug>`. |
 
 ### §4.2 Query Methods
 
 | Method | Returns |
 |--------|---------|
 | `rummy.getBody(path)` | Body text or null |
-| `rummy.getStatus(path)` | Status code or null |
+| `rummy.getState(path)` | Categorical state (`"proposed"` \| `"streaming"` \| `"resolved"` \| `"failed"` \| `"cancelled"`) or null |
+| `rummy.getOutcome(path)` | Outcome string (populated when state ∈ {failed, cancelled}) or null |
 | `rummy.getAttributes(path)` | Parsed attributes `{}` or null |
 | `rummy.getEntry(path)` | First matching entry or null |
 | `rummy.getEntries(pattern, bodyFilter?)` | Array of matching entries |
@@ -324,7 +333,7 @@ Convenience wrappers over `rummy.entries.*`. Signatures vary per verb
 
 | Property | Type | Notes |
 |----------|------|-------|
-| `rummy.entries` | KnownStore instance | The Repository (also on PluginContext) |
+| `rummy.entries` | Repository proxy | Write calls auto-carry `writer: rummy.writer`. Read-through for reads + internal ops. |
 | `rummy.db` | SqlRite db | Prefer `entries` for plugin-facing data access |
 | `rummy.hooks` | Hook registry | |
 | `rummy.runId` | number | Current run |
@@ -336,7 +345,7 @@ Convenience wrappers over `rummy.entries.*`. Signatures vary per verb
 | `rummy.contextSize` | number \| null | Model context window |
 | `rummy.systemPrompt` / `rummy.loopPrompt` | string | |
 | `rummy.noRepo` / `rummy.noInteraction` / `rummy.noWeb` | boolean | Loop flags |
-| `rummy.writer` | `"model"` \| `"plugin"` \| `"system"` | Default `"model"` — who is initiating writes this turn. Passed through `store.upsert({writer})` for permission checks (see SPEC §1.3). |
+| `rummy.writer` | `"system"` \| `"plugin"` \| `"client"` \| `"model"` | Default `"model"` in handler dispatch. The Proxy on `rummy.entries` binds this to every write for permission checks (SPEC §0.4). |
 
 ## §5 Tool Display Order
 
@@ -418,7 +427,7 @@ Hooks fire in this order every turn:
 | 8 | `llm.response` | filter | Transform raw LLM response |
 | 9 | `llm.request.completed` | event | LLM call finished |
 | 10 | `turn.response` | event | Plugins write audit entries (telemetry) |
-| 11 | `entry.recording` | filter | Per command, during `#record()`. Returning `status >= 400` rejects the entry. |
+| 11 | `entry.recording` | filter | Per command, during `#record()`. Returning an entry with `state: "failed"` (or `"cancelled"`) rejects it. |
 | 12 | Per recorded entry (sequential, abort-on-failure): | | |
 |    | `tool.before` | event | Before handler dispatch |
 |    | `tools.dispatch` | — | Scheme's registered handler runs |
@@ -438,17 +447,20 @@ modification (used by budget remeasurement and file-on-disk detection).
 
 | Hook | Type | When |
 |------|------|------|
-| `entry.recording` | filter | Before entry stored. Return `{ status: 4xx }` to reject. |
+| `entry.recording` | filter | Before entry stored. Return `{ state: "failed", outcome }` to reject. |
 | `entry.created` | event | New entry added during dispatch |
-| `entry.changed` | event | Entry content, fidelity, or status modified |
+| `entry.changed` | event | Entry content, fidelity, or state modified |
 
 `entry.recording` is a filter — plugins can validate, transform, or
 reject entries before they hit the store. Payload:
-`{ scheme, path, body, attributes, status }`. Return the object
-(modified or not). Set `status >= 400` to reject.
+`{ scheme, path, body, attributes, state, outcome }`. Second arg is
+a context bag: `{ store, runId, turn, loopId, mode }`. Return the
+entry object (modified or not). Set `state: "failed"` with an
+`outcome` string (e.g. `"permission"`, `"validation"`) to reject —
+the policy plugin uses this pattern for ask-mode rejections.
 
 `entry.changed` fires on any mutation to an existing entry — body
-update, fidelity change, status change, attribute update. Payload:
+update, fidelity change, state change, attribute update. Payload:
 `{ runId, path, changeType }`. Subscribers include the budget plugin
 (remeasure context) and the repo plugin (detect file changes on disk).
 
@@ -485,13 +497,18 @@ SPEC §4.5 for the three-measure table.
 Every entry follows the same lifecycle regardless of origin:
 
 1. **Created** — `entries` row (content) + `run_views` row (per-run
-   projection) via the two-prep upsert flow (SPEC §1.4).
+   projection) via the two-prep upsert flow (SPEC §0.7).
 2. **Dispatched** — tool handler chain executes.
-3. **Status set** — handler sets 200, 202, 400, 413, etc. on the
-   `run_views` row (status is view-side).
+3. **State set** — handler sets `state` (`"proposed"` \| `"streaming"`
+   \| `"resolved"` \| `"failed"` \| `"cancelled"`) + optional
+   `outcome` string on the `run_views` row. State is view-side; body
+   is content-side. (SPEC §0.1)
 4. **Materialized** — `v_model_context` joins entries + run_views,
    projects into `turn_context`.
 5. **Assembled** — filter chain renders into system/user messages.
+   Model-facing tags carry `status="NNN"` (HTTP code) via
+   `src/agent/httpStatus.js`'s state-to-HTTP mapping — the model's
+   vocabulary is HTTP; the DB is categorical.
 6. **Visible** — model sees the entry in its context.
 
 Entries at `fidelity = 'archived'` skip steps 4–6 (invisible to
@@ -528,28 +545,31 @@ log tails, file watches) use the **streaming entry pattern**. The
 lifecycle extends beyond 202→200:
 
 ```
-202 Proposal (user decision pending)
-  → accept → 200 (log entry: action happened)
-           + 102 data entries (one per channel, growing)
-                  → 200/500 on completion
+state: "proposed" (user decision pending)
+  → accept → state: "resolved" (log entry: action happened)
+           + state: "streaming" data entries (one per channel, growing)
+                  → "resolved" / "failed" on completion
 ```
 
 **Producer plugin contract:**
 
 1. On dispatch, create a **proposal entry** at `{scheme}://turn_N/{slug}`
-   at status=202, category=logging. Body empty; `summary=command` attr.
-2. On user accept, `AgentLoop.resolve()` transitions the proposal entry
-   to status=200 (it becomes the **log entry**) and creates **data
-   entries** at `{path}_1`, `{path}_2`, etc. at status=102,
-   category=data, fidelity=demoted, empty body.
-3. Producer/client calls `stream { run, path, channel, chunk }` RPC to
-   append chunks to the appropriate channel.
+   with `state: "proposed"`, category=logging. Body empty;
+   `summary=command` attr.
+2. On user accept (client sends `set { state: "resolved" }` on the
+   proposal path), `AgentLoop.resolve()` transitions the proposal
+   entry to `state: "resolved"` (it becomes the **log entry**) and
+   creates **data entries** at `{path}_1`, `{path}_2`, etc. with
+   `state: "streaming"`, category=data, fidelity=demoted, empty body.
+3. Producer/client calls `stream { run, path, channel, chunk }` RPC
+   to append chunks to the appropriate channel.
 4. When the producer is done, `stream/completed { run, path, exit_code? }`
-   transitions all `{path}_*` data entries to terminal status (200 on
-   exit_code=0 or omitted; 500 otherwise) and rewrites the log entry
-   body with final stats. For client-initiated cancellation, the
-   client calls `stream/aborted { run, path, reason? }` instead —
-   transitions channels to 499 (Client Closed Request).
+   transitions all `{path}_*` data entries to a terminal state
+   (`"resolved"` on exit_code=0 or omitted; `"failed"` with outcome
+   `"exit:N"` otherwise) and rewrites the log entry body with final
+   stats. For client-initiated cancellation, the client calls
+   `stream/aborted { run, path, reason? }` instead — transitions
+   channels to `state: "cancelled"` with outcome=reason.
 
 **Channel numbering:** Unix file descriptor convention — `_1` is the
 primary stream (stdout for shell, body for fetch, lines for tail);
@@ -594,8 +614,7 @@ pure RPC plumbing shared across all streaming producers.
 | `budget` | Internal | Context ceiling enforcement: Prompt Demotion (pre-LLM first-turn 413) + Turn Demotion (post-dispatch). Exposes `hooks.budget.enforce` / `hooks.budget.postDispatch`. |
 | `policy` | Internal | Ask-mode per-invocation rejections via `entry.recording` filter |
 | `error` | Internal | `error.log` hook → `error://` entries |
-| `stream` | Internal | Streaming-entry RPC (`stream`, `stream/completed`, `stream/aborted`, `stream/cancel`) |
-| `think` | Tool | Private reasoning tag (body stripped from subsequent context) |
+| `think` | Tool | Private reasoning tag; contributes to `reasoning_content` via the `llm.reasoning` filter |
 | `openai` / `ollama` / `xai` / `openrouter` | LLM provider | Register with `hooks.llm.providers`; handle `{prefix}/...` model aliases. Silently inert if their env isn't configured. |
 | `persona` / `skill` | Internal | Runtime persona/skill management via RPC |
 
@@ -611,74 +630,107 @@ to the same PluginContext API as bundled plugins.
 
 ## §11 RPC Methods
 
-Client-facing JSON-RPC 2.0 over WebSocket. All tool methods go through
-the same handler chain as model commands.
+Client-facing JSON-RPC 2.0 over WebSocket. Protocol version **2.0.0**.
+The client surface is a thin projection of the plugin API (SPEC §0.3):
+the six primitives match the plugin's `rummy.set` / `rummy.get` / etc.
+exactly, plus a connection handshake and a few config verbs.
 
 ### §11.1 Wire Format
 
 ```json
 // Request
-{ "jsonrpc": "2.0", "id": 1, "method": "get", "params": { "path": "src/app.js", "run": "my_run" } }
+{ "jsonrpc": "2.0", "id": 1, "method": "set", "params": { "run": "my_run", "path": "known://fact", "body": "...", "state": "resolved" } }
 
 // Success response
-{ "jsonrpc": "2.0", "id": 1, "result": { "path": "src/app.js", "status": 200 } }
+{ "jsonrpc": "2.0", "id": 1, "result": { "ok": true } }
 
 // Error response
-{ "jsonrpc": "2.0", "id": 1, "error": { "code": -32600, "message": "Missing required param: path" } }
+{ "jsonrpc": "2.0", "id": 1, "error": { "code": -32603, "message": "set: path is required" } }
 
 // Notification (server → client, no id)
-{ "jsonrpc": "2.0", "method": "run/state", "params": { "run": "my_run", "status": 200 } }
+{ "jsonrpc": "2.0", "method": "run/state", "params": { "run": "my_run", "turn": 3, "status": 200, ... } }
 ```
 
-### §11.2 Tool Methods (Unified API)
+### §11.2 Connection Handshake
+
+First call every client makes. Establishes project identity and
+enforces protocol-version compatibility.
 
 | Method | Params | Notes |
 |--------|--------|-------|
-| `get` | `{ path, run, persist?, readonly? }` | `persist` also sets file constraint |
-| `set` | `{ path, body, run, attributes? }` | All entries go through handler chain |
-| `rm` | `{ path, run }` | |
-| `mv` | `{ path, to, run }` | |
-| `cp` | `{ path, to, run }` | |
-| `store` | `{ path, run?, persist?, ignore?, clear? }` | File constraints only — not a model tool |
-| `getEntries` | `{ pattern?, body?, run?, limit?, offset? }` | Query entries |
+| `rummy/hello` | `{ name, projectRoot, configPath?, clientVersion? }` | Returns `{ rummyVersion, projectId, projectRoot }`. Server rejects MAJOR mismatch with a protocol-mismatch error. |
 
-### §11.3 Run Management
+### §11.3 Primitives (SPEC §0.2)
+
+Six verbs. Object-args matching the entry grammar. Writer is fixed to
+`"client"` server-side; permissions enforced per-scheme via the
+scheme's `writable_by`.
 
 | Method | Params | Notes |
 |--------|--------|-------|
-| `startRun` | `{ model, temperature?, persona?, contextLimit? }` | Create run without prompt |
-| `ask` | `{ model, prompt, run?, noInteraction?, noWeb?, noRepo? }` | |
-| `act` | `{ model, prompt, run?, noInteraction?, noWeb?, noRepo? }` | |
-| `run/resolve` | `{ run, resolution }` | Accept/reject proposals |
-| `run/abort` | `{ run }` | Cancel active run |
-| `run/config` | `{ run, contextLimit?, persona?, model? }` | Update run settings |
-| `run/rename` | `{ run, name }` | Change run alias |
-| `run/inject` | `{ run, message }` | Inject message into active turn |
+| `set` | `{ run, path, body?, state?, fidelity?, outcome?, attributes?, append?, pattern?, bodyFilter? }` | Wide semantic: write content, change fidelity/state, merge attributes, append (streaming), pattern update. Writing to `run://<alias>` starts or cancels a run (see §11.4). State transitions on proposed entries route through `AgentLoop.resolve()` for scheme-specific side effects. |
+| `get` | `{ run, path, bodyFilter?, fidelity? }` | Promote an entry (or pattern) to visible fidelity. |
+| `rm` | `{ run, path, bodyFilter? }` | Remove entry's view. |
+| `cp` | `{ run, from, to, fidelity? }` | Copy entry to new path. |
+| `mv` | `{ run, from, to, fidelity? }` | Rename entry. |
+| `update` | `{ run, body, status?, attributes? }` | Write the once-per-turn lifecycle signal to `update://<slug>`. |
 
-### §11.4 Project / Protocol Management
+### §11.4 Run Lifecycle via Primitives
+
+Runs are addressable as `run://<alias>` entries (SPEC §0.5). The
+client manipulates run lifecycle via ordinary `set` calls:
+
+| Action | Call |
+|--------|------|
+| Start a run | `set { path: "run://<alias>", body: <prompt>, attributes: { model, mode?, persona?, temperature?, contextLimit?, noRepo?, noInteraction?, noWeb?, noProposals? } }` |
+| Cancel a run | `set { path: "run://<alias>", state: "cancelled" }` |
+| Accept a proposal | `set { run, path: "<entry>", state: "resolved", body?: <output> }` |
+| Reject a proposal | `set { run, path: "<entry>", state: "cancelled", body?: <reason> }` |
+
+Starting a new run is fire-and-forget: server returns `{ ok: true, alias }`
+immediately; client watches the run's state transitions via the
+`run/state` notification (and the `run://` entry itself).
+
+### §11.5 Config & Query Methods
+
+Not every server capability fits the entry grammar. These are
+dedicated verbs with 1:1 plugin-API equivalents.
 
 | Method | Params | Notes |
 |--------|--------|-------|
 | `ping` | — | Liveness check |
 | `discover` | — | Return the live RPC catalog |
-| `init` | `{ name, projectRoot, configPath? }` | Initialize project |
-| `addModel` | `{ alias, actual, contextLength? }` | Register model |
-| `removeModel` | `{ alias }` | Remove model |
-| `getRuns` | `{ limit?, offset? }` | List runs |
-| `getRun` | `{ run }` | Get single run details |
-| `getModels` | `{ limit?, offset? }` | List models |
-| `skill/add` / `skill/remove` / `getSkills` / `listSkills` | | Skill plugin |
-| `persona/set` / `listPersonas` | | Persona plugin |
-| `stream` / `stream/completed` / `stream/aborted` / `stream/cancel` | | Streaming plugin (§8.1) |
+| `getModels` / `addModel` / `removeModel` | (see rpc.js) | Model aliases |
+| `getRuns` / `getRun` | `{ limit?, offset? }` / `{ run }` | Run listing and detail |
+| `skill/add` / `skill/remove` / `getSkills` / `listSkills` | | Skill management |
+| `persona/set` / `listPersonas` | | Persona management |
+| `stream` / `stream/completed` / `stream/aborted` / `stream/cancel` | | Streaming RPC (§8.1) |
 
-### §11.5 Notifications (server → client)
+### §11.6 Notifications (server → client)
 
 | Method | Purpose |
 |--------|---------|
-| `rummy/hello` | Server greeting on connect; carries `rummyVersion` |
 | `run/state` | Incremental state push per tool dispatch |
 | `run/progress` | Turn status transition (`thinking` / `processing`) |
-| `run/proposal` | A 202 entry awaits resolution |
+| `run/proposal` | A proposed entry awaits client resolution |
 | `stream/cancelled` | Server-initiated streaming cancellation |
 | `ui/render` | Streaming UI output |
 | `ui/notify` | Toast notification |
+
+### §11.7 Retired Methods (2.0.0)
+
+Protocol 1.x shipped many methods that collapsed into the primitive
+grammar. Clients migrating from 1.x need to replace the following:
+
+| 1.x method | Replacement |
+|------------|-------------|
+| `init` | `rummy/hello` |
+| `ask` / `act` / `startRun` | `set { path: "run://<alias>", body: <prompt>, attributes: { model, mode, ... } }` |
+| `run/resolve` | `set { run, path, state, body? }` |
+| `run/abort` / `run/cancel` | `set { path: "run://<alias>", state: "cancelled" }` |
+| `run/rename` | `mv { run, from: "run://<old>", to: "run://<new>" }` |
+| `run/inject` | `set { path: "run://<alias>", body: <message> }` on an existing run |
+| `run/config` | `set { path: "run://<alias>", attributes: { ... } }` |
+| `store` (demote) | `set { run, path, fidelity: "demoted", pattern: true }` |
+| `getEntries` | `get` pattern reads returning entries, or query via the server's typed helpers |
+| Legacy `get` (file constraint `persist`) | File constraints retired from the RPC surface in 2.0 — handled server-side by the file plugin on `set`-accept of file-write proposals |

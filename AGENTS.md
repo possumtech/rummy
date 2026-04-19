@@ -208,20 +208,30 @@ Gate: no "Plugin load failed" anywhere. 258 unit + 183 non-LLM
 integration green. Lint clean. No test helper wires infrastructure
 that `createHooks()` owns.
 
-### Phase 6 — External plugins
+### Phase 6 — External projects
 
-Rewrite the plugins we own against the landed contract.
+Rewrite the three repos we own against the landed contract.
 
-- `rummy.repo` rewritten to the new scheme permissions, new verb
-  surface, new RummyContext shape.
-- `rummy.web` rewritten same.
+- **`PLUGINS.md` first.** External plugin authors read it. Bring it
+  current with the Phase 1-5 surface (object-args primitives,
+  four-tier writer, run-as-entry lifecycle, RPC 2.0.0).
+- **`rummy.repo`** — server-side plugin. Uses `rummy.getBody` /
+  `rummy.setAttributes`; no structural mismatch expected, but audit
+  against the new `RummyContext` shape.
+- **`rummy.web`** — server-side plugin. Currently uses `rummy.set({
+  ..., status: 200 })` (silently ignored); rewrite to `state`/`outcome`.
+- **`rummy.nvim`** — client. Deliberately broken against 1.x; rewrite
+  to the 2.0.0 wire: `rummy/hello` handshake, `set`/`get`/`rm`/`cp`/
+  `mv`/`update` primitives, run-as-entry lifecycle (start via `set
+  run://`, cancel via `set state="cancelled"`, resolve proposals via
+  `set state="resolved"`), `state` strings on the wire instead of
+  numeric `status`.
 - Any capability that doesn't map cleanly to primitives + scheme
   declarations is either reframed or removed.
-- Delete anything in either repo that has no reason to exist under
-  the contract.
 
-**Gate:** both plugins loadable, no `[RUMMY] Plugin load failed`,
-their tests green, their behavior exercised by at least one E2E test.
+**Gate:** all three projects build and pass their own tests. Both
+server plugins load cleanly (no `[RUMMY] Plugin load failed`). At
+least one E2E test exercises each plugin's behavior.
 
 ### Phase 7 — Verification
 
