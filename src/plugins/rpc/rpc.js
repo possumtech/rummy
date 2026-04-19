@@ -561,21 +561,29 @@ export default class Rpc {
 				);
 			}
 			const mode = attrs.mode ?? "ask";
+			const options = {
+				temperature: attrs.temperature,
+				persona: attrs.persona,
+				contextLimit: attrs.contextLimit,
+				noRepo: attrs.noRepo,
+				noInteraction: attrs.noInteraction,
+				noWeb: attrs.noWeb,
+				noProposals: attrs.noProposals,
+				fork: attrs.fork,
+			};
 			// Fire-and-forget: client watches state via entry notifications.
-			ctx.projectAgent
-				.run(mode, ctx.projectId, attrs.model, params.body || "", null, alias, {
-					temperature: attrs.temperature,
-					persona: attrs.persona,
-					contextLimit: attrs.contextLimit,
-					noRepo: attrs.noRepo,
-					noInteraction: attrs.noInteraction,
-					noWeb: attrs.noWeb,
-					noProposals: attrs.noProposals,
-					fork: attrs.fork,
-				})
-				.catch((err) => {
-					console.error(`[RUMMY] run ${alias} crashed: ${err.message}`);
-				});
+			// ProjectAgent exposes .ask/.act wrappers over AgentLoop#run; route
+			// by mode rather than calling the private loop directly.
+			const kickoff = mode === "act"
+				? ctx.projectAgent.act(
+					ctx.projectId, attrs.model, params.body || "", alias, options,
+				)
+				: ctx.projectAgent.ask(
+					ctx.projectId, attrs.model, params.body || "", alias, options,
+				);
+			kickoff.catch((err) => {
+				console.error(`[RUMMY] run ${alias} crashed: ${err.message}`);
+			});
 			return { ok: true, alias };
 		}
 

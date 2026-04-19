@@ -223,12 +223,19 @@ Rewrite the three repos we own against the landed contract.
 - **`rummy.web`** — server-side plugin. Landed: four `rummy.set({
   ..., status: 200 })` calls across search/get handlers replaced with
   explicit `state: "resolved"`. No other surface drift.
-- **`rummy.nvim`** — client. Deliberately broken against 1.x; rewrite
-  to the 2.0.0 wire: `rummy/hello` handshake, `set`/`get`/`rm`/`cp`/
-  `mv`/`update` primitives, run-as-entry lifecycle (start via `set
-  run://`, cancel via `set state="cancelled"`, resolve proposals via
-  `set state="resolved"`), `state` strings on the wire instead of
-  numeric `status`.
+- **`rummy.nvim`** — client. Landed: `init` → `rummy/hello` with
+  `clientVersion: "2.0.0"`; `ask`/`act`/`startRun` → `set run://`
+  with mode in attributes; `run/config`/`run/abort`/`run/inject` →
+  `set run://` variants; `run/rename` → `mv` on run:// paths;
+  `run/resolve` → `set state=resolved|cancelled`; constraint ops
+  → `file/constraint`/`file/drop`; BufEnter HUD now reads
+  `getConstraints`. Server-side gained `file/constraint`,
+  `file/drop`, `getEntries`, `getConstraints` RPCs plus empty-
+  alias `run://` synthesis (`${model}_${epoch}`) and readonly
+  enforcement in AgentLoop set:// accept. `run/state` notification
+  wire still carries numeric `status` (dual-write unchanged;
+  client integer handling stays). 92 nvim tests green; 258 unit +
+  184 integration green.
 - Any capability that doesn't map cleanly to primitives + scheme
   declarations is either reframed or removed.
 

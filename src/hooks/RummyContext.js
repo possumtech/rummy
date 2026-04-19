@@ -175,7 +175,10 @@ export default class RummyContext {
 	}
 
 	async update(body, { status = 102, attributes = {} } = {}) {
-		return this.entries.update(this.runId, this.sequence, body, {
+		return this.entries.update({
+			runId: this.runId,
+			turn: this.sequence,
+			body,
 			status,
 			attributes,
 			loopId: this.loopId,
