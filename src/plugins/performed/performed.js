@@ -30,9 +30,18 @@ function renderToolTag(entry) {
 
 	const target = attrs?.path || attrs?.command || "";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
-	const status = entry.state
-		? ` status="${stateToStatus(entry.state, entry.outcome)}"`
-		: "";
+	const statusValue =
+		attrs?.status != null
+			? attrs.status
+			: entry.state
+				? stateToStatus(entry.state, entry.outcome)
+				: null;
+	const status = statusValue != null ? ` status="${statusValue}"` : "";
+	const stateAttr =
+		entry.state && entry.state !== "resolved"
+			? ` state="${entry.state}"`
+			: "";
+	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
 	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
 	const summary =
@@ -41,9 +50,10 @@ function renderToolTag(entry) {
 			: "";
 
 	const body = entry.body || null;
+	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${fidelity}${tokens}`;
 
 	if (body) {
-		return `<${entry.scheme} path="${target}"${turn}${status}${summary}${fidelity}${tokens}>${body}</${entry.scheme}>`;
+		return `<${entry.scheme} path="${target}"${attrStr}>${body}</${entry.scheme}>`;
 	}
-	return `<${entry.scheme} path="${target}"${turn}${status}${summary}${fidelity}${tokens}/>`;
+	return `<${entry.scheme} path="${target}"${attrStr}/>`;
 }

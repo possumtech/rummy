@@ -26,7 +26,6 @@ constructor(core) {
 | `replace(body, search, replacement, opts?)` | Apply replacement (sed regex → literal → heuristic) |
 | `parseSed(input)` | Parse sed syntax into `[{ search, replace, flags, sed }]` |
 | `parseEdits(content)` | Detect edit format (merge conflict, udiff, Claude XML) |
-| `normalizeAttrs(attrs)` | Heal model attribute names (value→body, unknown→path) |
 | `generatePatch(path, old, new)` | Generate unified diff |
 
 ### Hedberg.replace(body, search, replacement, options?)

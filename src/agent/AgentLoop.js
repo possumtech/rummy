@@ -224,13 +224,18 @@ export default class AgentLoop {
 	async #drainQueue(currentRunId, currentAlias, projectId, project, options) {
 		const controller = new AbortController();
 		this.#activeRuns.set(currentRunId, controller);
+		console.error(`[DRAIN] ${currentAlias} enter (runId=${currentRunId})`);
 
 		try {
 			while (true) {
 				const loop = await this.#db.claim_next_loop.get({
 					run_id: currentRunId,
 				});
-				if (!loop) break;
+				if (!loop) {
+					console.error(`[DRAIN] ${currentAlias} queue empty — exiting`);
+					break;
+				}
+				console.error(`[DRAIN] ${currentAlias} claimed loop id=${loop.id} mode=${loop.mode} seq=${loop.sequence}`);
 
 				const loopConfig = loop.config ? JSON.parse(loop.config) : {};
 				const hook = loop.mode === "ask" ? this.#hooks.ask : this.#hooks.act;
@@ -255,6 +260,7 @@ export default class AgentLoop {
 						signal: controller.signal,
 					});
 				} catch (err) {
+					console.error(`[DRAIN] ${currentAlias} loop id=${loop.id} threw: ${err.message}`);
 					await this.#db.complete_loop.run({
 						id: loop.id,
 						status: 500,
@@ -264,6 +270,7 @@ export default class AgentLoop {
 				}
 
 				if (result.status === 413) {
+					console.error(`[DRAIN] ${currentAlias} loop id=${loop.id} overflow=413`);
 					await this.#db.complete_loop.run({
 						id: loop.id,
 						status: 413,
@@ -276,6 +283,7 @@ export default class AgentLoop {
 					};
 				}
 
+				console.error(`[DRAIN] ${currentAlias} loop id=${loop.id} completed status=${result.status}`);
 				await this.#db.complete_loop.run({
 					id: loop.id,
 					status: result.status,
@@ -286,6 +294,7 @@ export default class AgentLoop {
 			const runRow = await this.#db.get_run_by_alias.get({
 				alias: currentAlias,
 			});
+			console.error(`[DRAIN] ${currentAlias} exit (final status=${runRow?.status ?? 200})`);
 			return { run: currentAlias, status: runRow?.status ?? 200 };
 		} finally {
 			this.#activeRuns.delete(currentRunId);
@@ -346,6 +355,7 @@ export default class AgentLoop {
 		try {
 			while (loopIteration < MAX_LOOP_ITERATIONS) {
 				if (signal.aborted) {
+					console.error(`[LOOP] ${currentAlias} iter=${loopIteration} ABORT via signal`);
 					await this.#setRunStatus(currentRunId, currentAlias, 499);
 					const out = {
 						run: currentAlias,
@@ -356,6 +366,7 @@ export default class AgentLoop {
 					return out;
 				}
 				loopIteration++;
+				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} ENTER (max=${MAX_LOOP_ITERATIONS})`);
 
 				let turnPrompt;
 				if (loopIteration === 1) {
@@ -367,6 +378,7 @@ export default class AgentLoop {
 					);
 				}
 
+				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} executing turn`);
 				const result = await this.#turnExecutor.execute({
 					mode,
 					project,
@@ -383,6 +395,7 @@ export default class AgentLoop {
 					options: { ...options, isContinuation: loopIteration > 1 },
 					signal,
 				});
+				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} turn done: status=${result.status} turn=${result.turn}`);
 
 				if (result.status === 413) {
 					await this.#db.complete_loop.run({
@@ -459,48 +472,32 @@ export default class AgentLoop {
 					turn: result.turn,
 				});
 
-				const repetition = healer.assessRepetition(result.recorded);
-				if (!repetition.continue) {
+				const verdict = healer.assessTurn(result);
+				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} verdict: continue=${verdict.continue} status=${verdict.status ?? "-"} reason=${verdict.reason || "-"}`);
+				if (verdict.continue) continue;
+
+				console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CLOSE status=${verdict.status} reason=${verdict.reason || "-"}`);
+				await this.#setRunStatus(currentRunId, currentAlias, verdict.status);
+				if (verdict.reason) {
 					await this.#hooks.error.log.emit({
 						store: this.#knownStore,
 						runId: currentRunId,
 						turn: result.turn,
 						loopId: currentLoopId,
-						message: repetition.reason,
-					});
-					await this.#setRunStatus(currentRunId, currentAlias, 200);
-					const out = {
-						run: currentAlias,
-						status: 200,
-						turn: result.turn,
-						reason: repetition.reason,
-					};
-					await hook.completed.emit({ projectId, ...out });
-					return out;
-				}
-
-				const progress = healer.assessProgress(result);
-				if (progress.reason) {
-					await this.#hooks.error.log.emit({
-						store: this.#knownStore,
-						runId: currentRunId,
-						turn: result.turn,
-						loopId: currentLoopId,
-						message: progress.reason,
+						message: verdict.reason,
 					});
 				}
-				if (progress.continue) continue;
-
-				await this.#setRunStatus(currentRunId, currentAlias, 200);
 				const out = {
 					run: currentAlias,
-					status: 200,
+					status: verdict.status,
 					turn: result.turn,
+					reason: verdict.reason,
 				};
 				await hook.completed.emit({ projectId, ...out });
 				return out;
 			}
 
+			console.error(`[LOOP] ${currentAlias} hit MAX_LOOP_ITERATIONS=${MAX_LOOP_ITERATIONS}`);
 			await this.#setRunStatus(currentRunId, currentAlias, 200);
 			const out = {
 				run: currentAlias,
@@ -510,6 +507,8 @@ export default class AgentLoop {
 			await hook.completed.emit({ projectId, ...out });
 			return out;
 		} catch (err) {
+			console.error(`[LOOP] ${currentAlias} iter=${loopIteration} CAUGHT error: ${err.message}`);
+			console.error(err.stack);
 			if (signal.aborted) {
 				await this.#setRunStatus(currentRunId, currentAlias, 499);
 				return { run: currentAlias, status: 499, turn: loopIteration };
@@ -593,8 +592,10 @@ export default class AgentLoop {
 			);
 			const state = action === "error" ? "failed" : "resolved";
 			const outcome = action === "error" ? "error" : null;
+			const existing = await this.#knownStore.getState(runId, path);
 			await this.#knownStore.set({
 				runId,
+				turn: existing?.turn ?? 0,
 				path,
 				state,
 				body: resolvedBody,

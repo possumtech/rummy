@@ -17,13 +17,8 @@ visible AS (
 		, e.tokens
 		, COALESCE(s.category, 'logging') AS category
 		, CASE
-			-- Archived entries not in context
 			WHEN rv.fidelity = 'archived' THEN NULL
-			-- Proposed entries hidden until the client resolves them
-			WHEN rv.state = 'proposed' THEN NULL
-			-- Audit schemes (model_visible = 0) hidden
 			WHEN s.model_visible = 0 THEN NULL
-			-- Everything else visible at its fidelity
 			ELSE rv.fidelity
 		END AS visible_fidelity
 	FROM run_views AS rv

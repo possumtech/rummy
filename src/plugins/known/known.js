@@ -102,16 +102,24 @@ function renderKnownTag(entry, demotedSet) {
 	const tag = entry.scheme || "file";
 	const turn = entry.source_turn ? ` turn="${entry.source_turn}"` : "";
 	const tokens = entry.tokens ? ` tokens="${entry.tokens}"` : "";
-	const status = entry.state
-		? ` status="${stateToStatus(entry.state, entry.outcome)}"`
-		: "";
-	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
-	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
-
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
 			: entry.attributes;
+	const statusValue =
+		attrs?.status != null
+			? attrs.status
+			: entry.state
+				? stateToStatus(entry.state, entry.outcome)
+				: null;
+	const status = statusValue != null ? ` status="${statusValue}"` : "";
+	const stateAttr =
+		entry.state && entry.state !== "resolved"
+			? ` state="${entry.state}"`
+			: "";
+	const outcomeAttr = entry.outcome ? ` outcome="${entry.outcome}"` : "";
+	const fidelity = entry.fidelity ? ` fidelity="${entry.fidelity}"` : "";
+	const flag = demotedSet?.has(entry.path) ? " demoted" : "";
 	// Always render summary attribute on knowns — empty value hints the model
 	// it forgot to add searchable keywords.
 	const summaryText =
@@ -120,8 +128,9 @@ function renderKnownTag(entry, demotedSet) {
 			: "";
 	const summary = ` summary="${summaryText}"`;
 
+	const attrStr = `${turn}${status}${stateAttr}${outcomeAttr}${summary}${fidelity}${tokens}${flag}`;
 	if (entry.body) {
-		return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}>${entry.body}</${tag}>`;
+		return `<${tag} path="${entry.path}"${attrStr}>${entry.body}</${tag}>`;
 	}
-	return `<${tag} path="${entry.path}"${turn}${status}${summary}${fidelity}${tokens}${flag}/>`;
+	return `<${tag} path="${entry.path}"${attrStr}/>`;
 }

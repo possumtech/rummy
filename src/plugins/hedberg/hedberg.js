@@ -1,6 +1,6 @@
 import { parseEditContent } from "./edits.js";
 import HeuristicMatcher, { generatePatch } from "./matcher.js";
-import { normalizeAttrs, parseJsonEdit } from "./normalize.js";
+import { parseJsonEdit } from "./normalize.js";
 import { hedmatch, hedsearch } from "./patterns.js";
 import { parseSed } from "./sed.js";
 
@@ -14,7 +14,6 @@ import { parseSed } from "./sed.js";
  *   core.hedberg.replace(body, search, replacement, options?)
  *   core.hedberg.parseSed(input)
  *   core.hedberg.parseEdits(content)
- *   core.hedberg.normalizeAttrs(attrs)
  *   core.hedberg.generatePatch(path, old, new)
  */
 export default class Hedberg {
@@ -30,7 +29,6 @@ export default class Hedberg {
 			parseSed,
 			parseEdits: parseEditContent,
 			parseJsonEdit,
-			normalizeAttrs,
 			generatePatch,
 		};
 

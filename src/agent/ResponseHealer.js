@@ -1,7 +1,9 @@
-const MAX_STALLS = Number(process.env.RUMMY_MAX_STALLS) || 3;
+const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES) || 3;
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES) || 3;
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD) || 4;
-const MAX_UPDATE_REPEATS = Number(process.env.RUMMY_MAX_UPDATE_REPEATS) || 3;
+
+const CONTRACT_REMINDER =
+	"Missing update (status = 102 to continue, status = 200 to conclude)";
 
 /**
  * Build a stable fingerprint for a single recorded entry: scheme + all
@@ -43,138 +45,80 @@ function detectCycle(history) {
 	return { detected: false };
 }
 
+/**
+ * Three strikes, you're out.
+ *
+ * A turn strikes if any of:
+ *   - the model failed to emit a valid <update/> (strike from update.resolve)
+ *   - any action dispatched this turn failed (hasErrors)
+ *   - the turn completed a repeating fingerprint cycle
+ *
+ * Three consecutive strikes → run abandoned with status 499.
+ * A valid terminal <update status="200|204|422"> → run complete with 200.
+ * Any clean turn in between resets the streak.
+ */
 export default class ResponseHealer {
-	#stallCount = 0;
+	#strikeStreak = 0;
 	#turnHistory = [];
-	#lastUpdateText = null;
-	#updateRepeatCount = 0;
 
 	/**
-	 * Heal a missing status tag. Called when the model emits
-	 * neither <update status="200"/> nor <update/>.
-	 *
-	 * Plain text with no commands = the model answered. Treat as summary.
-	 * Commands with no status tag = the model is working. Treat as update.
+	 * Contract reminder for the model when update was missing or malformed.
+	 * Called by update.resolve when the healer needs to stand in for a
+	 * missing <update/>. We don't synthesize summary or continuation on
+	 * the model's behalf — completion is the model's responsibility.
 	 */
-	static healStatus(content, commands) {
-		const trimmed = content.trim();
-
-		// Detect malformed-glitch content — model attempted a tool invocation
-		// (native call, malformed XML, etc.) that the parser couldn't dispatch.
-		// This is NOT an answer; it's a glitch that deserves the 3-strikes
-		// stall path so the model can recover. Without this check, the model
-		// emits one malformed call and the run terminates after a single turn.
-		const looksGlitched = /<\|tool_call>|<tool_call\|>/.test(trimmed);
-
-		// No commands + plain text = answered. Treat as summary.
-		if (commands.length === 0 && trimmed && !looksGlitched) {
-			return {
-				summaryText: trimmed.slice(0, 500),
-				updateText: null,
-				warning:
-					"Plain text response with no tool commands. Treated as final answer.",
-			};
-		}
-
-		// Only write/unknown commands + no investigation tools = completed action.
-		const hasInvestigation = commands.some((c) =>
-			["get", "env", "search", "ask_user"].includes(c.name),
-		);
-		if (!hasInvestigation && commands.length > 0) {
-			const names = commands.map((c) => c.name).join(", ");
-			return {
-				summaryText: trimmed.slice(0, 500) || "Done.",
-				updateText: null,
-				warning: `Action-only response (${names}) with no update. Treated as final answer. Use update with status="200".`,
-			};
-		}
-
+	static healStatus() {
 		return {
 			summaryText: null,
-			updateText: "...",
-			warning: `Missing update. Tools: ${commands.map((c) => c.name).join(", ") || "none"}. Use update with status="102" to continue.`,
+			updateText: null,
+			warning: CONTRACT_REMINDER,
 		};
 	}
 
 	/**
-	 * Detect cyclic tool patterns across turns. Fingerprints every recorded
-	 * entry uniformly. Appends the turn's sorted fingerprint tuple to
-	 * history; flags if the tail forms a cycle of period 1..MAX_CYCLE_PERIOD
-	 * with at least MIN_CYCLES consecutive repetitions.
-	 *
-	 * Turns with no recorded entries are skipped (don't contribute to history).
+	 * Single assessment per turn. Combines strike tracking and cycle detection.
 	 */
-	assessRepetition(recorded) {
-		if (!recorded || recorded.length === 0) return { continue: true };
-
-		const fp = recorded.map(fingerprint).toSorted().join("|");
-		this.#turnHistory.push(fp);
-
-		const cycle = detectCycle(this.#turnHistory);
-		if (cycle.detected) {
-			const reason = `Cyclic tool pattern (period ${cycle.period}, ${cycle.cycles} repetitions)`;
-			return { continue: false, reason };
+	assessTurn({ summaryText, strike, hasErrors, recorded }) {
+		if (summaryText && !strike && !hasErrors) {
+			this.#strikeStreak = 0;
+			return { continue: false, status: 200 };
 		}
+
+		let cycleReason = null;
+		if (recorded && recorded.length > 0) {
+			const fp = recorded.map(fingerprint).toSorted().join("|");
+			this.#turnHistory.push(fp);
+			const cycle = detectCycle(this.#turnHistory);
+			if (cycle.detected) {
+				cycleReason = `Cyclic tool pattern (period ${cycle.period}, ${cycle.cycles} repetitions)`;
+			}
+		}
+
+		const struck = !!strike || !!hasErrors || !!cycleReason;
+
+		if (struck) {
+			this.#strikeStreak++;
+			if (this.#strikeStreak >= MAX_STRIKES) {
+				return {
+					continue: false,
+					status: 499,
+					reason:
+						cycleReason ||
+						`Abandoned after ${this.#strikeStreak} consecutive strikes.`,
+				};
+			}
+			return {
+				continue: true,
+				reason: cycleReason || CONTRACT_REMINDER,
+			};
+		}
+
+		this.#strikeStreak = 0;
 		return { continue: true };
 	}
 
-	/**
-	 * Assess whether the run should continue.
-	 *
-	 * Rules:
-	 *   <update status="200"/> present → done (terminate)
-	 *   <update/> present  → continue (model says it's working)
-	 *   neither present    → warn, increment stall counter
-	 *   stall counter hits MAX_STALLS → force-complete
-	 *   same update text N turns with no other work → force-complete
-	 */
-	assessProgress({ summaryText, updateText, statusHealed, recorded }) {
-		if (summaryText) {
-			this.#stallCount = 0;
-			return { continue: false };
-		}
-
-		if (updateText && !statusHealed) {
-			this.#stallCount = 0;
-			// Same update text N turns running without any non-update work =
-			// stuck declaring readiness. `update` is the only scheme special-
-			// cased here: it's the status-reporting channel, not work.
-			const madeProgress =
-				recorded?.some((e) => e.scheme !== "update") ?? false;
-			if (updateText === this.#lastUpdateText && !madeProgress) {
-				this.#updateRepeatCount++;
-				if (this.#updateRepeatCount >= MAX_UPDATE_REPEATS) {
-					const reason = `Same update repeated ${this.#updateRepeatCount} turns: "${updateText.slice(0, 60)}"`;
-					return { continue: false, reason };
-				}
-			} else {
-				this.#lastUpdateText = updateText;
-				this.#updateRepeatCount = 1;
-			}
-			return { continue: true };
-		}
-
-		// Healed or neither — model is glitching
-		this.#stallCount++;
-
-		if (this.#stallCount >= MAX_STALLS) {
-			const reason = `${this.#stallCount} turns with no update`;
-			return { continue: false, reason };
-		}
-
-		return {
-			continue: true,
-			reason: `Stall ${this.#stallCount}/${MAX_STALLS}: no update emitted`,
-		};
-	}
-
-	/**
-	 * Reset state for a new run or after resolution resume.
-	 */
 	reset() {
-		this.#stallCount = 0;
+		this.#strikeStreak = 0;
 		this.#turnHistory = [];
-		this.#lastUpdateText = null;
-		this.#updateRepeatCount = 0;
 	}
 }

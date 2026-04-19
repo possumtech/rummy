@@ -255,16 +255,20 @@ export default class Repository {
 			attributes: attributes ? JSON.stringify(attributes) : null,
 			hash,
 		});
+		const effectiveState = state ?? "resolved";
 		await this.#db.upsert_run_view.run({
 			run_id: runId,
 			entry_id: entry.id,
 			loop_id: loopId,
 			turn,
-			state: state ?? "resolved",
+			state: effectiveState,
 			outcome,
 			fidelity: fidelity ?? "promoted",
 		});
 		this.#emitChanged(runId, normalized, "upsert");
+		if (effectiveState !== "proposed") {
+			this.#drainPendingResolution(runId, normalized);
+		}
 	}
 
 	/**

@@ -117,7 +117,7 @@ describe("Scheme registration via plugins", () => {
 		assert.strictEqual(audit.length, 0, "audit entries should be hidden");
 	});
 
-	it("202 proposed entries hidden from model context", async () => {
+	it("proposed entries are visible in model context", async () => {
 		await store.set({
 			runId,
 			turn: 1,
@@ -127,7 +127,8 @@ describe("Scheme registration via plugins", () => {
 		});
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "set://proposed_edit");
-		assert.ok(!entry, "proposed entry should be hidden");
+		assert.ok(entry, "proposed entry should be visible");
+		assert.strictEqual(entry.state, "proposed");
 	});
 
 	it("stored fidelity entries hidden from model context", async () => {

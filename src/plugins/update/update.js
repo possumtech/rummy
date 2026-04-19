@@ -28,26 +28,25 @@ export default class Update {
 	}
 
 	/**
-	 * Classify this turn's update state and heal when missing.
+	 * Classify this turn's update state.
 	 *
-	 * Returns { summaryText, updateText, statusHealed }:
-	 *   - summaryText: non-null → the turn is terminal (run concludes)
+	 * Returns { summaryText, updateText, strike }:
+	 *   - summaryText: non-null → the turn is terminal (run concludes at 200)
 	 *   - updateText:  non-null → the turn continues
-	 *   - statusHealed: true → values were inferred from raw content
+	 *   - strike:      true → the model violated the update contract
+	 *                  (no update emitted, missing status attribute, or
+	 *                  terminal claim overridden by action failures)
 	 *
 	 * Rules:
 	 *   <update status="200|204|422"> body → summaryText (terminal)
 	 *   <update status="102"> body          → updateText (continuation)
-	 *   <update> body with no status        → log error, treat as continuation
-	 *   terminal update + failed actions    → override to continuation
-	 *                                         (resolve update entry to 409)
-	 *   no update emitted                   → heal from raw content
+	 *   <update> body with no status        → strike, log contract reminder
+	 *   terminal update + failed actions    → strike, override to continuation
+	 *   no update emitted                   → strike, log contract reminder
 	 */
 	async resolve({
 		recorded,
 		hasErrors,
-		content,
-		commands,
 		runId,
 		turn,
 		loopId,
@@ -58,15 +57,17 @@ export default class Update {
 		const isTerminal = TERMINAL_STATUSES.has(status);
 		let summaryText = isTerminal ? entry?.body || null : null;
 		let updateText = !isTerminal ? entry?.body || null : null;
+		let strike = false;
 
 		if (entry && !entry.attributes?.status) {
+			strike = true;
 			await rummy.hooks.error.log.emit({
 				store: rummy.entries,
 				runId,
 				turn,
 				loopId,
 				message:
-					'update missing status attribute. Use status="102" to continue or status="200" when done.',
+				"Missing status on update (status = 102 to continue, status = 200 to conclude)",
 			});
 		}
 
@@ -84,27 +85,22 @@ export default class Update {
 			}
 			updateText = summaryText;
 			summaryText = null;
+			strike = true;
 		}
 
-		// No update emitted at all → infer from raw content.
-		let statusHealed = false;
 		if (!summaryText && !updateText) {
-			const healed = ResponseHealer.healStatus(content, commands);
-			summaryText = healed.summaryText;
-			updateText = healed.updateText;
-			statusHealed = true;
-			if (healed.warning) {
-				await rummy.hooks.error.log.emit({
-					store: rummy.entries,
-					runId,
-					turn,
-					loopId,
-					message: healed.warning,
-				});
-			}
+			const healed = ResponseHealer.healStatus();
+			strike = true;
+			await rummy.hooks.error.log.emit({
+				store: rummy.entries,
+				runId,
+				turn,
+				loopId,
+				message: healed.warning,
+			});
 		}
 
-		return { summaryText, updateText, statusHealed };
+		return { summaryText, updateText, strike };
 	}
 
 	full(entry) {

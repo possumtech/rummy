@@ -369,7 +369,7 @@ utilities on `core.hooks.hedberg` for all plugins to use:
 
 ```js
 const { match, search, replace, parseSed, parseEdits,
-    normalizeAttrs, generatePatch } = core.hooks.hedberg;
+    generatePatch } = core.hooks.hedberg;
 ```
 
 | Method | Purpose |
@@ -379,7 +379,6 @@ const { match, search, replace, parseSed, parseEdits,
 | `replace(body, search, replacement, opts?)` | Apply replacement |
 | `parseSed(input)` | Parse sed syntax (any delimiter) |
 | `parseEdits(content)` | Detect edit format (merge conflict, udiff, sed) |
-| `normalizeAttrs(attrs)` | Heal model attribute names |
 | `generatePatch(path, old, new)` | Generate unified diff |
 
 ## §7 Events & Filters

@@ -341,7 +341,7 @@ export default class TurnExecutor {
 			rummy,
 		});
 
-		const { summaryText, updateText, statusHealed } =
+		const { summaryText, updateText, strike } =
 			await this.#hooks.update.resolve({
 				recorded,
 				hasErrors,
@@ -361,7 +361,8 @@ export default class TurnExecutor {
 			recorded,
 			summaryText,
 			updateText,
-			statusHealed,
+			strike,
+			hasErrors,
 			askUserCmd: askUserEntry || null,
 			model: result.model || requestedModel,
 			modelAlias: requestedModel,

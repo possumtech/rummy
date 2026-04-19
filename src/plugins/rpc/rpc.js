@@ -152,7 +152,7 @@ export default class Rpc {
 
 		// Connection handshake. First call a client makes. Establishes
 		// the project identity for this connection and announces the
-		// server's protocol version. Absorbed what `init` used to do.
+		// server's protocol version.
 		r.register("rummy/hello", {
 			handler: async (params, ctx) => {
 				const { RUMMY_PROTOCOL_VERSION } = await import(

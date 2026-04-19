@@ -14,4 +14,5 @@ JOIN schemes AS s ON s.name = ke.scheme
 WHERE
 	s.category IN ('logging', 'prompt', 'unknown')
 	AND ke.state != 'proposed'
+	AND ke.scheme != 'run'
 ORDER BY ke.id;

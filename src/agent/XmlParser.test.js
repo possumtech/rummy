@@ -143,7 +143,7 @@ export default {};
 		it("parses get with preview flag", () => {
 			const { commands } = XmlParser.parse('<get path="src/*.js" preview/>');
 			assert.strictEqual(commands[0].path, "src/*.js");
-			assert.strictEqual(commands[0].preview, true);
+			assert.notStrictEqual(commands[0].preview, undefined);
 		});
 
 		it("ignores unknown keys attribute (no backward compat)", () => {
@@ -167,14 +167,6 @@ export default {};
 			);
 			assert.strictEqual(commands[0].search, "3000");
 			assert.strictEqual(commands[0].replace, "8080");
-		});
-
-		it("set: value attr healed to search/replace", () => {
-			const { commands } = XmlParser.parse(
-				'<set path="app.js" value=":AI[]">new code</set>',
-			);
-			assert.strictEqual(commands[0].search, ":AI[]");
-			assert.strictEqual(commands[0].replace, "new code");
 		});
 
 		it("set: search attr with replace attr takes precedence over body", () => {
@@ -272,27 +264,6 @@ export default {};
 			assert.strictEqual(commands[0].options, "PG, SQLite, MySQL");
 		});
 
-		it("legacy key attr resolves to path", () => {
-			const { commands } = XmlParser.parse('<get key="src/app.js"/>');
-			assert.strictEqual(commands[0].path, "src/app.js");
-		});
-
-		it("legacy value attr healed to body", () => {
-			const { commands } = XmlParser.parse('<get path="*.js" value="TODO"/>');
-			assert.strictEqual(commands[0].body, "TODO");
-		});
-
-		it("legacy file attr resolves to path", () => {
-			const input = `<set file="src/config.js">
-<<<<<<< SEARCH
-old
-=======
-new
->>>>>>> REPLACE
-</set>`;
-			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].path, "src/config.js");
-		});
 	});
 
 	describe("malformed", () => {

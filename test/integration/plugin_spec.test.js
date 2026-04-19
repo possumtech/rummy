@@ -422,7 +422,6 @@ describe("PLUGINS.md Spec Compliance", () => {
 			assert.strictEqual(typeof h.replace, "function", "replace");
 			assert.strictEqual(typeof h.parseSed, "function", "parseSed");
 			assert.strictEqual(typeof h.parseEdits, "function", "parseEdits");
-			assert.strictEqual(typeof h.normalizeAttrs, "function", "normalizeAttrs");
 			assert.strictEqual(typeof h.generatePatch, "function", "generatePatch");
 		});
 	});

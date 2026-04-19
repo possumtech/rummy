@@ -2,7 +2,6 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import ResponseHealer from "./ResponseHealer.js";
 
-// Helpers to build entry-shaped objects matching what TurnExecutor produces.
 function get(path) {
 	return { scheme: "get", path, attributes: { path } };
 }
@@ -12,320 +11,174 @@ function sh(command) {
 function search(query) {
 	return { scheme: "search", path: null, attributes: { query } };
 }
+function update(body) {
+	return { scheme: "update", path: null, attributes: { status: 102 }, body };
+}
 
 describe("ResponseHealer", () => {
 	describe("healStatus", () => {
-		it("plain text with no commands becomes summary", () => {
-			const result = ResponseHealer.healStatus("I did the thing.", []);
-			assert.strictEqual(result.summaryText, "I did the thing.");
-			assert.strictEqual(result.updateText, null);
-		});
-
-		it("truncates long plain text summary to 500 chars", () => {
-			const long = "x".repeat(600);
-			const result = ResponseHealer.healStatus(long, []);
-			assert.strictEqual(result.summaryText.length, 500);
-			assert.strictEqual(result.updateText, null);
-		});
-
-		it("commands with no status tag becomes update placeholder", () => {
-			const result = ResponseHealer.healStatus("", [{ name: "get" }]);
-			assert.strictEqual(result.summaryText, null);
-			assert.strictEqual(result.updateText, "...");
-		});
-
-		it("empty content with no commands becomes update placeholder", () => {
-			const result = ResponseHealer.healStatus("", []);
-			assert.strictEqual(result.summaryText, null);
-			assert.strictEqual(result.updateText, "...");
-		});
-
-		it("whitespace-only content becomes update placeholder", () => {
-			const result = ResponseHealer.healStatus("   \n  ", []);
-			assert.strictEqual(result.summaryText, null);
-			assert.strictEqual(result.updateText, "...");
-		});
-
-		it("malformed native tool call is glitch, not summary", () => {
-			const malformed = '<|tool_call>call:set path="X">body</set><tool_call|>';
-			const result = ResponseHealer.healStatus(malformed, []);
-			// Must NOT be treated as summary — that would terminate the run
-			// after a single turn instead of letting the 3-strikes stall path
-			// give the model a chance to recover.
-			assert.strictEqual(result.summaryText, null);
-			assert.strictEqual(result.updateText, "...");
+		it("returns contract reminder with no synthesis", () => {
+			const r = ResponseHealer.healStatus();
+			assert.strictEqual(r.summaryText, null);
+			assert.strictEqual(r.updateText, null);
+			assert.ok(r.warning.includes("update"));
+			assert.ok(r.warning.includes("200"));
+			assert.ok(r.warning.includes("102"));
 		});
 	});
 
-	describe("assessProgress", () => {
-		it("summary terminates the run", () => {
-			const healer = new ResponseHealer();
-			const result = healer.assessProgress({
+	describe("assessTurn — terminal", () => {
+		it("terminal summary with no strike + no errors → 200", () => {
+			const h = new ResponseHealer();
+			const r = h.assessTurn({
 				summaryText: "all done",
-				updateText: null,
+				recorded: [update("all done")],
 			});
-			assert.strictEqual(result.continue, false);
+			assert.strictEqual(r.continue, false);
+			assert.strictEqual(r.status, 200);
 		});
 
-		it("update continues the run", () => {
-			const healer = new ResponseHealer();
-			const result = healer.assessProgress({
-				summaryText: null,
-				updateText: "reading files",
+		it("summary + strike (missing status) → not terminal", () => {
+			const h = new ResponseHealer();
+			const r = h.assessTurn({
+				summaryText: "all done",
+				strike: true,
+				recorded: [update("all done")],
 			});
-			assert.strictEqual(result.continue, true);
+			assert.strictEqual(r.continue, true);
 		});
 
-		it("neither increments stall counter and continues", () => {
-			const healer = new ResponseHealer();
-			const result = healer.assessProgress({
-				summaryText: null,
-				updateText: null,
+		it("summary + hasErrors → not terminal", () => {
+			const h = new ResponseHealer();
+			const r = h.assessTurn({
+				summaryText: "all done",
+				hasErrors: true,
+				recorded: [update("all done")],
 			});
-			assert.strictEqual(result.continue, true);
-		});
-
-		it("stalls force-complete after MAX_STALLS", () => {
-			const healer = new ResponseHealer();
-			for (let i = 0; i < 2; i++) {
-				healer.assessProgress({ summaryText: null, updateText: null });
-			}
-			const result = healer.assessProgress({
-				summaryText: null,
-				updateText: null,
-			});
-			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason);
-		});
-
-		it("update resets stall counter", () => {
-			const healer = new ResponseHealer();
-			healer.assessProgress({ summaryText: null, updateText: null });
-			healer.assessProgress({ summaryText: null, updateText: null });
-			// One more would stall — but update resets
-			healer.assessProgress({ summaryText: null, updateText: "working" });
-			healer.assessProgress({ summaryText: null, updateText: null });
-			healer.assessProgress({ summaryText: null, updateText: null });
-			const result = healer.assessProgress({
-				summaryText: null,
-				updateText: null,
-			});
-			assert.strictEqual(result.continue, false);
-		});
-
-		it("summary resets stall counter", () => {
-			const healer = new ResponseHealer();
-			healer.assessProgress({ summaryText: null, updateText: null });
-			healer.assessProgress({ summaryText: null, updateText: null });
-			const result = healer.assessProgress({
-				summaryText: "done",
-				updateText: null,
-			});
-			assert.strictEqual(result.continue, false);
-			assert.ok(!result.reason);
-		});
-
-		it("reset clears state", () => {
-			const healer = new ResponseHealer();
-			healer.assessProgress({ summaryText: null, updateText: null });
-			healer.assessProgress({ summaryText: null, updateText: null });
-			healer.reset();
-			// After reset, counter is 0 — needs 3 more to stall
-			const result = healer.assessProgress({
-				summaryText: null,
-				updateText: null,
-			});
-			assert.strictEqual(result.continue, true);
-		});
-
-		it("healed update increments stall counter", () => {
-			const healer = new ResponseHealer();
-			for (let i = 0; i < 3; i++) {
-				healer.assessProgress({
-					summaryText: null,
-					updateText: "...",
-					statusHealed: true,
-				});
-			}
-			const result = healer.assessProgress({
-				summaryText: null,
-				updateText: "...",
-				statusHealed: true,
-			});
-			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason);
-		});
-
-		it("genuine update resets stall counter from healed stalls", () => {
-			const healer = new ResponseHealer();
-			healer.assessProgress({
-				summaryText: null,
-				updateText: "...",
-				statusHealed: true,
-			});
-			healer.assessProgress({
-				summaryText: null,
-				updateText: "...",
-				statusHealed: true,
-			});
-			healer.assessProgress({ summaryText: null, updateText: "working" });
-			assert.strictEqual(
-				healer.assessProgress({
-					summaryText: null,
-					updateText: "...",
-					statusHealed: true,
-				}).continue,
-				true,
-			);
-		});
-
-		it("repeated update text without non-update work terminates", () => {
-			const healer = new ResponseHealer();
-			const updateOnly = [
-				{ scheme: "update", attributes: { state: "streaming" } },
-			];
-			for (let i = 0; i < 2; i++) {
-				const r = healer.assessProgress({
-					updateText: "still working",
-					recorded: updateOnly,
-				});
-				assert.strictEqual(r.continue, true);
-			}
-			const result = healer.assessProgress({
-				updateText: "still working",
-				recorded: updateOnly,
-			});
-			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason.includes("repeated"));
-		});
-
-		it("repeated update text with non-update work does not terminate", () => {
-			const healer = new ResponseHealer();
-			for (let i = 0; i < 5; i++) {
-				const r = healer.assessProgress({
-					updateText: "investigating",
-					recorded: [
-						{ scheme: "update", attributes: { state: "streaming" } },
-						{ scheme: "get", attributes: { path: `src/file${i}.js` } },
-					],
-				});
-				assert.strictEqual(r.continue, true);
-			}
+			assert.strictEqual(r.continue, true);
 		});
 	});
 
-	describe("assessRepetition", () => {
-		it("no commands does not contribute to cycle history", () => {
-			const healer = new ResponseHealer();
-			const result = healer.assessRepetition([]);
-			assert.strictEqual(result.continue, true);
+	describe("assessTurn — three strikes", () => {
+		it("three consecutive strikes → 499", () => {
+			const h = new ResponseHealer();
+			h.assessTurn({ strike: true, recorded: [get("a")] });
+			h.assessTurn({ strike: true, recorded: [get("b")] });
+			const r = h.assessTurn({ strike: true, recorded: [get("c")] });
+			assert.strictEqual(r.continue, false);
+			assert.strictEqual(r.status, 499);
+			assert.ok(r.reason);
 		});
 
-		it("AAAA — same turn repeated 3x force-completes (period 1)", () => {
-			const healer = new ResponseHealer();
-			const turn = [get("src/app.js")];
-			healer.assessRepetition(turn);
-			healer.assessRepetition(turn);
-			const result = healer.assessRepetition(turn);
-			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason.includes("period 1"));
+		it("clean turn resets streak", () => {
+			const h = new ResponseHealer();
+			h.assessTurn({ strike: true, recorded: [get("a")] });
+			h.assessTurn({ strike: true, recorded: [get("b")] });
+			h.assessTurn({ updateText: "working", recorded: [update("working"), get("c")] });
+			const r = h.assessTurn({ strike: true, recorded: [get("d")] });
+			assert.strictEqual(r.continue, true);
 		});
 
-		it("ABABAB — alternating pattern force-completes after 3 cycles (period 2)", () => {
-			const healer = new ResponseHealer();
+		it("hasErrors alone counts as a strike", () => {
+			const h = new ResponseHealer();
+			h.assessTurn({ hasErrors: true, recorded: [get("a")] });
+			h.assessTurn({ hasErrors: true, recorded: [get("b")] });
+			const r = h.assessTurn({ hasErrors: true, recorded: [get("c")] });
+			assert.strictEqual(r.continue, false);
+			assert.strictEqual(r.status, 499);
+		});
+
+		it("mixed strike sources all accrue to the same counter", () => {
+			const h = new ResponseHealer();
+			h.assessTurn({ strike: true, recorded: [get("a")] });
+			h.assessTurn({ hasErrors: true, recorded: [get("b")] });
+			const r = h.assessTurn({ strike: true, recorded: [get("c")] });
+			assert.strictEqual(r.continue, false);
+			assert.strictEqual(r.status, 499);
+		});
+
+		it("contract reminder returned on each non-terminal strike below threshold", () => {
+			const h = new ResponseHealer();
+			const r = h.assessTurn({ strike: true, recorded: [get("a")] });
+			assert.strictEqual(r.continue, true);
+			assert.ok(r.reason.includes("update"));
+			assert.ok(r.reason.includes("200"));
+		});
+	});
+
+	describe("assessTurn — repetition strike", () => {
+		it("AAA period-1 cycle → strike", () => {
+			const h = new ResponseHealer();
+			h.assessTurn({ updateText: "x", recorded: [get("src/app.js")] });
+			h.assessTurn({ updateText: "x", recorded: [get("src/app.js")] });
+			const r = h.assessTurn({
+				updateText: "x",
+				recorded: [get("src/app.js")],
+			});
+			assert.ok(r.reason?.includes("period 1"));
+		});
+
+		it("ABABAB period-2 cycle → strike on 6th turn", () => {
+			const h = new ResponseHealer();
 			const A = [get("src/app.js")];
 			const B = [sh("grep TODO src/app.js")];
-			// First 5 turns (incomplete — only 2 full cycles of AB at most)
 			for (let i = 0; i < 5; i++) {
-				const r = healer.assessRepetition(i % 2 === 0 ? A : B);
-				assert.strictEqual(r.continue, true, `should continue at turn ${i}`);
+				const r = h.assessTurn({
+					updateText: "x",
+					recorded: i % 2 === 0 ? A : B,
+				});
+				assert.strictEqual(r.continue, true);
 			}
-			// 6th turn completes ABABAB — 3 full cycles
-			const result = healer.assessRepetition(B);
-			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason.includes("period 2"));
+			const r = h.assessTurn({ updateText: "x", recorded: B });
+			assert.ok(r.reason?.includes("period 2"));
 		});
 
-		it("ABCABCABC — 3-period cycle force-completes after 3 cycles", () => {
-			const healer = new ResponseHealer();
-			const A = [get("src/app.js")];
-			const B = [sh("grep TODO src/app.js")];
-			const C = [search("error handler")];
-			const pattern = [A, B, C];
-			// 8 turns (2 full cycles + 2 — not yet 3 full cycles)
-			for (let i = 0; i < 8; i++) {
-				const r = healer.assessRepetition(pattern[i % 3]);
-				assert.strictEqual(r.continue, true, `should continue at turn ${i}`);
-			}
-			// 9th turn completes the 3rd ABC cycle
-			const result = healer.assessRepetition(C);
-			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason.includes("period 3"));
+		it("three cycle strikes in a row → 499", () => {
+			const h = new ResponseHealer();
+			const turn = [get("src/app.js")];
+			h.assessTurn({ updateText: "x", recorded: turn });
+			h.assessTurn({ updateText: "x", recorded: turn });
+			// 3rd hit: first strike via cycle detection.
+			h.assessTurn({ updateText: "x", recorded: turn });
+			h.assessTurn({ updateText: "x", recorded: turn });
+			const r = h.assessTurn({ updateText: "x", recorded: turn });
+			assert.strictEqual(r.continue, false);
+			assert.strictEqual(r.status, 499);
 		});
 
-		it("varied commands with no repeating cycle continue indefinitely", () => {
-			const healer = new ResponseHealer();
+		it("empty recorded does not contribute to cycle history", () => {
+			const h = new ResponseHealer();
+			h.assessTurn({ updateText: "x", recorded: [] });
+			h.assessTurn({ updateText: "x", recorded: [] });
+			const r = h.assessTurn({ updateText: "x", recorded: [] });
+			assert.strictEqual(r.continue, true);
+		});
+
+		it("varied commands continue indefinitely", () => {
+			const h = new ResponseHealer();
 			const turns = [
 				[get("a.js")],
 				[get("b.js")],
 				[get("a.js")],
-				[search("query")],
+				[search("q")],
 				[get("a.js")],
 				[get("c.js")],
 			];
-			for (const turn of turns) {
-				const r = healer.assessRepetition(turn);
+			for (const t of turns) {
+				const r = h.assessTurn({ updateText: "x", recorded: t });
 				assert.strictEqual(r.continue, true);
 			}
 		});
+	});
 
-		it("order of commands within a turn does not matter", () => {
-			const healer = new ResponseHealer();
-			const fwd = [get("a.js"), get("b.js")];
-			const rev = [get("b.js"), get("a.js")];
-			healer.assessRepetition(fwd);
-			healer.assessRepetition(rev);
-			const result = healer.assessRepetition(fwd);
-			// [fwd, rev, fwd] = [A, A, A] since order-normalized — period 1, 3 reps
-			assert.strictEqual(result.continue, false);
-		});
-
-		it("fidelity attribute differentiates otherwise identical operations", () => {
-			const healer = new ResponseHealer();
-			const full = [
-				{
-					scheme: "get",
-					path: "src/app.js",
-					attributes: { path: "src/app.js", fidelity: "promoted" },
-				},
-			];
-			const summary = [
-				{
-					scheme: "get",
-					path: "src/app.js",
-					attributes: { path: "src/app.js", fidelity: "demoted" },
-				},
-			];
-			// ABABAB — different fingerprints due to fidelity, should be period 2
-			for (let i = 0; i < 5; i++) {
-				healer.assessRepetition(i % 2 === 0 ? full : summary);
-			}
-			const result = healer.assessRepetition(summary);
-			assert.strictEqual(result.continue, false);
-			assert.ok(result.reason.includes("period 2"));
-		});
-
-		it("reset clears cycle history", () => {
-			const healer = new ResponseHealer();
-			const turn = [get("src/app.js")];
-			healer.assessRepetition(turn);
-			healer.assessRepetition(turn);
-			healer.reset();
-			// After reset, history is empty — needs 3 more to trigger
-			healer.assessRepetition(turn);
-			healer.assessRepetition(turn);
-			const result = healer.assessRepetition(turn);
-			assert.strictEqual(result.continue, false);
+	describe("reset", () => {
+		it("clears streak and history", () => {
+			const h = new ResponseHealer();
+			h.assessTurn({ strike: true, recorded: [get("a")] });
+			h.assessTurn({ strike: true, recorded: [get("a")] });
+			h.reset();
+			const r = h.assessTurn({ strike: true, recorded: [get("a")] });
+			assert.strictEqual(r.continue, true);
 		});
 	});
 });

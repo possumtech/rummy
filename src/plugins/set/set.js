@@ -116,13 +116,21 @@ export default class Set {
 				const merge = oldContent
 					? `<<<<<<< SEARCH\n${oldContent}\n=======\n${newContent}\n>>>>>>> REPLACE`
 					: `<<<<<<< SEARCH\n=======\n${newContent}\n>>>>>>> REPLACE`;
+				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
+				const afterTokens = countTokens(newContent);
 				await store.set({
 					runId,
 					turn,
 					path: entry.resultPath,
 					body: oldContent,
 					state: "proposed",
-					attributes: { path: target, patch: udiff, merge },
+					attributes: {
+						path: target,
+						patch: udiff,
+						merge,
+						beforeTokens,
+						afterTokens,
+					},
 					loopId,
 				});
 			} else if (attrs.filter || target.includes("*")) {
