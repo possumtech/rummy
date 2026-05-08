@@ -297,6 +297,70 @@ extraction adds a hop without separating concerns, it's ceremony
 
 ## Open Items
 
+- [ ] **Budget grinder refactor — four-step ladder.** SPEC §
+  budget_enforcement is the source of truth. Replaces the current
+  speculative postDispatch + first-turn-only prompt demote +
+  scheme-exempt demote_turn_entries + prior-turn-pressure
+  fallback with a single pre-LLM ladder:
+
+  1. Check budget; if ok, proceed.
+  2. Soft 413: demote `(current_turn − 1)` visible run_views to
+     summarized. Recheck.
+  3. Soft 413: demote the incoming `prompt://N` to summarized.
+     Recheck.
+  4. Hard 413: emit `error://` and exit the loop.
+
+  Trunks and forks are uniform: forked runs inherit parent's
+  `next_turn` so turn numbering is absolute across the lineage,
+  and inherited `run_views` keep their original `turn`. No
+  fork-event restamping anywhere.
+
+  Concrete diff scope:
+  - Drop `archive_prior_prompt_artifacts` (call site in
+    `prompt.js`, SQL prep in `runs.sql`, `Entries`
+    method).
+  - Drop budget `postDispatch` (method + `turn.dispatched`
+    handler registration). Drop `predictNextPacket` if unused.
+  - Drop `demote_run_visible` + `get_run_visible_targets` SQL
+    preps and the `Entries.demoteRunVisibleEntries` method (no
+    fallback path — step 4 is the answer).
+  - Remove the `e.scheme NOT IN ('known', 'unknown')` filter from
+    `demote_turn_entries` and `get_turn_demotion_targets`. Update
+    their comments — they're now the step-2 SQL.
+  - Replace `enforce()` body in `budget.js` with the four-step
+    ladder. Remove the `loopIteration !== 1` gate.
+  - On fork creation in `AgentLoop.js`, set the child's
+    `next_turn` to the parent's `next_turn` (absolute turn
+    numbering across the lineage). New `update_run_next_turn`
+    prep, or pass it through `create_run`.
+  - Revert `OUTPUT_BUDGET_CHARS_PER_TOKEN = 4` in
+    `LlmProvider.js` to the unified `RUMMY_TOKEN_DIVISOR` rule.
+  - Update tests that exercise postDispatch / archive /
+    iteration-1 gating — replace with step-2/3/4 coverage.
+
+  Subsumes the LME budget-overflow open items below if it lands
+  cleanly: the quiz-fork case's failure mode (huge inherited
+  visibility, only the prompt was demotable) is exactly what
+  step 2 + absolute turn numbering addresses.
+
+- [ ] **LME gemma — rows abandon at turn 4 with budget-overflow
+  strike accumulation.** Failing rows (1, 2, 4, 6, 8) all hit a
+  413 "Token Budget overflow" on every turn (packet sizes 68K-97K
+  vs ceiling ~59K) and 499 abandon by turn 4. Successful rows
+  (3, 5, 7) reach status 200 at turn 80-93. The LME row content
+  exceeds the budget unconditionally on losing rows; need to
+  determine whether budget enforcement should differ for LME's
+  "preload conversation history then quiz" shape, or whether the
+  history-loading step needs to chunk/summarize before quiz.
+
+- [ ] **LME gemma — 0/4 correct on delivered rows.** Rows that
+  DO reach `<update status=200>` score 0/1 — answers are empty
+  strings or wrong. First scored row: empty `response` to
+  "What degree did I graduate with?" (correct: "Business
+  Administration"). Possibly same root cause as the 4-turn
+  abandons (history not actually loaded), possibly separate
+  prompting issue. Investigate after the abandon pattern.
+
 - [ ] **Programbench prompt iteration — model behavior matrix
   experiment.** In flight 2026-05-06/07. Iterating on
   `test/programbench/prompt.md` (extracted to a flat file for

@@ -88,49 +88,71 @@ describe("computeBudget", () => {
 });
 
 describe("Budget", () => {
-	it("enforce returns ok when under budget", async () => {
-		const budget = new Budget({
+	function makeBudget() {
+		return new Budget({
 			hooks: { budget: null, tools: { onView: () => {} } },
 			registerScheme: () => {},
 			filter: () => {},
 			on: () => {},
 		});
+	}
+
+	function makeRummy({ demoteResult = [] } = {}) {
+		const emitted = [];
+		const setCalls = [];
+		return {
+			emitted,
+			setCalls,
+			rummy: {
+				entries: {
+					demoteTurnEntries: async () => demoteResult,
+					set: async (args) => setCalls.push(args),
+				},
+				hooks: {
+					error: {
+						log: {
+							emit: async (e) => emitted.push(e),
+						},
+					},
+				},
+			},
+		};
+	}
+
+	it("enforce returns ok when under budget (step 1 only, no emits)", async () => {
+		const budget = makeBudget();
+		const { rummy, emitted } = makeRummy();
 		const result = await budget.enforce({
 			contextSize: 10000,
 			messages: [{ role: "system", content: "short" }],
 			rows: [],
+			ctx: { runId: 1, turn: 1, loopId: 0 },
+			rummy,
 		});
 		assert.strictEqual(result.ok, true);
 		assert.ok(result.assembledTokens > 0);
+		assert.strictEqual(emitted.length, 0, "no 413 emitted under budget");
 	});
 
-	it("enforce returns overflow when over budget", async () => {
-		const budget = new Budget({
-			hooks: { budget: null, tools: { onView: () => {} } },
-			registerScheme: () => {},
-			filter: () => {},
-			on: () => {},
-		});
+	it("enforce hits step 4 hard 413 when nothing is demotable", async () => {
+		const budget = makeBudget();
+		const { rummy, emitted } = makeRummy({ demoteResult: [] });
 		const result = await budget.enforce({
 			contextSize: 10,
 			messages: [{ role: "system", content: "x".repeat(1000) }],
 			rows: [],
-			ctx: { runId: 1, turn: 1, loopId: 0, loopIteration: 0 },
-			rummy: {
-				hooks: { error: { log: { emit: async () => {} } } },
-			},
+			ctx: { runId: 1, turn: 1, loopId: 0 },
+			rummy,
 		});
 		assert.strictEqual(result.ok, false);
 		assert.ok(result.overflow > 0);
+		assert.strictEqual(emitted.length, 1, "hard 413 emitted exactly once");
+		assert.strictEqual(emitted[0].status, 413);
+		assert.strictEqual(emitted[0].attributes.demotedCount, 0);
 	});
 
 	it("enforce returns ok with no contextSize", async () => {
-		const budget = new Budget({
-			hooks: { budget: null, tools: { onView: () => {} } },
-			registerScheme: () => {},
-			filter: () => {},
-			on: () => {},
-		});
+		const budget = makeBudget();
 		const result = await budget.enforce({
 			contextSize: null,
 			messages: [{ role: "system", content: "anything" }],
@@ -336,7 +358,7 @@ describe("overflowBody — 413 error body shape", () => {
 		const body = overflowBody(500, contextSize, []);
 		assert.ok(body.startsWith("Token Budget overflow:"));
 		assert.ok(
-			body.includes("0 promotions (0 tokens) demoted to fit."),
+			body.includes("0 promotions (0 tokens) demoted."),
 			`header mentions 0 promotions; got: ${body}`,
 		);
 		assert.ok(
@@ -350,7 +372,7 @@ describe("overflowBody — 413 error body shape", () => {
 			{ path: "https://example.com/wiki/X", tokens: 4418, turn: 7 },
 		]);
 		assert.ok(
-			body.includes("1 promotion (4418 tokens) demoted to fit."),
+			body.includes("1 promotion (4418 tokens) demoted."),
 			`singular grammar; got: ${body}`,
 		);
 		assert.ok(body.includes("Demoted:"));
@@ -367,7 +389,7 @@ describe("overflowBody — 413 error body shape", () => {
 			{ path: "known://fact", tokens: 250, turn: 6 },
 		]);
 		assert.ok(
-			body.includes("3 promotions (2350 tokens) demoted to fit."),
+			body.includes("3 promotions (2350 tokens) demoted."),
 			`plural + sum; got: ${body}`,
 		);
 		assert.ok(body.includes("- https://a.example/one (turn 3, 1200 tokens)"));
@@ -375,22 +397,19 @@ describe("overflowBody — 413 error body shape", () => {
 		assert.ok(body.includes("- known://fact (turn 6, 250 tokens)"));
 	});
 
-	it("ordering: lines appear in the order the caller provides (oldest first)", () => {
-		// demoteRunVisibleEntries returns rows ordered by turn ASC so the
-		// error body reads oldest-first, matching the model's reading
-		// order when it scans the log.
+	it("ordering: lines appear in the order the caller provides", () => {
+		// Caller stitches step-2 demotions then step-3 prompt demote;
+		// overflowBody renders that order verbatim so the model reads it
+		// as the grinder reasoned about it.
 		const body = overflowBody(500, contextSize, [
-			{ path: "old", tokens: 100, turn: 3 },
-			{ path: "mid", tokens: 100, turn: 7 },
-			{ path: "new", tokens: 100, turn: 14 },
+			{ path: "first", tokens: 100, turn: 3 },
+			{ path: "second", tokens: 100, turn: 3 },
+			{ path: "prompt://4", tokens: 100, turn: 4 },
 		]);
-		const oldIdx = body.indexOf("- old");
-		const midIdx = body.indexOf("- mid");
-		const newIdx = body.indexOf("- new");
-		assert.ok(
-			oldIdx < midIdx && midIdx < newIdx,
-			"oldest-first ordering preserved",
-		);
+		const i1 = body.indexOf("- first");
+		const i2 = body.indexOf("- second");
+		const i3 = body.indexOf("- prompt://4");
+		assert.ok(i1 < i2 && i2 < i3, "caller-provided order preserved");
 	});
 
 	it("packet size reported = ceiling + overflow", () => {

@@ -19,9 +19,6 @@ export default class Prompt {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 
 		if (!isContinuation && prompt) {
-			// New prompt = new cycle; archive prior cycle's prompts/logs (knowns/unknowns persist).
-			await store.archivePriorPromptArtifacts(runId, turn);
-
 			await store.set({
 				runId,
 				turn,

@@ -9,28 +9,15 @@ import { retryClassified } from "./retry.js";
 const LLM_DEADLINE = Number(process.env.RUMMY_LLM_DEADLINE);
 const LLM_MAX_BACKOFF = Number(process.env.RUMMY_LLM_MAX_BACKOFF);
 
-// Padding subtracted from `context_length - prompt_estimate` to absorb
-// tokenizer drift between our chars/RUMMY_TOKEN_DIVISOR estimate and the
-// provider's actual BPE-based count, plus message-envelope overhead the
-// estimate doesn't see (role tokens, separators). Industry typical:
-// 256-1024; smaller wastes budget, larger leaves headroom unused. 256
-// covers normal drift on chars/2 estimates without notable waste.
-// Realistic chars-per-token ratio for the output-budget formula. Mixed
-// English prose + code averages ~4 chars/token across modern tokenizers
-// (cl100k_base, Llama 3, Gemma). Distinct from `RUMMY_TOKEN_DIVISOR`
-// which is the conservative input-budget divisor.
-const OUTPUT_BUDGET_CHARS_PER_TOKEN = 4;
+const TOKEN_DIVISOR = Number(process.env.RUMMY_TOKEN_DIVISOR);
 // Floor on derived max_tokens. If prompt eats almost the entire context,
 // we still ask for at least this many output tokens so the model has
 // room to emit a usable terminal `<update>`.
 const MAX_TOKENS_FLOOR = 1024;
 // Fraction of the model's context the request may consume (prompt +
-// max_tokens combined). The remaining 1-X is reserved for tokenizer
-// drift between our chars/4 estimate and the provider's BPE-based
-// count, plus message-envelope overhead the estimate doesn't see.
-// Without this reservation, providers with strict `prompt+output ≤ ctx`
-// checks (OpenRouter on Gemini-class models) reject with 400 once the
-// estimate undercounts by 1%.
+// max_tokens combined). The remaining 1−X absorbs tokenizer drift
+// between our chars/RUMMY_TOKEN_DIVISOR estimate and the provider's
+// BPE-based count plus message-envelope overhead.
 const BUDGET_CEILING = Number(process.env.RUMMY_BUDGET_CEILING);
 
 // Per-category retry policies. Gateway/server are bounded short because
@@ -84,26 +71,10 @@ export default class LlmProvider {
 		// estimated prompt footprint. Without this, providers fall back
 		// to conservative defaults (a few thousand) and the model's
 		// response truncates mid-`<set>` body before reaching `<update>`,
-		// surfacing as a misleading "no <update>" verdict. The standard
-		// formula `context_length - prompt - safety_margin` is what every
-		// production LLM client converges on.
+		// surfacing as a misleading "no <update>" verdict.
 		const contextLength = await this.getContextSize(model);
-		// Output-budget estimate uses a realistic chars/token ratio
-		// (~4 chars/token for typical mixed prose+code), NOT the
-		// conservative `countTokens` divisor (`RUMMY_TOKEN_DIVISOR=2`).
-		// `countTokens` is intentionally pessimistic for INPUT budget
-		// enforcement — better to overestimate input and stay under the
-		// context limit. But using that same overestimate for output
-		// computation collapses `max_tokens` to the floor whenever the
-		// prompt approaches half the context. Real example: 49K-actual-
-		// token prompt, /2 divisor → 98K estimate, ctx=65K → max_tokens
-		// drops to 1024 floor even though 16K of real output budget
-		// remains. Fix: estimate prompt tokens accurately for the output
-		// formula. The conservative divisor stays in place where it
-		// matters (input visibility budget).
 		const promptEstimate = messages.reduce(
-			(sum, m) =>
-				sum + Math.ceil(m.content.length / OUTPUT_BUDGET_CHARS_PER_TOKEN),
+			(sum, m) => sum + Math.ceil(m.content.length / TOKEN_DIVISOR),
 			0,
 		);
 		const effectiveContext = Math.floor(contextLength * BUDGET_CEILING);

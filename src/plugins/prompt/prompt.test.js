@@ -46,14 +46,10 @@ describe("Prompt plugin", () => {
 		);
 	});
 
-	describe("turn.started: archive + record prompt", () => {
+	describe("turn.started: record prompt", () => {
 		function buildRummy() {
 			const calls = [];
-			const archives = [];
 			const store = {
-				archivePriorPromptArtifacts: async (runId, turn) => {
-					archives.push({ runId, turn });
-				},
 				set: async (args) => calls.push(args),
 			};
 			return {
@@ -64,38 +60,35 @@ describe("Prompt plugin", () => {
 					loopId: "l",
 				},
 				calls,
-				archives,
 			};
 		}
 
-		it("on new prompt: archives prior artifacts and writes prompt://N", async () => {
+		it("on new prompt: writes prompt://N at the current turn", async () => {
 			const { hooks } = makeCore();
-			const { rummy, calls, archives } = buildRummy();
+			const { rummy, calls } = buildRummy();
 			await hooks.turn.started.emit({
 				rummy,
 				mode: "act",
 				prompt: "do thing",
 				isContinuation: false,
 			});
-			assert.equal(archives.length, 1);
-			assert.deepEqual(archives[0], { runId: "r", turn: 3 });
 			assert.equal(calls.length, 1);
 			assert.equal(calls[0].path, "prompt://3");
+			assert.equal(calls[0].turn, 3);
 			assert.equal(calls[0].body, "do thing");
 			assert.equal(calls[0].attributes.mode, "act");
 			assert.equal(calls[0].writer, "plugin");
 		});
 
-		it("on continuation: writes nothing (no archive, no prompt entry)", async () => {
+		it("on continuation: writes nothing", async () => {
 			const { hooks } = makeCore();
-			const { rummy, calls, archives } = buildRummy();
+			const { rummy, calls } = buildRummy();
 			await hooks.turn.started.emit({
 				rummy,
 				mode: "act",
 				prompt: "do thing",
 				isContinuation: true,
 			});
-			assert.equal(archives.length, 0);
 			assert.equal(calls.length, 0);
 		});
 

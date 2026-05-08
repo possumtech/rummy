@@ -292,9 +292,7 @@ WHERE run_id = :run_id AND entry_id IN (
 -- matches the old RETURNING (path, tokens) for caller compatibility.
 -- State filter: skip failed/cancelled entries (they're already not
 -- contributing visible context — demoting them would be misleading).
--- Scheme filter: skip known/unknown — these are the model's deliverables,
--- not housekeeping. Auto-demoting just-created knowns punishes the
--- correct Distill+Demote pattern.
+-- All schemes participate uniformly per SPEC §budget_enforcement.
 SELECT e.path, countTokens(e.body) AS tokens
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
@@ -302,15 +300,12 @@ WHERE
 	rv.run_id = :run_id
 	AND rv.turn = :turn
 	AND rv.visibility = 'visible'
-	AND rv.state NOT IN ('failed', 'cancelled')
-	AND e.scheme NOT IN ('known', 'unknown');
+	AND rv.state NOT IN ('failed', 'cancelled');
 
 -- PREP: demote_turn_entries
 -- View-layer only — visibility lives on run_views. State untouched.
 -- Call get_turn_demotion_targets first if you need the list of what
 -- was demoted (used by budget plugin for the overflow error body).
--- Scheme filter mirrors get_turn_demotion_targets — never demote the
--- model's deliverables (known/unknown) along with housekeeping.
 UPDATE run_views
 SET
 	visibility = 'summarized'
@@ -318,39 +313,5 @@ SET
 WHERE
 	run_id = :run_id
 	AND turn = :turn
-	AND visibility = 'visible'
-	AND state NOT IN ('failed', 'cancelled')
-	AND NOT EXISTS (
-		SELECT 1
-		FROM entries AS e
-		WHERE
-			e.id = run_views.entry_id
-			AND e.scheme IN ('known', 'unknown')
-	);
-
--- PREP: get_run_visible_targets
--- All visible entries across the run, oldest promotion first. Used by
--- budget postDispatch as the fallback demotion set when this-turn
--- demotion yields nothing but the packet still overflows (promotions
--- from prior turns the model forgot to demote themselves).
-SELECT e.path, rv.turn, countTokens(e.body) AS tokens
-FROM run_views AS rv
-JOIN entries AS e ON e.id = rv.entry_id
-WHERE
-	rv.run_id = :run_id
-	AND rv.visibility = 'visible'
-	AND rv.state NOT IN ('failed', 'cancelled')
-ORDER BY rv.turn, e.id;
-
--- PREP: demote_run_visible
--- Broad cross-turn demotion. Separate prep from demote_turn_entries
--- so the caller's intent (surgical this-turn vs fallback all-visible)
--- stays explicit.
-UPDATE run_views
-SET
-	visibility = 'summarized'
-	, updated_at = CURRENT_TIMESTAMP
-WHERE
-	run_id = :run_id
 	AND visibility = 'visible'
 	AND state NOT IN ('failed', 'cancelled');

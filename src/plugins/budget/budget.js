@@ -1,5 +1,4 @@
 import ContextAssembler from "../../agent/ContextAssembler.js";
-import materializeContext from "../../agent/materializeContext.js";
 import { countTokens } from "../../agent/tokens.js";
 
 const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
@@ -33,25 +32,16 @@ export function computeBudget({ contextSize, totalTokens }) {
 	};
 }
 
-// Delta-from-actual; same scale as <prompt tokenUsage>. SPEC #budget_enforcement.
-function predictNextPacket(rows, currentTurn, baseline) {
-	let delta = 0;
-	for (const r of rows) {
-		if (r.source_turn === currentTurn) delta += countTokens(r.body);
-	}
-	return baseline + delta;
-}
-
 // 413 error body; wire format is part of the model contract.
 export function overflowBody(overflow, contextSize, demoted) {
 	const cap = ceiling(contextSize);
 	const size = cap + overflow;
 	const count = demoted.length;
 	const totalTokens = demoted.reduce((s, r) => s + r.tokens, 0);
-	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${count} promotion${count === 1 ? "" : "s"} (${totalTokens} tokens) demoted to fit.`;
+	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${count} promotion${count === 1 ? "" : "s"} (${totalTokens} tokens) demoted.`;
 	if (count === 0) return head;
 	const lines = demoted.map((d) =>
-		d.turn
+		d.turn != null
 			? `- ${d.path} (turn ${d.turn}, ${d.tokens} tokens)`
 			: `- ${d.path} (${d.tokens} tokens)`,
 	);
@@ -63,20 +53,14 @@ export default class Budget {
 
 	constructor(core) {
 		this.#core = core;
-		// Subscribe to generic turn lifecycle hooks instead of registering
-		// named `core.hooks.budget.X` methods. TurnExecutor calls
-		// `turn.beforeDispatch.filter` and `turn.dispatched.emit`; budget
-		// participates via the standard plugin surface every other plugin
-		// uses. Other plugins could trim/annotate the same packet.
 		core.filter("turn.beforeDispatch", this.#onBeforeDispatch.bind(this));
-		core.on("turn.dispatched", this.#onDispatched.bind(this));
 		core.filter("assembly.user", this.assembleBudget.bind(this), 175);
 	}
 
 	// Filter participant. Receives the assembled packet; returns a
-	// (possibly modified) packet. On overflow, may demote and re-
-	// materialize; if it can't fit, sets ok=false so TurnExecutor
-	// short-circuits.
+	// (possibly modified) packet. The pre-LLM grinder demotes-and-
+	// rechecks per SPEC §budget_enforcement; if it can't fit after the
+	// ladder runs, sets ok=false so TurnExecutor short-circuits.
 	async #onBeforeDispatch(packet, ctxBag) {
 		return this.enforce({
 			contextSize: packet.contextSize,
@@ -86,11 +70,6 @@ export default class Budget {
 			ctx: ctxBag.ctx,
 			rummy: ctxBag.rummy,
 		});
-	}
-
-	// Event handler. Post-dispatch cleanup; no return value used.
-	async #onDispatched({ contextSize, ctx, rummy }) {
-		await this.postDispatch({ contextSize, ctx, rummy });
 	}
 
 	// Renders <budget> at priority 275; see SPEC #token_accounting.
@@ -194,27 +173,47 @@ export default class Budget {
 		};
 	}
 
-	async #emitOverflow({
-		message,
-		runId,
-		turn,
-		loopId,
-		rummy,
-		demotedCount = 0,
-		demotedTokens = 0,
-	}) {
+	async #emit({ message, ctx, rummy, demoted }) {
+		const totalTokens = demoted.reduce((s, r) => s + r.tokens, 0);
 		await rummy.hooks.error.log.emit({
 			store: rummy.entries,
-			runId,
-			turn,
-			loopId,
+			runId: ctx.runId,
+			turn: ctx.turn,
+			loopId: ctx.loopId,
 			message,
 			status: 413,
-			attributes: { demotedCount, demotedTokens },
+			attributes: {
+				demotedCount: demoted.length,
+				demotedTokens: totalTokens,
+			},
 		});
 	}
 
-	// Pre-LLM enforce: SPEC #budget_enforcement.
+	async #reassemble({ rows, ctx, rummy, contextSize, lastPromptTokens }) {
+		return ContextAssembler.assembleFromTurnContext(
+			rows,
+			{
+				type: ctx.mode,
+				systemPrompt: ctx.systemPrompt,
+				contextSize,
+				toolSet: ctx.toolSet,
+				lastContextTokens: lastPromptTokens,
+				turn: ctx.turn,
+			},
+			rummy.hooks,
+		);
+	}
+
+	// Pre-LLM grinder ladder. SPEC §budget_enforcement.
+	//
+	//   1. Check budget. ok → return.
+	//   2. Soft 413: demote (current_turn − 1) visible. Recheck.
+	//   3. Soft 413: demote current prompt. Recheck.
+	//   4. Hard 413: emit and return ok=false.
+	//
+	// Every step that demotes anything emits a 413 error://. Soft 413s
+	// keep the run alive (turn proceeds to LLM); the hard 413 bubbles
+	// through to AgentLoop.
 	async enforce({
 		contextSize,
 		messages,
@@ -227,6 +226,7 @@ export default class Budget {
 			return { messages, rows, assembledTokens: 0, ok: true };
 		}
 
+		// Step 1.
 		const first = this.#check({
 			contextSize,
 			messages,
@@ -235,109 +235,105 @@ export default class Budget {
 		});
 		if (first.ok) return first;
 
-		if (ctx?.loopIteration !== 1) {
-			const cap = ceiling(contextSize);
-			await this.#emitOverflow({
-				message: `Token Budget overflow: packet was ${cap + first.overflow} tokens, ceiling is ${cap}.`,
-				runId: ctx.runId,
-				turn: ctx.turn,
-				loopId: ctx.loopId,
+		const store = rummy.entries;
+
+		// Step 2: previous-turn demotion.
+		const prevTurn = ctx.turn - 1;
+		const rawTurnDemoted =
+			prevTurn >= 0 ? await store.demoteTurnEntries(ctx.runId, prevTurn) : [];
+		const turnDemoted = rawTurnDemoted.map((d) => ({ ...d, turn: prevTurn }));
+		if (turnDemoted.length > 0) {
+			for (const r of rows) {
+				if (r.source_turn === prevTurn && r.visibility === "visible") {
+					r.body = r.sBody;
+					r.visibility = "summarized";
+				}
+			}
+			const reMessages = await this.#reassemble({
+				rows,
+				ctx,
 				rummy,
+				contextSize,
+				lastPromptTokens: 0,
 			});
-			return first;
+			const rechecked = this.#check({
+				contextSize,
+				messages: reMessages,
+				rows,
+				lastPromptTokens: 0,
+			});
+			if (rechecked.ok) {
+				await this.#emit({
+					message: overflowBody(first.overflow, contextSize, turnDemoted),
+					ctx,
+					rummy,
+					demoted: turnDemoted,
+				});
+				return rechecked;
+			}
+			first.overflow = rechecked.overflow;
 		}
 
+		// Step 3: current-prompt demotion.
 		const promptRow = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
-		if (!promptRow) return first;
-		await rummy.entries.set({
-			runId: ctx.runId,
-			path: promptRow.path,
-			visibility: "summarized",
-		});
-		// Local swap mirrors the DB demotion. materializeContext attached
-		// both projections to the row; re-running the assembler on the
-		// modified rows avoids a v_model_context round-trip.
-		promptRow.body = promptRow.sBody;
-		promptRow.visibility = "summarized";
-		const reMessages = await ContextAssembler.assembleFromTurnContext(
-			rows,
-			{
-				type: ctx.mode,
-				systemPrompt: ctx.systemPrompt,
-				contextSize,
-				toolSet: ctx.toolSet,
-				lastContextTokens: lastPromptTokens,
-				turn: ctx.turn,
-			},
-			rummy.hooks,
-		);
-		const rechecked = this.#check({
-			contextSize,
-			messages: reMessages,
-			rows,
-			lastPromptTokens: 0,
-		});
-		if (!rechecked.ok) {
-			const cap = ceiling(contextSize);
-			await this.#emitOverflow({
-				message: `Token Budget overflow: packet was ${cap + rechecked.overflow} tokens after demoting the prompt, ceiling is ${cap}.`,
-				runId: ctx.runId,
-				turn: ctx.turn,
-				loopId: ctx.loopId,
-				rummy,
-			});
-		}
-		return rechecked;
-	}
-
-	// Post-dispatch Turn Demotion: SPEC #budget_enforcement.
-	async postDispatch({ contextSize, ctx, rummy }) {
-		if (!contextSize) return { failed: false };
-		const postMat = await materializeContext({
-			db: rummy.db,
-			hooks: rummy.hooks,
-			entries: rummy.entries,
-			runId: ctx.runId,
-			loopId: ctx.loopId,
-			turn: ctx.turn,
-			systemPrompt: ctx.systemPrompt,
-			mode: ctx.mode,
-			toolSet: ctx.toolSet,
-			contextSize,
-		});
-		const baseline = postMat.lastContextTokens;
-		const predicted = predictNextPacket(postMat.rows, ctx.turn, baseline);
-		const cap = ceiling(contextSize);
-		if (predicted <= cap) return { failed: false };
-		const post = { overflow: predicted - cap };
-
-		const store = rummy.entries;
-		let demotedEntries = await store.demoteTurnEntries(ctx.runId, ctx.turn);
-		// Prior-turn-pressure fallback; SPEC #budget_enforcement.
-		if (demotedEntries.length === 0) {
-			demotedEntries = await store.demoteRunVisibleEntries(ctx.runId);
-		}
-		const promptRow = postMat.rows.find((r) => r.scheme === "prompt");
-		if (promptRow) {
+		const promptDemoted = [];
+		if (promptRow && promptRow.visibility === "visible") {
 			await store.set({
 				runId: ctx.runId,
 				path: promptRow.path,
 				visibility: "summarized",
 			});
+			promptDemoted.push({
+				path: promptRow.path,
+				turn: promptRow.source_turn,
+				tokens: countTokens(promptRow.body) - countTokens(promptRow.sBody),
+			});
+			promptRow.body = promptRow.sBody;
+			promptRow.visibility = "summarized";
+			const reMessages = await this.#reassemble({
+				rows,
+				ctx,
+				rummy,
+				contextSize,
+				lastPromptTokens: 0,
+			});
+			const rechecked = this.#check({
+				contextSize,
+				messages: reMessages,
+				rows,
+				lastPromptTokens: 0,
+			});
+			if (rechecked.ok) {
+				await this.#emit({
+					message: overflowBody(first.overflow, contextSize, [
+						...turnDemoted,
+						...promptDemoted,
+					]),
+					ctx,
+					rummy,
+					demoted: [...turnDemoted, ...promptDemoted],
+				});
+				return rechecked;
+			}
+			first.overflow = rechecked.overflow;
 		}
 
-		const totalDemoted = demotedEntries.reduce((s, r) => s + r.tokens, 0);
-		await this.#emitOverflow({
-			message: overflowBody(post.overflow, contextSize, demotedEntries),
-			demotedCount: demotedEntries.length,
-			demotedTokens: totalDemoted,
-			runId: ctx.runId,
-			turn: ctx.turn,
-			loopId: ctx.loopId,
+		// Step 4: hard 413.
+		const allDemoted = [...turnDemoted, ...promptDemoted];
+		await this.#emit({
+			message: overflowBody(first.overflow, contextSize, allDemoted),
+			ctx,
 			rummy,
+			demoted: allDemoted,
 		});
-		return { failed: true };
+		return {
+			messages,
+			rows,
+			assembledTokens: ceiling(contextSize) + first.overflow,
+			overflow: first.overflow,
+			ok: false,
+		};
 	}
 }

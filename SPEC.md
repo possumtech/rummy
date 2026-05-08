@@ -1094,50 +1094,55 @@ an entry is being written.
 ### Budget Enforcement {#budget_enforcement}
 
 The model owns its context. The system enforces a hard ceiling and
-surfaces the numbers — it does not automatically manage entries.
+surfaces the numbers. Auto-demotion is reserved for the 413 budget
+grinder, which only fires in response to actual overflow — never
+helpfully or speculatively.
 
 **Ceiling.** `ceiling = floor(contextSize × RUMMY_BUDGET_CEILING)`
 (default `RUMMY_BUDGET_CEILING = 0.9`, i.e. 10% headroom). All budget
 decisions compare `assembledTokens` against `ceiling`, never against
 `contextSize` directly.
 
-**Pre-LLM enforce** (`hooks.turn.beforeDispatch.filter`, in TurnExecutor
-before the LLM call; budget is the canonical subscriber). Measures the
-assembled messages (using `turns.context_tokens` from the prior turn
-when available, `countTokens(messages)` as a first-turn estimate).
+**Pre-LLM grinder** (`hooks.turn.beforeDispatch.filter`, in
+TurnExecutor before the LLM call; budget is the canonical
+subscriber). A four-step ladder. Each step demotes a strictly smaller
+scope and rechecks. The first step that fits the ceiling proceeds to
+the LLM; if step 4 fires, AgentLoop exits the loop with 413.
 
-- `assembledTokens ≤ ceiling` → return 200, proceed to LLM.
-- `assembledTokens > ceiling` on the first turn of a loop → **Prompt
-  Demotion**: demote the incoming `prompt://N` entry to `visibility =
-  demoted`, re-materialize, re-check. If the retry fits, proceed.
-- `assembledTokens > ceiling` on a non-first turn, or still over after
-  Prompt Demotion → return 413. AgentLoop exits the loop with 413.
+1. **Check budget.** Measure `assembledTokens` (using
+   `turns.context_tokens` from the prior turn when available, the
+   materialized packet estimate as a first-turn fallback). If
+   `assembledTokens ≤ ceiling`, proceed to the LLM.
+2. **Soft 413 — previous-turn demotion.** Flip every `run_views`
+   row where `turn = current_turn - 1 AND visibility = visible` to
+   `summarized` (status preserved — see
+   [schemes_status_visibility](#schemes_status_visibility)). All
+   schemes participate; no exemption for knowns / unknowns /
+   files. Re-materialize, re-check.
+3. **Soft 413 — current-prompt demotion.** Flip the incoming
+   `prompt://N` entry to `summarized`. Re-materialize, re-check.
+   Step 3 exists because the prompt is stamped at `current_turn`,
+   not the previous turn — step 2's filter never sees it. Without
+   step 3, an oversized first-turn prompt has no path to fit.
+4. **Hard 413.** Emit a 413 `error://` entry via
+   `hooks.error.log.emit` with the descriptive body (what was
+   demoted across steps 2-3, the ceiling, the residual overflow).
+   AgentLoop exits the loop with 413.
 
-**Post-dispatch Turn Demotion** (`hooks.turn.dispatched.emit`, after
-all tool dispatches complete; budget is the canonical subscriber).
-Re-materializes end-of-turn context and re-checks. If still over the
-ceiling, flips every `run_views` row for this turn from
-`visibility = visible` to `visibility = summarized` (status preserved —
-see [schemes_status_visibility](#schemes_status_visibility)) and emits
-a 413 error via `hooks.error.log.emit` with the descriptive body
-(what was demoted, the 50% rule for the next turn). The model sees
-the `error://` entry next turn and adjusts.
+Steps 2 and 3 also emit 413 `error://` entries when they fire
+(distinct from step 4 in that the run keeps going). The model reads
+those next turn and learns what got auto-demoted. Status of the
+turn that proceeded after a soft 413 is unaffected.
 
-**Delta-from-actual prediction.** Post-dispatch uses
-`predictNextPacket = lastContextTokens + Σ countTokens(body) for rows added this turn`,
-not the conservative measureMessages estimator. Reason: a 60%+
-divergence between the pre-call `<prompt tokenUsage>` (real API
-prompt_tokens) and the post-check estimator made the model dismiss
-the budget as janky and stop following demote rules. The two numbers
-must live on the same scale.
-
-**Prior-turn-pressure fallback.** If post-dispatch finds nothing to
-demote in the current turn but the packet still overflows, the
-pressure is coming from prior-turn promotions the model never demoted
-itself. Demotion widens to all currently-visible entries in the run
-and the prompt is also demoted. Without this fallback, observed
-behavior was strikes accumulating on runs whose base context had
-drifted over ceiling through no fault of the current turn.
+**Trunks and forks are treated identically.** A forked run inherits
+the parent's `run_views` rows verbatim — each entry keeps its
+original `turn`. There is no fork-event restamping. The grinder's
+`current_turn - 1` rule applies the same way in both cases. For
+the rule to point at meaningful inherited content on a fork's first
+dispatch, the child run inherits the parent's `next_turn` so turn
+numbering is absolute across the lineage; sibling forks share the
+same prior history at lower turn numbers and only diverge at
+fork-time.
 
 **LLM-reported context exceeded.** If the LLM rejects the request
 with a "context too long" error (detected via the regex in

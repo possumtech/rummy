@@ -714,10 +714,10 @@ export default class Entries {
 		});
 	}
 
-	async archivePriorPromptArtifacts(runId, currentTurn) {
-		await this.#db.archive_prior_prompt_artifacts.run({
+	async setNextTurn(runId, nextTurn) {
+		await this.#db.set_next_turn.run({
 			run_id: runId,
-			current_turn: currentTurn,
+			next_turn: nextTurn,
 		});
 	}
 
@@ -728,15 +728,6 @@ export default class Entries {
 			turn,
 		});
 		await this.#db.demote_turn_entries.run({ run_id: runId, turn });
-		return targets;
-	}
-
-	// Budget postDispatch fallback: demote every visible entry in the run.
-	async demoteRunVisibleEntries(runId) {
-		const targets = await this.#db.get_run_visible_targets.all({
-			run_id: runId,
-		});
-		await this.#db.demote_run_visible.run({ run_id: runId });
 		return targets;
 	}
 

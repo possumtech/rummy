@@ -73,11 +73,11 @@ describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter,
 			assert.ok(tdb.hooks.tool.after);
 		});
 
-		it("budget participates in turn.beforeDispatch + turn.dispatched lifecycle", () => {
-			// Budget is a subscriber, not a named-hook-exposing plugin.
-			// The orchestration surface is generic — TurnExecutor calls
-			// the filter chain and event; budget joined via core.filter
-			// and core.on. SPEC: PLUGINS.md @plugins_turn_pipeline.
+		it("turn lifecycle hooks exist on the bus", () => {
+			// `turn.beforeDispatch` is the budget plugin's grinder seam
+			// (per SPEC §budget_enforcement). `turn.dispatched` stays on
+			// the bus for other plugins; budget itself no longer
+			// subscribes after the speculative-postDispatch removal.
 			assert.ok(
 				tdb.hooks.turn.beforeDispatch,
 				"turn.beforeDispatch hook exists",

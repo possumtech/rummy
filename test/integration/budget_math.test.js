@@ -210,7 +210,7 @@ describe("Budget math", () => {
 			);
 		});
 
-		it("post-dispatch enforce uses re-measured tokens, not stale LLM count", async () => {
+		it("enforce measures assembled tokens from messages when lastPromptTokens is 0", async () => {
 			const { runId } = await tdb.seedRun({ alias: "math_postdispatch" });
 
 			// Simulate: entries exist from dispatch (promoted files)
@@ -241,14 +241,14 @@ describe("Budget math", () => {
 				},
 			];
 
-			// With lastPromptTokens: 0, enforce MUST measure messages
 			const result = await cascade.enforce({
 				contextSize: 100,
 				messages,
 				rows,
 				lastPromptTokens: 0,
-				ctx: { runId: 1, turn: 1, loopId: 0, loopIteration: 0 },
+				ctx: { runId, turn: 1, loopId: 0 },
 				rummy: {
+					entries: store,
 					hooks: { error: { log: { emit: async () => {} } } },
 				},
 			});
@@ -495,21 +495,31 @@ describe("Budget math", () => {
 	});
 
 	describe("413 error carries structured demotion attrs", () => {
-		it("emits demotedCount and demotedTokens on the 413 error entry", async () => {
+		it("step-2 demotion emits a 413 error entry with demotedCount and demotedTokens", async () => {
 			const { runId } = await tdb.seedRun({ alias: "err_attrs_413" });
-			// Seed enough content to trip the post-dispatch ceiling.
+			// Seed visible content at turn 0 (= prevTurn for the dispatch
+			// at turn 1) so the grinder's step-2 has something to demote.
 			for (let i = 0; i < 20; i++) {
 				await store.set({
 					runId,
-					turn: 1,
+					turn: 0,
 					path: `known://big_${i}`,
 					body: pad(100),
 					state: "resolved",
 					visibility: "visible",
 				});
 			}
-			await tdb.hooks.turn.dispatched.emit({
+			// Force step 1 to fail by passing oversized messages directly.
+			// Step 2's demotion target is driven by the SQL turn=0 state,
+			// independent of the message construction here.
+			const messages = [
+				{ role: "system", content: "test" },
+				{ role: "user", content: pad(2000) },
+			];
+			await cascade.enforce({
 				contextSize: 1000,
+				messages,
+				rows: [],
 				ctx: {
 					runId,
 					loopId: null,
@@ -518,15 +528,11 @@ describe("Budget math", () => {
 					mode: "act",
 					toolSet: null,
 				},
-				rummy: {
-					db: tdb.db,
-					hooks: tdb.hooks,
-					entries: store,
-				},
+				rummy: { db: tdb.db, hooks: tdb.hooks, entries: store },
 			});
 
-			const rows = await tdb.db.get_known_entries.all({ run_id: runId });
-			const err = rows.find(
+			const stored = await tdb.db.get_known_entries.all({ run_id: runId });
+			const err = stored.find(
 				(r) => r.path.startsWith("log://turn_1/error/") && r.scheme === "log",
 			);
 			assert.ok(err, "413 error entry written");
