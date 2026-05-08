@@ -3,6 +3,11 @@ import { chatCompletionStream } from "../../llm/openaiStream.js";
 
 const FETCH_TIMEOUT = Number(process.env.RUMMY_FETCH_TIMEOUT);
 
+// reasoning_effort takes low|medium|high|none. Models that don't support
+// the parameter reject the request with 400, so the env knob is opt-in:
+// set it only on profiles targeting a model that accepts it.
+const REASONING_EFFORT = process.env.RUMMY_REASONING_EFFORT;
+
 const PROVIDER = "xai";
 
 // Inert unless XAI_BASE_URL set; xai/{model} aliases.
@@ -62,6 +67,7 @@ export default class Xai {
 		if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
 		if (options.temperature !== undefined)
 			body.temperature = options.temperature;
+		if (REASONING_EFFORT) body.reasoning_effort = REASONING_EFFORT;
 
 		const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT);
 		const signal = options.signal

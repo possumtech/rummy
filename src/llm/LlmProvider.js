@@ -107,10 +107,21 @@ export default class LlmProvider {
 			0,
 		);
 		const effectiveContext = Math.floor(contextLength * BUDGET_CEILING);
-		const maxTokens = Math.max(
+		let maxTokens = Math.max(
 			MAX_TOKENS_FLOOR,
 			effectiveContext - promptEstimate,
 		);
+		// Per-model output ceiling. Models advertise huge context windows
+		// but actual max OUTPUT tokens is far smaller. Sending max_tokens
+		// above the model's real output cap pushes the request into
+		// undefined-behavior territory and can correlate with mid-emission
+		// EOT sampling. Set `RUMMY_OUTPUT_CAP_<alias>` per model where
+		// the published output ceiling is known.
+		const outputCapEnv = process.env[`RUMMY_OUTPUT_CAP_${model}`];
+		if (outputCapEnv) {
+			const cap = Number.parseInt(outputCapEnv, 10);
+			if (cap > 0) maxTokens = Math.min(maxTokens, cap);
+		}
 		const resolvedOptions = { ...options, temperature, maxTokens };
 
 		const provider = this.#selectProvider(resolvedModel);
