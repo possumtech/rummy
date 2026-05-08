@@ -15,7 +15,6 @@ const LLM_MAX_BACKOFF = Number(process.env.RUMMY_LLM_MAX_BACKOFF);
 // estimate doesn't see (role tokens, separators). Industry typical:
 // 256-1024; smaller wastes budget, larger leaves headroom unused. 256
 // covers normal drift on chars/2 estimates without notable waste.
-const MAX_TOKENS_SAFETY_MARGIN = 256;
 // Realistic chars-per-token ratio for the output-budget formula. Mixed
 // English prose + code averages ~4 chars/token across modern tokenizers
 // (cl100k_base, Llama 3, Gemma). Distinct from `RUMMY_TOKEN_DIVISOR`
@@ -23,10 +22,16 @@ const MAX_TOKENS_SAFETY_MARGIN = 256;
 const OUTPUT_BUDGET_CHARS_PER_TOKEN = 4;
 // Floor on derived max_tokens. If prompt eats almost the entire context,
 // we still ask for at least this many output tokens so the model has
-// room to emit a usable terminal `<update>`. Below this and the run is
-// effectively dead; better to fail loudly via the existing context
-// guards than ship with no completion budget.
+// room to emit a usable terminal `<update>`.
 const MAX_TOKENS_FLOOR = 1024;
+// Fraction of the model's context the request may consume (prompt +
+// max_tokens combined). The remaining 1-X is reserved for tokenizer
+// drift between our chars/4 estimate and the provider's BPE-based
+// count, plus message-envelope overhead the estimate doesn't see.
+// Without this reservation, providers with strict `prompt+output ≤ ctx`
+// checks (OpenRouter on Gemini-class models) reject with 400 once the
+// estimate undercounts by 1%.
+const BUDGET_CEILING = Number(process.env.RUMMY_BUDGET_CEILING);
 
 // Per-category retry policies. Gateway/server are bounded short because
 // upstream-down won't recover by waiting; warmup/rate_limit get the full
@@ -101,9 +106,10 @@ export default class LlmProvider {
 				sum + Math.ceil(m.content.length / OUTPUT_BUDGET_CHARS_PER_TOKEN),
 			0,
 		);
+		const effectiveContext = Math.floor(contextLength * BUDGET_CEILING);
 		const maxTokens = Math.max(
 			MAX_TOKENS_FLOOR,
-			contextLength - promptEstimate - MAX_TOKENS_SAFETY_MARGIN,
+			effectiveContext - promptEstimate,
 		);
 		const resolvedOptions = { ...options, temperature, maxTokens };
 

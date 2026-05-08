@@ -34,5 +34,10 @@
 	"error.google_auth": "Google AI Studio authentication error: {status}. Check the gemini.key file in repo root.",
 	"error.google_api": "Google AI Studio API error: {status}",
 	"error.google_models_failed": "Google AI Studio /v1beta/models/{model} failed: {status}",
-	"error.google_no_context_length": "Google AI Studio model '{model}' returned no inputTokenLimit."
+	"error.google_no_context_length": "Google AI Studio model '{model}' returned no inputTokenLimit.",
+	"error.cloudflare_auth": "Cloudflare Workers AI authentication error: {status}. Check cloudflare.key and CLOUDFLARE_ACCOUNT_ID.",
+	"error.cloudflare_api": "Cloudflare Workers AI API error: {status}",
+	"error.cloudflare_models_failed": "Cloudflare /ai/models/search for '{model}' failed: {status}",
+	"error.cloudflare_model_not_found": "Cloudflare Workers AI model '{model}' not found in models-search results.",
+	"error.cloudflare_no_context_length": "Cloudflare Workers AI model '{model}' returned no context_window or max_input_tokens property."
 }

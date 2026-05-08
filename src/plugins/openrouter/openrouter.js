@@ -78,6 +78,13 @@ export default class OpenRouter {
 	async #getContextSize(model) {
 		if (this.#contextCache.has(model)) return this.#contextCache.get(model);
 
+		// OpenRouter provider-pinning shorthand (`google/gemma-4-31b-it:cloudflare`)
+		// routes the completion to a specific upstream, but the /models
+		// catalog lists the bare model id (`google/gemma-4-31b-it`). Split
+		// off the `:provider` suffix for the lookup; it's a routing hint,
+		// not part of the model identity.
+		const lookupId = model.split(":")[0];
+
 		const res = await fetch(`${this.#baseUrl}/models`, {
 			headers: { Authorization: `Bearer ${this.#apiKey}` },
 			signal: AbortSignal.timeout(FETCH_TIMEOUT),
@@ -88,10 +95,10 @@ export default class OpenRouter {
 			);
 		}
 		const data = await res.json();
-		const entry = data.data?.find((m) => m.id === model);
+		const entry = data.data?.find((m) => m.id === lookupId);
 		if (!entry?.context_length) {
 			throw new Error(
-				`OpenRouter /models has no context_length for "${model}".`,
+				`OpenRouter /models has no context_length for "${lookupId}".`,
 			);
 		}
 		this.#contextCache.set(model, entry.context_length);
