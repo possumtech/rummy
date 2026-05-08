@@ -206,6 +206,18 @@ export default class Telemetry {
 		if (usage.prompt_tokens) actualContextTokens = usage.prompt_tokens;
 		else if (assembledTokens) actualContextTokens = assembledTokens;
 		const numberOrZero = (v) => (typeof v === "number" ? v : 0);
+		// Forensic metadata blob — everything the provider sent that
+		// isn't content/reasoning_content (those live elsewhere) or
+		// already-derived columns (token counts, cost). Catches
+		// finish_reason, system_fingerprint, response id, service_tier,
+		// raw usage, and any provider-specific fields that may light up
+		// future investigations. JSON column tolerates shape drift.
+		const responseMetadata = {
+			finish_reason: result.choices[0].finish_reason,
+			model_returned: result.model,
+			usage: result.usage,
+			...result.chunkMetadata,
+		};
 		await rummy.entries.updateTurnStats({
 			id: rummy.turnId,
 			context_tokens: actualContextTokens,
@@ -233,6 +245,7 @@ export default class Telemetry {
 				numberOrZero(usage.cost) ||
 				numberOrZero(usage.cost_details?.upstream_inference_cost) ||
 				numberOrZero(usage.cost_in_usd_ticks) / 1e10,
+			response_metadata: JSON.stringify(responseMetadata),
 		});
 	}
 

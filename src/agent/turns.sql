@@ -14,6 +14,7 @@ SET
 	, reasoning_tokens = :reasoning_tokens
 	, total_tokens = :total_tokens
 	, cost = :cost
+	, response_metadata = :response_metadata
 WHERE id = :id;
 
 -- PREP: get_run_usage

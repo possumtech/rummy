@@ -149,6 +149,8 @@ describe("Telemetry plugin", () => {
 						total_tokens: 150,
 					},
 					model: "test-model",
+					choices: [{ finish_reason: "stop" }],
+					chunkMetadata: {},
 				},
 				responseMessage: { reasoning_content: null },
 				content: "hello world",
@@ -173,7 +175,11 @@ describe("Telemetry plugin", () => {
 			await hooks.turn.response.emit({
 				rummy,
 				turn: 1,
-				result: { usage: { prompt_tokens: 1 } },
+				result: {
+					usage: { prompt_tokens: 1 },
+					choices: [{ finish_reason: "stop" }],
+					chunkMetadata: {},
+				},
 				responseMessage: { reasoning_content: "thoughts" },
 				content: "out",
 				unparsed: null,
@@ -192,7 +198,11 @@ describe("Telemetry plugin", () => {
 			await hooks.turn.response.emit({
 				rummy,
 				turn: 2,
-				result: { usage: {} },
+				result: {
+					usage: {},
+					choices: [{ finish_reason: "stop" }],
+					chunkMetadata: {},
+				},
 				responseMessage: {},
 				content: "ok",
 				unparsed: "<bad>tag</bad>",
@@ -221,6 +231,8 @@ describe("Telemetry plugin", () => {
 						cost: 0,
 						cost_details: { upstream_inference_cost: 0.42 },
 					},
+					choices: [{ finish_reason: "stop" }],
+					chunkMetadata: {},
 				},
 				responseMessage: {},
 				content: "x",
@@ -240,7 +252,11 @@ describe("Telemetry plugin", () => {
 			await hooks.turn.response.emit({
 				rummy,
 				turn: 1,
-				result: { usage: {} },
+				result: {
+					usage: {},
+					choices: [{ finish_reason: "stop" }],
+					chunkMetadata: {},
+				},
 				responseMessage: {},
 				content: "",
 				unparsed: null,

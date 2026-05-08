@@ -62,6 +62,12 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 	let usage = null;
 	let model = null;
 	let finishReason = null;
+	// Catch-all for chunk-level metadata that isn't `choices` or `usage` —
+	// id, system_fingerprint, service_tier, created, object, plus any
+	// provider-specific fields. The last-seen wins (these are typically
+	// stable across chunks; xAI/OpenAI repeat them, some land only on the
+	// final chunk).
+	const chunkMetadata = {};
 
 	while (true) {
 		const { done, value } = await reader.read();
@@ -89,6 +95,16 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 
 			if (chunk.model) model = chunk.model;
 			if (chunk.usage) usage = chunk.usage;
+
+			// Capture every non-content field the provider sends. We strip
+			// `choices` (handled below) and `usage` (already extracted) and
+			// keep the rest verbatim. Fields seen in a later chunk overwrite
+			// earlier ones — providers re-emit stable fields, and final-chunk
+			// fields (system_fingerprint on some, service_tier on others) win.
+			for (const [k, v] of Object.entries(chunk)) {
+				if (k === "choices" || k === "usage") continue;
+				chunkMetadata[k] = v;
+			}
 
 			const choice = chunk.choices?.[0];
 			if (!choice) continue;
@@ -121,5 +137,6 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 			},
 		],
 		usage,
+		chunkMetadata,
 	};
 }

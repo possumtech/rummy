@@ -99,6 +99,13 @@ CREATE TABLE IF NOT EXISTS turns (
 	, reasoning_tokens INTEGER NOT NULL DEFAULT 0 CHECK (reasoning_tokens >= 0)
 	, total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0)
 	, cost REAL NOT NULL DEFAULT 0 CHECK (cost >= 0)
+	-- Full response metadata from the provider — everything except
+	-- content/reasoning_content (those live on the assistant://N entry
+	-- and turns.reasoning_content respectively). Catches finish_reason,
+	-- system_fingerprint, response id, service_tier, raw usage object,
+	-- and whatever provider-specific fields land on the response. Kept
+	-- as opaque JSON so provider shape drift doesn't bite us.
+	, response_metadata JSON NOT NULL DEFAULT '{}' CHECK (json_valid(response_metadata))
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
