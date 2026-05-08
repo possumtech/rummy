@@ -1,8 +1,6 @@
 /**
- * instructions plugin: system prompt assembly + findLatestSummary helper.
- *
- * The plugin owns `instructions://system` rendering and exposes
- * `findLatestSummary` for callers (cli.js) that need the final
+ * instructions plugin: system + user assembly filters and the
+ * `findLatestSummary` helper for callers (cli.js) that need the final
  * `<update status="200">` body to print as a run's answer.
  */
 import assert from "node:assert";

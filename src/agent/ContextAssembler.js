@@ -9,6 +9,7 @@ export default class ContextAssembler {
 			toolSet = null,
 			lastContextTokens = 0,
 			turn = 1,
+			persona = "",
 		} = {},
 		hooks,
 	) {
@@ -27,6 +28,7 @@ export default class ContextAssembler {
 			lastContextTokens,
 			toolSet,
 			turn,
+			persona,
 		};
 
 		const system = await hooks.assembly.system.filter(systemPrompt, ctx);

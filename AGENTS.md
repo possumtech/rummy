@@ -259,10 +259,6 @@ These are deliberate paradigm deviations with real justification.
 None should be refactored; all should be named in PLUGINS.md so
 they aren't mistaken for ceremony by the next session.
 
-- **`hooks.instructions.resolveSystemPrompt`** — single-owner
-  cache-stability concern. The system prompt is *deliberately* not
-  a filter chain because multiple participants would defeat
-  prefix-cache reasoning.
 - **`hooks.update.resolve`** — single-owner with synchronous
   return value. Caller needs `{ summaryText, updateText }` back;
   events emit but don't return; only the update plugin knows

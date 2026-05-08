@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import Protocol from "./protocol.js";
 
+// Base system-prompt content (header + Core XML Command Grammar). The
+// `[%TOOLS%]` placeholder is substituted with the active-toolset tag list
+// at render time. Tool-specific docs no longer live here; they're a
+// separate `assembly.system` participant at priority 100.
 const baseInstructions = readFileSync(
 	new URL("./instructions-system.md", import.meta.url),
 	"utf8",
@@ -9,9 +13,7 @@ const baseInstructions = readFileSync(
 // Tight, non-modal reminder rendered LATE in the user message
 // (`assembly.user` priority 165, between unknowns at 150 and budget at
 // 175) so the rules sit adjacent to the action site — recency keeps the
-// per-turn discipline warm. The user message is a sandwich: prompt at
-// front (cacheable across turns of a run), state in the middle, rules
-// then budget at the back.
+// per-turn discipline warm.
 const userInstructions = readFileSync(
 	new URL("./instructions-user.md", import.meta.url),
 	"utf8",
@@ -24,45 +26,56 @@ export default class Instructions {
 
 	constructor(core) {
 		this.#core = core;
-		core.on("visible", this.full.bind(this));
-		core.on("turn.started", this.onTurnStarted.bind(this));
-		core.hooks.instructions.resolveSystemPrompt =
-			this.resolveSystemPrompt.bind(this);
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
+		// System message: priority chain. Base header + grammar at 50,
+		// joined per-tool docs at 100, persona at 150 (in persona.js).
+		core.filter("assembly.system", this.assembleSystemBase.bind(this), 50);
+		core.filter("assembly.system", this.assembleSystemToolDocs.bind(this), 100);
+		// User message: per-turn reminder block.
 		core.filter("assembly.user", this.assembleInstructions.bind(this), 165);
 		new Protocol(core);
 	}
 
-	// Render the user-side reminder right before the prompt block. Single
-	// file, no mode keying — same content every turn.
-	assembleInstructions(content, _ctx) {
-		return `${content}<instructions>\n${userInstructions}\n</instructions>\n`;
+	#activeToolSet(ctx) {
+		return ctx.toolSet
+			? new Set(ctx.toolSet)
+			: new Set(this.#core.hooks.tools.names);
 	}
 
-	// Project instructions://system through the visible view; called once per turn.
-	async resolveSystemPrompt(rummy) {
-		const { entries: store, runId, hooks } = rummy;
-		const entries = await store.getEntriesByPattern(
-			runId,
-			"instructions://system",
-			null,
-			{ includeAuditSchemes: true },
+	// assembly.system @ 50 — header + Core XML Command Grammar with the
+	// advertised tool tag list substituted into the `[%TOOLS%]` slot.
+	assembleSystemBase(content, ctx) {
+		const activeTools = this.#activeToolSet(ctx);
+		const advertised = this.#core.hooks.tools.advertisedNames.filter((n) =>
+			activeTools.has(n),
 		);
-		// The entry is always written by onTurnStarted before this runs.
-		const entry = entries[0];
-		const attributes = await store.getAttributes(
-			runId,
-			"instructions://system",
+		const tools = advertised.map((n) => `<${n}/>`).join(", ");
+		return `${content}${baseInstructions.replace("[%TOOLS%]", tools)}`;
+	}
+
+	// assembly.system @ 100 — per-tool docs joined in tool-registration
+	// order. Each tool plugin contributes its block via the
+	// `instructions.toolDocs` sub-filter (registry-style: filter
+	// participants mutate a docsMap keyed by tool name).
+	async assembleSystemToolDocs(content, ctx) {
+		const activeTools = this.#activeToolSet(ctx);
+		const toolDocs = await this.#core.hooks.instructions.toolDocs.filter(
+			{},
+			{ toolSet: activeTools },
 		);
-		return hooks.tools.view("instructions", {
-			path: "instructions://system",
-			scheme: "instructions",
-			body: entry.body,
-			attributes,
-			visibility: "visible",
-			category: "system",
-		});
+		const docsText = this.#core.hooks.tools.names
+			.filter((n) => activeTools.has(n))
+			.filter((key) => toolDocs[key])
+			.map((key) => toolDocs[key])
+			.join("\n\n");
+		if (!docsText) return content;
+		return `${content}\n\n${docsText}`;
+	}
+
+	// assembly.user @ 165 — per-turn reminder, same body every turn.
+	assembleInstructions(content, _ctx) {
+		return `${content}<instructions>\n${userInstructions}\n</instructions>\n`;
 	}
 
 	// Latest terminal update (status=200) — used by cli.js to print the
@@ -78,54 +91,5 @@ export default class Instructions {
 				return attrs?.status === 200;
 			})
 			.at(-1);
-	}
-
-	async onTurnStarted({ rummy }) {
-		const { entries: store, sequence: turn, runId } = rummy;
-		const runRow = await store.getRun(runId);
-		const toolSet = rummy.toolSet
-			? [...rummy.toolSet]
-			: this.#core.hooks.tools.names;
-		await store.set({
-			runId,
-			turn,
-			path: "instructions://system",
-			body: "",
-			state: "resolved",
-			writer: "system",
-			attributes: {
-				persona: runRow.persona,
-				toolSet,
-			},
-		});
-	}
-
-	async full(entry) {
-		const attrs = entry.attributes;
-		const activeTools = attrs.toolSet
-			? new Set(attrs.toolSet)
-			: new Set(this.#core.hooks.tools.names);
-		const toolDocs = await this.#core.hooks.instructions.toolDocs.filter(
-			{},
-			{ toolSet: activeTools },
-		);
-		// Tools list shown to the model — advertised only.
-		const advertised = this.#core.hooks.tools.advertisedNames.filter((n) =>
-			activeTools.has(n),
-		);
-		const tools = advertised.map((n) => `<${n}/>`).join(", ");
-		// Tooldoc render — every registered tool with a doc, advertised or
-		// hidden. Hidden tools (unknown, known) don't appear in the list
-		// but their scheme lifecycle still needs teaching.
-		const all = this.#core.hooks.tools.names.filter((n) => activeTools.has(n));
-		const docsText = all
-			.filter((key) => toolDocs[key])
-			.map((key) => toolDocs[key])
-			.join("\n\n");
-		let prompt = baseInstructions
-			.replace("[%TOOLS%]", tools)
-			.replace("[%TOOLDOCS%]", docsText);
-		prompt += `\n\n## Operational Persona\n\n${attrs.persona}`;
-		return prompt;
 	}
 }

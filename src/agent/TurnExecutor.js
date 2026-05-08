@@ -89,14 +89,18 @@ export default class TurnExecutor {
 
 		await this.#hooks.processTurn(rummy);
 
-		const systemPrompt =
-			await this.#hooks.instructions.resolveSystemPrompt(rummy);
+		// Run persona feeds the assembly.system chain (persona plugin's
+		// participant at priority 150). Loaded once per turn; the system
+		// prompt is built directly by the chain — no resolveSystemPrompt
+		// indirection.
+		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
 
 		const budgetCtx = {
 			runId: currentRunId,
 			loopId: currentLoopId,
 			turn,
-			systemPrompt,
+			systemPrompt: "",
+			persona: runRow.persona,
 			mode,
 			toolSet,
 			loopIteration,
@@ -143,7 +147,6 @@ export default class TurnExecutor {
 			};
 		}
 
-		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
 		const filteredMessages = await this.#hooks.llm.messages.filter(messages, {
 			model: requestedModel,
 			projectId,

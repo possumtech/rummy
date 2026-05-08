@@ -23,6 +23,7 @@ export default async function materializeContext({
 	mode,
 	toolSet,
 	contextSize,
+	persona = "",
 }) {
 	await db.clear_turn_context.run({ run_id: runId, turn });
 	const viewRows = await db.get_model_context.all({ run_id: runId });
@@ -119,6 +120,7 @@ export default async function materializeContext({
 			toolSet,
 			lastContextTokens,
 			turn,
+			persona,
 		},
 		hooks,
 	);

@@ -63,10 +63,13 @@ describe("ContextAssembler", () => {
 
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].role, "system");
-			assert.strictEqual(
-				messages[0].content,
-				"You are helpful.",
-				"system holds only the static prompt; <context> moved out",
+			assert.ok(
+				messages[0].content.startsWith("You are helpful."),
+				"assembly.system chain seeds with the supplied systemPrompt",
+			);
+			assert.ok(
+				messages[0].content.includes("Folksonomic XML Command Definitions"),
+				"instructions plugin contributes the header at priority 50",
 			);
 			assert.strictEqual(messages[1].role, "user");
 			const user = messages[1].content;
@@ -247,9 +250,40 @@ describe("ContextAssembler", () => {
 			);
 
 			assert.strictEqual(messages.length, 2);
-			assert.strictEqual(messages[0].content, "sys");
+			assert.ok(
+				messages[0].content.startsWith("sys"),
+				"assembly.system seeds with supplied systemPrompt",
+			);
 			assert.strictEqual(messages[1].role, "user");
 			assert.ok(messages[1].content.includes("<prompt"));
+		});
+
+		it("appends the persona block to the system prompt when ctx.persona is set", async () => {
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				[],
+				{ systemPrompt: "", persona: "You are a careful auditor." },
+				hooks,
+			);
+			assert.ok(
+				messages[0].content.includes("## Operational Persona"),
+				"persona plugin contributes its system-prompt block",
+			);
+			assert.ok(
+				messages[0].content.includes("You are a careful auditor."),
+				"persona body rendered in system prompt",
+			);
+		});
+
+		it("omits the persona block when ctx.persona is empty", async () => {
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				[],
+				{ systemPrompt: "" },
+				hooks,
+			);
+			assert.ok(
+				!messages[0].content.includes("## Operational Persona"),
+				"no persona block when ctx.persona is unset",
+			);
 		});
 
 		it("renders data entries in row order in user message", async () => {

@@ -42,5 +42,3 @@ Example:
 ### body
 
 * Whether the command's tag body is optional and what it is for depends on the specific Core XML Command.
-
-[%TOOLDOCS%]

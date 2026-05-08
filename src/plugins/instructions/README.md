@@ -7,28 +7,37 @@ run.
 
 ## Registration
 
-- **Hook**: `hooks.instructions.resolveSystemPrompt` (single-owner;
-  see AGENTS.md "Architectural exceptions") — resolves the system
-  prompt: `instructions-system.md` text + `[%TOOLS%]` + `[%TOOLDOCS%]`
-  + persona body. Cache-stable across all turns within a run.
-- **Event**: `turn.started` — writes `instructions://system` entry
-  with `{ persona, toolSet }` attributes (audit record only).
-- **Filter**: `instructions.toolDocs` — gathers `*Doc.md` content
-  from all tool plugins into a docsMap keyed by tool name. Skill
-  plugin extends this filter to inject loaded skill docs.
+- **Filter**: `assembly.system` (priority 50) — renders the system-
+  prompt header + Core XML Command Grammar from
+  `instructions-system.md` with `[%TOOLS%]` substituted to the
+  active-toolset tag list.
+- **Filter**: `assembly.system` (priority 100) — renders the joined
+  per-tool docs. Each tool plugin contributes its block via the
+  `instructions.toolDocs` sub-filter (registry-style: filter
+  participants mutate a docsMap keyed by tool name). Render order
+  follows tool-registration order.
 - **Filter**: `assembly.user` (priority 165) — renders
   `instructions-user.md` as `<instructions>` late in the user
   message, between `<unknowns>` (150) and `<budget>` (175). The
   user message is a sandwich: `<prompt>` (30) leads for cache
   stability, dynamic state fills the middle, then rules and
   budget close out so the action site sees them with recency.
+- **Filter**: `instructions.toolDocs` — sub-filter the toolDocs
+  participant calls. Tool plugins (and skill) extend this filter
+  to publish their per-tool docs.
+- **Hook**: `hooks.instructions.findLatestSummary` — locates the
+  most recent `<update status="200">` for cli.js to print as the
+  run's final answer.
+
+The persona block is rendered by the persona plugin's own
+`assembly.system` participant at priority 150.
 
 ## Files
 
-- `instructions.js` — plugin registration and assembly logic.
-- `instructions-system.md` — the system-side base. Static within a
-  run; identity + `[%TOOLS%]` + `[%TOOLDOCS%]` placeholders. The
-  persona body is appended below at resolve time.
+- `instructions.js` — plugin registration and per-section assembly.
+- `instructions-system.md` — header + Core XML Command Grammar.
+  Static within a run; only `[%TOOLS%]` substitutes at render. No
+  per-turn content here, ever.
 - `instructions-user.md` — the per-turn imperative reminder
   rendered as `<instructions>` in the user message. Same bytes
   every turn.
@@ -38,16 +47,10 @@ run.
 
 ## Cache shape
 
-- System message (resolved by `resolveSystemPrompt`) includes
-  `instructions-system.md` + tool docs + persona. Identical bytes
-  every turn within a run → cache-stable.
-- User message includes `<instructions>` at priority 165 — same
-  bytes every turn, but placed AFTER the dynamic state blocks so
-  it can't extend the per-turn cache prefix. The cache-stable
-  prefix is system + `<prompt>` (priority 30); recency on the
-  rules at the action site is the trade.
-
-If you add a per-turn-dynamic piece to `instructions-system.md` by
-mistake, the system prompt changes every turn and the cache prefix
-collapses. Per-turn content belongs in `instructions-user.md` (or
-in a dedicated assembly plugin at the appropriate priority).
+The full system prompt (header + Core grammar + tool docs +
+persona) is built by the `assembly.system` chain. Each participant
+returns identical bytes across all turns of a run, so the
+concatenated result is byte-stable → cache-stable. If you add a
+per-turn-dynamic piece to any system-side participant by mistake,
+the system prompt changes every turn and the cache prefix
+collapses. Per-turn content belongs in the user message.

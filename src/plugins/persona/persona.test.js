@@ -5,8 +5,10 @@ import Persona from "./persona.js";
 function makeCore() {
 	const views = new Map();
 	const schemes = [];
+	const filters = [];
 	return {
 		registerScheme: (opts) => schemes.push(opts),
+		filter: (name, fn, priority) => filters.push({ name, fn, priority }),
 		hooks: {
 			tools: {
 				onView: (scheme, fn, vis) => {
@@ -17,6 +19,7 @@ function makeCore() {
 		},
 		_view: (scheme, vis) => views.get(scheme)?.get(vis),
 		_schemes: schemes,
+		_filters: filters,
 	};
 }
 
@@ -27,5 +30,37 @@ describe("Persona plugin", () => {
 		assert.deepEqual(core._schemes, [{ name: "persona", category: "data" }]);
 		assert.equal(core._view("persona", "visible")({ body: "hi" }), "hi");
 		assert.equal(core._view("persona", "summarized")(), "");
+	});
+
+	it("registers an assembly.system filter at priority 150", () => {
+		const core = makeCore();
+		new Persona(core);
+		const f = core._filters.find((x) => x.name === "assembly.system");
+		assert.ok(f, "registers an assembly.system filter");
+		assert.equal(f.priority, 150);
+	});
+
+	it("appends the Operational Persona block when ctx.persona is set", () => {
+		const core = makeCore();
+		new Persona(core);
+		const f = core._filters.find((x) => x.name === "assembly.system");
+		const out = f.fn("seed", { persona: "You are a careful auditor." });
+		assert.ok(out.startsWith("seed"), "preserves prior chain content");
+		assert.ok(
+			out.includes("## Operational Persona"),
+			"renders the persona heading",
+		);
+		assert.ok(
+			out.includes("You are a careful auditor."),
+			"renders the persona body",
+		);
+	});
+
+	it("passes content through unchanged when ctx.persona is empty", () => {
+		const core = makeCore();
+		new Persona(core);
+		const f = core._filters.find((x) => x.name === "assembly.system");
+		assert.equal(f.fn("seed", {}), "seed");
+		assert.equal(f.fn("seed", { persona: "" }), "seed");
 	});
 });

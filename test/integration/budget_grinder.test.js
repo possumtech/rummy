@@ -94,12 +94,16 @@ describe("Budget grinder ladder (@budget_enforcement)", () => {
 			// Big visible content at turn 0. vBody = full body; sBody for
 			// known:// is body-cap previewed (≤ SUMMARY_MAX_CHARS). The
 			// premium between them creates the headroom step 2 frees.
+			// contextSize must exceed the system prompt (assembly.system
+			// chain: instructions header + Core grammar + per-tool docs)
+			// plus the seeded visible content, then drop under ceiling
+			// once the visible content is summarized.
 			for (let i = 0; i < 3; i++) {
 				await store.set({
 					runId,
 					turn: 0,
 					path: `known://big_${i}`,
-					body: pad(80),
+					body: pad(2000),
 					state: "resolved",
 					visibility: "visible",
 				});
@@ -107,7 +111,7 @@ describe("Budget grinder ladder (@budget_enforcement)", () => {
 
 			const result = await enforce(tdb, store, {
 				runId,
-				contextSize: 5000,
+				contextSize: 50000,
 				turn: 1,
 			});
 
@@ -154,7 +158,7 @@ describe("Budget grinder ladder (@budget_enforcement)", () => {
 				runId,
 				turn: 1,
 				path: "prompt://1",
-				body: pad(300),
+				body: pad(5000),
 				state: "resolved",
 				visibility: "visible",
 				attributes: { mode: "act" },
@@ -162,7 +166,7 @@ describe("Budget grinder ladder (@budget_enforcement)", () => {
 
 			const result = await enforce(tdb, store, {
 				runId,
-				contextSize: 5000,
+				contextSize: 50000,
 				turn: 1,
 			});
 
