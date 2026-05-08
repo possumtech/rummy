@@ -81,6 +81,38 @@ function trimMarkerNewlines(content) {
 	return result;
 }
 
+// Detect a body that is exactly one heredoc wrapping its entire content.
+// Returns `{ ident, content }` if `body` is `<<IDENT\n...\nIDENT` (with
+// optional surrounding whitespace), otherwise `null`. Used by non-`<set>`
+// plugins to let models opaquely wrap multi-line scripts, tag-shaped
+// prose, or content with special characters — without requiring escaping
+// or string-quoting at the model layer. The plugin sees the unwrapped
+// inner content as its body; the IDENT is attached to the command as
+// `heredocIdent` for plugins that want to act on the label.
+//
+// Reuses the same `findOpener`/`findCloser` helpers as `parseMarkerBody`,
+// so the grammar (boundary rules, IDENT shape, suffix nesting) stays
+// single-sourced. Difference is just the validation: this function
+// requires the heredoc to span the body exactly (opener at start,
+// closer at end), where `parseMarkerBody` accepts multiple markers in
+// sequence.
+export function extractSingleHeredoc(body) {
+	if (!body) return null;
+	const trimmed = body.trim();
+	if (!trimmed.startsWith("<<")) return null;
+
+	const opener = findOpener(trimmed, 0);
+	if (!opener || opener.openerStart !== 0) return null;
+
+	const closer = findCloser(trimmed, opener.openerEnd, opener.ident);
+	if (!closer || closer.closerEnd !== trimmed.length) return null;
+
+	const content = trimMarkerNewlines(
+		trimmed.slice(opener.openerEnd, closer.closerStart),
+	);
+	return { ident: opener.ident, content };
+}
+
 export function parseMarkerBody(body) {
 	// Cheap rejection — most `<set>` bodies don't contain markers.
 	if (!/<<[A-Z]/.test(body)) return { ops: null, error: null };

@@ -1,4 +1,7 @@
-import { parseMarkerBody } from "../lib/hedberg/marker.js";
+import {
+	extractSingleHeredoc,
+	parseMarkerBody,
+} from "../lib/hedberg/marker.js";
 
 // Edit-marker body opacity. When `#findBodyEnd` is scanning a `<set>`
 // body and hits an opener, jump past the matching closer so tag-shaped
@@ -52,6 +55,20 @@ export const ALL_TOOLS = new Set([
 
 // Per-tool resolution: missing canonical attribute is filled silently from the body.
 function resolveCommand(name, a, rawBody) {
+	// Generic heredoc affordance: any non-`<set>` plugin's body may be
+	// wrapped in a single `<<IDENT...IDENT` heredoc to opaquely contain
+	// multi-line scripts, tag-shaped prose, or content with special
+	// characters. Plugins consume the unwrapped inner body verbatim;
+	// the IDENT is exposed as `heredocIdent` on the command for plugins
+	// that want to act on the label. `<set>` is exempt because it does
+	// its own multi-op heredoc parsing via `parseMarkerBody`.
+	if (name !== "set") {
+		const heredoc = extractSingleHeredoc(rawBody);
+		if (heredoc) {
+			rawBody = heredoc.content;
+			a = { ...a, heredocIdent: heredoc.ident };
+		}
+	}
 	const trimmed = rawBody.trim();
 
 	if (name === "set") {
