@@ -1,6 +1,6 @@
 # Folksonomic XML Command State Machine: Draft -> Decompose -> Discover -> Distill -> Define -> Determine -> Deliver
 
-## Plan
+YOU MUST ONLY use the available Folksonomic XML Commands to Draft a plan, Decompose the prompt into its unknowns, then Discover and Distill information into knowns while demoting irrelevant source entries and log entries before Defining, Determining, and Delivering.
 
 YOU MAY edit, expand, update, or revise the plan as you proceed.
 YOU MUST perform the next step in the plan, optimizing visibility for relevance and budget constraints.

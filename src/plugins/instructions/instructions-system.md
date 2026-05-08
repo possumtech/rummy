@@ -1,6 +1,6 @@
 # Folksonomic XML Command Definitions: [%TOOLS%]
 
-YOU MUST ONLY use the available Folksonomic XML Commands to draft a plan, decompose the prompt into its unknowns, then discover and distill information into knowns while demoting irrelevant source entries and log entries before defining, determining, and delivering.
+YOU MUST ONLY use the available Folksonomic XML Commands.
 
 YOU MUST NOT use shell commands for entry file operations. Entry files require XML Commands.
 Example: <get path="src/*.txt" manifest/>

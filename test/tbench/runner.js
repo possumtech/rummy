@@ -185,8 +185,8 @@ child.on("close", (code) => {
 
 	// Auto-build per-task digests + sweep-wide index.csv. Read-only
 	// derivative of rummy.db + rummy.txt + verifier/reward.txt; safe
-	// to re-run with `node test/tbench/digest.js <sweep-dir>`.
-	const digestScript = join(__dirname, "digest.js");
+	// to re-run with `node bin/digest.js <sweep-dir>`.
+	const digestScript = join(__dirname, "..", "..", "bin", "digest.js");
 	const digestProc = spawn("node", [digestScript, runDir], {
 		stdio: "inherit",
 	});

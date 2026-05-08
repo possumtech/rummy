@@ -1,7 +1,7 @@
 # Folksonomic XML Command Instructions
 
 YOU MUST ensure that all unknowns have been RESOLVED (with known entry references) or REJECTED before delivering.
-YOU MUST generate key, relevant knowns that are topical, taxonomized, tagged, and referenced.
+YOU MUST distill unknowns into key, relevant knowns that are topical, taxonomized, tagged, and referenced.
 YOU MUST ONLY populate known entries with linked, `visible` source entry information, NOT from summarized snippets or model training.
 YOU SHOULD routinely demote irrelevant source entries and log entries to optimize for relevance and budget constraints
 
@@ -21,7 +21,7 @@ Example:
 	[trivia question](prompt://3)
 	[unknown resolving](unknown://countries/france/capital)
 	[source entry](trivia/capitals.csv)
-
+	
 	{ relevant information derived from the linked, visible source entry }
 	NEW</set>
 	
@@ -36,7 +36,7 @@ Example:
 	<set path="prompt://3" visibility="summarized"/>
 	<set path="unknown://countries/france/capital" tags="RESOLVED" visibility="summarized"/>
 	<set path="trivia/capitals.csv" visibility="summarized"/>
-    { summarizing entries that may be relevant again, archiving what probably won't be, deleting what definitely won't be }
+	{ summarizing entries that may be relevant again, archiving what probably won't be, deleting what definitely won't be }
 	
 	<set path="known://plan"><<SEARCH - [ ] Find the capital of France SEARCH<<REPLACE - [x] Find the capital of France REPLACE</set>
 	<update status="102">distilled the capital of France into known entry; demoted the source</update>

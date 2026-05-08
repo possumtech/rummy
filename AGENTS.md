@@ -113,9 +113,10 @@ constant name → delete.
 
 Both `npm run test:tbench:*` and `npm run test:e2e` auto-emit a
 deterministic analysis layer at the end of the run (driven by
-`test/tbench/digest.js`). Re-runnable with
-`node test/tbench/digest.js <dir>` — read-only derivative of the
-rummy.db / rummy.txt / verifier-reward sources, idempotent.
+`bin/digest.js`). Re-runnable with `node bin/digest.js <dir>` or
+`node bin/digest.js <path/to/rummy.db>` — first-order forensic tool,
+not bench-specific. Read-only derivative of the rummy.db /
+rummy.txt / verifier-reward sources, idempotent.
 
 **Where to look:**
 - `test/tbench/results/<sweep>/...` for tbench (one run per task dir)

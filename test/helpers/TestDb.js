@@ -118,7 +118,7 @@ export default class TestDb {
 	async cleanup() {
 		await this.db.close();
 		// If DB is in a temp directory, persist to diag and delete.
-		// Layout matches the tbench task-dir shape so test/tbench/digest.js
+		// Layout matches the tbench task-dir shape so bin/digest.js
 		// can process the captured DB the same way it processes a task
 		// container's `agent/rummy.db`. See AGENTS.md "Sweep analysis"
 		// section. If DB is in a results directory (createAt), leave it in place.

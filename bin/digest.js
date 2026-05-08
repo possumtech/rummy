@@ -1,45 +1,27 @@
 /**
- * tbench/programbench digest tool. Walks a sweep dir (or a single task
- * dir), reads each task's agent DB (rummy.db for tbench, rummy_program-
- * bench.db for programbench) + rummy.txt + verifier/reward.txt, and
- * emits per-task and sweep-wide forensic artifacts:
+ * Universal run-digest tool. Reads any rummy*.db (e2e, demo, bench, dev)
+ * and emits per-run forensic artifacts. First-order tool, not bench-
+ * specific — use it on anything with a rummy*.db inside.
  *
- *   <task-dir>/digest.md      Waterfall: per-turn one-liner with status,
- *                             update body, and indented emission list.
- *                             Human + agent scan target.
- *   <task-dir>/digest.json    Same data, machine-queryable. Markers,
- *                             counts, paths, and a flat error record list.
- *   <task-dir>/reasoning.md   Per-turn reasoning_content bracketed by
- *                             `## Turn N` headers. Drill-down anchor
- *                             when the waterfall raises a question.
- *   <task-dir>/packets.md     Per-turn assembled wire packets (system,
- *                             user, assistant, model wrapper, reasoning).
- *   <task-dir>/digest_skipped Empty file. Written when no rummy*.db is
- *                             present in agent/ (exfil-fail / crash
- *                             before agent ran). Tells future passes "we
- *                             tried, no data."
+ *   <out>/digest.md       Run-shape header + waterfall: per-turn line
+ *                         with status, update body, indented emission
+ *                         list, and a reasoning excerpt.
+ *   <out>/digest.json     Same data, machine-queryable.
+ *   <out>/reasoning.md    Per-turn reasoning_content (full).
+ *   <out>/packets.md      Per-turn assembled wire packets.
+ *   <out>/digest_skipped  Written when no rummy*.db is present.
  *
- *   <sweep>/index.csv         One row per task: name, reward, status,
- *                             turns, tokens, cost, wall, markers.
- *                             Greppable triage front door.
- *   <sweep>/errors.md         Cross-task error report. Aggregates by
- *                             outcome, by task, and by signature (top
- *                             recurring failures with turn-list and
- *                             source-action body). Per-task chronology
- *                             tail with full body + originating action
- *                             body for each error.
- *   <sweep>/errors.json       Same data, machine-queryable.
+ *   <sweep>/index.csv     Greppable per-task summary.
+ *   <sweep>/errors.md     Cross-task aggregated error report.
+ *   <sweep>/errors.json   Same, machine-queryable.
  *
- * When invoked on a single task dir (rather than a sweep), `errors.md`
- * + `errors.json` land in the task dir itself; `index.csv` is sweep-only.
- *
- * The digest is a read-only derivative; never source-of-truth. Safe
- * to re-run on the same input.
+ * Read-only derivative; never source-of-truth. Safe to re-run.
  *
  * Usage:
- *   node test/tbench/digest.js <sweep-dir>           # sweep + index + errors
- *   node test/tbench/digest.js <task-dir>            # single task + errors
- *   node test/tbench/digest.js                       # latest sweep
+ *   node bin/digest.js <sweep-dir>           sweep + index + errors
+ *   node bin/digest.js <task-dir>            single task + errors
+ *   node bin/digest.js <path-to-rummy.db>    bare DB → sibling .digest/ dir
+ *   node bin/digest.js                       latest tbench sweep
  */
 
 import {
@@ -57,7 +39,17 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const RESULTS_DIR = join(__dirname, "results");
+// Default sweep root for the no-arg invocation: the tbench results dir
+// historically holds the latest of everything. Resolved relative to the
+// project root (one level up from bin/).
+const RESULTS_DIR = join(__dirname, "..", "test", "tbench", "results");
+// Bare-DB invocation output. The full per-run pile (subdirs per alias
+// for multi-run DBs) lives in /tmp/rummy_digest/ — clobbered each run.
+// Sweep / task-dir invocations keep writing alongside source dirs.
+const PILE_DIR = "/tmp/rummy_digest";
+// Single readable digest that mirrors the most recent run from the DB.
+// Flat files only — no nested folders. Clobbered on each invocation.
+const PUBLIC_DIR = join(__dirname, "..", "test", "digest");
 
 const MAX_LOOP_TURNS = Number(process.env.RUMMY_MAX_LOOP_TURNS) || 99;
 const REASONING_RUNAWAY_CHARS = 8000;
@@ -369,6 +361,33 @@ function renderError(err) {
 	return `  ✗ error: ${summarize(err.body, 100)}`;
 }
 
+// "What happened" header — five lines a forensic reader can scan in
+// seconds before deciding whether to drop into the waterfall.
+function renderRunShape(turnRows) {
+	let lastUpdate = null;
+	let lastEmissionTurn = null;
+	let setActions = 0;
+	let getActions = 0;
+	let searchActions = 0;
+	for (const row of turnRows) {
+		if (row.update) lastUpdate = { turn: row.turn, ...row.update };
+		if (row.emissions.length > 0) lastEmissionTurn = row.turn;
+		for (const em of row.emissions) {
+			if (em.action === "set") setActions++;
+			else if (em.action === "get") getActions++;
+			else if (em.action === "search") searchActions++;
+		}
+	}
+	const lastUpdateLine = lastUpdate
+		? `T${lastUpdate.turn} status=${lastUpdate.status ?? "—"} "${summarize(lastUpdate.body, 60)}"`
+		: "(none)";
+	return [
+		`Last update:    ${lastUpdateLine}`,
+		`Last emission:  ${lastEmissionTurn != null ? `T${lastEmissionTurn}` : "(none)"}`,
+		`Action mix:     set=${setActions} get=${getActions} search=${searchActions}`,
+	];
+}
+
 function renderWaterfall(
 	taskName,
 	prompt,
@@ -396,6 +415,10 @@ function renderWaterfall(
 		lines.push(`markers: ${markers.join(", ")}`);
 	}
 	lines.push("");
+	lines.push("## Run shape");
+	lines.push("");
+	for (const l of renderRunShape(turnRows)) lines.push(l);
+	lines.push("");
 	if (prompt) {
 		lines.push("## Prompt");
 		lines.push(summarize(prompt, 240));
@@ -408,12 +431,14 @@ function renderWaterfall(
 		const upFail =
 			row.update?.state === "failed" ? ` ✗ ${row.update.outcome ?? ""}` : "";
 		lines.push(`T${row.turn}: ${upStatus}  "${upBody}"${upFail}`);
+		if (row.reasoning)
+			lines.push(`  ↳ reasoning: ${summarize(row.reasoning, 140)}`);
 		for (const em of row.emissions) lines.push(renderEmission(em));
 		for (const err of row.errors) lines.push(renderError(err));
 	}
 	lines.push("");
 	lines.push("## Drill-down");
-	lines.push("- agent/rummy.txt   (full trace)");
+	lines.push("- agent/rummy.txt   (full trace, when present)");
 	lines.push("- agent/rummy.db    (sqlite — entries, run_views, turns)");
 	lines.push("- reasoning.md      (per-turn reasoning_content)");
 	lines.push("- packets.md        (per-turn assembled wire packets)");
@@ -801,11 +826,15 @@ function synthSummary(run, turnsRows) {
 	};
 }
 
-function processTask(taskDir) {
-	const taskName = taskDir
-		.split("/")
-		.pop()
-		.replace(/__[A-Za-z0-9]+$/, "");
+function processTask(taskDir, taskNameOverride = null) {
+	const taskName =
+		taskNameOverride ??
+		taskDir
+			.replace(/\/+$/, "")
+			.split("/")
+			.pop()
+			.replace(/\.digest$/, "")
+			.replace(/__[A-Za-z0-9]+$/, "");
 	const rummyDb = findAgentDb(taskDir);
 	if (rummyDb == null) {
 		closeSync(openSync(join(taskDir, "digest_skipped"), "w"));
@@ -925,9 +954,13 @@ function writeIndex(sweepDir, digests) {
 	writeFileSync(join(sweepDir, "index.csv"), `${header}\n${rows.join("\n")}\n`);
 }
 
-// CLI: positional argument is a sweep dir or a task dir. With no
-// argument, default to the latest sweep under test/tbench/results.
+// CLI: first positional arg is a `.db` file, a task dir, or a sweep dir.
+// Second positional arg (bare-DB mode only) selects which run becomes
+// the "featured" run promoted to test/digest/ — exact or substring
+// match against run.alias. Default: the most-recent (highest-id) run.
+// With no arg, default to the latest sweep under test/tbench/results.
 const target = process.argv[2];
+const runSelector = process.argv[3] ?? null;
 let entry;
 if (target) {
 	entry = target.startsWith("/") ? target : join(process.cwd(), target);
@@ -947,16 +980,83 @@ if (!existsSync(entry)) {
 	process.exit(2);
 }
 
+// Bare-DB invocation: `node bin/digest.js /path/to/rummy.db`. The full
+// pile (per-alias subdirs for multi-run DBs) lands in /tmp/rummy_digest/.
+// We synthesize a task dir there so processTask's path discipline
+// (agent/rummy.db, reward.txt-optional, rummy.txt-optional) keeps
+// holding. After processTask runs, PUBLIC_DIR gets a flat copy of the
+// most recent run's artifacts (see end of file).
+let bareDbName = null;
+if (statSync(entry).isFile() && /\.db$/.test(entry)) {
+	const { rmSync, linkSync, copyFileSync: cp } = await import("node:fs");
+	bareDbName = entry.split("/").pop().replace(/\.db$/, "");
+	rmSync(PILE_DIR, { recursive: true, force: true });
+	mkdirSync(join(PILE_DIR, "agent"), { recursive: true });
+	const linkedDb = join(PILE_DIR, "agent", "rummy.db");
+	// Hard-link is cheap and keeps reads off the live DB if any; fall
+	// back to copy on cross-device or filesystem-restricted setups.
+	try {
+		linkSync(entry, linkedDb);
+	} catch {
+		cp(entry, linkedDb);
+	}
+	entry = PILE_DIR;
+}
+
 if (isTaskDir(entry)) {
-	const digests = processTask(entry);
+	const digests = processTask(entry, bareDbName);
 	const allErrors = digests.flatMap((d) => d.errors ?? []);
-	writeErrorsArtifacts(entry, entry.split("/").pop(), allErrors);
+	writeErrorsArtifacts(entry, bareDbName ?? entry.split("/").pop(), allErrors);
 	for (const d of digests) {
 		console.log(`wrote digest for ${d.task}: ${d.markers.join(", ")}`);
 	}
 	console.log(
 		`wrote errors.md + errors.json (${allErrors.length} errors) → ${entry}/`,
 	);
+
+	// Bare-DB mode: copy the most-recent run's flat artifacts into
+	// PUBLIC_DIR (test/digest/) so a human can `cat test/digest/digest.md`
+	// without spelunking. Pile of all runs stays in PILE_DIR. For single-
+	// run DBs this is just "the digest." For multi-run DBs (e2e TestDb,
+	// LME) this is the highest-id run; pick a different one out of the
+	// pile if you want it.
+	if (bareDbName) {
+		const { rmSync, copyFileSync: cp } = await import("node:fs");
+		rmSync(PUBLIC_DIR, { recursive: true, force: true });
+		mkdirSync(PUBLIC_DIR, { recursive: true });
+		let featured = digests[digests.length - 1];
+		if (runSelector) {
+			const matches = digests.filter((d) =>
+				d.task.includes(runSelector),
+			);
+			if (matches.length === 0) {
+				console.error(
+					`run selector "${runSelector}" matched no run in this DB. ` +
+						`Available: ${digests.map((d) => d.task).join(", ")}`,
+				);
+				process.exit(2);
+			}
+			if (matches.length > 1) {
+				console.error(
+					`run selector "${runSelector}" matched ${matches.length} runs: ` +
+						matches.map((d) => d.task).join(", "),
+				);
+				process.exit(2);
+			}
+			featured = matches[0];
+		}
+		for (const f of ["digest.md", "reasoning.md", "packets.md", "digest.json"]) {
+			const src = join(featured.dir, f);
+			if (existsSync(src)) cp(src, join(PUBLIC_DIR, f));
+		}
+		for (const f of ["errors.md", "errors.json"]) {
+			const src = join(entry, f);
+			if (existsSync(src)) cp(src, join(PUBLIC_DIR, f));
+		}
+		console.log(
+			`featured run (${featured.task}) → ${PUBLIC_DIR}/digest.md`,
+		);
+	}
 } else {
 	const taskDirs = findTaskDirs(entry);
 	if (taskDirs.length === 0) {
