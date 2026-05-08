@@ -30,5 +30,9 @@
 	"error.xai_base_url_missing": "xai/ model requested but XAI_BASE_URL is not set.",
 	"error.xai_api_key_missing": "xai/ model requested but XAI_API_KEY is not set.",
 	"error.xai_auth": "xAI Authentication Error: {status}. Please check your XAI_API_KEY.",
-	"error.xai_api": "xAI API error: {status}"
+	"error.xai_api": "xAI API error: {status}",
+	"error.google_auth": "Google AI Studio authentication error: {status}. Check the gemini.key file in repo root.",
+	"error.google_api": "Google AI Studio API error: {status}",
+	"error.google_models_failed": "Google AI Studio /v1beta/models/{model} failed: {status}",
+	"error.google_no_context_length": "Google AI Studio model '{model}' returned no inputTokenLimit."
 }

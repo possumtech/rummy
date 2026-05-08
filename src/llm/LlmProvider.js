@@ -1,5 +1,4 @@
 import msg from "../agent/messages.js";
-import { countTokens } from "../agent/tokens.js";
 import {
 	ContextExceededError,
 	classifyTransient,
@@ -17,6 +16,11 @@ const LLM_MAX_BACKOFF = Number(process.env.RUMMY_LLM_MAX_BACKOFF);
 // 256-1024; smaller wastes budget, larger leaves headroom unused. 256
 // covers normal drift on chars/2 estimates without notable waste.
 const MAX_TOKENS_SAFETY_MARGIN = 256;
+// Realistic chars-per-token ratio for the output-budget formula. Mixed
+// English prose + code averages ~4 chars/token across modern tokenizers
+// (cl100k_base, Llama 3, Gemma). Distinct from `RUMMY_TOKEN_DIVISOR`
+// which is the conservative input-budget divisor.
+const OUTPUT_BUDGET_CHARS_PER_TOKEN = 4;
 // Floor on derived max_tokens. If prompt eats almost the entire context,
 // we still ask for at least this many output tokens so the model has
 // room to emit a usable terminal `<update>`. Below this and the run is
@@ -79,8 +83,22 @@ export default class LlmProvider {
 		// formula `context_length - prompt - safety_margin` is what every
 		// production LLM client converges on.
 		const contextLength = await this.getContextSize(model);
+		// Output-budget estimate uses a realistic chars/token ratio
+		// (~4 chars/token for typical mixed prose+code), NOT the
+		// conservative `countTokens` divisor (`RUMMY_TOKEN_DIVISOR=2`).
+		// `countTokens` is intentionally pessimistic for INPUT budget
+		// enforcement — better to overestimate input and stay under the
+		// context limit. But using that same overestimate for output
+		// computation collapses `max_tokens` to the floor whenever the
+		// prompt approaches half the context. Real example: 49K-actual-
+		// token prompt, /2 divisor → 98K estimate, ctx=65K → max_tokens
+		// drops to 1024 floor even though 16K of real output budget
+		// remains. Fix: estimate prompt tokens accurately for the output
+		// formula. The conservative divisor stays in place where it
+		// matters (input visibility budget).
 		const promptEstimate = messages.reduce(
-			(sum, m) => sum + countTokens(m.content),
+			(sum, m) =>
+				sum + Math.ceil(m.content.length / OUTPUT_BUDGET_CHARS_PER_TOKEN),
 			0,
 		);
 		const maxTokens = Math.max(
