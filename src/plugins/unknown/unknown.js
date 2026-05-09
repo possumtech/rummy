@@ -9,7 +9,7 @@ export default class Unknown {
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
-		core.filter("assembly.user", this.assembleUnknowns.bind(this), 175);
+		core.filter("assembly.system", this.assembleUnknowns.bind(this), 350);
 		// Hidden from the advertised tool list — the model writes unknowns
 		// via <set path="unknown://..."/>. The unknown:// scheme lifecycle
 		// is taught in instructions-user.md, not in a separate tooldoc.

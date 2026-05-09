@@ -3,9 +3,9 @@ export default class Persona {
 		core.registerScheme({ name: "persona", category: "data" });
 		core.hooks.tools.onView("persona", (entry) => entry.body, "visible");
 		core.hooks.tools.onView("persona", () => "", "summarized");
-		// assembly.system @ 150 — last system-prompt section. Body comes
-		// from runs.persona, plumbed in via ctx.persona by TurnExecutor.
-		core.filter("assembly.system", this.assembleSystemPersona.bind(this), 150);
+		// assembly.user @ 10 — top of the user message. Sets voice/role
+		// freshly per turn, ahead of the prompt. Body from ctx.persona.
+		core.filter("assembly.user", this.assembleSystemPersona.bind(this), 10);
 	}
 
 	assembleSystemPersona(content, ctx) {

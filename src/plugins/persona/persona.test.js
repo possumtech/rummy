@@ -32,18 +32,18 @@ describe("Persona plugin", () => {
 		assert.equal(core._view("persona", "summarized")(), "");
 	});
 
-	it("registers an assembly.system filter at priority 150", () => {
+	it("registers an assembly.user filter at priority 10 (top of user)", () => {
 		const core = makeCore();
 		new Persona(core);
-		const f = core._filters.find((x) => x.name === "assembly.system");
-		assert.ok(f, "registers an assembly.system filter");
-		assert.equal(f.priority, 150);
+		const f = core._filters.find((x) => x.name === "assembly.user");
+		assert.ok(f, "registers an assembly.user filter");
+		assert.equal(f.priority, 10);
 	});
 
 	it("appends the Operational Persona block when ctx.persona is set", () => {
 		const core = makeCore();
 		new Persona(core);
-		const f = core._filters.find((x) => x.name === "assembly.system");
+		const f = core._filters.find((x) => x.name === "assembly.user");
 		const out = f.fn("seed", { persona: "You are a careful auditor." });
 		assert.ok(out.startsWith("seed"), "preserves prior chain content");
 		assert.ok(
@@ -59,7 +59,7 @@ describe("Persona plugin", () => {
 	it("passes content through unchanged when ctx.persona is empty", () => {
 		const core = makeCore();
 		new Persona(core);
-		const f = core._filters.find((x) => x.name === "assembly.system");
+		const f = core._filters.find((x) => x.name === "assembly.user");
 		assert.equal(f.fn("seed", {}), "seed");
 		assert.equal(f.fn("seed", { persona: "" }), "seed");
 	});

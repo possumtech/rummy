@@ -258,14 +258,8 @@ describe("Message assembly", () => {
 			"system has <visible> block",
 		);
 		assert.ok(system.content.includes("src/app.js"), "files in system");
-		assert.ok(
-			!user.content.includes("<summary>"),
-			"<summary> is not in user",
-		);
-		assert.ok(
-			!user.content.includes("<visible>"),
-			"<visible> is not in user",
-		);
+		assert.ok(!user.content.includes("<summary>"), "<summary> is not in user");
+		assert.ok(!user.content.includes("<visible>"), "<visible> is not in user");
 		assert.ok(user.content.includes("<prompt"), "user retains <prompt>");
 	});
 });

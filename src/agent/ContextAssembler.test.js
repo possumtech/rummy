@@ -86,7 +86,7 @@ describe("ContextAssembler", () => {
 			);
 		});
 
-		it("user message ordering: instructions → prompt → budget → unknowns", async () => {
+		it("user message sandwich: persona → prompt → budget → instructions", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -99,41 +99,28 @@ describe("ContextAssembler", () => {
 					category: "prompt",
 					source_turn: 1,
 				},
-				{
-					ordinal: 2,
-					path: "unknown://thing",
-					scheme: "unknown",
-					visibility: "visible",
-					body: "what is this",
-					tokens: 3,
-					attributes: null,
-					category: "unknown",
-					source_turn: 1,
-				},
 			];
 			const messages = await ContextAssembler.assembleFromTurnContext(
 				rows,
-				{ systemPrompt: "sys", contextSize: 32768 },
+				{
+					systemPrompt: "sys",
+					contextSize: 32768,
+					persona: "You are a careful auditor.",
+				},
 				hooks,
 			);
 
 			const user = messages[1].content;
-			const instructionsPos = user.indexOf("<instructions>");
+			const personaPos = user.indexOf("Operational Persona");
 			const promptPos = user.indexOf("<prompt");
 			const budgetPos = user.indexOf("<budget");
-			const unknownsPos = user.indexOf("<unknowns>");
-			assert.ok(instructionsPos >= 0, "instructions present");
+			const instructionsPos = user.indexOf("<instructions>");
+			assert.ok(personaPos >= 0, "persona present at user-top");
+			assert.ok(promptPos > personaPos, "prompt after persona");
+			assert.ok(budgetPos > promptPos, "budget after prompt");
 			assert.ok(
-				promptPos > instructionsPos,
-				"prompt after instructions (action-discipline first, question second)",
-			);
-			assert.ok(
-				budgetPos > promptPos,
-				"budget after prompt",
-			);
-			assert.ok(
-				unknownsPos > budgetPos,
-				"unknowns at the action site (last in user)",
+				instructionsPos > budgetPos,
+				"instructions at action site (last in user) — recency for protocol discipline",
 			);
 		});
 
@@ -259,19 +246,23 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[1].content.includes("<prompt"));
 		});
 
-		it("appends the persona block to the system prompt when ctx.persona is set", async () => {
+		it("renders the persona block at the top of the user message when ctx.persona is set", async () => {
 			const messages = await ContextAssembler.assembleFromTurnContext(
 				[],
 				{ systemPrompt: "", persona: "You are a careful auditor." },
 				hooks,
 			);
 			assert.ok(
-				messages[0].content.includes("## Operational Persona"),
-				"persona plugin contributes its system-prompt block",
+				messages[1].content.includes("## Operational Persona"),
+				"persona block in user message",
 			);
 			assert.ok(
-				messages[0].content.includes("You are a careful auditor."),
-				"persona body rendered in system prompt",
+				messages[1].content.includes("You are a careful auditor."),
+				"persona body rendered in user message",
+			);
+			assert.ok(
+				!messages[0].content.includes("## Operational Persona"),
+				"persona is not in system any more",
 			);
 		});
 
@@ -282,7 +273,7 @@ describe("ContextAssembler", () => {
 				hooks,
 			);
 			assert.ok(
-				!messages[0].content.includes("## Operational Persona"),
+				!messages[1].content.includes("## Operational Persona"),
 				"no persona block when ctx.persona is unset",
 			);
 		});
@@ -336,7 +327,7 @@ describe("ContextAssembler", () => {
 			assert.ok(system.includes("const x = 1;"), "new file body in <visible>");
 		});
 
-		it("renders unknowns in their own <unknowns> block in the user message", async () => {
+		it("renders unknowns in their own <unknowns> block in the system message", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -369,19 +360,19 @@ describe("ContextAssembler", () => {
 			const user = messages[1].content;
 			const system = messages[0].content;
 
-			assert.ok(user.includes("<unknowns>"), "unknowns block rendered");
+			assert.ok(system.includes("<unknowns>"), "unknowns block rendered");
 			assert.ok(
-				user.includes("<<:::unknown://config"),
+				system.includes("<<:::unknown://config"),
 				"unknown fenced inside its own block",
 			);
-			assert.ok(user.includes("which database adapter"));
+			assert.ok(system.includes("which database adapter"));
 			assert.ok(
-				!user.includes("<summary>") ||
-					user.indexOf("<unknowns>") > user.indexOf("<summary>"),
+				!system.includes("<summary>") ||
+					system.indexOf("<unknowns>") > system.indexOf("<summary>"),
 				"unknowns block does not nest inside <summary>",
 			);
-			assert.ok(!system.includes("<unknowns>"), "no <unknowns> in system");
-			assert.ok(!system.includes("<<:::unknown://"), "no unknowns in system");
+			assert.ok(!user.includes("<unknowns>"), "no <unknowns> in user");
+			assert.ok(!user.includes("<<:::unknown://"), "no unknowns in user");
 		});
 
 		it("prompt element carries tokenUsage and tokensFree attrs", async () => {
@@ -448,7 +439,9 @@ describe("ContextAssembler", () => {
 				hooks,
 			);
 			const system = messages[0].content;
-			const summarizedBlock = system.match(/<summary>([\s\S]*?)<\/summary>/)?.[1];
+			const summarizedBlock = system.match(
+				/<summary>([\s\S]*?)<\/summary>/,
+			)?.[1];
 			assert.ok(summarizedBlock, "<summary> block exists in system");
 			assert.ok(
 				summarizedBlock.includes("class AgentLoop"),
@@ -491,7 +484,9 @@ describe("ContextAssembler", () => {
 				hooks,
 			);
 			const system = messages[0].content;
-			const summarizedBlock = system.match(/<summary>([\s\S]*?)<\/summary>/)?.[1];
+			const summarizedBlock = system.match(
+				/<summary>([\s\S]*?)<\/summary>/,
+			)?.[1];
 			const visibleBlock = system.match(/<visible>([\s\S]*?)<\/visible>/)?.[1];
 			assert.ok(summarizedBlock.includes("short summary"));
 			assert.ok(!summarizedBlock.includes("FULL BODY HERE"));
