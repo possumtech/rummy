@@ -65,7 +65,7 @@ const { values: args } = parseArgs({
 });
 
 if (!args.task) {
-	console.error("usage: node runner.js --task <instance-id> [--model <alias>]");
+	console.error("usage: node runner.js --task <instance-id> --model <alias>");
 	process.exit(2);
 }
 
@@ -74,7 +74,7 @@ if (!args.task) {
 // Accept either form from the user.
 const INSTANCE_ID = args.task.replace(/_1776_/g, "__");
 const DOCKER_SLUG = INSTANCE_ID.replace(/__/g, "_1776_");
-const MODEL = args.model || process.env.RUMMY_PROGRAMBENCH_MODEL || "grok";
+const MODEL = args.model || process.env.RUMMY_TEST_MODEL;
 const CLEANROOM_IMAGE = `programbench/${DOCKER_SLUG}:task_cleanroom`;
 
 const runId = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);

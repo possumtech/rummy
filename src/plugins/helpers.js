@@ -43,10 +43,15 @@ function canonicalJson(obj) {
 	return JSON.stringify(sorted);
 }
 
-// Read sibling tooldoc .md; strips HTML comments (rationale stays out of the model packet).
+// Read sibling tooldoc .md; strips HTML comments (rationale stays out of
+// the model packet). Comment-only lines are consumed whole — including
+// the trailing newline — so an example/comment/example sequence
+// collapses to consecutive examples with no intervening blank line.
+// Inline comments mid-line still strip in place without removing the line.
 export function loadDoc(metaUrl, name) {
 	const dir = dirname(fileURLToPath(metaUrl));
 	return readFileSync(join(dir, name), "utf8")
+		.replace(/^[ \t]*<!--[\s\S]*?-->[ \t]*\n?/gm, "")
 		.replace(/<!--[\s\S]*?-->/g, "")
 		.replace(/\n{3,}/g, "\n\n")
 		.trim();
