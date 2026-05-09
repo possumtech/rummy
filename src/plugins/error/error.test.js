@@ -79,13 +79,13 @@ describe("error plugin: views", () => {
 		assert.equal(out, "\t<error>boom</error>");
 	});
 
-	it("summarized projection returns body unchanged", async () => {
+	it("summarized projection tab-indents the body (recap signal parity)", async () => {
 		const { hooks } = makeCore();
 		const out = await hooks.tools.view("error", {
 			body: "boom",
 			visibility: "summarized",
 		});
-		assert.equal(out, "boom");
+		assert.equal(out, "\tboom");
 	});
 });
 

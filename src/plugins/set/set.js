@@ -4,8 +4,8 @@ import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
 import File from "../file/file.js";
 import {
 	projectEmission,
-	SUMMARY_MAX_CHARS,
 	storePatternResult,
+	summarizeEmission,
 } from "../helpers.js";
 import docs from "./setDoc.js";
 
@@ -397,8 +397,7 @@ export default class Set {
 	}
 
 	summary(entry) {
-		if (!entry.body) return "";
-		return entry.body.slice(0, SUMMARY_MAX_CHARS);
+		return summarizeEmission(entry.body);
 	}
 
 	static #applyOperations(currentBody, operations) {

@@ -25,8 +25,15 @@ describe("Rm", () => {
 		assert.equal(result, '\t<rm path="known://chunk_*">\n\tbody\n\t</rm>');
 	});
 
-	it("summary returns empty — tag attributes carry the path", () => {
-		assert.strictEqual(plugin.summary(), "");
+	it("summary tab-indents the emission body", () => {
+		assert.strictEqual(
+			plugin.summary({ body: '<rm path="known://x"/>' }),
+			'\t<rm path="known://x"/>',
+		);
+	});
+
+	it("summary returns empty when entry has no body", () => {
+		assert.strictEqual(plugin.summary({ body: "" }), "");
 	});
 
 	it("manifest: lists matched paths without removing", async () => {

@@ -31,10 +31,10 @@ describe("AskUser", () => {
 		);
 	});
 
-	it("summary renders question and answer", () => {
+	it("summary tab-indents the rendered Q→A line", () => {
 		assert.strictEqual(
 			plugin.summary({ attributes: { question: "What?", answer: "Yes" } }),
-			"What? → Yes",
+			"\tWhat? → Yes",
 		);
 	});
 

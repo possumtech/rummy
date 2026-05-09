@@ -1,6 +1,10 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { projectEmission, storePatternResult } from "../helpers.js";
+import {
+	projectEmission,
+	storePatternResult,
+	summarizeEmission,
+} from "../helpers.js";
 import docs from "./cpDoc.js";
 
 export default class Cp {
@@ -114,7 +118,7 @@ export default class Cp {
 		return projectEmission(entry.body);
 	}
 
-	summary() {
-		return "";
+	summary(entry) {
+		return summarizeEmission(entry.body);
 	}
 }

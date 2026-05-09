@@ -1,6 +1,10 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { projectEmission, storePatternResult } from "../helpers.js";
+import {
+	projectEmission,
+	storePatternResult,
+	summarizeEmission,
+} from "../helpers.js";
 import docs from "./getDoc.js";
 
 export default class Get {
@@ -205,8 +209,8 @@ export default class Get {
 		return projectEmission(entry.body);
 	}
 
-	summary() {
-		return "";
+	summary(entry) {
+		return summarizeEmission(entry.body);
 	}
 }
 

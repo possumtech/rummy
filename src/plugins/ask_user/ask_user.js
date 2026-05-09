@@ -1,4 +1,8 @@
-import { projectEmission, SUMMARY_MAX_CHARS } from "../helpers.js";
+import {
+	projectEmission,
+	SUMMARY_MAX_CHARS,
+	summarizeEmission,
+} from "../helpers.js";
 import docs from "./ask_userDoc.js";
 
 // Per-side cap so summary preserves the arrow separator on long Q/A.
@@ -72,9 +76,9 @@ export default class AskUser {
 
 	summary(entry) {
 		const { question, answer } = entry.attributes;
-		if (answer) {
-			return `${question.slice(0, HALF)}${ARROW}${answer.slice(0, HALF)}`;
-		}
-		return question.slice(0, SUMMARY_MAX_CHARS);
+		const text = answer
+			? `${question.slice(0, HALF)}${ARROW}${answer.slice(0, HALF)}`
+			: question.slice(0, SUMMARY_MAX_CHARS);
+		return summarizeEmission(text);
 	}
 }

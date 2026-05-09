@@ -105,9 +105,12 @@ describe("Set plugin", () => {
 			assert.equal(plugin.summary({ body: "" }), "");
 		});
 
-		it("returns body verbatim when ≤ SUMMARY_MAX_CHARS", () => {
+		it("tab-indents the body when ≤ SUMMARY_MAX_CHARS post-projection", () => {
 			const body = "<<<<<<< SEARCH\nfoo\n=======\nbar\n>>>>>>> REPLACE";
-			assert.equal(plugin.summary({ body }), body);
+			assert.equal(
+				plugin.summary({ body }),
+				"\t<<<<<<< SEARCH\n\tfoo\n\t=======\n\tbar\n\t>>>>>>> REPLACE",
+			);
 		});
 
 		it("truncates oversize bodies to SUMMARY_MAX_CHARS (contract floor)", () => {

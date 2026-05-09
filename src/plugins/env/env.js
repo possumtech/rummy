@@ -2,6 +2,7 @@ import {
 	logPathToDataBase,
 	projectEmission,
 	streamSummary,
+	summarizeEmission,
 } from "../helpers.js";
 import docs from "./envDoc.js";
 
@@ -70,7 +71,7 @@ export default class Env {
 	}
 
 	summary(entry) {
-		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
+		if (entry.path.startsWith("log://")) return summarizeEmission(entry.body);
 		return streamSummary("env", entry);
 	}
 }

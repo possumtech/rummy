@@ -15,6 +15,16 @@ export function projectEmission(source) {
 		.join("\n");
 }
 
+// Same tab-indent recap signal as `projectEmission`, capped at
+// SUMMARY_MAX_CHARS post-projection so tabs don't push past the contract.
+export function summarizeEmission(body) {
+	if (!body) return "";
+	const projected = projectEmission(body);
+	return projected.length > SUMMARY_MAX_CHARS
+		? projected.slice(0, SUMMARY_MAX_CHARS)
+		: projected;
+}
+
 // Heredoc fence (path is the terminator) — distinct from XML so model
 // emissions and entry projections can't collide. JSON meta sorted for
 // prefix-cache stability.
