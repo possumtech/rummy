@@ -10,6 +10,6 @@ export default class Persona {
 
 	assembleSystemPersona(content, ctx) {
 		if (!ctx.persona) return content;
-		return `${content}\n\n## Operational Persona\n\n${ctx.persona}`;
+		return `${content}<system_instructions>\n${ctx.persona}\n</system_instructions>\n`;
 	}
 }

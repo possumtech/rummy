@@ -183,32 +183,29 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		};
 	}
 
-	it("renders <budget> with tokenUsage = floor + premium + system", () => {
+	it("renders <budget> with placeholder headline tokens", () => {
+		// `assembleBudget` emits placeholders only — the real headline
+		// numbers are post-substituted by ContextAssembler against the
+		// fully-assembled packet (single source of truth, SPEC §
+		// token_accounting).
 		const plugin = makePlugin();
 		const rows = [
 			row({ scheme: "log", vTokens: 700, sTokens: 100 }),
 			row({ scheme: "https", vTokens: 600, sTokens: 200 }),
-			row({ scheme: "known", vTokens: 300, sTokens: 50 }),
 		];
-		const systemPrompt = "x".repeat(200);
 		const out = plugin.assembleBudget("", {
 			rows,
 			contextSize: 10000,
-			systemPrompt,
 		});
-		const m = out.match(/tokenUsage="(\d+)" tokensFree="(\d+)"/);
-		assert.ok(m, `<budget> carries tokenUsage and tokensFree; got: ${out}`);
-		const used = Number(m[1]);
-		const free = Number(m[2]);
-		const floor = 100 + 200 + 50;
-		const premium = 600 + 400 + 250;
-		const system = countTokens(systemPrompt);
-		assert.strictEqual(
-			used,
-			floor + premium + system,
-			"tokenUsage = floor + premium + system",
+		assert.ok(
+			out.includes(
+				'<budget tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">',
+			),
+			`<budget> carries placeholders; got: ${out}`,
 		);
-		assert.strictEqual(used + free, ceiling(10000), "used + free = ceiling");
+		// The breakdown table renders with real per-scheme numbers.
+		assert.ok(out.includes("| log | 1 | 0 | 700 | 100 | 600 |"));
+		assert.ok(out.includes("| https | 1 | 0 | 600 | 200 | 400 |"));
 	});
 
 	it("table cells render six columns sorted by current cost descending", () => {
@@ -283,21 +280,6 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		);
 	});
 
-	it("system overhead surfaced as its own line", () => {
-		const plugin = makePlugin();
-		const systemPrompt = "system rules ".repeat(50);
-		const out = plugin.assembleBudget("", {
-			rows: [],
-			contextSize: 10000,
-			systemPrompt,
-		});
-		const sysTokens = countTokens(systemPrompt);
-		assert.ok(
-			out.includes(`System: ${sysTokens} tokens`),
-			`system line shows token count; got: ${out}`,
-		);
-	});
-
 	it("ignores rows without aTokens (audit/system entries)", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
@@ -322,7 +304,7 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		assert.strictEqual(out, "preamble");
 	});
 
-	it("total prose line names counts and tokenUsage/free", () => {
+	it("total prose line names counts and placeholders for tokenUsage/free", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
@@ -335,14 +317,83 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 				}),
 			],
 			contextSize: 10000,
-			systemPrompt: "",
 		});
 		assert.ok(
 			/Total: 1 visible \+ 1 summarized entries/.test(out),
 			`total names visible + summarized counts; got: ${out}`,
 		);
-		assert.ok(/tokenUsage \d+ \/ ceiling \d+/.test(out));
-		assert.ok(/\d+ tokens free/.test(out));
+		assert.ok(
+			/tokenUsage \{\{tokenUsage\}\} \/ ceiling \d+/.test(out),
+			"placeholder tokenUsage in total line",
+		);
+		assert.ok(
+			out.includes("{{tokensFree}} tokens free"),
+			"placeholder tokensFree in total line",
+		);
+	});
+});
+
+describe("computePacketTokens", () => {
+	it("sums system + user content token counts", async () => {
+		const { computePacketTokens } = await import("./budget.js");
+		const out = computePacketTokens({
+			system: "x".repeat(100),
+			user: "y".repeat(50),
+		});
+		const expected = countTokens("x".repeat(100)) + countTokens("y".repeat(50));
+		assert.strictEqual(out, expected);
+	});
+
+	it("treats missing args as empty strings", async () => {
+		const { computePacketTokens } = await import("./budget.js");
+		assert.strictEqual(computePacketTokens({}), 0);
+		assert.strictEqual(
+			computePacketTokens({ system: "abc" }),
+			countTokens("abc"),
+		);
+		assert.strictEqual(
+			computePacketTokens({ user: "xyz" }),
+			countTokens("xyz"),
+		);
+	});
+});
+
+describe("substituteBudgetPlaceholders", () => {
+	it("replaces {{tokenUsage}} and {{tokensFree}} with the supplied numbers", async () => {
+		const { substituteBudgetPlaceholders } = await import("./budget.js");
+		const text =
+			'<budget tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">\nbody\n</budget>';
+		const out = substituteBudgetPlaceholders(text, {
+			tokenUsage: 1234,
+			tokensFree: 567,
+		});
+		assert.ok(out.includes('tokenUsage="1234"'));
+		assert.ok(out.includes('tokensFree="567"'));
+		assert.ok(!out.includes("{{tokenUsage}}"));
+		assert.ok(!out.includes("{{tokensFree}}"));
+	});
+
+	it("idempotent on text without placeholders", async () => {
+		const { substituteBudgetPlaceholders } = await import("./budget.js");
+		const text = "no placeholders here";
+		assert.strictEqual(
+			substituteBudgetPlaceholders(text, { tokenUsage: 1, tokensFree: 1 }),
+			text,
+		);
+	});
+
+	it("substitutes every occurrence (also in the Total line)", async () => {
+		const { substituteBudgetPlaceholders } = await import("./budget.js");
+		const text =
+			'<budget tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">\nTotal: tokenUsage {{tokenUsage}} / ceiling 100. {{tokensFree}} tokens free.\n</budget>';
+		const out = substituteBudgetPlaceholders(text, {
+			tokenUsage: 42,
+			tokensFree: 58,
+		});
+		assert.ok(!out.includes("{{"));
+		assert.ok(out.includes('tokenUsage="42"'));
+		assert.ok(out.includes("tokenUsage 42"));
+		assert.ok(out.includes("58 tokens free"));
 	});
 });
 

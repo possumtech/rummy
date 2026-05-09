@@ -17,7 +17,7 @@ run.
   participants mutate a docsMap keyed by tool name). Render order
   follows tool-registration order.
 - **Filter**: `assembly.user` (priority 165) — renders
-  `instructions-user.md` as `<instructions>` late in the user
+  `instructions-user.md` as `<system_requirements>` late in the user
   message, between `<unknowns>` (150) and `<budget>` (175). The
   user message is a sandwich: `<prompt>` (30) leads for cache
   stability, dynamic state fills the middle, then rules and
@@ -39,7 +39,7 @@ The persona block is rendered by the persona plugin's own
   Static within a run; only `[%TOOLS%]` substitutes at render. No
   per-turn content here, ever.
 - `instructions-user.md` — the per-turn imperative reminder
-  rendered as `<instructions>` in the user message. Same bytes
+  rendered as `<system_requirements>` in the user message. Same bytes
   every turn.
 - `protocol.js` / `protocol.test.js` — pass-through stub on
   `entry.recording` (priority 1) reserved for future

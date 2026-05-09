@@ -294,6 +294,58 @@ extraction adds a hop without separating concerns, it's ceremony
 
 ## Open Items
 
+- [ ] **Budget math single source of truth.** Three measurements
+  diverged after the system/user reshuffle:
+
+  1. `assembleBudget` reports `tokenUsage = floor + premium +
+     system` from row sums + `countTokens(systemPrompt seed)`. The
+     model sees this.
+  2. `#check` in enforce uses `measureMessages(messages)` or
+     `lastPromptTokens`. The grinder gates on this.
+  3. The provider's API reports the actual `prompt_tokens`. Truth.
+
+  The reshuffle put state in system, but `assembleBudget`'s
+  `systemPrompt` stayed the seed (effectively `""`), so the model
+  saw `tokenUsage` under-reported by the entire system message
+  size — typically 3K-6K tokens. The grinder hard-413'd while
+  `<budget>` claimed plenty of free room.
+
+  **Fix**: single source of truth. `<budget>` tag renders with
+  placeholders for headline numbers (`{{tokenUsage}}` /
+  `{{tokensFree}}`); `ContextAssembler.assembleFromTurnContext`
+  measures the fully-assembled system + user messages, computes
+  the headline, substitutes. Both the model-facing tag and the
+  enforce gate's `#check` reach for the same helper
+  (`computePacketTokens`). The breakdown table per-scheme stays —
+  it's independent of headline math.
+
+  **Checklist**:
+  - [ ] SPEC.md §token_accounting + §budget_enforcement updated to
+    reflect packet-level math + post-substitution.
+  - [ ] `src/plugins/budget/README.md` rewritten around the single
+    source of truth.
+  - [ ] `assembleBudget` renders placeholders only (no math, no
+    row sums for the headline). Drops the dead `floorTokens` /
+    `premiumTokens` / `_summarizedTokens` locals.
+  - [ ] `ContextAssembler.assembleFromTurnContext` measures both
+    messages, computes headline, substitutes placeholders.
+  - [ ] `computePacketTokens({ system, user })` helper exposed
+    from `budget.js` (or `tokens.js`). Used by enforce too.
+  - [ ] Existing budget tests updated to the new contract.
+  - [ ] **Invariant tests** (the regression net):
+    1. `<budget tokenUsage>` exactly equals
+       `countTokens(systemMsg) + countTokens(userMsg)` for: no
+       rows; rows in user only; rows in system only; mixed;
+       with/without persona; with/without state.
+    2. `<budget tokenUsage>` equals the enforce gate's
+       measurement of the same packet.
+    3. Provider-reported `prompt_tokens` invariant: after a
+       turn dispatches, `|tokenUsage − next-turn lastContextTokens|`
+       within tokenizer-drift tolerance.
+    4. Schema stability: budget tag attrs always present;
+       breakdown table renders; system line renders.
+  - [ ] Lint clean; unit + integration green; e2e re-run.
+
 - [ ] **Budget grinder refactor — four-step ladder.** SPEC §
   budget_enforcement is the source of truth. Replaces the current
   speculative postDispatch + first-turn-only prompt demote +

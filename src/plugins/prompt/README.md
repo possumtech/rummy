@@ -8,7 +8,7 @@ turn.
 ## Registration
 
 - **Filter**: `assembly.user` at priority 30 (front of user
-  message, before all dynamic state and the `<instructions>`
+  message, before all dynamic state and the `<system_requirements>`
   block at 165)
 
 ## Behavior

@@ -68,15 +68,21 @@ export default class LlmProvider {
 				: undefined);
 
 		// Derive max_tokens from the model's context window minus the
-		// estimated prompt footprint. Without this, providers fall back
-		// to conservative defaults (a few thousand) and the model's
-		// response truncates mid-`<set>` body before reaching `<update>`,
-		// surfacing as a misleading "no <update>" verdict.
+		// prompt footprint. The prior turn's actual API-reported
+		// `prompt_tokens` (`lastPromptTokens`) is the ground truth when
+		// available; the chars/RUMMY_TOKEN_DIVISOR estimator is the
+		// fallback for turn 1 only. Using the conservative chars-based
+		// estimator on every turn over-counts input by ~70% on real
+		// English+code mix, which under-allocates output and produces
+		// chronic `finish_reason=length` truncation mid-emission.
 		const contextLength = await this.getContextSize(model);
-		const promptEstimate = messages.reduce(
-			(sum, m) => sum + Math.ceil(m.content.length / TOKEN_DIVISOR),
-			0,
-		);
+		const promptEstimate =
+			options.lastPromptTokens > 0
+				? options.lastPromptTokens
+				: messages.reduce(
+						(sum, m) => sum + Math.ceil(m.content.length / TOKEN_DIVISOR),
+						0,
+					);
 		const effectiveContext = Math.floor(contextLength * BUDGET_CEILING);
 		let maxTokens = Math.max(
 			MAX_TOKENS_FLOOR,

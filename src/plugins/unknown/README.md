@@ -9,7 +9,7 @@ The Rumsfeld mechanism. The model registers what it doesn't know before acting.
 - **Tool**: `unknown`
 - **Category**: `unknown`
 - **Handler**: None — recorded by TurnExecutor, deduplicated against existing unknowns.
-- **Filter**: `assembly.user` at priority 150 — renders `<unknowns>` after `<log>` (priority 100) and before `<instructions>` (priority 165) in the sandwich. Unknowns are active work, not stable environment state; they belong in the user packet.
+- **Filter**: `assembly.system` at priority 350 — renders `<unknowns>` at the bottom of the system message (after `<summary>` 200, `<visible>` 250, `<log>` 300). Open work surfaces alongside the rest of the accumulated state in system; the user message holds prompt + budget + per-turn requirements.
 
 ## Projection
 

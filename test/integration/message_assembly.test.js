@@ -8,9 +8,11 @@
  * messages, and inspects system and user content directly including
  * the rendering of prior-loop and current-loop entries. Filter
  * priority bands (@plugins_filter_bands) govern packet structure:
- * `<summary>`/`<visible>`/`<log>` are system-side participants
- * (priorities 200/250/300); `<prompt>`/`<budget>`/`<unknowns>` are
- * user-side; `<instructions>` reminds at user-front (priority 30).
+ * grammar + tooldocs are wrapped in `<system_commands>` (49–101);
+ * `<summary>`/`<visible>`/`<log>`/`<unknowns>` are system-side
+ * (priorities 200/250/300/350). User-side: persona at
+ * `<system_instructions>` (10), `<prompt>` (30), `<budget>` (90),
+ * per-turn rules at `<system_requirements>` (165).
  */
 import assert from "node:assert";
 import { dirname, join } from "node:path";

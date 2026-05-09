@@ -111,16 +111,19 @@ describe("ContextAssembler", () => {
 			);
 
 			const user = messages[1].content;
-			const personaPos = user.indexOf("Operational Persona");
+			const personaPos = user.indexOf("<system_instructions>");
 			const promptPos = user.indexOf("<prompt");
 			const budgetPos = user.indexOf("<budget");
-			const instructionsPos = user.indexOf("<instructions>");
-			assert.ok(personaPos >= 0, "persona present at user-top");
-			assert.ok(promptPos > personaPos, "prompt after persona");
-			assert.ok(budgetPos > promptPos, "budget after prompt");
+			const requirementsPos = user.indexOf("<system_requirements>");
 			assert.ok(
-				instructionsPos > budgetPos,
-				"instructions at action site (last in user) — recency for protocol discipline",
+				personaPos >= 0,
+				"<system_instructions> (persona) present at user-top",
+			);
+			assert.ok(promptPos > personaPos, "<prompt> after persona");
+			assert.ok(budgetPos > promptPos, "<budget> after <prompt>");
+			assert.ok(
+				requirementsPos > budgetPos,
+				"<system_requirements> at action site (last in user) — recency for protocol discipline",
 			);
 		});
 
@@ -246,22 +249,22 @@ describe("ContextAssembler", () => {
 			assert.ok(messages[1].content.includes("<prompt"));
 		});
 
-		it("renders the persona block at the top of the user message when ctx.persona is set", async () => {
+		it("renders <system_instructions> at the top of the user message when ctx.persona is set", async () => {
 			const messages = await ContextAssembler.assembleFromTurnContext(
 				[],
 				{ systemPrompt: "", persona: "You are a careful auditor." },
 				hooks,
 			);
 			assert.ok(
-				messages[1].content.includes("## Operational Persona"),
-				"persona block in user message",
+				messages[1].content.includes("<system_instructions>"),
+				"<system_instructions> open tag in user message",
 			);
 			assert.ok(
 				messages[1].content.includes("You are a careful auditor."),
 				"persona body rendered in user message",
 			);
 			assert.ok(
-				!messages[0].content.includes("## Operational Persona"),
+				!messages[0].content.includes("<system_instructions>"),
 				"persona is not in system any more",
 			);
 		});
@@ -273,8 +276,8 @@ describe("ContextAssembler", () => {
 				hooks,
 			);
 			assert.ok(
-				!messages[1].content.includes("## Operational Persona"),
-				"no persona block when ctx.persona is unset",
+				!messages[1].content.includes("<system_instructions>"),
+				"no <system_instructions> block when ctx.persona is unset",
 			);
 		});
 

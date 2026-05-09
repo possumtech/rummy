@@ -3,6 +3,13 @@ import { countTokens } from "../../agent/tokens.js";
 
 const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
 
+// Placeholders the budget tag emits during user-message assembly.
+// `ContextAssembler.assembleFromTurnContext` substitutes them after
+// the full packet has been assembled and measured. Single source of
+// truth for the model-facing tokenUsage / tokensFree numbers.
+export const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
+export const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
+
 export function ceiling(contextSize) {
 	return Math.floor(contextSize * CEILING_RATIO);
 }
@@ -15,6 +22,13 @@ export function measureMessages(messages) {
 // Sum projected row body token counts; used by prompt.js pre-assembly.
 export function measureRows(rows) {
 	return rows.reduce((sum, r) => sum + countTokens(r.body), 0);
+}
+
+// Single source of truth for the headline numbers the model sees and
+// the enforce gate measures. Both reach for this against the same
+// assembled bytes — they never diverge.
+export function computePacketTokens({ system = "", user = "" } = {}) {
+	return countTokens(system) + countTokens(user);
 }
 
 // Single source of truth for budget numbers; tokenUsage echoes totalTokens for the wire attribute.
@@ -30,6 +44,16 @@ export function computeBudget({ contextSize, totalTokens }) {
 		overflow,
 		ok: overflow === 0,
 	};
+}
+
+// Substitute the post-assembly headline numbers into the placeholder
+// `<budget>` tag. Called by ContextAssembler after both messages are
+// assembled and measured. Idempotent: a packet without placeholders
+// passes through unchanged.
+export function substituteBudgetPlaceholders(text, { tokenUsage, tokensFree }) {
+	return text
+		.replaceAll(TOKEN_USAGE_PLACEHOLDER, String(tokenUsage))
+		.replaceAll(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
 }
 
 // 413 error body; wire format is part of the model contract.
@@ -72,19 +96,23 @@ export default class Budget {
 		});
 	}
 
-	// Renders <budget> at priority 275; see SPEC #token_accounting.
+	// Renders <budget> at assembly.user priority 90.
+	//
+	// The headline numbers (tokenUsage / tokensFree) are written as
+	// placeholders here. ContextAssembler post-substitutes them after
+	// the full packet has been assembled and measured — that's the
+	// single source of truth shared with the enforce gate. The
+	// breakdown table below comes from per-row aTokens/sTokens at
+	// materialization time and is independent of the headline math.
 	assembleBudget(content, ctx) {
-		const { rows, contextSize, systemPrompt } = ctx;
+		const { rows, contextSize } = ctx;
 		if (!contextSize) return content;
 
 		const cap = ceiling(contextSize);
 
 		const byScheme = new Map();
 		let visibleCount = 0;
-		let premiumTokens = 0;
 		let summarizedCount = 0;
-		let _summarizedTokens = 0;
-		let floorTokens = 0;
 
 		const schemeEntry = (s) => {
 			let e = byScheme.get(s);
@@ -112,20 +140,12 @@ export default class Budget {
 				entry.visIfSumTokens += r.sTokens;
 				entry.premium += r.aTokens;
 				visibleCount += 1;
-				premiumTokens += r.aTokens;
-				floorTokens += r.sTokens;
 			} else if (r.visibility === "summarized") {
 				entry.sum += 1;
 				entry.sumTokens += r.sTokens;
 				summarizedCount += 1;
-				_summarizedTokens += r.sTokens;
-				floorTokens += r.sTokens;
 			}
 		}
-
-		const systemTokens = countTokens(systemPrompt);
-		const tokenUsage = floorTokens + premiumTokens + systemTokens;
-		const tokensFree = Math.max(0, cap - tokenUsage);
 
 		// Sort by current cost desc so biggest-impact rows are top.
 		const schemeRows = [...byScheme.entries()]
@@ -139,17 +159,13 @@ export default class Budget {
 				return `| ${scheme} | ${e.vis} | ${e.sum} | ${cost} | ${ifAllSum} | ${e.premium} |`;
 			});
 
-		const systemPct =
-			tokenUsage > 0 ? Math.round((systemTokens / tokenUsage) * 100) : 0;
-
 		const table = [
 			"| scheme | vis | sum | cost | if-all-sum | premium |",
 			"|---|---|---|---|---|---|",
 			...schemeRows,
 		].join("\n");
 
-		const systemLine = `System: ${systemTokens} tokens (${systemPct}% of budget).`;
-		const totalLine = `Total: ${visibleCount} visible + ${summarizedCount} summarized entries; tokenUsage ${tokenUsage} / ceiling ${cap}. ${tokensFree} tokens free.`;
+		const totalLine = `Total: ${visibleCount} visible + ${summarizedCount} summarized entries; tokenUsage ${TOKEN_USAGE_PLACEHOLDER} / ceiling ${cap}. ${TOKENS_FREE_PLACEHOLDER} tokens free.`;
 		const legend = [
 			"Columns:",
 			"- cost: current cost of this scheme (vTokens for visible + sTokens for summarized)",
@@ -157,7 +173,7 @@ export default class Budget {
 			"- premium: savings from demoting visible → summarized (cost − if-all-sum)",
 		].join("\n");
 
-		return `${content}<budget tokenUsage="${tokenUsage}" tokensFree="${tokensFree}">\n${table}\n\n${legend}\n${systemLine}\n${totalLine}\n</budget>\n`;
+		return `${content}<budget tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">\n${table}\n\n${legend}\n${totalLine}\n</budget>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {

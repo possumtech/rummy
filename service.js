@@ -112,24 +112,32 @@ async function main() {
 	// 6. Initialize plugins (register schemes)
 	await initPlugins(db, hooks, pluginInstances);
 
-	// 7. Bootstrap models from env vars
+	// 7. Reconcile models to env. The env cascade is the single source of
+	// truth for app configuration: every `RUMMY_MODEL_<alias>=...` becomes
+	// (or refreshes) a row in the `models` table, and every row whose
+	// alias is NOT in the current env is dropped. No accumulated cruft
+	// from prior sessions; no surprises at the CLI surface.
 	{
-		const modelAliases = [];
+		const envAliases = new Set();
 		for (const key of Object.keys(process.env)) {
 			if (!key.startsWith("RUMMY_MODEL_")) continue;
 			const alias = key.replace("RUMMY_MODEL_", "");
 			const actual = process.env[key];
 			const contextEnv = process.env[`RUMMY_CONTEXT_${alias}`];
 			const context_length = contextEnv ? Number.parseInt(contextEnv, 10) : null;
-			await db.upsert_model.get({
-				alias,
-				actual,
-				context_length,
-			});
-			modelAliases.push(alias);
+			await db.upsert_model.get({ alias, actual, context_length });
+			envAliases.add(alias);
 		}
-		if (modelAliases.length > 0) {
-			console.log(`[RUMMY] Models: ${modelAliases.join(", ")}`);
+		const dbRows = await db.get_models.all({ limit: null, offset: null });
+		for (const row of dbRows) {
+			if (!envAliases.has(row.alias)) {
+				await db.delete_model.run({ alias: row.alias });
+			}
+		}
+		if (envAliases.size > 0) {
+			console.log(
+				`[RUMMY] Models: ${[...envAliases].toSorted().join(", ")}`,
+			);
 		}
 	}
 

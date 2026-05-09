@@ -167,6 +167,12 @@ export default class TurnExecutor {
 					// Per-run stable identifier for provider-side prompt caching
 					// (xAI prompt_cache_key, OpenAI prompt_cache_key, etc.).
 					runAlias: runRow?.alias || `run_${currentRunId}`,
+					// Real prior-turn prompt_tokens for accurate max_tokens
+					// derivation. chars/2 over-estimates input by ~70%,
+					// squeezing output and causing finish_reason=length
+					// truncation. The provider falls back to chars/2 only
+					// on turn 1 when no prior measurement exists.
+					lastPromptTokens: initial.lastContextTokens,
 				},
 			);
 		} catch (err) {

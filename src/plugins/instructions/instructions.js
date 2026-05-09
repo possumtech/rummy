@@ -28,11 +28,23 @@ export default class Instructions {
 		this.#core = core;
 		core.hooks.instructions.findLatestSummary =
 			this.findLatestSummary.bind(this);
-		// System message: priority chain. Base header + grammar at 50,
-		// joined per-tool docs at 100, persona at 150 (in persona.js).
+		// System message: <system_commands> wraps the grammar + per-tool
+		// docs as a single semantic unit. Wrapper filters at 49 / 101
+		// sandwich the two content filters at 50 / 100. Other system
+		// participants (state blocks at 200/250/300/350) render after.
+		core.filter(
+			"assembly.system",
+			(content) => `${content}<system_commands>\n`,
+			49,
+		);
 		core.filter("assembly.system", this.assembleSystemBase.bind(this), 50);
 		core.filter("assembly.system", this.assembleSystemToolDocs.bind(this), 100);
-		// User message: per-turn reminder block at the action site —
+		core.filter(
+			"assembly.system",
+			(content) => `${content}\n</system_commands>\n`,
+			101,
+		);
+		// User message: <system_requirements> at the action site —
 		// recency keeps protocol discipline (XML tag wrapping, terminal
 		// `<update>`) warm right before generation.
 		core.filter("assembly.user", this.assembleInstructions.bind(this), 165);
@@ -77,7 +89,7 @@ export default class Instructions {
 
 	// assembly.user @ 165 — per-turn reminder, same body every turn.
 	assembleInstructions(content, _ctx) {
-		return `${content}<instructions>\n${userInstructions}\n</instructions>\n`;
+		return `${content}<system_requirements>\n${userInstructions}\n</system_requirements>\n`;
 	}
 
 	// Latest terminal update (status=200) — used by cli.js to print the

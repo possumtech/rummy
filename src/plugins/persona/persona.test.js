@@ -40,16 +40,14 @@ describe("Persona plugin", () => {
 		assert.equal(f.priority, 10);
 	});
 
-	it("appends the Operational Persona block when ctx.persona is set", () => {
+	it("wraps persona body in <system_instructions> when ctx.persona is set", () => {
 		const core = makeCore();
 		new Persona(core);
 		const f = core._filters.find((x) => x.name === "assembly.user");
 		const out = f.fn("seed", { persona: "You are a careful auditor." });
 		assert.ok(out.startsWith("seed"), "preserves prior chain content");
-		assert.ok(
-			out.includes("## Operational Persona"),
-			"renders the persona heading",
-		);
+		assert.ok(out.includes("<system_instructions>"), "renders the open tag");
+		assert.ok(out.includes("</system_instructions>"), "renders the close tag");
 		assert.ok(
 			out.includes("You are a careful auditor."),
 			"renders the persona body",

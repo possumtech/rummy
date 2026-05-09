@@ -1040,22 +1040,35 @@ means: *demoting this entry frees `N` tokens; promoting this entry from
 summarized to visible costs `N` tokens.* The number is a pure lever — no
 body-vs-wire ambiguity, no envelope overhead surprise.
 
-**Floor and premium.** A run's packet decomposes into:
+**Headline (`tokenUsage` / `tokensFree`).** Single source of truth:
+the actual size of the packet about to be sent.
 
-- **Summarized floor** = sum of `sTokens` for all non-archived entries.
-  Paid regardless of any visibility decision the model can make. Includes
-  the per-entry projection cost for every entry that's either `visible`
-  (since visible entries also pay their projection-cost-equivalent within
-  vTokens) or `summarized`.
-- **Visibility premium** = sum of `aTokens` for currently-visible entries.
-  The active cost of visibility decisions. The model's lever.
-- **System overhead** = system prompt + tool definition tokens. Constant
-  per turn, not addressable by the model.
+```
+tokenUsage = countTokens(systemMessage) + countTokens(userMessage)
+tokensFree = max(0, ceiling − tokenUsage)
+```
 
-`tokenUsage = floor + premium + system`. `tokensFree = ceiling − tokenUsage`.
+This is what the model sees on the `<budget>` tag and what the
+`turn.beforeDispatch` enforce gate checks (when no prior-turn
+`prompt_tokens` is available; otherwise enforce uses that real
+API count). One number, derived from one helper
+(`computePacketTokens`), reached for in both places.
 
-**`<budget>` rendered shape** (between `<instructions>` and `<prompt>`,
-priority 275):
+**Per-scheme breakdown (the action lever).** The model's demote
+levers are still per-scheme. The breakdown table inside `<budget>`
+is computed from `aTokens` summed by scheme — independent of the
+headline math:
+
+- Visibility premium (per-scheme `aTokens` sum) — what the model
+  saves by demoting a whole scheme. Surfaced as the `tokens`
+  column in the table.
+- Summarized floor (sum of `sTokens` for non-visible entries) —
+  reported as an aggregate line below the table.
+- System overhead — reported as its own line.
+
+The headline is the wire-truth; the table is the action map.
+
+**`<budget>` rendered shape** (priority 90 in user message):
 
 ```
 <budget tokenUsage="N" tokensFree="M">
@@ -1078,13 +1091,18 @@ summarized aggregate line below the table is the only signal for that
 class — actionable via glob (`<set path="known://oldsession/*"
 visibility="archived"/>`), not per-entry.
 
-**Where the math is computed.** Materialization (the assembly path
-through `materializeContext.js` and `ContextAssembler.js` plus per-scheme
-view handlers) renders each entry's visible and summarized projections,
-wraps them in their envelope, and tokenizes both. The resulting per-entry
-record carries `vTokens`/`sTokens`/`aTokens` alongside the projected
-text. The budget plugin's `assembleBudget` filter consumes this; no other
-caller measures tokens.
+**Where the math is computed.** Materialization (`materializeContext.js`
++ `ContextAssembler.js` + per-scheme view handlers) renders each entry's
+visible and summarized projections and tokenizes both, producing
+`vTokens`/`sTokens`/`aTokens` per row. The budget plugin's
+`assembleBudget` filter renders the per-scheme table from those values
+and emits the `<budget>` tag with **placeholder** headline tokens.
+`ContextAssembler.assembleFromTurnContext` then measures the fully-
+assembled system + user messages and substitutes the real
+`tokenUsage`/`tokensFree` into the placeholders. This single
+post-substitution step is why the model and the enforce gate see the
+same number: they both reach for `computePacketTokens` against the
+same assembled bytes.
 
 **Body-size gates** (e.g. `known.js` MAX_ENTRY_TOKENS) compute
 `countTokens(body)` inline at write time. They check intrinsic body
