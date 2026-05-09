@@ -72,7 +72,7 @@ function dataRow({ path, scheme, tokens, body = "", category = "data" }) {
 
 async function render(rows) {
 	const hooks = makeHooks();
-	const out = await hooks.assembly.user.filter("", { rows });
+	const out = await hooks.assembly.system.filter("", { rows });
 	return out;
 }
 

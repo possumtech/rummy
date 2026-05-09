@@ -9,7 +9,7 @@ export default class Log {
 
 	constructor(core) {
 		this.#core = core;
-		core.filter("assembly.user", this.assembleLog.bind(this), 100);
+		core.filter("assembly.system", this.assembleLog.bind(this), 300);
 	}
 
 	async assembleLog(content, ctx) {

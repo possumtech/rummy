@@ -14,8 +14,8 @@ export default class Known {
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
-		core.filter("assembly.user", this.assembleSummarized.bind(this), 50);
-		core.filter("assembly.user", this.assembleVisible.bind(this), 75);
+		core.filter("assembly.system", this.assembleSummarized.bind(this), 200);
+		core.filter("assembly.system", this.assembleVisible.bind(this), 250);
 		// Hidden from the advertised tool list — written via <set path="known://...">.
 		// The known:// scheme lifecycle is taught in instructions-user.md.
 		core.markHidden();

@@ -54,7 +54,7 @@ export default class Budget {
 	constructor(core) {
 		this.#core = core;
 		core.filter("turn.beforeDispatch", this.#onBeforeDispatch.bind(this));
-		core.filter("assembly.user", this.assembleBudget.bind(this), 175);
+		core.filter("assembly.user", this.assembleBudget.bind(this), 90);
 	}
 
 	// Filter participant. Receives the assembled packet; returns a

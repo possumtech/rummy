@@ -19,7 +19,7 @@ before(async () => {
 
 describe("ContextAssembler", () => {
 	describe("assembleFromTurnContext", () => {
-		it("renders system prompt; known + visible bodies in user", async () => {
+		it("renders system prompt; known + visible bodies in system", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -72,20 +72,21 @@ describe("ContextAssembler", () => {
 				"instructions plugin contributes the header at priority 50",
 			);
 			assert.strictEqual(messages[1].role, "user");
+			const system = messages[0].content;
 			const user = messages[1].content;
-			assert.ok(user.includes("<summary>"), "user has <summary>");
-			assert.ok(user.includes("<visible>"), "user has <visible>");
-			assert.ok(user.includes("known://auth"), "known summary line");
-			assert.ok(user.includes("const x = 1;"), "file body in <visible>");
-			assert.ok(user.includes("<prompt"));
+			assert.ok(system.includes("<summary>"), "system has <summary>");
+			assert.ok(system.includes("<visible>"), "system has <visible>");
+			assert.ok(system.includes("known://auth"), "known summary in system");
+			assert.ok(system.includes("const x = 1;"), "file body in <visible>");
+			assert.ok(user.includes("<prompt"), "user has <prompt>");
 			assert.ok(user.includes("What does this do?"));
 			assert.ok(
-				user.indexOf("<summary>") < user.indexOf("<visible>"),
-				"<summary> renders above <visible>",
+				system.indexOf("<summary>") < system.indexOf("<visible>"),
+				"<summary> renders above <visible> in system",
 			);
 		});
 
-		it("user message is a sandwich: prompt → state → instructions → budget", async () => {
+		it("user message ordering: instructions → prompt → budget → unknowns", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -100,14 +101,13 @@ describe("ContextAssembler", () => {
 				},
 				{
 					ordinal: 2,
-					path: "log://turn_1/get/file.js",
-					scheme: "log",
+					path: "unknown://thing",
+					scheme: "unknown",
 					visibility: "visible",
-					state: "resolved",
-					body: "file content",
-					tokens: 5,
-					attributes: JSON.stringify({ path: "file.js" }),
-					category: "logging",
+					body: "what is this",
+					tokens: 3,
+					attributes: null,
+					category: "unknown",
 					source_turn: 1,
 				},
 			];
@@ -118,22 +118,22 @@ describe("ContextAssembler", () => {
 			);
 
 			const user = messages[1].content;
-			const promptPos = user.indexOf("<prompt");
-			const logPos = user.indexOf("<log>");
 			const instructionsPos = user.indexOf("<instructions>");
+			const promptPos = user.indexOf("<prompt");
 			const budgetPos = user.indexOf("<budget");
-			assert.ok(promptPos >= 0, "prompt present");
+			const unknownsPos = user.indexOf("<unknowns>");
+			assert.ok(instructionsPos >= 0, "instructions present");
 			assert.ok(
-				logPos > promptPos,
-				"log (dynamic) after prompt (static front)",
+				promptPos > instructionsPos,
+				"prompt after instructions (action-discipline first, question second)",
 			);
 			assert.ok(
-				instructionsPos > logPos,
-				"instructions after dynamic state blocks",
+				budgetPos > promptPos,
+				"budget after prompt",
 			);
 			assert.ok(
-				budgetPos > instructionsPos,
-				"budget last (after instructions)",
+				unknownsPos > budgetPos,
+				"unknowns at the action site (last in user)",
 			);
 		});
 
@@ -182,12 +182,10 @@ describe("ContextAssembler", () => {
 			);
 
 			const system = messages[0].content;
-			const user = messages[1].content;
 			assert.ok(!system.includes("<previous>"), "no <previous> block");
-			assert.ok(!system.includes("<log>"), "log is not in system");
-			assert.ok(user.includes("<log>"), "user has log");
-			assert.ok(user.includes("old.js"), "old get in log");
-			assert.ok(user.includes("new.js"), "new get in log");
+			assert.ok(system.includes("<log>"), "log is in system");
+			assert.ok(system.includes("old.js"), "old get in log");
+			assert.ok(system.includes("new.js"), "new get in log");
 		});
 
 		it("renders results with status symbols in log", async () => {
@@ -233,12 +231,15 @@ describe("ContextAssembler", () => {
 				{ systemPrompt: "sys" },
 				hooks,
 			);
-			const user = messages[1].content;
+			const system = messages[0].content;
 
-			assert.ok(user.includes('status="200"'), "pass result has status");
-			assert.ok(user.includes("Fixed it"), "summary renders");
-			assert.ok(user.includes("<log>"), "results in log block");
-			assert.ok(user.includes("<set path="), "tool tags in log use tool name");
+			assert.ok(system.includes('status="200"'), "pass result has status");
+			assert.ok(system.includes("Fixed it"), "summary renders");
+			assert.ok(system.includes("<log>"), "results in log block");
+			assert.ok(
+				system.includes("<set path="),
+				"tool tags in log use tool name",
+			);
 		});
 
 		it("renders empty context when no entries", async () => {
@@ -286,7 +287,7 @@ describe("ContextAssembler", () => {
 			);
 		});
 
-		it("renders data entries in row order in user message", async () => {
+		it("renders data entries in row order in system message", async () => {
 			const rows = [
 				{
 					ordinal: 1,
@@ -327,12 +328,12 @@ describe("ContextAssembler", () => {
 				{ systemPrompt: "sys" },
 				hooks,
 			);
-			const user = messages[1].content;
+			const system = messages[0].content;
 
-			assert.ok(user.includes("<<:::known://auth"), "known fence in user");
-			assert.ok(user.includes("const y = 2;"), "old file body in <visible>");
-			assert.ok(user.includes("JWT"), "known body in <visible>");
-			assert.ok(user.includes("const x = 1;"), "new file body in <visible>");
+			assert.ok(system.includes("<<:::known://auth"), "known fence in system");
+			assert.ok(system.includes("const y = 2;"), "old file body in <visible>");
+			assert.ok(system.includes("JWT"), "known body in <visible>");
+			assert.ok(system.includes("const x = 1;"), "new file body in <visible>");
 		});
 
 		it("renders unknowns in their own <unknowns> block in the user message", async () => {
@@ -446,9 +447,9 @@ describe("ContextAssembler", () => {
 				{ systemPrompt: "sys" },
 				hooks,
 			);
-			const user = messages[1].content;
-			const summarizedBlock = user.match(/<summary>([\s\S]*?)<\/summary>/)?.[1];
-			assert.ok(summarizedBlock, "<summary> block exists");
+			const system = messages[0].content;
+			const summarizedBlock = system.match(/<summary>([\s\S]*?)<\/summary>/)?.[1];
+			assert.ok(summarizedBlock, "<summary> block exists in system");
 			assert.ok(
 				summarizedBlock.includes("class AgentLoop"),
 				"summary projection renders inside heredoc — symbols visible to model",
@@ -489,9 +490,9 @@ describe("ContextAssembler", () => {
 				{ systemPrompt: "sys" },
 				hooks,
 			);
-			const user = messages[1].content;
-			const summarizedBlock = user.match(/<summary>([\s\S]*?)<\/summary>/)?.[1];
-			const visibleBlock = user.match(/<visible>([\s\S]*?)<\/visible>/)?.[1];
+			const system = messages[0].content;
+			const summarizedBlock = system.match(/<summary>([\s\S]*?)<\/summary>/)?.[1];
+			const visibleBlock = system.match(/<visible>([\s\S]*?)<\/visible>/)?.[1];
 			assert.ok(summarizedBlock.includes("short summary"));
 			assert.ok(!summarizedBlock.includes("FULL BODY HERE"));
 			assert.ok(visibleBlock.includes("FULL BODY HERE"));

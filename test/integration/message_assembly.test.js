@@ -7,9 +7,10 @@
  * Populates known_entries, materializes turn_context, assembles the
  * messages, and inspects system and user content directly including
  * the rendering of prior-loop and current-loop entries. Filter
- * priority bands (@plugins_filter_bands) govern the user-message
- * block order verified here: <summary> @50, <visible> @75,
- * <log> @100, etc.
+ * priority bands (@plugins_filter_bands) govern packet structure:
+ * `<summary>`/`<visible>`/`<log>` are system-side participants
+ * (priorities 200/250/300); `<prompt>`/`<budget>`/`<unknowns>` are
+ * user-side; `<instructions>` reminds at user-front (priority 30).
  */
 import assert from "node:assert";
 import { dirname, join } from "node:path";
@@ -148,9 +149,15 @@ describe("Message assembly", () => {
 			state: "resolved",
 		});
 		const messages = await assembleMessages(tdb, store);
-		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes("2 matched"), "should show match count");
-		assert.ok(user.content.includes("src/app.js"), "should list matched paths");
+		const system = messages.find((m) => m.role === "system");
+		assert.ok(
+			system.content.includes("2 matched"),
+			"match count rendered in system <log>",
+		);
+		assert.ok(
+			system.content.includes("src/app.js"),
+			"matched paths in system <log>",
+		);
 	});
 
 	it("manifest result shows MANIFEST prefix", async () => {
@@ -162,8 +169,11 @@ describe("Message assembly", () => {
 			state: "resolved",
 		});
 		const messages = await assembleMessages(tdb, store);
-		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes("MANIFEST"), "should show MANIFEST prefix");
+		const system = messages.find((m) => m.role === "system");
+		assert.ok(
+			system.content.includes("MANIFEST"),
+			"MANIFEST prefix rendered in system <log>",
+		);
 	});
 
 	it("tool result content is visible (not blank)", async () => {
@@ -204,18 +214,18 @@ describe("Message assembly", () => {
 		});
 
 		const messages = await assembleMessages(tdb, store);
-		const user = messages.find((m) => m.role === "user");
+		const system = messages.find((m) => m.role === "system");
 
 		assert.ok(
-			user.content.includes('"action":"search"') ||
-				user.content.includes('"action":"env"'),
-			"action metadata present",
+			system.content.includes('"action":"search"') ||
+				system.content.includes('"action":"env"'),
+			"action metadata present in system <log>",
 		);
-		assert.ok(user.content.includes("10 results"), "search entry visible");
-		assert.ok(user.content.includes("node"), "env entry visible");
-		assert.ok(user.content.includes('"action":"rm"'), "rm entry visible");
-		assert.ok(user.content.includes('"action":"mv"'), "mv entry visible");
-		assert.ok(user.content.includes('"action":"cp"'), "cp entry visible");
+		assert.ok(system.content.includes("10 results"), "search entry visible");
+		assert.ok(system.content.includes("node"), "env entry visible");
+		assert.ok(system.content.includes('"action":"rm"'), "rm entry visible");
+		assert.ok(system.content.includes('"action":"mv"'), "mv entry visible");
+		assert.ok(system.content.includes('"action":"cp"'), "cp entry visible");
 	});
 
 	it("structural entries (summary/update) appear in messages", async () => {
@@ -228,39 +238,34 @@ describe("Message assembly", () => {
 			visibility: "summarized",
 		});
 		const messages = await assembleMessages(tdb, store);
-		const user = messages.find((m) => m.role === "user");
+		const system = messages.find((m) => m.role === "system");
 		assert.ok(
-			user.content.includes("The answer is 42"),
-			"summary visible in messages",
+			system.content.includes("The answer is 42"),
+			"update body rendered in system <log>",
 		);
 	});
 
-	it("data entries land in user <summary>/<visible>; logs stay out of system", async () => {
+	it("data entries land in system <summary>/<visible>; user holds prompt + budget + unknowns", async () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes("<summary>"), "user has <summary> block");
-		assert.ok(user.content.includes("<visible>"), "user has <visible> block");
-		assert.ok(user.content.includes("src/app.js"), "files in user");
 		assert.ok(
-			!system.content.includes("<summary>"),
-			"<summary> is not in system",
+			system.content.includes("<summary>"),
+			"system has <summary> block",
 		);
 		assert.ok(
-			!system.content.includes("<visible>"),
-			"<visible> is not in system",
+			system.content.includes("<visible>"),
+			"system has <visible> block",
+		);
+		assert.ok(system.content.includes("src/app.js"), "files in system");
+		assert.ok(
+			!user.content.includes("<summary>"),
+			"<summary> is not in user",
 		);
 		assert.ok(
-			!system.content.includes("src/app.js"),
-			"file paths are not in system",
+			!user.content.includes("<visible>"),
+			"<visible> is not in user",
 		);
-		assert.ok(
-			!system.content.includes("10 results for test"),
-			"search not in system",
-		);
-		assert.ok(
-			!system.content.includes("rm src/old.js"),
-			"delete not in system",
-		);
+		assert.ok(user.content.includes("<prompt"), "user retains <prompt>");
 	});
 });

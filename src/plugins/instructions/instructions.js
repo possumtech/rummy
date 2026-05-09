@@ -32,8 +32,9 @@ export default class Instructions {
 		// joined per-tool docs at 100, persona at 150 (in persona.js).
 		core.filter("assembly.system", this.assembleSystemBase.bind(this), 50);
 		core.filter("assembly.system", this.assembleSystemToolDocs.bind(this), 100);
-		// User message: per-turn reminder block.
-		core.filter("assembly.user", this.assembleInstructions.bind(this), 165);
+		// User message: per-turn reminder block at the front of the user
+		// packet — sets discipline before the prompt.
+		core.filter("assembly.user", this.assembleInstructions.bind(this), 30);
 		new Protocol(core);
 	}
 
