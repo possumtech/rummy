@@ -125,7 +125,25 @@ export function parseMarkerBody(body) {
 		const op = operationFromIdent(opener.ident);
 		const closer = findCloser(body, opener.openerEnd, opener.ident);
 		if (!closer) {
-			return { ops: null, error: `unclosed <<${opener.ident}` };
+			// Tail-close recovery: if this opener has no matching close
+			// AND there's no further opener after it in the body, treat
+			// the content from this opener's end to the body's end as
+			// the operation's content. Body bounds are set by the XML
+			// parser via `</set>`; the absent inner marker is the only
+			// thing keeping a structurally-complete `<set>` from a
+			// usable op. SEARCH stays strict — it needs a REPLACE pair
+			// and there's nothing to recover into.
+			if (op === "search") {
+				return { ops: null, error: `unclosed <<${opener.ident}` };
+			}
+			const tail = body.slice(opener.openerEnd);
+			if (findOpener(tail, 0)) {
+				// Another opener follows — ambiguous where this one was
+				// supposed to end. Stay strict.
+				return { ops: null, error: `unclosed <<${opener.ident}` };
+			}
+			raw.push({ op, content: trimMarkerNewlines(tail) });
+			break;
 		}
 		const content = trimMarkerNewlines(
 			body.slice(opener.openerEnd, closer.closerStart),

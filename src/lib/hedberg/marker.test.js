@@ -180,20 +180,69 @@ describe("parseMarkerBody — errors", () => {
 		assert.match(r.error, /lone SEARCH/);
 	});
 
-	it("unclosed marker → parse error names the IDENT", () => {
-		const body = "<<APPEND content but no closer";
+	it("unclosed SEARCH → parse error (no REPLACE pair to recover)", () => {
+		const body = "<<SEARCH content but no closer";
+		const r = parseMarkerBody(body);
+		assert.equal(r.ops, null);
+		assert.match(r.error, /unclosed.*SEARCH/);
+	});
+
+	it("unclosed marker before another opener → ambiguous, stays strict", () => {
+		// Two openers, first one missing its close, second one is well-
+		// formed: we can't tell where the first was meant to end.
+		const body = "<<APPEND a\n<<NEW b NEW";
 		const r = parseMarkerBody(body);
 		assert.equal(r.ops, null);
 		assert.match(r.error, /unclosed.*APPEND/);
 	});
+});
 
-	it("turn-5-style truncated closer → unclosed error", () => {
-		// Real model emission: opener `<<REPLACE`, closer truncated to
-		// just `:::` or to nothing. Surface unclosed clearly.
-		const body = "<<REPLACE\ncontent\n";
+describe("parseMarkerBody — tail-close recovery", () => {
+	it("trailing unclosed NEW → content from opener to body-end becomes NEW", () => {
+		// Real model pattern: model emits `<<NEW [content] </set>`,
+		// forgets the inner `NEW` close. XML parser already extracts
+		// the body via `</set>`; we recover the heredoc content from
+		// open marker to body-end.
+		const body = "<<NEW\nfile contents\n";
 		const r = parseMarkerBody(body);
-		assert.equal(r.ops, null);
-		assert.match(r.error, /unclosed.*REPLACE/);
+		assert.deepEqual(r.ops, [{ op: "new", content: "file contents" }]);
+		assert.equal(r.error, null);
+	});
+
+	it("trailing unclosed APPEND → recovered as APPEND op", () => {
+		const body = "<<APPEND\nmore stuff";
+		const r = parseMarkerBody(body);
+		assert.deepEqual(r.ops, [{ op: "append", content: "more stuff" }]);
+		assert.equal(r.error, null);
+	});
+
+	it("trailing unclosed REPLACE (standalone) → recovered as full-body replace", () => {
+		const body = "<<REPLACE\nnew body\n";
+		const r = parseMarkerBody(body);
+		assert.deepEqual(r.ops, [{ op: "replace", content: "new body" }]);
+		assert.equal(r.error, null);
+	});
+
+	it("trailing unclosed non-keyword IDENT → recovered as REPLACE", () => {
+		// Model invented a label, forgot to close it. Same routing as
+		// any non-keyword IDENT — REPLACE — applied to recovered content.
+		const body = "<<ADD_IMPORTS\nimport os\nimport sys";
+		const r = parseMarkerBody(body);
+		assert.deepEqual(r.ops, [
+			{ op: "replace", content: "import os\nimport sys" },
+		]);
+		assert.equal(r.error, null);
+	});
+
+	it("multi-op with trailing unclosed → earlier ops parse, last recovers", () => {
+		// First NEW closes properly; trailing APPEND has no close.
+		const body = "<<NEW\nfirst\nNEW\n<<APPEND\nsecond";
+		const r = parseMarkerBody(body);
+		assert.deepEqual(r.ops, [
+			{ op: "new", content: "first" },
+			{ op: "append", content: "second" },
+		]);
+		assert.equal(r.error, null);
 	});
 });
 
