@@ -259,28 +259,31 @@ export default class Set {
 		let newContent;
 		if (attrs.operations) {
 			const existing = await store.getBody(runId, target);
-			const requiresExisting = attrs.operations.some(
-				(op) => op.op === "search_replace" || op.op === "delete",
-			);
-			if (requiresExisting && existing === null) {
-				await store.set({
-					runId,
-					turn,
-					loopId,
-					path: entry.resultPath,
-					body: `${target} not found in context`,
-					state: "failed",
-					outcome: "not_found",
-					attributes: {
-						path: target,
-						error: `${target} not found in context`,
-					},
-				});
-				return;
-			}
+			// Implicit-edit recovery: if the path doesn't exist yet,
+			// transform every `search_replace` into an `append` (using
+			// just the replace content) and drop every `delete` (nothing
+			// to remove). APPEND on an empty body is byte-identical to
+			// NEW, but composes cleanly across multi-op blocks and is
+			// non-destructive if our null check is ever wrong. The
+			// transformation is silent — model emits the natural shape
+			// for "add this delta", we make it land.
+			const operations =
+				existing === null
+					? attrs.operations.flatMap((op) => {
+							if (op.op === "search_replace") {
+								return [{ op: "append", content: op.replace }];
+							}
+							if (op.op === "delete") return [];
+							return [op];
+						})
+					: attrs.operations;
+			// Pure-delete on a missing path collapses to no-op — model
+			// asked to remove content that doesn't exist; nothing to do
+			// and nothing to materialize.
+			if (operations.length === 0) return;
 			const result = Set.#applyOperations(
 				existing == null ? "" : existing,
-				attrs.operations,
+				operations,
 			);
 			if (result.error) {
 				await store.set({

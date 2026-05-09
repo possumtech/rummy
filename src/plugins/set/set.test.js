@@ -456,6 +456,125 @@ describe("Set plugin", () => {
 			assert.equal(canonical, undefined);
 		});
 
+		it("search_replace on a missing path is implicitly recovered as APPEND", async () => {
+			// Implicit-edit recovery: model emitted SEARCH/REPLACE on a
+			// path that doesn't exist yet. Engine treats it as APPEND of
+			// the replace content (byte-identical to NEW on empty body)
+			// rather than failing with not_found. Silent: the model's
+			// natural shape for "make this edit land" works.
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/known%3A%2F%2Fnew",
+					resultPath: "log://turn_1/set/known%3A%2F%2Fnew",
+					attributes: {
+						path: "known://new",
+						operations: [
+							{
+								op: "search_replace",
+								search: "ignored",
+								replace: "fresh body",
+							},
+						],
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const upsert = store._calls.find((c) => c.path === "known://new");
+			assert.ok(upsert, "path was created");
+			assert.equal(upsert.body, "fresh body");
+			const log = store._calls.find(
+				(c) => c.path === "log://turn_1/set/known%3A%2F%2Fnew",
+			);
+			assert.notEqual(log?.state, "failed", "no not_found error");
+		});
+
+		it("delete on a missing path is silently dropped", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/known%3A%2F%2Fnew",
+					resultPath: "log://turn_1/set/known%3A%2F%2Fnew",
+					attributes: {
+						path: "known://new",
+						operations: [{ op: "delete", content: "anything" }],
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			// Delete-only on missing path → no upsert (effective ops is empty),
+			// no failure either.
+			const upsert = store._calls.find((c) => c.path === "known://new");
+			assert.equal(upsert, undefined);
+			const log = store._calls.find(
+				(c) => c.path === "log://turn_1/set/known%3A%2F%2Fnew",
+			);
+			assert.notEqual(log?.state, "failed");
+		});
+
+		it("multi-op (search_replace + new + delete) on missing path applies in order", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/known%3A%2F%2Fnew",
+					resultPath: "log://turn_1/set/known%3A%2F%2Fnew",
+					attributes: {
+						path: "known://new",
+						operations: [
+							{ op: "search_replace", search: "x", replace: "alpha\n" },
+							{ op: "append", content: "beta\n" },
+							{ op: "delete", content: "won't apply" },
+							{ op: "search_replace", search: "y", replace: "gamma\n" },
+						],
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const upsert = store._calls.find((c) => c.path === "known://new");
+			assert.ok(upsert);
+			// search_replace #1 → APPEND alpha; append beta; delete dropped;
+			// search_replace #2 → APPEND gamma. Final body: alpha\nbeta\ngamma\n
+			assert.equal(upsert.body, "alpha\nbeta\ngamma\n");
+		});
+
+		it("search_replace on existing path with non-matching text still conflicts", async () => {
+			// Recovery only applies when path is missing entirely. An
+			// existing body with a non-matching SEARCH still surfaces as
+			// conflict so the model gets actionable feedback.
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("known://exists", {
+				body: "actual stored content",
+				scheme: "known",
+				tokens: 2,
+			});
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://turn_1/set/known%3A%2F%2Fexists",
+					resultPath: "log://turn_1/set/known%3A%2F%2Fexists",
+					attributes: {
+						path: "known://exists",
+						operations: [
+							{ op: "search_replace", search: "absent", replace: "x" },
+						],
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const log = store._calls.find(
+				(c) => c.path === "log://turn_1/set/known%3A%2F%2Fexists",
+			);
+			assert.equal(log.state, "failed");
+			assert.equal(log.outcome, "conflict");
+		});
+
 		it("failed edit (search not found) yields state=failed with conflict outcome", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
