@@ -598,11 +598,16 @@ export default class Entries {
 			}
 		}
 		const path = await this.logPath(runId, turn, "update", storedBody);
+		// Action-log paradigm: body holds the synthesized emission so
+		// full() can tab-indent it like every other log entry. The cap
+		// above is on the inner text the model authored; the wrapper
+		// metadata (status) is harness-side decoration that doesn't
+		// count toward the contract.
 		await this.set({
 			runId,
 			turn,
 			path,
-			body: storedBody,
+			body: `<update status="${status}">${storedBody}</update>`,
 			state: "resolved",
 			loopId,
 			writer,

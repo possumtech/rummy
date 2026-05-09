@@ -9,35 +9,51 @@ describe("Sh", () => {
 		filter() {},
 	});
 
-	it("full renders command and body", () => {
+	it("full tab-indents the model's emission for action log entries", () => {
 		const result = plugin.full({
+			path: "log://turn_3/sh/ls",
 			attributes: { command: "ls -la" },
-			body: "file1\nfile2",
+			body: "<sh>ls -la</sh>",
 		});
-		assert.ok(result.includes("ls -la"));
-		assert.ok(result.includes("file1"));
+		assert.equal(result, "\t<sh>ls -la</sh>");
 	});
 
-	it("summary returns empty for empty body", () => {
-		assert.strictEqual(plugin.summary({ attributes: {}, body: "" }), "");
+	it("full passes stream entry bodies through verbatim", () => {
+		const result = plugin.full({
+			path: "sh://turn_3/ls_1",
+			attributes: { command: "ls", channel: 1 },
+			body: "file1\nfile2\n",
+		});
+		assert.equal(result, "file1\nfile2\n");
 	});
 
-	it("summary inlines short body verbatim with header", () => {
+	it("summary returns empty for empty stream body", () => {
+		assert.strictEqual(
+			plugin.summary({
+				path: "sh://turn_3/ls_1",
+				attributes: {},
+				body: "",
+			}),
+			"",
+		);
+	});
+
+	it("summary returns body verbatim when total lines <= tail limit", () => {
 		const out = plugin.summary({
+			path: "sh://turn_3/ls_1",
 			attributes: { command: "ls -la", channel: 1 },
 			body: "file1\nfile2\n",
 		});
-		assert.match(out, /^# SH: ls -la \(stdout, 2L\)\n/);
-		assert.ok(out.endsWith("file1\nfile2\n"));
+		assert.equal(out, "file1\nfile2\n");
 	});
 
-	it("summary keeps last 20 lines and reports range", () => {
+	it("summary tail-truncates long stream bodies to last 20 lines", () => {
 		const lines = Array.from({ length: 50 }, (_, i) => `line${i + 1}`);
 		const out = plugin.summary({
+			path: "sh://turn_3/rg_1",
 			attributes: { command: "rg foo", channel: 1 },
 			body: `${lines.join("\n")}\n`,
 		});
-		assert.match(out, /lines 31 through 50 of 50/);
 		assert.ok(out.includes("line50"));
 		assert.ok(out.includes("line31"));
 		assert.ok(!out.includes("line30"));

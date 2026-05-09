@@ -9,12 +9,26 @@ describe("AskUser", () => {
 		filter() {},
 	});
 
-	it("full renders question", () => {
+	it("full tab-indents the model's emission body", () => {
 		const result = plugin.full({
 			attributes: { question: "What color?", options: "red;blue" },
-			body: "",
+			body: '<ask_user question="What color?">red;blue</ask_user>',
 		});
-		assert.ok(result.includes("What color?"));
+		assert.equal(
+			result,
+			'\t<ask_user question="What color?">red;blue</ask_user>',
+		);
+	});
+
+	it("full appends `<answer>` once the user has answered", () => {
+		const result = plugin.full({
+			attributes: { question: "What color?", answer: "red" },
+			body: '<ask_user question="What color?"/>',
+		});
+		assert.equal(
+			result,
+			'\t<ask_user question="What color?"/>\n\t<answer>red</answer>',
+		);
 	});
 
 	it("summary renders question and answer", () => {

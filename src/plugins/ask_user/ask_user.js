@@ -1,4 +1,4 @@
-import { SUMMARY_MAX_CHARS } from "../helpers.js";
+import { projectEmission, SUMMARY_MAX_CHARS } from "../helpers.js";
 import docs from "./ask_userDoc.js";
 
 // Per-side cap for the "question → answer" summary projection. Splitting
@@ -36,7 +36,6 @@ export default class AskUser {
 			runId: ctx.runId,
 			turn,
 			path: ctx.path,
-			body: ctx.resolvedBody,
 			attributes: { ...ctx.attrs, answer: ctx.output },
 		});
 	}
@@ -59,7 +58,7 @@ export default class AskUser {
 			runId,
 			turn,
 			path: entry.resultPath,
-			body: entry.body,
+			body: entry.attributes.source,
 			state: "proposed",
 			attributes: { question, options },
 			loopId,
@@ -67,11 +66,15 @@ export default class AskUser {
 	}
 
 	full(entry) {
-		const { question, answer } = entry.attributes;
-		const lines = ["# ASK_USER"];
-		if (question) lines.push(`# QUESTION: ${question}`);
-		if (answer) lines.push(`# ANSWER: ${answer}`);
-		return lines.join("\n");
+		// Action body is the model's `<ask_user>` emission. The user's
+		// answer (post-resolution) is harness-side metadata; surface it as
+		// a synthesized `<answer>` companion line so the model sees the
+		// full Q&A in its log.
+		const { answer } = entry.attributes;
+		const body = answer
+			? `${entry.body}\n<answer>${answer}</answer>`
+			: entry.body;
+		return projectEmission(body);
 	}
 
 	summary(entry) {

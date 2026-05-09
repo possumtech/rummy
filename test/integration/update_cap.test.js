@@ -44,9 +44,14 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 			/keep the update body to <= 80 characters/,
 			"soft error message names the contract",
 		);
+		// Stored body is the synthesized emission `<update ...>${text}</update>`;
+		// the cap is on the inner text (model-authored), not the wrapper.
 		const stored = await tdb.db.get_entry_body.get({ run_id: runId, path });
-		assert.equal(stored.body.length, 80, "stored body is chopped to 80");
-		assert.equal(stored.body, "x".repeat(80));
+		assert.equal(
+			stored.body,
+			`<update status="200">${"x".repeat(80)}</update>`,
+			"inner text capped at 80, wrapper synthesized around it",
+		);
 	});
 
 	it("body <= 80 chars passes through untouched, no soft error", async () => {
@@ -66,6 +71,6 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 		});
 		assert.equal(softErrors.length, 0, "onSoftError did not fire");
 		const stored = await tdb.db.get_entry_body.get({ run_id: runId, path });
-		assert.equal(stored.body, fine);
+		assert.equal(stored.body, `<update status="200">${fine}</update>`);
 	});
 });

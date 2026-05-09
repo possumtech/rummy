@@ -1,4 +1,8 @@
-import { logPathToDataBase, streamSummary } from "../helpers.js";
+import {
+	logPathToDataBase,
+	projectEmission,
+	streamSummary,
+} from "../helpers.js";
 import docs from "./shDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -46,29 +50,33 @@ export default class Sh {
 			runId: ctx.runId,
 			path: ctx.path,
 			state: "resolved",
-			body: `ran '${command}' (in progress). Output: ${dataBase}_1, ${dataBase}_2`,
 		});
 	}
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		// 202 with command summary, empty body; stdout/stderr entries created on accept.
 		await store.set({
 			runId,
 			turn,
 			path: entry.resultPath,
-			body: "",
+			body: entry.attributes.source,
 			state: "proposed",
 			attributes: { ...entry.attributes, tags: entry.attributes.command },
 			loopId,
 		});
 	}
 
+	// Action log entries (log://turn_N/sh/...) carry the model's emission
+	// in body; tab-indent for the markdown-recap convention. Stream entries
+	// (sh://turn_N/...) hold the program's actual stdout/stderr — render
+	// verbatim, no indent: the model needs byte-faithful output.
 	full(entry) {
-		return `# SH: ${entry.attributes.command}\n${entry.body}`;
+		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
+		return entry.body;
 	}
 
 	summary(entry) {
+		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
 		return streamSummary("sh", entry);
 	}
 }

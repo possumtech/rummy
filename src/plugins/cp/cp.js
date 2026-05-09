@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { storePatternResult } from "../helpers.js";
+import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./cpDoc.js";
 
 export default class Cp {
@@ -65,7 +65,6 @@ export default class Cp {
 		const beforeTokens = sourceTokens + destOldTokens;
 		const afterTokens = sourceTokens * 2;
 
-		const body = `${path} ${to}`;
 		if (destScheme === null) {
 			// Bare-file destination: hand the shared materializer (set.js
 			// #materializeFile, gated on attrs.path + attrs.patched) the
@@ -77,7 +76,7 @@ export default class Cp {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body,
+				body: entry.attributes.source,
 				state: "proposed",
 				attributes: {
 					from: path,
@@ -87,8 +86,8 @@ export default class Cp {
 					path: to,
 					patched: source,
 					visibility,
-					beforeTokens,
-					afterTokens,
+					beforeActionTokens: beforeTokens,
+					afterActionTokens: afterTokens,
 				},
 				loopId,
 			});
@@ -107,15 +106,15 @@ export default class Cp {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body,
+				body: entry.attributes.source,
 				state: "resolved",
 				attributes: {
 					from: path,
 					to,
 					isMove: false,
 					warning,
-					beforeTokens,
-					afterTokens,
+					beforeActionTokens: beforeTokens,
+					afterActionTokens: afterTokens,
 				},
 				loopId,
 			});
@@ -123,10 +122,7 @@ export default class Cp {
 	}
 
 	full(entry) {
-		const { from, to, beforeTokens, afterTokens } = entry.attributes;
-		const tokens =
-			beforeTokens != null ? ` ${beforeTokens}→${afterTokens} tokens` : "";
-		return `# CP: ${from} → ${to}${tokens}`;
+		return projectEmission(entry.body);
 	}
 
 	summary() {

@@ -27,11 +27,13 @@ function makeStore({ bodies = {}, attributes = {} } = {}) {
 }
 
 describe("Cp", () => {
-	it("full renders cp from and to", () => {
+	it("full tab-indents the model's emission body", () => {
 		const plugin = new Cp(stubCore());
-		const result = plugin.full({ attributes: { from: "a", to: "b" } });
-		assert.ok(result.includes("a"));
-		assert.ok(result.includes("b"));
+		const result = plugin.full({
+			attributes: { from: "a", to: "b" },
+			body: '<cp path="a">b</cp>',
+		});
+		assert.equal(result, '\t<cp path="a">b</cp>');
 	});
 
 	describe("handler — bare-file destination materialization", () => {

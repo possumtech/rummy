@@ -71,35 +71,32 @@ describe("streamSummary", () => {
 		assert.equal(streamSummary("env", { body: null, attributes: {} }), "");
 	});
 
-	it("renders full body when total lines <= tail limit", () => {
+	it("returns body verbatim when total lines <= tail limit", () => {
 		const entry = {
 			body: "line1\nline2\nline3",
 			attributes: { command: "ls", channel: 1 },
 		};
 		const out = streamSummary("env", entry, 12);
-		assert.match(out, /^# ENV: ls \(stdout, 3L\)\nline1\nline2\nline3$/);
+		assert.equal(out, "line1\nline2\nline3");
 	});
 
-	it("identifies stderr (channel=2) vs stdout in header", () => {
+	it("returns stream bytes verbatim — no header, channel/command live on the envelope", () => {
 		const entry = {
 			body: "err\n",
 			attributes: { command: "x", channel: 2 },
 		};
 		const out = streamSummary("sh", entry);
-		assert.match(out, /\(stderr, /);
+		assert.equal(out, "err\n");
 	});
 
-	it("tail-truncates when total lines exceed limit, includes range header", () => {
+	it("tail-truncates to last N lines without prepending a range header", () => {
 		const lines = Array.from({ length: 30 }, (_, i) => `L${i + 1}`).join("\n");
 		const entry = {
 			body: lines,
 			attributes: { command: "ls", channel: 1 },
 		};
 		const out = streamSummary("env", entry, 5);
-		// Header should mention "lines 26 through 30 of 30" + the get-line hint.
-		assert.match(out, /lines 26 through 30 of 30/);
-		assert.match(out, /<get line="1"/);
-		// Last 5 lines present in body.
+		// Last 5 lines present.
 		for (const i of [26, 27, 28, 29, 30]) {
 			assert.match(out, new RegExp(`L${i}`));
 		}
@@ -107,6 +104,8 @@ describe("streamSummary", () => {
 		for (const i of [1, 5, 25]) {
 			assert.doesNotMatch(out, new RegExp(`L${i}\\n`));
 		}
+		// No `# ENV:` / `# SH:` header decoration.
+		assert.doesNotMatch(out, /^#/);
 	});
 
 	it("output stays under SUMMARY_MAX_CHARS regardless of body shape", () => {

@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { storePatternResult } from "../helpers.js";
+import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./rmDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -87,7 +87,7 @@ export default class Rm {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: "",
+				body: entry.attributes.source,
 				state: "failed",
 				outcome: "not_found",
 				attributes: { path: target, error: `${target} not found` },
@@ -103,7 +103,6 @@ export default class Rm {
 		for (const match of schemeMatches)
 			await store.rm({ runId: runId, path: match.path });
 		if (schemeMatches.length > 0) {
-			const paths = schemeMatches.map((m) => m.path).join("\n");
 			const beforeTokens = schemeMatches.reduce(
 				(n, m) => n + countTokens(m.body),
 				0,
@@ -112,9 +111,13 @@ export default class Rm {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: paths,
+				body: entry.attributes.source,
 				state: "resolved",
-				attributes: { path: target, beforeTokens, afterTokens: 0 },
+				attributes: {
+					path: target,
+					beforeActionTokens: beforeTokens,
+					afterActionTokens: 0,
+				},
 				loopId,
 			});
 		}
@@ -131,12 +134,12 @@ export default class Rm {
 				runId,
 				turn,
 				path: resultPath,
-				body: match.path,
+				body: entry.attributes.source,
 				state: "proposed",
 				attributes: {
 					path: match.path,
-					beforeTokens: countTokens(match.body),
-					afterTokens: 0,
+					beforeActionTokens: countTokens(match.body),
+					afterActionTokens: 0,
 				},
 				loopId,
 			});
@@ -144,11 +147,7 @@ export default class Rm {
 	}
 
 	full(entry) {
-		const { path, beforeTokens, afterTokens } = entry.attributes;
-		const tokens =
-			beforeTokens != null ? ` ${beforeTokens}→${afterTokens} tokens` : "";
-		const header = `# RM: ${path || entry.path}${tokens}`;
-		return entry.body ? `${header}\n${entry.body}` : header;
+		return projectEmission(entry.body);
 	}
 
 	summary() {

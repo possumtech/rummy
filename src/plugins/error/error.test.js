@@ -71,10 +71,12 @@ async function _runVerdict(hooks, store, loopId, turn, status) {
 }
 
 describe("error plugin: views", () => {
-	it("visible projection labels body with `# ERROR:` header", async () => {
+	it("visible projection tab-indents the synthesized emission body", async () => {
 		const { hooks } = makeCore();
-		const out = await hooks.tools.view("error", { body: "boom" });
-		assert.equal(out, "# ERROR: boom");
+		const out = await hooks.tools.view("error", {
+			body: "<error>boom</error>",
+		});
+		assert.equal(out, "\t<error>boom</error>");
 	});
 
 	it("summarized projection returns body unchanged", async () => {

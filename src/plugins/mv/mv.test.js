@@ -9,10 +9,12 @@ describe("Mv", () => {
 		filter() {},
 	});
 
-	it("full renders mv from and to", () => {
-		const result = plugin.full({ attributes: { from: "a", to: "b" } });
-		assert.ok(result.includes("a"));
-		assert.ok(result.includes("b"));
+	it("full tab-indents the model's emission body", () => {
+		const result = plugin.full({
+			attributes: { from: "a", to: "b" },
+			body: '<mv path="a">b</mv>',
+		});
+		assert.equal(result, '\t<mv path="a">b</mv>');
 	});
 
 	it("schemed → bare-path: creates a proposal (not auto-resolved)", async () => {

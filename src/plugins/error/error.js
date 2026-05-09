@@ -1,5 +1,5 @@
 import { SOFT_FAILURE_OUTCOMES } from "../../agent/errors.js";
-import { SUMMARY_MAX_CHARS } from "../helpers.js";
+import { projectEmission, SUMMARY_MAX_CHARS } from "../helpers.js";
 
 const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
@@ -40,7 +40,10 @@ export default class ErrorPlugin {
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({ category: "logging" });
-		core.on("visible", (entry) => `# ERROR: ${entry.body}`);
+		// Errors are harness-generated, not model-emitted, but they share
+		// the action-log paradigm: body holds the synthesized emission
+		// (`<error>...</error>`), full() tab-indents it.
+		core.on("visible", (entry) => projectEmission(entry.body));
 		core.on("summarized", (entry) => entry.body.slice(0, SUMMARY_MAX_CHARS));
 
 		core.hooks.error.log.on(this.#onErrorLog.bind(this));
@@ -98,7 +101,7 @@ export default class ErrorPlugin {
 			runId,
 			turn,
 			path,
-			body: message,
+			body: `<error>${message}</error>`,
 			state: soft ? "resolved" : "failed",
 			outcome: soft ? null : `status:${statusValue}`,
 			loopId,

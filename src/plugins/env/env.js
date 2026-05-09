@@ -1,4 +1,8 @@
-import { logPathToDataBase, streamSummary } from "../helpers.js";
+import {
+	logPathToDataBase,
+	projectEmission,
+	streamSummary,
+} from "../helpers.js";
 import docs from "./envDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -46,7 +50,6 @@ export default class Env {
 			runId: ctx.runId,
 			path: ctx.path,
 			state: "resolved",
-			body: `ran '${command}' (in progress). Output: ${dataBase}_1, ${dataBase}_2`,
 		});
 	}
 
@@ -56,18 +59,22 @@ export default class Env {
 			runId,
 			turn,
 			path: entry.resultPath,
-			body: "",
+			body: entry.attributes.source,
 			state: "proposed",
 			attributes: { ...entry.attributes, tags: entry.attributes.command },
 			loopId,
 		});
 	}
 
+	// Action log entries carry the model's emission; stream entries hold
+	// the program's stdout/stderr verbatim. See sh.js for full rationale.
 	full(entry) {
-		return `# ENV: ${entry.attributes.command}\n${entry.body}`;
+		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
+		return entry.body;
 	}
 
 	summary(entry) {
+		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
 		return streamSummary("env", entry);
 	}
 }

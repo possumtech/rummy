@@ -2,7 +2,11 @@ import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
 import File from "../file/file.js";
-import { SUMMARY_MAX_CHARS, storePatternResult } from "../helpers.js";
+import {
+	projectEmission,
+	SUMMARY_MAX_CHARS,
+	storePatternResult,
+} from "../helpers.js";
 import docs from "./setDoc.js";
 
 const VALID_VISIBILITY = { archived: 1, summarized: 1, visible: 1 };
@@ -322,19 +326,15 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: newContent,
+					body: attrs.source,
 					state: "proposed",
 					attributes: {
 						path: target,
 						patch: udiff,
 						patched: newContent,
-						beforeTokens,
-						afterTokens,
+						beforeActionTokens: beforeTokens,
+						afterActionTokens: afterTokens,
 						tags: tagsText,
-						// Stored for the visible-projection round-trip (`full`).
-						// The udiff in `patch` stays for the proposal-acceptance UI.
-						operations: attrs.operations,
-						body: attrs.operations ? undefined : entry.body,
 					},
 					loopId,
 				});
@@ -385,19 +385,15 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: newContent,
+					body: attrs.source,
 					state: "resolved",
 					loopId,
 					attributes: {
 						path: target,
 						patch: udiff,
-						beforeTokens,
-						afterTokens,
+						beforeActionTokens: beforeTokens,
+						afterActionTokens: afterTokens,
 						tags: tagsText,
-						// Stored for the visible-projection round-trip (`full`).
-						// The udiff in `patch` stays for the proposal-acceptance UI.
-						operations: attrs.operations,
-						body: attrs.operations ? undefined : entry.body,
 					},
 				});
 			}
@@ -426,49 +422,21 @@ export default class Set {
 
 	full(entry) {
 		const attrs = entry.attributes;
-		const target = attrs.path || entry.path;
+		// Conflict feedback path: not a model emission — synthesize a
+		// projection that surfaces error + attempted SEARCH + current
+		// body so the model can author a delta on the next turn.
 		if (attrs.error) {
-			const lines = [`# SET: ${target}`, attrs.error];
+			const target = attrs.path || entry.path;
+			const lines = [`error at ${target}: ${attrs.error}`];
 			if (attrs.attempted) {
 				lines.push("", "--- attempted ---", attrs.attempted);
 			}
 			if (attrs.currentBody != null) {
 				lines.push("", `--- current body of ${target} ---`, attrs.currentBody);
 			}
-			return lines.join("\n");
+			return projectEmission(lines.join("\n"));
 		}
-		const tokens =
-			attrs.beforeTokens != null
-				? ` ${attrs.beforeTokens}→${attrs.afterTokens} tokens`
-				: "";
-		// Faithful round-trip: render the model's edit in its original
-		// operative-label syntax. The udiff in `attrs.patch` is for the
-		// proposal-acceptance UI; the model sees its own emission shape.
-		const replay = Set.#renderOperations(attrs);
-		if (!replay) return `# SET: ${target}${tokens}`;
-		return `# SET: ${target}${tokens}\n${replay}`;
-	}
-
-	// Round-trips the dispatched edit back to the operative-label syntax
-	// the model emitted. `attrs.operations` is the parsed op list (from
-	// marker.js) when the model used edit syntax; `attrs.body` is the
-	// plain-body shorthand which round-trips as a `<<NEW>>` block.
-	static #renderOperations(attrs) {
-		if (Array.isArray(attrs.operations) && attrs.operations.length > 0) {
-			return attrs.operations.map(Set.#renderOp).join("\n\n");
-		}
-		if (typeof attrs.body === "string" && attrs.body.length > 0) {
-			return Set.#renderOp({ op: "new", content: attrs.body });
-		}
-		return null;
-	}
-
-	static #renderOp(op) {
-		if (op.op === "search_replace") {
-			return `<<SEARCH\n${op.search}\nSEARCH<<REPLACE\n${op.replace}\nREPLACE`;
-		}
-		const label = op.op.toUpperCase();
-		return `<<${label}\n${op.content}\n${label}`;
+		return projectEmission(entry.body);
 	}
 
 	summary(entry) {

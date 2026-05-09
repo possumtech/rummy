@@ -99,6 +99,8 @@ function renderLogTag(entry, rowsByPath) {
 	if (entry.outcome) meta.outcome = entry.outcome;
 	if (typeof attrs?.query === "string") meta.query = attrs.query;
 	if (typeof attrs?.command === "string") meta.command = attrs.command;
+	if (attrs?.channel === 1) meta.channel = "stdout";
+	else if (attrs?.channel === 2) meta.channel = "stderr";
 	if (typeof attrs?.tags === "string") meta.tags = attrs.tags.slice(0, 80);
 	if (isSlice) {
 		meta.lines = `${attrs.lineStart}-${attrs.lineEnd}/${attrs.totalLines}`;
@@ -106,6 +108,15 @@ function renderLogTag(entry, rowsByPath) {
 		meta.lines = lineSource;
 	}
 	if (tokenSource != null) meta.tokens = tokenSource;
+	// Action-impact deltas: how this command's emission shifted the
+	// visible token budget at the paths it touched. Distinct from the
+	// envelope's own `tokens` (this entry's projection cost).
+	if (attrs?.beforeActionTokens != null) {
+		meta.beforeActionTokens = attrs.beforeActionTokens;
+	}
+	if (attrs?.afterActionTokens != null) {
+		meta.afterActionTokens = attrs.afterActionTokens;
+	}
 
 	return renderEntry(entry.path, meta, projectedBody(entry));
 }

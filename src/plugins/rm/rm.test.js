@@ -9,23 +9,20 @@ describe("Rm", () => {
 		filter() {},
 	});
 
-	it("full renders rm path", () => {
+	it("full tab-indents the model's emission body", () => {
 		const result = plugin.full({
 			attributes: { path: "known://old" },
-			body: "",
+			body: '<rm path="known://old"/>',
 		});
-		assert.ok(result.includes("known://old"));
+		assert.equal(result, '\t<rm path="known://old"/>');
 	});
 
-	it("full lists removed paths when body is present", () => {
+	it("full passes through multi-line emissions with one tab per line", () => {
 		const result = plugin.full({
 			attributes: { path: "known://chunk_*" },
-			body: "known://chunk_1\nknown://chunk_2\nknown://chunk_3",
+			body: '<rm path="known://chunk_*">\nbody\n</rm>',
 		});
-		assert.ok(result.includes("# RM: known://chunk_*"));
-		assert.ok(result.includes("known://chunk_1"));
-		assert.ok(result.includes("known://chunk_2"));
-		assert.ok(result.includes("known://chunk_3"));
+		assert.equal(result, '\t<rm path="known://chunk_*">\n\tbody\n\t</rm>');
 	});
 
 	it("summary returns empty — tag attributes carry the path", () => {

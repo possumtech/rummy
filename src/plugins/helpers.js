@@ -9,6 +9,22 @@ import { fileURLToPath } from "node:url";
 // stays consistent (no "450 here, 480 there, 500 over yonder" drift).
 export const SUMMARY_MAX_CHARS = 500;
 
+// Visible projection of a model action: the model's own emission text,
+// indented one hard tab per line. Tab indent guarantees that even if the
+// emission contains a literal `:::path` at column zero (the outer envelope
+// terminator), it can't prematurely close the heredoc. The model sees its
+// own bytes round-tripped exactly, which is the contract: action grammar
+// is preserved across turns, no harness re-rendering. Returns "" when the
+// entry has no captured emission (system-generated entries that don't
+// originate from the model).
+export function projectEmission(source) {
+	if (!source) return "";
+	return source
+		.split("\n")
+		.map((line) => `\t${line}`)
+		.join("\n");
+}
+
 // Render a single entry as a heredoc-fenced block. Replaces the prior
 // per-plugin XML tag rendering (`<known path="..." ...>body</known>`).
 //
@@ -70,17 +86,13 @@ export function logPathToDataBase(logPath) {
 // (see materializeContext) and protects against few-newline output like
 // terminal-control programs (cmatrix, htop) emitting one giant ANSI line.
 //
-// Output stays as a flat string (not a renderEntry block) because the
-// caller (log.assembleLog) wraps each log entry in renderEntry with its
-// own metadata; this is the BODY of that block. Effectively double
-// fencing — `<<:::log://turn_3/sh/foo` outer, then this header inside —
-// but that's correct: the outer fence labels "this is sh activity at
-// turn 3", and the body inside is the slice of stdout the model sees.
-export function streamSummary(label, entry, MAX_LINES = 20) {
+// No header prefix: the outer envelope JSON (`{"command":"...","channel":...}`
+// emitted by log.js renderLogTag) already names the stream. Stream output
+// is byte-faithful — the model needs to see what the program actually
+// emitted, not a re-rendered version with prepended labels.
+export function streamSummary(_label, entry, MAX_LINES = 20) {
 	if (!entry.body) return "";
-	const { body, attributes } = entry;
-	const command = attributes.command;
-	const channel = attributes.channel === 2 ? "stderr" : "stdout";
+	const { body } = entry;
 	const trailingNewline = body.endsWith("\n");
 	const lines = trailingNewline
 		? body.slice(0, -1).split("\n")
@@ -90,15 +102,9 @@ export function streamSummary(label, entry, MAX_LINES = 20) {
 		total <= MAX_LINES
 			? body
 			: lines.slice(-MAX_LINES).join("\n") + (trailingNewline ? "\n" : "");
-
-	const labelUpper = label.toUpperCase();
-	const header =
-		total <= MAX_LINES
-			? `# ${labelUpper}: ${command} (${channel}, ${total}L)`
-			: `# ${labelUpper}: ${command} (${channel}, lines ${total - MAX_LINES + 1} through ${total} of ${total}; <get line="1" limit="N"/> for head)`;
-
-	const out = `${header}\n${lineTail}`;
-	return out.length > SUMMARY_MAX_CHARS ? out.slice(0, SUMMARY_MAX_CHARS) : out;
+	return lineTail.length > SUMMARY_MAX_CHARS
+		? lineTail.slice(0, SUMMARY_MAX_CHARS)
+		: lineTail;
 }
 
 // Pattern-result log entry shared by get/set/store/rm.

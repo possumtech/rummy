@@ -41,8 +41,13 @@ function makeRummy(store, _attrs = {}) {
 }
 
 function makeEntry(attrs) {
+	const path = attrs.path ?? "src/agent/AgentLoop.js";
 	return {
-		attributes: { path: "src/agent/AgentLoop.js", ...attrs },
+		attributes: {
+			path,
+			source: `<get path="${path}"/>`,
+			...attrs,
+		},
 		resultPath: "get://result",
 	};
 }
@@ -69,15 +74,14 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
+		const slice = result.attributes.slice;
 		assert.ok(
-			result.body.startsWith(
-				"src/agent/AgentLoop.js\n[lines 10–14 / 100 total]",
-			),
-			`unexpected header: ${result.body.slice(0, 60)}`,
+			slice.startsWith("src/agent/AgentLoop.js\n[lines 10–14 / 100 total]"),
+			`unexpected slice header: ${slice.slice(0, 60)}`,
 		);
-		assert.ok(result.body.includes("line 10"));
-		assert.ok(result.body.includes("line 14"));
-		assert.ok(!result.body.includes("line 15"));
+		assert.ok(slice.includes("line 10"));
+		assert.ok(slice.includes("line 14"));
+		assert.ok(!slice.includes("line 15"));
 	});
 
 	it("tags the slice log with lineStart/lineEnd/totalLines for renderLogTag", async () => {
@@ -109,12 +113,12 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const result = store.upserted[0];
+		const slice = store.upserted[0].attributes.slice;
 		assert.ok(
-			result.body.startsWith("src/agent/AgentLoop.js\n[lines 1–3 / 5 total]"),
+			slice.startsWith("src/agent/AgentLoop.js\n[lines 1–3 / 5 total]"),
 		);
-		assert.ok(result.body.includes("a\nb\nc"));
-		assert.ok(!result.body.includes("d"));
+		assert.ok(slice.includes("a\nb\nc"));
+		assert.ok(!slice.includes("d"));
 	});
 
 	it("negative line reads tail from end", async () => {
@@ -133,16 +137,14 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const result = store.upserted[0];
+		const slice = store.upserted[0].attributes.slice;
 		assert.ok(
-			result.body.startsWith(
-				"sh://turn_3/npm_test_1\n[lines 91–100 / 100 total]",
-			),
-			`unexpected header: ${result.body.slice(0, 60)}`,
+			slice.startsWith("sh://turn_3/npm_test_1\n[lines 91–100 / 100 total]"),
+			`unexpected slice header: ${slice.slice(0, 60)}`,
 		);
-		assert.ok(result.body.includes("line 100"));
-		assert.ok(result.body.includes("line 91"));
-		assert.ok(!result.body.includes("line 90\n"));
+		assert.ok(slice.includes("line 100"));
+		assert.ok(slice.includes("line 91"));
+		assert.ok(!slice.includes("line 90\n"));
 	});
 
 	it("negative line with limit reads a window from the end", async () => {
@@ -162,16 +164,14 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const result = store.upserted[0];
+		const slice = store.upserted[0].attributes.slice;
 		assert.ok(
-			result.body.startsWith(
-				"sh://turn_3/npm_test_1\n[lines 81–85 / 100 total]",
-			),
-			`unexpected header: ${result.body.slice(0, 60)}`,
+			slice.startsWith("sh://turn_3/npm_test_1\n[lines 81–85 / 100 total]"),
+			`unexpected slice header: ${slice.slice(0, 60)}`,
 		);
-		assert.ok(result.body.includes("line 81"));
-		assert.ok(result.body.includes("line 85"));
-		assert.ok(!result.body.includes("line 86"));
+		assert.ok(slice.includes("line 81"));
+		assert.ok(slice.includes("line 85"));
+		assert.ok(!slice.includes("line 86"));
 	});
 
 	it("negative line clamps to line 1 when offset exceeds total", async () => {
@@ -183,9 +183,9 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const result = store.upserted[0];
-		assert.ok(result.body.startsWith("x\n[lines 1–3 / 3 total]"));
-		assert.ok(result.body.includes("a\nb\nc"));
+		const slice = store.upserted[0].attributes.slice;
+		assert.ok(slice.startsWith("x\n[lines 1–3 / 3 total]"));
+		assert.ok(slice.includes("a\nb\nc"));
 	});
 
 	it("clamps end to total lines when limit exceeds file length", async () => {
@@ -198,11 +198,11 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const result = store.upserted[0];
+		const slice = store.upserted[0].attributes.slice;
 		assert.ok(
-			result.body.startsWith("src/agent/AgentLoop.js\n[lines 2–3 / 3 total]"),
+			slice.startsWith("src/agent/AgentLoop.js\n[lines 2–3 / 3 total]"),
 		);
-		assert.ok(result.body.includes("y\nz"));
+		assert.ok(slice.includes("y\nz"));
 	});
 
 	// Regression: body content alongside line/limit on a single path
@@ -228,8 +228,8 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
-		assert.ok(result.body.includes("[lines 1–5 / 50 total]"));
-		assert.ok(result.body.includes("line 1"));
+		assert.ok(result.attributes.slice.includes("[lines 1–5 / 50 total]"));
+		assert.ok(result.attributes.slice.includes("line 1"));
 	});
 
 	// Multi-match line/limit: emit one sliced section per match. Per
@@ -251,10 +251,11 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
-		assert.ok(result.body.includes("src/a.js"));
-		assert.ok(result.body.includes("src/b.js"));
-		assert.ok(result.body.includes("a1\na2\na3"));
-		assert.ok(result.body.includes("b1\nb2\nb3"));
+		const slice = result.attributes.slice;
+		assert.ok(slice.includes("src/a.js"));
+		assert.ok(slice.includes("src/b.js"));
+		assert.ok(slice.includes("a1\na2\na3"));
+		assert.ok(slice.includes("b1\nb2\nb3"));
 		assert.strictEqual(result.attributes.matchCount, 2);
 	});
 
@@ -266,7 +267,8 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		assert.strictEqual(store.upserted[0].state, "resolved");
-		assert.ok(store.upserted[0].body.includes("not found"));
+		assert.strictEqual(store.upserted[0].outcome, "not_found");
+		assert.ok(store.upserted[0].attributes.error.includes("not found"));
 	});
 
 	describe("missing path validation (@error_recovery)", () => {

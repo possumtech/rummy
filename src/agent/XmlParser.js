@@ -227,9 +227,11 @@ export default class XmlParser {
 			}
 
 			const { name, attrs, selfClose, end: openerEnd } = opener;
+			const openerStart = i;
 
 			if (selfClose) {
-				commands.push(resolveCommand(name, attrs, ""));
+				const source = s.slice(openerStart, openerEnd);
+				commands.push({ ...resolveCommand(name, attrs, ""), source });
 				i = openerEnd;
 				continue;
 			}
@@ -245,7 +247,8 @@ export default class XmlParser {
 					warnings.push(`Unclosed <${name}> tag — content captured anyway`);
 				}
 			}
-			commands.push(resolveCommand(name, attrs, body));
+			const source = s.slice(openerStart, result.afterClose);
+			commands.push({ ...resolveCommand(name, attrs, body), source });
 			i = result.afterClose;
 
 			// Body terminated; reset outer-text fence tracking.

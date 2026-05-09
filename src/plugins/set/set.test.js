@@ -62,82 +62,29 @@ describe("Set plugin", () => {
 	describe("full (visible projection)", () => {
 		const plugin = new Set(stubCore());
 
-		it("renders just `# SET: <path>` when no merge/error", () => {
-			const out = plugin.full({ attributes: { path: "x.js" } });
-			assert.equal(out, "# SET: x.js");
-		});
-
-		it("uses entry.path when attrs.path missing", () => {
-			const out = plugin.full({ path: "from-entry", attributes: {} });
-			assert.match(out, /^# SET: from-entry/);
-		});
-
-		it("includes token delta when beforeTokens provided", () => {
+		it("tab-indents the model's verbatim emission", () => {
 			const out = plugin.full({
-				attributes: { path: "x", beforeTokens: 10, afterTokens: 7 },
+				attributes: { path: "x.js" },
+				body: '<set path="x.js"><<NEW\nfoo\nNEW</set>',
 			});
-			assert.match(out, /10→7 tokens/);
+			assert.equal(out, '\t<set path="x.js"><<NEW\n\tfoo\n\tNEW</set>');
 		});
 
-		it("renders error block when attrs.error set", () => {
-			const out = plugin.full({
-				attributes: { path: "x", error: "bad pattern" },
-			});
-			assert.match(out, /bad pattern/);
-		});
-
-		it("renders plain-body shorthand as a NEW heredoc", () => {
-			const out = plugin.full({
-				attributes: { path: "x", body: "hello world" },
-			});
-			assert.match(out, /^# SET: x\n<<NEW\nhello world\nNEW$/);
-		});
-
-		it("renders parsed operations in operative-label heredoc syntax", () => {
-			const out = plugin.full({
-				attributes: {
-					path: "x",
-					operations: [
-						{ op: "search_replace", search: "foo", replace: "bar" },
-						{ op: "append", content: "tail\n" },
-					],
-				},
-			});
-			assert.match(
+		it("multi-line emissions keep one tab per line", () => {
+			const body =
+				'<set path="x"><<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE</set>';
+			const out = plugin.full({ attributes: { path: "x" }, body });
+			assert.equal(
 				out,
-				/<<SEARCH\nfoo\nSEARCH<<REPLACE\nbar\nREPLACE\n\n<<APPEND\ntail\n\nAPPEND/,
+				'\t<set path="x"><<SEARCH\n\told\n\tSEARCH<<REPLACE\n\tnew\n\tREPLACE</set>',
 			);
 		});
 
-		it("ignores attrs.patch (udiff) — that's reserved for the proposal-accept UI", () => {
-			const out = plugin.full({
-				attributes: { path: "x", patch: "@@ -1,3 +1,3 @@\n-old\n+new" },
-			});
-			assert.equal(out, "# SET: x");
-			assert.doesNotMatch(out, /@@/);
-		});
-
-		it("renders each op kind as its own heredoc shape", () => {
-			for (const [op, expected] of [
-				[{ op: "new", content: "a" }, "<<NEW\na\nNEW"],
-				[{ op: "replace", content: "b" }, "<<REPLACE\nb\nREPLACE"],
-				[{ op: "append", content: "c" }, "<<APPEND\nc\nAPPEND"],
-				[{ op: "prepend", content: "d" }, "<<PREPEND\nd\nPREPEND"],
-				[{ op: "delete", content: "e" }, "<<DELETE\ne\nDELETE"],
-			]) {
-				const out = plugin.full({
-					attributes: { path: "x", operations: [op] },
-				});
-				assert.equal(out, `# SET: x\n${expected}`);
-			}
-		});
-
-		it("conflict surfaces attempted text AND current body so the model can author a delta", () => {
+		it("conflict synthesizes an error projection with attempted + current body", () => {
 			// EN-3: when SEARCH/REPLACE or DELETE conflicts, the model needs
 			// (1) the error, (2) what it tried, (3) the actual current body
 			// — not just the error string. Without all three, the model
-			// retries the same patch verbatim (gemma26 ceiling case: 44×
-			// same failing patch against tests/runner_test.go turns 96-224).
+			// retries the same patch verbatim (gemma26 ceiling case).
 			const out = plugin.full({
 				attributes: {
 					path: "known://plan",
@@ -145,12 +92,13 @@ describe("Set plugin", () => {
 					attempted: "- [ ] step 1",
 					currentBody: "- [x] step 1\n- [ ] step 2",
 				},
+				body: "",
 			});
 			assert.match(out, /Could not find the SEARCH block/);
 			assert.match(out, /--- attempted ---/);
 			assert.match(out, /- \[ \] step 1/);
 			assert.match(out, /--- current body of known:\/\/plan ---/);
-			assert.match(out, /- \[x\] step 1\n- \[ \] step 2/);
+			assert.match(out, /- \[x\] step 1\n\t- \[ \] step 2/);
 		});
 	});
 

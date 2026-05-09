@@ -103,7 +103,10 @@ describe("Handler dispatch", () => {
 				scheme: "get",
 				path: "get://src%2Ftarget.js",
 				body: "",
-				attributes: { path: "src/target.js" },
+				attributes: {
+					path: "src/target.js",
+					source: '<get path="src/target.js"/>',
+				},
 				state: "resolved",
 				resultPath: "get://src%2Ftarget.js",
 			};
@@ -123,9 +126,9 @@ describe("Handler dispatch", () => {
 			// The log entry is the model's proof in <log> that the fetch
 			// already happened; absence made the model re-issue identical
 			// gets until the cyclic-fingerprint detector struck the run.
+			// Body holds the model's verbatim emission (action-log paradigm).
 			const log = await store.getBody(RUN_ID, entry.resultPath);
-			assert.ok(log, "get:// log written");
-			assert.ok(log.includes("promoted"), `log says promoted, got: ${log}`);
+			assert.equal(log, '<get path="src/target.js"/>', "get:// log written");
 		});
 
 		it("writes log on not-found so the attempt is recorded", async () => {
@@ -134,7 +137,10 @@ describe("Handler dispatch", () => {
 				scheme: "get",
 				path: "get://missing.js",
 				body: "",
-				attributes: { path: "src/missing.js" },
+				attributes: {
+					path: "src/missing.js",
+					source: '<get path="src/missing.js"/>',
+				},
 				state: "resolved",
 				resultPath: "get://missing.js",
 			};
@@ -142,8 +148,15 @@ describe("Handler dispatch", () => {
 			await hooks.tools.dispatch("get", entry, rummy);
 
 			const log = await store.getBody(RUN_ID, entry.resultPath);
-			assert.ok(log, "not-found log written");
-			assert.ok(log.includes("not found"), "log says not found");
+			assert.equal(
+				log,
+				'<get path="src/missing.js"/>',
+				"not-found log written",
+			);
+			const state = await store.getState(RUN_ID, entry.resultPath);
+			assert.equal(state.outcome, "not_found", "outcome marks the miss");
+			const attrs = await store.getAttributes(RUN_ID, entry.resultPath);
+			assert.match(attrs.error, /not found/, "attrs.error names the miss");
 		});
 	});
 
@@ -164,6 +177,8 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/edit_me.js",
+					source:
+						'<set path="src/edit_me.js"><<SEARCH\nconst port = 3000;\nSEARCH<<REPLACE\nconst port = 8080;\nREPLACE</set>',
 					operations: [
 						{
 							op: "search_replace",
@@ -219,6 +234,7 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/fuzzy.js",
+					source: '<set path="src/fuzzy.js"/>',
 					operations: [
 						{
 							op: "search_replace",
@@ -279,6 +295,7 @@ describe("Handler dispatch", () => {
 					path: "src/old_name.js",
 					to: "src/new_name.js",
 					visibility: "summarized",
+					source: '<mv path="src/old_name.js">src/new_name.js</mv>',
 				},
 				state: "resolved",
 				resultPath: logPath,
@@ -322,6 +339,7 @@ describe("Handler dispatch", () => {
 					path: "src/source.js",
 					to: "src/copy.js",
 					visibility: "archived",
+					source: '<cp path="src/source.js">src/copy.js</cp>',
 				},
 				state: "resolved",
 				resultPath: logPath,
@@ -365,6 +383,7 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
+					source: '<set path="src/math.txt"/>',
 					operations: [
 						{
 							op: "search_replace",
@@ -384,6 +403,7 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
+					source: '<set path="src/math.txt"/>',
 					operations: [
 						{
 							op: "search_replace",
@@ -438,6 +458,7 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "known://config",
+					source: '<set path="known://config"/>',
 					operations: [
 						{ op: "search_replace", search: "3000", replace: "8080" },
 					],
@@ -474,7 +495,10 @@ describe("Handler dispatch", () => {
 				scheme: "sh",
 				path: resultPath,
 				body: "npm test",
-				attributes: { command: "npm test" },
+				attributes: {
+					command: "npm test",
+					source: "<sh>npm test</sh>",
+				},
 				state: "resolved",
 				resultPath,
 			};
@@ -506,7 +530,10 @@ describe("Handler dispatch", () => {
 				scheme: "env",
 				path: resultPath,
 				body: "node --version",
-				attributes: { command: "node --version" },
+				attributes: {
+					command: "node --version",
+					source: "<env>node --version</env>",
+				},
 				state: "resolved",
 				resultPath,
 			};
@@ -536,7 +563,11 @@ describe("Handler dispatch", () => {
 				scheme: "set",
 				path: "set://known%3A%2F%2Fdemote_me",
 				body: "",
-				attributes: { path: "known://demote_me", visibility: "archived" },
+				attributes: {
+					path: "known://demote_me",
+					visibility: "archived",
+					source: '<set path="known://demote_me" visibility="archived"/>',
+				},
 				state: "resolved",
 				resultPath: "set://known%3A%2F%2Fdemote_me",
 			};
@@ -566,7 +597,10 @@ describe("Handler dispatch", () => {
 				scheme: "rm",
 				path: "rm://src%2Fdoomed.js",
 				body: "",
-				attributes: { path: "src/doomed.js" },
+				attributes: {
+					path: "src/doomed.js",
+					source: '<rm path="src/doomed.js"/>',
+				},
 				state: "resolved",
 				resultPath: "rm://src%2Fdoomed.js",
 			};
@@ -592,7 +626,10 @@ describe("Handler dispatch", () => {
 				scheme: "rm",
 				path: "rm://known%3A%2F%2Fephemeral",
 				body: "",
-				attributes: { path: "known://ephemeral" },
+				attributes: {
+					path: "known://ephemeral",
+					source: '<rm path="known://ephemeral"/>',
+				},
 				state: "resolved",
 				resultPath: "rm://known%3A%2F%2Fephemeral",
 			};
@@ -635,7 +672,10 @@ describe("Handler dispatch", () => {
 				scheme: "rm",
 				path: resultPath,
 				body: "",
-				attributes: { path: "known://bulk_*" },
+				attributes: {
+					path: "known://bulk_*",
+					source: '<rm path="known://bulk_*"/>',
+				},
 				state: "resolved",
 				resultPath,
 			};
@@ -650,7 +690,9 @@ describe("Handler dispatch", () => {
 			);
 			assert.strictEqual(remaining.length, 0, "all matched entries removed");
 
-			// Exactly one new rm:// log entry (the aggregate)
+			// Exactly one aggregate rm:// log entry (action body holds the
+			// model's `<rm/>` emission verbatim — the action grammar is the
+			// projection contract; the impact lives in beforeActionTokens).
 			const allAfter = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const rmEntries = allAfter.filter((e) => e.scheme === "rm");
 			assert.strictEqual(
@@ -658,17 +700,20 @@ describe("Handler dispatch", () => {
 				1,
 				"one aggregate result entry",
 			);
-			const rmEntry = rmEntries.find((e) => e.body?.includes("known://bulk_a"));
-			assert.ok(rmEntry, "aggregate entry exists");
+			const rmEntry = rmEntries.find(
+				(e) => e.body === '<rm path="known://bulk_*"/>',
+			);
+			assert.ok(rmEntry, "aggregate entry holds verbatim emission body");
 			assert.strictEqual(rmEntry.state, "resolved");
+			const rmAttrs =
+				typeof rmEntry.attributes === "string"
+					? JSON.parse(rmEntry.attributes)
+					: rmEntry.attributes;
 			assert.ok(
-				rmEntry.body.includes("known://bulk_b"),
-				"body lists removed paths",
+				rmAttrs.beforeActionTokens > 0,
+				"action-token delta records the freed budget",
 			);
-			assert.ok(
-				rmEntry.body.includes("known://bulk_c"),
-				"body lists removed paths",
-			);
+			assert.equal(rmAttrs.afterActionTokens, 0, "after = 0 (all gone)");
 		});
 	});
 
@@ -821,11 +866,11 @@ describe("Handler dispatch", () => {
 				(e) =>
 					e.scheme === "log" &&
 					/^log:\/\/turn_12\/update\//.test(e.path) &&
-					e.body === "working through unknowns",
+					e.body === '<update status="144">working through unknowns</update>',
 			);
 			assert.ok(
 				updateLog,
-				"update emission lands at log://turn_N/update/<slug>",
+				"update emission lands at log://turn_N/update/<slug> with synthesized body",
 			);
 		});
 	});

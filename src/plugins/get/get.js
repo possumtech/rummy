@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { storePatternResult } from "../helpers.js";
+import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./getDoc.js";
 
 export default class Get {
@@ -101,19 +101,21 @@ export default class Get {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: `${target} not found`,
+					body: entry.attributes.source,
 					state: "resolved",
+					outcome: "not_found",
 					loopId,
-					attributes: { path: target },
+					attributes: { path: target, error: `${target} not found` },
 				});
 				return;
 			}
 			const sections = matches.map((match) => sliceSection(match, line, limit));
-			const body = sections.map((s) => s.text).join("\n\n");
+			const sliceBody = sections.map((s) => s.text).join("\n\n");
 			const attributes = {
 				path: target,
-				beforeTokens: 0,
-				afterTokens: countTokens(body),
+				slice: sliceBody,
+				beforeActionTokens: 0,
+				afterActionTokens: countTokens(sliceBody),
 			};
 			if (sections.length === 1) {
 				const only = sections[0];
@@ -127,7 +129,7 @@ export default class Get {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body,
+				body: entry.attributes.source,
 				state: "resolved",
 				loopId,
 				attributes,
@@ -175,13 +177,13 @@ export default class Get {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: `${target} not found`,
+				body: entry.attributes.source,
 				state: "resolved",
+				outcome: "not_found",
 				loopId,
-				attributes: { path: target },
+				attributes: { path: target, error: `${target} not found` },
 			});
 		} else {
-			// Log line in <log> proves the promotion happened so the model doesn't re-fetch.
 			const promotedTokens = matches.reduce(
 				(n, m) => n + countTokens(m.body),
 				0,
@@ -190,24 +192,27 @@ export default class Get {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: `${target} promoted`,
+				body: entry.attributes.source,
 				state: "resolved",
 				loopId,
 				attributes: {
 					path: target,
-					beforeTokens: 0,
-					afterTokens: promotedTokens,
+					beforeActionTokens: 0,
+					afterActionTokens: promotedTokens,
 				},
 			});
 		}
 	}
 
 	full(entry) {
-		const { beforeTokens, afterTokens } = entry.attributes;
-		const path = entry.attributes.path || entry.path;
-		const tokens =
-			beforeTokens != null ? ` ${beforeTokens}→${afterTokens} tokens` : "";
-		return `# GET: ${path}${tokens}\n${entry.body}`;
+		// Slice gets are emission-plus-result: the model sees its `<get>`
+		// echoed AND the slice it requested, both inside the same recap
+		// block. Promotion gets just project the emission — the promoted
+		// path's body is visible separately as its own entry.
+		if (typeof entry.attributes.slice === "string") {
+			return projectEmission(`${entry.body}\n\n${entry.attributes.slice}`);
+		}
+		return projectEmission(entry.body);
 	}
 
 	summary() {
