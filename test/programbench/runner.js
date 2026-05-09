@@ -40,14 +40,14 @@ const PB_VENV = join(__dirname, ".venv");
 const TASKS_DATA_DIR = join(
 	PB_VENV,
 	"lib",
-	`python${detectPythonMajorMinor()}`,
+	detectPythonLibDir(),
 	"site-packages",
 	"programbench",
 	"data",
 	"tasks",
 );
 
-function detectPythonMajorMinor() {
+function detectPythonLibDir() {
 	const lib = join(PB_VENV, "lib");
 	if (!existsSync(lib)) return "python3.13";
 	const dirs = execSync(`ls ${lib} 2>/dev/null`).toString().trim().split("\n");
@@ -165,14 +165,9 @@ const PROMPT_TEMPLATE = readFileSync(join(__dirname, "prompt.md"), "utf8");
 
 function buildPrompt(taskMeta) {
 	const language = taskMeta?.language;
-	const repository = taskMeta?.repository;
-	const langLine = language
+	const orientation = language
 		? `The reference is implemented in ${language}.`
 		: "";
-	const repoLine = repository
-		? `Upstream repository: https://github.com/${repository}.`
-		: "";
-	const orientation = [langLine, repoLine].filter(Boolean).join(" ");
 	return PROMPT_TEMPLATE.replace("{{orientation}}", orientation).trimEnd();
 }
 

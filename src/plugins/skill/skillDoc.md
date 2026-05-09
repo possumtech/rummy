@@ -1,4 +1,4 @@
-## <skill path="[path-or-url]"/> - Drop in a deep skill
+## <skill path="[path-or-url]"/> - Drop in a skill
 
 Example: <skill path="docs/refactoring.md"/>
 <!-- Single-file skill: archived at skill://refactoring (summarized). -->

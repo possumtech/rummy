@@ -27,7 +27,7 @@ describe("Env", () => {
 			attributes: { command: "ls -F", channel: 1 },
 			body: "a.out*\nhi.c\n",
 		});
-		assert.match(out, /^# env ls -F \(stdout, 2L\)\n/);
+		assert.match(out, /^# ENV: ls -F \(stdout, 2L\)\n/);
 		assert.ok(out.endsWith("a.out*\nhi.c\n"));
 	});
 
@@ -48,6 +48,6 @@ describe("Env", () => {
 			attributes: { command: "ls", channel: 2 },
 			body: "permission denied\n",
 		});
-		assert.ok(out.startsWith("# env ls (stderr,"));
+		assert.ok(out.startsWith("# ENV: ls (stderr,"));
 	});
 });

@@ -1,4 +1,5 @@
 import Entries from "../../agent/Entries.js";
+import { countTokens } from "../../agent/tokens.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./rmDoc.js";
 
@@ -103,13 +104,17 @@ export default class Rm {
 			await store.rm({ runId: runId, path: match.path });
 		if (schemeMatches.length > 0) {
 			const paths = schemeMatches.map((m) => m.path).join("\n");
+			const beforeTokens = schemeMatches.reduce(
+				(n, m) => n + countTokens(m.body),
+				0,
+			);
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
 				body: paths,
 				state: "resolved",
-				attributes: { path: target },
+				attributes: { path: target, beforeTokens, afterTokens: 0 },
 				loopId,
 			});
 		}
@@ -128,14 +133,21 @@ export default class Rm {
 				path: resultPath,
 				body: match.path,
 				state: "proposed",
-				attributes: { path: match.path },
+				attributes: {
+					path: match.path,
+					beforeTokens: countTokens(match.body),
+					afterTokens: 0,
+				},
 				loopId,
 			});
 		}
 	}
 
 	full(entry) {
-		const header = `# rm ${entry.attributes.path || entry.path}`;
+		const { path, beforeTokens, afterTokens } = entry.attributes;
+		const tokens =
+			beforeTokens != null ? ` ${beforeTokens}→${afterTokens} tokens` : "";
+		const header = `# RM: ${path || entry.path}${tokens}`;
 		return entry.body ? `${header}\n${entry.body}` : header;
 	}
 

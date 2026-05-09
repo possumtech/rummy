@@ -1,4 +1,5 @@
 import Entries from "../../agent/Entries.js";
+import { countTokens } from "../../agent/tokens.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./getDoc.js";
 
@@ -109,7 +110,11 @@ export default class Get {
 			}
 			const sections = matches.map((match) => sliceSection(match, line, limit));
 			const body = sections.map((s) => s.text).join("\n\n");
-			const attributes = { path: target };
+			const attributes = {
+				path: target,
+				beforeTokens: 0,
+				afterTokens: countTokens(body),
+			};
 			if (sections.length === 1) {
 				const only = sections[0];
 				attributes.lineStart = only.startLine;
@@ -177,6 +182,10 @@ export default class Get {
 			});
 		} else {
 			// Log line in <log> proves the promotion happened so the model doesn't re-fetch.
+			const promotedTokens = matches.reduce(
+				(n, m) => n + countTokens(m.body),
+				0,
+			);
 			await store.set({
 				runId,
 				turn,
@@ -184,13 +193,21 @@ export default class Get {
 				body: `${target} promoted`,
 				state: "resolved",
 				loopId,
-				attributes: { path: target },
+				attributes: {
+					path: target,
+					beforeTokens: 0,
+					afterTokens: promotedTokens,
+				},
 			});
 		}
 	}
 
 	full(entry) {
-		return `# get ${entry.attributes.path || entry.path}\n${entry.body}`;
+		const { beforeTokens, afterTokens } = entry.attributes;
+		const path = entry.attributes.path || entry.path;
+		const tokens =
+			beforeTokens != null ? ` ${beforeTokens}→${afterTokens} tokens` : "";
+		return `# GET: ${path}${tokens}\n${entry.body}`;
 	}
 
 	summary() {

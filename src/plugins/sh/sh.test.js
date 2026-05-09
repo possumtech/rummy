@@ -27,7 +27,7 @@ describe("Sh", () => {
 			attributes: { command: "ls -la", channel: 1 },
 			body: "file1\nfile2\n",
 		});
-		assert.match(out, /^# sh ls -la \(stdout, 2L\)\n/);
+		assert.match(out, /^# SH: ls -la \(stdout, 2L\)\n/);
 		assert.ok(out.endsWith("file1\nfile2\n"));
 	});
 

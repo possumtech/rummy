@@ -5,7 +5,7 @@
 // `unparsed` (free text outside any tool tag — comments, "thinking
 // out loud" between tool calls) is non-actionable but not malicious;
 // the empty-turn failure mode is already caught by update plugin's
-// 422 "Missing update", so striking unparsed too is duplicative.
+// 422 "UPDATE missing", so striking unparsed too is duplicative.
 // Hard outcomes (validation, permission, exit:N) DO strike. Shared
 // between error.js's verdict accumulator (recordedFailed gate) and
 // Entries' auto-failure hook (passes soft=true so error.log.emit

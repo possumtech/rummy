@@ -1,6 +1,6 @@
 import docs from "./updateDoc.js";
 
-const CONTRACT_REMINDER = "Missing update";
+const CONTRACT_REMINDER = "UPDATE missing";
 
 const EMPTY_RESPONSE_REMINDER = "Response empty";
 
@@ -55,7 +55,7 @@ export default class Update {
 	}
 
 	full(entry) {
-		return `# update\n${entry.body}`;
+		return `# UPDATE:\n${entry.body}`;
 	}
 
 	summary(entry) {

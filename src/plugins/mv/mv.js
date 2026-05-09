@@ -1,4 +1,5 @@
 import Entries from "../../agent/Entries.js";
+import { countTokens } from "../../agent/tokens.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./mvDoc.js";
 
@@ -90,6 +91,14 @@ export default class Mv {
 				? `Overwrote existing entry at ${to}`
 				: null;
 
+		// Token impact across the affected paths: before = source +
+		// existing-dest (if any); after = source-tokens (now at the dest
+		// path; source path is removed so its contribution is gone).
+		const sourceTokens = countTokens(source);
+		const destOldTokens = existing !== null ? countTokens(existing) : 0;
+		const beforeTokens = sourceTokens + destOldTokens;
+		const afterTokens = sourceTokens;
+
 		const body = `${path} ${to}`;
 		if (destScheme === null) {
 			// Bare-file destination: hand the shared materializer (set.js
@@ -112,6 +121,8 @@ export default class Mv {
 					path: to,
 					patched: source,
 					visibility,
+					beforeTokens,
+					afterTokens,
 				},
 				loopId,
 			});
@@ -133,14 +144,24 @@ export default class Mv {
 				path: entry.resultPath,
 				body,
 				state: "resolved",
-				attributes: { from: path, to, isMove: true, warning },
+				attributes: {
+					from: path,
+					to,
+					isMove: true,
+					warning,
+					beforeTokens,
+					afterTokens,
+				},
 				loopId,
 			});
 		}
 	}
 
 	full(entry) {
-		return `# mv ${entry.attributes.from} ${entry.attributes.to}`;
+		const { from, to, beforeTokens, afterTokens } = entry.attributes;
+		const tokens =
+			beforeTokens != null ? ` ${beforeTokens}→${afterTokens} tokens` : "";
+		return `# MV: ${from} → ${to}${tokens}`;
 	}
 
 	summary() {

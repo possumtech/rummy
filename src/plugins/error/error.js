@@ -40,7 +40,7 @@ export default class ErrorPlugin {
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({ category: "logging" });
-		core.on("visible", (entry) => `# error\n${entry.body}`);
+		core.on("visible", (entry) => `# ERROR: ${entry.body}`);
 		core.on("summarized", (entry) => entry.body.slice(0, SUMMARY_MAX_CHARS));
 
 		core.hooks.error.log.on(this.#onErrorLog.bind(this));

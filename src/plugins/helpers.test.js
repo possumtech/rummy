@@ -77,7 +77,7 @@ describe("streamSummary", () => {
 			attributes: { command: "ls", channel: 1 },
 		};
 		const out = streamSummary("env", entry, 12);
-		assert.match(out, /^# env ls \(stdout, 3L\)\nline1\nline2\nline3$/);
+		assert.match(out, /^# ENV: ls \(stdout, 3L\)\nline1\nline2\nline3$/);
 	});
 
 	it("identifies stderr (channel=2) vs stdout in header", () => {

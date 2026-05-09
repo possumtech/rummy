@@ -62,14 +62,14 @@ describe("Set plugin", () => {
 	describe("full (visible projection)", () => {
 		const plugin = new Set(stubCore());
 
-		it("renders just `# set <path>` when no merge/error", () => {
+		it("renders just `# SET: <path>` when no merge/error", () => {
 			const out = plugin.full({ attributes: { path: "x.js" } });
-			assert.equal(out, "# set x.js");
+			assert.equal(out, "# SET: x.js");
 		});
 
 		it("uses entry.path when attrs.path missing", () => {
 			const out = plugin.full({ path: "from-entry", attributes: {} });
-			assert.match(out, /^# set from-entry/);
+			assert.match(out, /^# SET: from-entry/);
 		});
 
 		it("includes token delta when beforeTokens provided", () => {
@@ -86,11 +86,50 @@ describe("Set plugin", () => {
 			assert.match(out, /bad pattern/);
 		});
 
-		it("appends udiff patch body when present", () => {
+		it("renders plain-body shorthand as a NEW heredoc", () => {
 			const out = plugin.full({
-				attributes: { path: "x", patch: "@@ -1,3 +1,3 @@" },
+				attributes: { path: "x", body: "hello world" },
 			});
-			assert.match(out, /@@ -1,3 \+1,3 @@/);
+			assert.match(out, /^# SET: x\n<<NEW\nhello world\nNEW$/);
+		});
+
+		it("renders parsed operations in operative-label heredoc syntax", () => {
+			const out = plugin.full({
+				attributes: {
+					path: "x",
+					operations: [
+						{ op: "search_replace", search: "foo", replace: "bar" },
+						{ op: "append", content: "tail\n" },
+					],
+				},
+			});
+			assert.match(
+				out,
+				/<<SEARCH\nfoo\nSEARCH<<REPLACE\nbar\nREPLACE\n\n<<APPEND\ntail\n\nAPPEND/,
+			);
+		});
+
+		it("ignores attrs.patch (udiff) — that's reserved for the proposal-accept UI", () => {
+			const out = plugin.full({
+				attributes: { path: "x", patch: "@@ -1,3 +1,3 @@\n-old\n+new" },
+			});
+			assert.equal(out, "# SET: x");
+			assert.doesNotMatch(out, /@@/);
+		});
+
+		it("renders each op kind as its own heredoc shape", () => {
+			for (const [op, expected] of [
+				[{ op: "new", content: "a" }, "<<NEW\na\nNEW"],
+				[{ op: "replace", content: "b" }, "<<REPLACE\nb\nREPLACE"],
+				[{ op: "append", content: "c" }, "<<APPEND\nc\nAPPEND"],
+				[{ op: "prepend", content: "d" }, "<<PREPEND\nd\nPREPEND"],
+				[{ op: "delete", content: "e" }, "<<DELETE\ne\nDELETE"],
+			]) {
+				const out = plugin.full({
+					attributes: { path: "x", operations: [op] },
+				});
+				assert.equal(out, `# SET: x\n${expected}`);
+			}
 		});
 
 		it("conflict surfaces attempted text AND current body so the model can author a delta", () => {

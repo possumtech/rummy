@@ -331,6 +331,10 @@ export default class Set {
 						beforeTokens,
 						afterTokens,
 						tags: tagsText,
+						// Stored for the visible-projection round-trip (`full`).
+						// The udiff in `patch` stays for the proposal-acceptance UI.
+						operations: attrs.operations,
+						body: attrs.operations ? undefined : entry.body,
 					},
 					loopId,
 				});
@@ -390,6 +394,10 @@ export default class Set {
 						beforeTokens,
 						afterTokens,
 						tags: tagsText,
+						// Stored for the visible-projection round-trip (`full`).
+						// The udiff in `patch` stays for the proposal-acceptance UI.
+						operations: attrs.operations,
+						body: attrs.operations ? undefined : entry.body,
 					},
 				});
 			}
@@ -420,7 +428,7 @@ export default class Set {
 		const attrs = entry.attributes;
 		const target = attrs.path || entry.path;
 		if (attrs.error) {
-			const lines = [`# set ${target}`, attrs.error];
+			const lines = [`# SET: ${target}`, attrs.error];
 			if (attrs.attempted) {
 				lines.push("", "--- attempted ---", attrs.attempted);
 			}
@@ -433,8 +441,34 @@ export default class Set {
 			attrs.beforeTokens != null
 				? ` ${attrs.beforeTokens}→${attrs.afterTokens} tokens`
 				: "";
-		if (!attrs.patch) return `# set ${target}${tokens}`;
-		return `# set ${target}${tokens}\n${attrs.patch}`;
+		// Faithful round-trip: render the model's edit in its original
+		// operative-label syntax. The udiff in `attrs.patch` is for the
+		// proposal-acceptance UI; the model sees its own emission shape.
+		const replay = Set.#renderOperations(attrs);
+		if (!replay) return `# SET: ${target}${tokens}`;
+		return `# SET: ${target}${tokens}\n${replay}`;
+	}
+
+	// Round-trips the dispatched edit back to the operative-label syntax
+	// the model emitted. `attrs.operations` is the parsed op list (from
+	// marker.js) when the model used edit syntax; `attrs.body` is the
+	// plain-body shorthand which round-trips as a `<<NEW>>` block.
+	static #renderOperations(attrs) {
+		if (Array.isArray(attrs.operations) && attrs.operations.length > 0) {
+			return attrs.operations.map(Set.#renderOp).join("\n\n");
+		}
+		if (typeof attrs.body === "string" && attrs.body.length > 0) {
+			return Set.#renderOp({ op: "new", content: attrs.body });
+		}
+		return null;
+	}
+
+	static #renderOp(op) {
+		if (op.op === "search_replace") {
+			return `<<SEARCH\n${op.search}\nSEARCH<<REPLACE\n${op.replace}\nREPLACE`;
+		}
+		const label = op.op.toUpperCase();
+		return `<<${label}\n${op.content}\n${label}`;
 	}
 
 	summary(entry) {

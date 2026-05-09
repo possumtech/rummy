@@ -22,7 +22,7 @@ describe("Rm", () => {
 			attributes: { path: "known://chunk_*" },
 			body: "known://chunk_1\nknown://chunk_2\nknown://chunk_3",
 		});
-		assert.ok(result.includes("# rm known://chunk_*"));
+		assert.ok(result.includes("# RM: known://chunk_*"));
 		assert.ok(result.includes("known://chunk_1"));
 		assert.ok(result.includes("known://chunk_2"));
 		assert.ok(result.includes("known://chunk_3"));

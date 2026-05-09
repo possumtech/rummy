@@ -91,10 +91,11 @@ export function streamSummary(label, entry, MAX_LINES = 20) {
 			? body
 			: lines.slice(-MAX_LINES).join("\n") + (trailingNewline ? "\n" : "");
 
+	const labelUpper = label.toUpperCase();
 	const header =
 		total <= MAX_LINES
-			? `# ${label} ${command} (${channel}, ${total}L)`
-			: `# ${label} ${command} (${channel}, lines ${total - MAX_LINES + 1} through ${total} of ${total}; <get line="1" limit="N"/> for head)`;
+			? `# ${labelUpper}: ${command} (${channel}, ${total}L)`
+			: `# ${labelUpper}: ${command} (${channel}, lines ${total - MAX_LINES + 1} through ${total} of ${total}; <get line="1" limit="N"/> for head)`;
 
 	const out = `${header}\n${lineTail}`;
 	return out.length > SUMMARY_MAX_CHARS ? out.slice(0, SUMMARY_MAX_CHARS) : out;

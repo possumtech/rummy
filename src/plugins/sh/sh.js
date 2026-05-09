@@ -65,7 +65,7 @@ export default class Sh {
 	}
 
 	full(entry) {
-		return `# sh ${entry.attributes.command}\n${entry.body}`;
+		return `# SH: ${entry.attributes.command}\n${entry.body}`;
 	}
 
 	summary(entry) {

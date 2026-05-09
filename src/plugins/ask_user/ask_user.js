@@ -68,9 +68,9 @@ export default class AskUser {
 
 	full(entry) {
 		const { question, answer } = entry.attributes;
-		const lines = ["# ask_user"];
-		if (question) lines.push(`# Question: ${question}`);
-		if (answer) lines.push(`# Answer: ${answer}`);
+		const lines = ["# ASK_USER"];
+		if (question) lines.push(`# QUESTION: ${question}`);
+		if (answer) lines.push(`# ANSWER: ${answer}`);
 		return lines.join("\n");
 	}
 

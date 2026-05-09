@@ -202,7 +202,7 @@ column):
 default timestamped path under `test/tbench/results/`. Used for
 parallel runs landing in named dirs:
 `npm run test:tbench:gemma -- --out audit/gemma_1` and
-`npm run test:tbench:xfast -- --out audit/xfast_1` in separate
+`npm run test:tbench:grok -- --out audit/grok_1` in separate
 shells. Both write their own digests and indexes.
 
 ## Now
@@ -822,7 +822,7 @@ extraction adds a hop without separating concerns, it's ceremony
 
   **Before any sweep:**
   - [ ] Per-profile env files: `.env.programbench`,
-    `.env.programbench.gemma`, `.env.programbench.xfast` (currently
+    `.env.programbench.gemma`, `.env.programbench.grok` (currently
     reuses `.env.tbench` — sloppy coupling)
   - [ ] Sweep driver `test/programbench/sweep.js`: iterates task
     list, spawns runner.js per task, isolates per-task failures,
@@ -832,8 +832,8 @@ extraction adds a hop without separating concerns, it's ceremony
   - [ ] First gemma sweep on full task set with eval; sanity-check
     against published baselines before announcing anything
 
-  **Post-sweep (parallel runs of gemma + xfast):**
-  - [ ] xfast profile uses xAI endpoint (different upstream from
+  **Post-sweep (parallel runs of gemma + grok):**
+  - [ ] grok profile uses xAI endpoint (different upstream from
     gemma's local llama-server, so true parallelism — concurrency
     matches each upstream's parallelism, not affected by cost)
   - [ ] Sweep dirs separated by profile + invocation; never mixed

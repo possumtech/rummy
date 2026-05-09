@@ -50,10 +50,10 @@ if (!harborDir || !existsSync(harborDir)) {
 }
 
 const dataset = args.dataset || process.env.RUMMY_TBENCH_DATASET;
-const model = args.model || process.env.RUMMY_TBENCH_MODEL;
+const model = args.model || process.env.RUMMY_TEST_MODEL;
 if (!dataset || !model) {
 	console.error(
-		"RUMMY_TBENCH_DATASET and RUMMY_TBENCH_MODEL must be set (in .env.tbench).",
+		"RUMMY_TBENCH_DATASET and RUMMY_TEST_MODEL must be set (in .env.tbench / per-profile overlay).",
 	);
 	process.exit(2);
 }

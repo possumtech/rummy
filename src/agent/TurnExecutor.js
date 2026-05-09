@@ -271,21 +271,10 @@ export default class TurnExecutor {
 		// other broken responses commonly emit actions without closure;
 		// dispatching them anyway lets a broken turn corrupt state. Skip
 		// recording AND dispatching when commands are present but no
-		// <update> closes the turn — the strike system still fires via
-		// turnErrors, model retries cleanly next turn.
+		// <update> closes the turn. The missing-update strike itself is
+		// emitted by update.resolve below — single emission site.
 		const hasUpdate = commands.some((c) => c.name === "update");
 		const skipDispatch = commands.length > 0 && !hasUpdate;
-		if (skipDispatch) {
-			await this.#hooks.error.log.emit({
-				store: this.#entries,
-				runId: currentRunId,
-				turn,
-				loopId: currentLoopId,
-				message:
-					"Turn rejected: no <update> emitted. Actions are not honored unless the turn ends with an <update>.",
-				status: 422,
-			});
-		}
 
 		// Layer plugin reasoning contributions onto the API-provided seed.
 		if (responseMessage) {

@@ -64,7 +64,7 @@ export default class Env {
 	}
 
 	full(entry) {
-		return `# env ${entry.attributes.command}\n${entry.body}`;
+		return `# ENV: ${entry.attributes.command}\n${entry.body}`;
 	}
 
 	summary(entry) {
