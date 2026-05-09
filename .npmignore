@@ -9,6 +9,10 @@
 *.log
 test/
 audits/
+audit/
+scriptify/
+turns/
+last_run.txt
 .venv/
 .sqlfluff
 .sqlfluffignore
