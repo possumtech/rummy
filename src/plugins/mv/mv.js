@@ -36,7 +36,6 @@ export default class Mv {
 			? entry.attributes.visibility
 			: undefined;
 
-		// Manifest: list what would be affected without performing the mv.
 		if (entry.attributes.manifest !== undefined) {
 			const matches = await store.getEntriesByPattern(runId, path);
 			await storePatternResult(store, runId, turn, "mv", path, null, matches, {
@@ -47,7 +46,7 @@ export default class Mv {
 			return;
 		}
 
-		// Visibility-in-place: no destination, change visibility of matched entries
+		// Visibility-in-place: no destination, change visibility of matches.
 		if (visibility && !to) {
 			const matches = await store.getEntriesByPattern(runId, path);
 			for (const match of matches)
@@ -71,9 +70,7 @@ export default class Mv {
 
 		const source = await store.getBody(runId, path);
 		if (source === null) return;
-		// Tags propagate: explicit `tags=` on the mv wins; otherwise the
-		// destination inherits the source entry's tags. Same shape as
-		// visibility — explicit attr overrides, default inherits.
+		// Tags: explicit attr wins; otherwise destination inherits source's.
 		let destTags = null;
 		if (typeof entry.attributes.tags === "string") {
 			destTags = entry.attributes.tags;
@@ -91,21 +88,13 @@ export default class Mv {
 				? `Overwrote existing entry at ${to}`
 				: null;
 
-		// Token impact across the affected paths: before = source +
-		// existing-dest (if any); after = source-tokens (now at the dest
-		// path; source path is removed so its contribution is gone).
 		const sourceTokens = countTokens(source);
 		const destOldTokens = existing !== null ? countTokens(existing) : 0;
 		const beforeTokens = sourceTokens + destOldTokens;
 		const afterTokens = sourceTokens;
 
 		if (destScheme === null) {
-			// Bare-file destination: hand the shared materializer (set.js
-			// #materializeFile, gated on attrs.path + attrs.patched) the
-			// authoritative new body so it writes the source content to
-			// disk on accept. Without this the source rm fired but the
-			// destination was never created. Same shape as cp's bare-file
-			// branch.
+			// Bare-file: hand the shared set.js materializer attrs.patched.
 			await store.set({
 				runId,
 				turn,

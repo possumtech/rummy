@@ -2,16 +2,9 @@ import { SUMMARY_MAX_CHARS } from "../plugins/helpers.js";
 import ContextAssembler from "./ContextAssembler.js";
 import { countLines, countTokens } from "./tokens.js";
 
-// Defensive cap: model-written summary projections (knowns, unknowns,
-// log actions, etc.) must produce ≤ SUMMARY_MAX_CHARS — the contract
-// floor for terse model-authored summaries. File-scheme entries are
-// exempt: their summarized projection is a structural derivative
-// (rummy.repo's symbol map), bounded by the file's actual complexity,
-// not by writer discipline. Truncating symbol data at 500 chars
-// destroys its utility. Files either render blank (no symbols
-// extracted) or render their full symbol map.
-
 // Rebuild turn_context from v_model_context and assemble messages.
+// File-scheme is exempt from SUMMARY_MAX_CHARS (its summary is a structural
+// symbol map, not writer-bounded prose).
 export default async function materializeContext({
 	db,
 	hooks,
@@ -27,12 +20,11 @@ export default async function materializeContext({
 }) {
 	await db.clear_turn_context.run({ run_id: runId, turn });
 	const viewRows = await db.get_model_context.all({ run_id: runId });
-	// Per-entry token accounting; merged back after the turn_context roundtrip.
 	const tokenAccounting = new Map();
 	for (const row of viewRows) {
 		const scheme = row.scheme ? row.scheme : "file";
 		const attrs = row.attributes ? JSON.parse(row.attributes) : null;
-		// Dispatch log entries to their action plugin's view via path segment.
+		// Log entries dispatch to their action plugin's view via path segment.
 		let projectionKey = scheme;
 		if (scheme === "log") {
 			const m = row.path.match(/^log:\/\/turn_\d+\/([^/]+)\//);

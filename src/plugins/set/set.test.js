@@ -81,10 +81,6 @@ describe("Set plugin", () => {
 		});
 
 		it("conflict synthesizes an error projection with attempted + current body", () => {
-			// EN-3: when SEARCH/REPLACE or DELETE conflicts, the model needs
-			// (1) the error, (2) what it tried, (3) the actual current body
-			// — not just the error string. Without all three, the model
-			// retries the same patch verbatim (gemma26 ceiling case).
 			const out = plugin.full({
 				attributes: {
 					path: "known://plan",

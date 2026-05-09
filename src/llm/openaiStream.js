@@ -1,39 +1,13 @@
 import { parseRetryAfter } from "./errors.js";
 
-/**
- * Shared streaming client for OpenAI-compatible /chat/completions endpoints.
- *
- * Provider plugins (openai, openrouter, ollama) construct the request body
- * and headers; this module handles the SSE parsing, accumulates deltas into
- * a non-streaming-shape response, and surfaces errors with the same ergonomics
- * as the previous fetch-then-json pattern.
- *
- * Streaming is preferred over non-streaming for two reasons:
- *
- *   1. Long-running completions through CDN proxies (e.g. Cloudflare's 100s
- *      origin-timeout) can't survive a non-streaming hold; streaming keeps
- *      the connection alive byte-by-byte.
- *   2. Future UI surfaces ("thinking" displays) want the deltas live; a
- *      streaming-first plugin layer gives them a hook.
- *
- * The xAI Responses API (`/v1/responses`) uses a different streaming format
- * and is out of scope for this client.
- */
-
-/**
- * @param {Object} args
- * @param {string} args.url            Full POST URL (e.g. `${baseUrl}/v1/chat/completions`).
- * @param {Object} args.headers        Plugin-specific headers (Authorization, etc.).
- * @param {Object} args.body           Request body (without `stream` — added here).
- * @param {AbortSignal} [args.signal]  Cancellation signal.
- * @returns {Promise<Object>}          Non-streaming-shape response: `{ choices, usage, model }`.
- *                                     Throws on non-2xx with `err.status` and `err.body` populated.
- */
+// SSE client for OpenAI-compatible /chat/completions. Streaming keeps
+// long completions alive through CDN proxies (Cloudflare's 100s timeout).
+// Returns non-streaming shape { choices, usage, model, chunkMetadata };
+// throws on non-2xx with err.status / err.body / err.retryAfter.
 export async function chatCompletionStream({ url, headers, body, signal }) {
 	const requestBody = {
 		...body,
 		stream: true,
-		// Tells OpenAI / OpenAI-compatible servers to emit a final usage chunk.
 		stream_options: { include_usage: true },
 	};
 
@@ -62,21 +36,13 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 	let usage = null;
 	let model = null;
 	let finishReason = null;
-	// Catch-all for chunk-level metadata that isn't `choices` or `usage` —
-	// id, system_fingerprint, service_tier, created, object, plus any
-	// provider-specific fields. The last-seen wins (these are typically
-	// stable across chunks; xAI/OpenAI repeat them, some land only on the
-	// final chunk).
+	// Last-seen wins for catch-all chunk fields (id, system_fingerprint, etc).
 	const chunkMetadata = {};
 
 	while (true) {
 		const { done, value } = await reader.read();
 		if (done) break;
 		buffer += decoder.decode(value, { stream: true });
-
-		// SSE frames are separated by blank lines; within a frame, a `data:`
-		// line carries the JSON payload. Process complete lines and keep any
-		// trailing partial-line in the buffer for the next read.
 		const lines = buffer.split("\n");
 		buffer = lines.pop();
 
@@ -96,11 +62,6 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 			if (chunk.model) model = chunk.model;
 			if (chunk.usage) usage = chunk.usage;
 
-			// Capture every non-content field the provider sends. We strip
-			// `choices` (handled below) and `usage` (already extracted) and
-			// keep the rest verbatim. Fields seen in a later chunk overwrite
-			// earlier ones — providers re-emit stable fields, and final-chunk
-			// fields (system_fingerprint on some, service_tier on others) win.
 			for (const [k, v] of Object.entries(chunk)) {
 				if (k === "choices" || k === "usage") continue;
 				chunkMetadata[k] = v;
@@ -113,8 +74,7 @@ export async function chatCompletionStream({ url, headers, body, signal }) {
 			const delta = choice.delta;
 			if (!delta) continue;
 			if (typeof delta.content === "string") content += delta.content;
-			// Different providers surface reasoning under different field names.
-			// Concatenate any that show up.
+			// Reasoning surfaces under different field names per provider.
 			if (typeof delta.reasoning_content === "string")
 				reasoningContent += delta.reasoning_content;
 			if (typeof delta.reasoning === "string")

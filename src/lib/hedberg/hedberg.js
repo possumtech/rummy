@@ -1,9 +1,7 @@
 import HeuristicMatcher, { generatePatch } from "./matcher.js";
 import { hedmatch, hedsearch } from "./patterns.js";
 
-// Stochastic→deterministic boundary; exposes pattern utilities on
-// core.hedberg. SPEC #hedberg. Edit-shape parsing lives in marker.js
-// and is invoked from XmlParser at <set> resolution time.
+// SPEC #hedberg. Edit-shape parsing lives in marker.js.
 export default class Hedberg {
 	#core;
 
@@ -18,17 +16,9 @@ export default class Hedberg {
 		};
 	}
 
-	// Order: literal substitution → heuristic fuzzy.
-	//
-	// sed=true semantically means "literal substring substitution with
-	// regex-style escape friendliness." The model writes `\[`, `\.`,
-	// `\|`, etc. out of muscle memory from real sed, but we don't
-	// compile a regex — native String.replaceAll does the substitution.
-	// We strip the regex-meta backslashes from search and replacement
-	// so the model's escaped chars match their literal counterparts in
-	// body. This sidesteps a class of "regex-meta in content" failures
-	// and the parser-edge-case surface that compiling user input as
-	// regex drags in.
+	// Literal substitution first, heuristic fuzzy fallback. `sed=true` strips
+	// regex-meta backslashes for muscle-memory escape friendliness; we never
+	// actually compile a regex.
 	static replace(body, search, replacement, { sed = false } = {}) {
 		let patch = null;
 		let warning = null;

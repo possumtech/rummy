@@ -89,10 +89,6 @@ export default class TurnExecutor {
 
 		await this.#hooks.processTurn(rummy);
 
-		// Run persona feeds the assembly.system chain (persona plugin's
-		// participant at priority 150). Loaded once per turn; the system
-		// prompt is built directly by the chain — no resolveSystemPrompt
-		// indirection.
 		const runRow = await this.#db.get_run_by_id.get({ id: currentRunId });
 
 		const budgetCtx = {
@@ -164,14 +160,9 @@ export default class TurnExecutor {
 				{
 					temperature: options?.temperature,
 					signal,
-					// Per-run stable identifier for provider-side prompt caching
-					// (xAI prompt_cache_key, OpenAI prompt_cache_key, etc.).
+					// Stable per-run id for provider prompt caching.
 					runAlias: runRow?.alias || `run_${currentRunId}`,
-					// Real prior-turn prompt_tokens for accurate max_tokens
-					// derivation. chars/2 over-estimates input by ~70%,
-					// squeezing output and causing finish_reason=length
-					// truncation. The provider falls back to chars/2 only
-					// on turn 1 when no prior measurement exists.
+					// Real prompt_tokens for accurate max_tokens derivation.
 					lastPromptTokens: initial.lastContextTokens,
 				},
 			);
@@ -195,15 +186,8 @@ export default class TurnExecutor {
 					contextSize,
 				};
 			}
-			// LLM fetch hit its per-call ceiling (provider's
-			// AbortSignal.timeout(FETCH_TIMEOUT) fired). Convert to a
-			// 504 strike so the loop continues — one timed-out turn is
-			// recoverable; MAX_STRIKES in a row abandon at 499. Without
-			// this catch the AbortError escapes to AgentLoop's outer
-			// catch and the run dies at status=500, losing all prior
-			// productive turns. signal.aborted being true means OUR
-			// controller fired (drain), not a fetch timeout — re-throw
-			// so AgentLoop ends the run cleanly at 499.
+			// LLM fetch hit per-call ceiling → 504 strike (recoverable).
+			// signal.aborted is OUR drain — re-throw to end run at 499.
 			if (err?.name === "TimeoutError" || err?.name === "AbortError") {
 				if (signal?.aborted) throw err;
 				await this.#hooks.error.log.emit({
@@ -240,10 +224,8 @@ export default class TurnExecutor {
 		const content = responseMessage?.content ? responseMessage.content : "";
 
 		const { commands, warnings, unparsed } = XmlParser.parse(content);
-		// Parser warnings are recovered emissions — the parser already
-		// corrected a mismatched/unclosed tag and produced commands. Log
-		// them so the model sees what happened, but don't strike: the
-		// turn's productive work is intact.
+		// Parser warnings are recovered emissions — visible to the model,
+		// no strike.
 		for (const w of warnings) {
 			await this.#hooks.error.log.emit({
 				store: this.#entries,
@@ -266,17 +248,11 @@ export default class TurnExecutor {
 			});
 		}
 
-		// Contract floor: a turn without <update> is malformed; refuse to
-		// honor its side effects. Repetition loops, partial outputs, and
-		// other broken responses commonly emit actions without closure;
-		// dispatching them anyway lets a broken turn corrupt state. Skip
-		// recording AND dispatching when commands are present but no
-		// <update> closes the turn. The missing-update strike itself is
-		// emitted by update.resolve below — single emission site.
+		// Skip dispatch when commands but no <update> — broken turn, no side
+		// effects. The missing-update strike fires from update.resolve below.
 		const hasUpdate = commands.some((c) => c.name === "update");
 		const skipDispatch = commands.length > 0 && !hasUpdate;
 
-		// Layer plugin reasoning contributions onto the API-provided seed.
 		if (responseMessage) {
 			const seed = responseMessage.reasoning_content
 				? responseMessage.reasoning_content
@@ -301,7 +277,6 @@ export default class TurnExecutor {
 			userMsg: userMsg?.content,
 		});
 
-		// PHASE 1: RECORD (skipped when skipDispatch — broken turn, no side effects)
 		const recorded = [];
 		if (!skipDispatch) {
 			for (const cmd of commands) {
@@ -316,7 +291,7 @@ export default class TurnExecutor {
 			}
 		}
 
-		// PHASE 2: DISPATCH — sequential; abort-after-failure; proposals notify-and-await.
+		// Sequential dispatch; abort-after-failure; proposals notify-and-await.
 		let abortAfter = null;
 
 		for (const entry of recorded) {
@@ -341,10 +316,7 @@ export default class TurnExecutor {
 			try {
 				await this.#hooks.tools.dispatch(entry.scheme, entry, rummy);
 			} catch (dispatchErr) {
-				// PermissionError is the model attempting a documented-forbidden
-				// write (e.g. <set path="prompt://1"> with body). Surface as a
-				// soft 403 so the model can adjust on the next turn; do not
-				// abort sibling entries — the rest of the turn was valid.
+				// PermissionError → soft 403, no sibling abort.
 				if (dispatchErr instanceof PermissionError) {
 					await this.#hooks.error.log.emit({
 						store: this.#entries,
@@ -370,7 +342,6 @@ export default class TurnExecutor {
 			await this.#hooks.tool.after.emit({ entry, rummy });
 			await this.#hooks.entry.created.emit(entry);
 
-			// Plugins materialize pending proposals (e.g. set search/replace → 202).
 			await this.#hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
 			const proposed = await this.#entries.getUnresolved(currentRunId);
@@ -383,8 +354,6 @@ export default class TurnExecutor {
 				});
 				await this.#entries.waitForResolution(currentRunId, p.path);
 				const resolved = await this.#entries.getState(currentRunId, p.path);
-				// Failure surfaces in the proposal entry itself; abort cascade
-				// triggers the trailing-action "Aborted — preceding <X>" body.
 				if (resolved?.status >= 400) abortAfter = entry.scheme;
 			}
 
@@ -433,17 +402,13 @@ export default class TurnExecutor {
 		return turnResult;
 	}
 
-	// Record a parsed command; returns the entry descriptor or rejects on bad shapes.
 	async #record(runId, loopId, turn, mode, cmd) {
 		const scheme = cmd.name;
 		let rawTarget = "";
 		if (cmd.path) rawTarget = cmd.path;
 		else if (cmd.command) rawTarget = cmd.command;
 		else if (cmd.question) rawTarget = cmd.question;
-		// Reject reasoning-bleed in path-shaped fields only. cmd.command
-		// (sh/env shell scripts) and cmd.question (ask_user prose) are
-		// content fields where newlines/tabs/length are legitimate; the
-		// slugifier sanitizes them downstream when deriving the log path.
+		// Reject reasoning-bleed in path-shaped fields only.
 		if (cmd.path && (cmd.path.length > 2048 || /\p{Cc}/u.test(cmd.path))) {
 			const rejectPath = await this.#entries.logPath(
 				runId,

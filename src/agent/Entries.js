@@ -2,18 +2,10 @@ import slugify from "../sql/functions/slugify.js";
 import { EntryOverflowError, PermissionError } from "./errors.js";
 import encodeSegment from "./pathEncode.js";
 
-// Update entry bodies are promised ≤ 80 chars to clients (run summary
-// payload, model-facing <log> rendering). Mirror of SUMMARY_MAX_CHARS:
-// the boundary chops + emits a soft error so the violation is visible
-// without crashing the run. Lives here because Entries.update is the
-// canonical persistence boundary all callers fund-route through.
 const UPDATE_BODY_MAX = 80;
 
-// SQLite surfaces the CHECK as either err.code === "SQLITE_CONSTRAINT_CHECK"
-// or an Error whose message names the failing column. Both forms appear in
-// the wild depending on the driver build, so we match defensively.
-// Caller-side contract: only invoked from a SQL try/catch, so err is always
-// an Error instance — err.message is a string (possibly empty), not undefined.
+// SQLite surfaces the body-length CHECK as either an error code or message;
+// match both because the driver build varies in the wild.
 function isBodyOverflow(err) {
 	if (!err) return false;
 	if (err.code === "SQLITE_CONSTRAINT_CHECK") return true;
@@ -26,16 +18,10 @@ function translateBodyOverflow(err, path, body) {
 	return new EntryOverflowError(path, size);
 }
 
-// Already-an-error path: log://turn_N/error/<slug>. The auto-failure
-// hook below skips these to break the recursion (error.log.emit's
-// handler ALSO writes state=failed when materializing its own entry).
+// Skipped by the auto-failure hook to break recursion (error.log emits its own).
 const ERROR_PATH_RE = /^log:\/\/turn_\d+\/error\//;
 
-// Streaming data channels for env/sh actions (env://turn_N/cmd_K,
-// sh://turn_N/cmd_K). Their failure is already captured by the parent
-// log://turn_N/<scheme>/<slug> action entry's auto-emit; emitting again
-// for each channel produces redundant duplicates with empty-body
-// fallback messages.
+// Stream channels — failure already captured by the parent action entry.
 const CHANNEL_PATH_RE = /^(env|sh):\/\/turn_\d+\//;
 
 export default class Entries {
@@ -49,23 +35,10 @@ export default class Entries {
 	#seq = 0;
 	#pendingResolutions = new Map();
 
-	// onError is the centralized site for storage-layer rejections that
-	// should surface to the model as strikes rather than crash the run.
-	// Today: EntryOverflowError (RUMMY_ENTRY_SIZE_MAX CHECK violations).
-	// When onError is supplied, set() catches the typed error, dispatches
-	// it to the callback (which emits hooks.error.log → 413 strike), and
-	// returns silently — callers don't need to handle storage-layer
-	// rejections at every write site. When onError is null (e.g. unit
-	// tests with a bare Entries), the error propagates as before.
-	//
-	// onFailed is the universal failure-rendering enforcer: every
-	// transition to state="failed" on a non-error path fires this
-	// callback so a SEPARATE log://turn_N/error/<slug> entry is created
-	// alongside the action entry. Without this, plugins that record
-	// failure via entries.set({state: "failed", ...}) leave nothing for
-	// the model to recognize as an error — failure encodes only as tiny
-	// JSON metadata indistinguishable from a successful entry. The
-	// callback wires to hooks.error.log.emit (see ProjectAgent).
+	// onError: catches storage-layer rejections (EntryOverflowError) and routes
+	// to error.log → strike; callers don't handle at each write site.
+	// onFailed: every state="failed" on a non-error path fires this so a
+	// sibling log://turn_N/error/ entry materializes (model-facing).
 	constructor(
 		db,
 		{
@@ -82,7 +55,6 @@ export default class Entries {
 		this.#onSoftError = onSoftError;
 	}
 
-	// Populate the scheme cache; idempotent, lazy on first need.
 	async loadSchemes(db) {
 		const rows = await (db || this.#db).get_all_schemes.all();
 		this.#schemes.clear();
@@ -111,11 +83,7 @@ export default class Entries {
 	static normalizePath(path) {
 		if (!path) return path;
 		if (!path.includes("://")) {
-			// Bare file path: strip a single leading `./` for canonical
-			// form. `./main.go` and `main.go` must resolve to the same
-			// entry — otherwise SEARCH/REPLACE edits on `./main.go`
-			// land in a phantom entry while reads of `main.go` see the
-			// original, and the model can't reconcile.
+			// Strip leading `./` so `./main.go` and `main.go` are one entry.
 			if (path.startsWith("./")) return path.slice(2);
 			return path;
 		}
@@ -123,7 +91,6 @@ export default class Entries {
 		const scheme = path.slice(0, sep).toLowerCase();
 		const rest = path.slice(sep + 3);
 		try {
-			// Decode first (idempotent), then encode — but preserve slashes
 			const decoded = decodeURIComponent(rest);
 			return `${scheme}://${decoded.split("/").map(encodeSegment).join("/")}`;
 		} catch {
@@ -148,12 +115,7 @@ export default class Entries {
 		return `${candidate}_${++this.#seq}`;
 	}
 
-	// Single namespace log://turn_N/action/slug. slug is built via slugify
-	// (80-char cap + integer tie-breaker on collision) — same contract as
-	// slugPath. Plugins (including externals) can trust that any target
-	// they pass will produce a bounded, unique log path, regardless of
-	// the target's length or character composition. Full payload always
-	// belongs in the entry body, not the slug.
+	// log://turn_N/action/slug — slugify caps + collision-suffixes.
 	async logPath(runId, turn, action, target) {
 		const slug = target == null ? "" : slugify(String(target));
 		const base = slug
@@ -168,7 +130,7 @@ export default class Entries {
 	}
 
 	async slugPath(runId, scheme, content, tags) {
-		// tags > content > empty; slugify("") yields "" and we sequence-only.
+		// tags > content > sequence-only.
 		let source = "";
 		if (tags) source = tags;
 		else if (content) source = content;
@@ -187,7 +149,6 @@ export default class Entries {
 		return `${prefix}${base}_${++this.#seq}`;
 	}
 
-	// Scheme's scope/writers/category; bare paths default to run + model/plugin.
 	async #schemeRules(scheme) {
 		await this.#ensureSchemes();
 		const row = scheme ? this.#schemes.get(scheme) : null;
@@ -225,22 +186,14 @@ export default class Entries {
 		return `run:${runId}`;
 	}
 
-	// set — create or update an entry; see PLUGINS.md primitives.
 	async set(args) {
 		if (!args.runId) throw new Error("set: runId is required");
 		if (!args.path) throw new Error("set: path is required");
 		try {
 			return await this.#setImpl(args);
 		} catch (err) {
-			// EntryOverflowError: storage-layer CHECK fired. When the host
-			// supplies onError (the production wiring), route the strike
-			// to error.log and return silently — every set() caller in
-			// the codebase becomes overflow-safe without per-site catches.
-			// Without onError (raw unit tests), propagate as before.
+			// EntryOverflowError → error.log when onError is wired.
 			if (err instanceof EntryOverflowError && this.#onError) {
-				// Destructure with the same defaults as #setImpl so the
-				// callback sees the same loopId/turn shape callers wrote
-				// against — no `??` fallback shim, just contract alignment.
 				const { runId, loopId = null, turn = 0 } = args;
 				await this.#onError({
 					runId,
@@ -271,7 +224,6 @@ export default class Entries {
 		loopId = null,
 		writer = "plugin",
 	}) {
-		// Pattern mode is explicit; never inferred from `*` in path.
 		const isPattern = pattern === true || bodyFilter !== null;
 
 		if (isPattern) {
@@ -315,7 +267,6 @@ export default class Entries {
 		const normalized = Entries.normalizePath(path);
 		const scheme = Entries.scheme(normalized);
 
-		// Append mode: streaming body growth on an existing entry.
 		if (append) {
 			if (body == null) throw new Error("set: append requires body");
 			try {
@@ -331,7 +282,6 @@ export default class Entries {
 			return;
 		}
 
-		// Body-less state or visibility change on an existing entry.
 		if (body == null) {
 			if (state != null) {
 				await this.#db.resolve_known_entry_view.run({
@@ -371,13 +321,11 @@ export default class Entries {
 			return;
 		}
 
-		// Full write/upsert: body + state + visibility + attributes.
 		const { kind, writers, category } = await this.#schemeRules(scheme);
 		if (!writers.includes(writer)) {
 			throw new PermissionError(scheme, writer, writers);
 		}
 		const scope = this.#resolveScope(kind, runId, projectId);
-		// Inject `action` only when caller passes attributes; null means COALESCE preserves existing.
 		const effectiveAttributes = attributes ? { ...attributes } : null;
 		if (scheme === "log" && effectiveAttributes) {
 			const m = normalized.match(/^log:\/\/turn_\d+\/([^/]+)\//);
@@ -398,11 +346,7 @@ export default class Entries {
 			throw translateBodyOverflow(err, normalized, body);
 		}
 		const effectiveState = state === undefined ? "resolved" : state;
-		// Visibility resolution: explicit > preserve-existing > scheme-default.
-		// A body update without visibility= must NOT silently reset visibility
-		// to the scheme default — that would hide content the model just
-		// promoted (e.g. a model <get>'d file then <set> SEARCH/REPLACE
-		// would lose its visible status). Preserve what's there.
+		// Visibility: explicit > preserve-existing > scheme-default.
 		let effectiveVisibility;
 		if (visibility !== undefined) {
 			effectiveVisibility = visibility;
@@ -439,17 +383,10 @@ export default class Entries {
 		}
 	}
 
-	// Fire onFailed for any state→failed transition on a non-error path.
-	// The auto-emit creates a sibling log://turn_N/error/<slug> entry so
-	// the failure appears in the model's <log> as a category-distinct
-	// item, not just metadata buried in the action's own log entry.
 	async #fireFailed({ runId, turn, loopId, path, body, outcome }) {
 		if (!this.#onFailed) return;
 		if (ERROR_PATH_RE.test(path)) return;
 		if (CHANNEL_PATH_RE.test(path)) return;
-		// Body-less state changes don't carry a message; fall back to the
-		// outcome string (or the path itself) so the error entry has a
-		// recognizable slug instead of an empty one.
 		let message = body;
 		if (!message) {
 			if (outcome) message = `failed: ${outcome}`;
@@ -465,7 +402,6 @@ export default class Entries {
 		});
 	}
 
-	// get — promote entry(ies); see PLUGINS.md primitives.
 	async get({
 		runId,
 		turn = 0,
@@ -492,7 +428,6 @@ export default class Entries {
 		this.#emitChanged(runId, path, "promote");
 	}
 
-	// rm — remove entry view(s); see PLUGINS.md primitives.
 	async rm({ runId, path, bodyFilter = null, filesOnly = false }) {
 		if (!runId) throw new Error("rm: runId is required");
 		if (!path) throw new Error("rm: path is required");
@@ -517,7 +452,6 @@ export default class Entries {
 		this.#emitChanged(runId, path, "remove");
 	}
 
-	// cp — copy an entry to a new path; see PLUGINS.md primitives.
 	async cp({
 		runId,
 		turn = 0,
@@ -544,7 +478,6 @@ export default class Entries {
 		});
 	}
 
-	// mv — rename (cp + rm).
 	async mv({
 		runId,
 		turn = 0,
@@ -570,10 +503,7 @@ export default class Entries {
 		await this.rm({ runId, path: from });
 	}
 
-	// update — once-per-turn lifecycle signal; see PLUGINS.md.
-	// Body chopped to UPDATE_BODY_MAX with a soft error fire so clients
-	// always receive ≤ 80 chars and the violation is visible to the model
-	// next turn. Applies to ALL callers — system, plugin, model.
+	// Inner text capped at UPDATE_BODY_MAX with soft-error emission.
 	async update({
 		runId,
 		turn = 0,
@@ -598,11 +528,6 @@ export default class Entries {
 			}
 		}
 		const path = await this.logPath(runId, turn, "update", storedBody);
-		// Action-log paradigm: body holds the synthesized emission so
-		// full() can tab-indent it like every other log entry. The cap
-		// above is on the inner text the model authored; the wrapper
-		// metadata (status) is harness-side decoration that doesn't
-		// count toward the contract.
 		await this.set({
 			runId,
 			turn,
@@ -648,7 +573,7 @@ export default class Entries {
 	}
 
 	async waitForResolution(runId, path) {
-		// Pre-check: yolo's synchronous resolver may have already flipped state, no drain will fire.
+		// Pre-check: yolo may have already flipped state synchronously.
 		const current = await this.getState(runId, path);
 		if (
 			current &&
@@ -707,7 +632,6 @@ export default class Entries {
 		return new Set(rows.map((r) => r.body));
 	}
 
-	// Unknown entries in DB order; rows include path + body.
 	async getUnknowns(runId) {
 		return this.#db.get_unknowns.all({ run_id: runId });
 	}
@@ -726,7 +650,7 @@ export default class Entries {
 		});
 	}
 
-	// SELECT-then-UPDATE: SQLite RETURNING can't cross to the view layer.
+	// SELECT-then-UPDATE: RETURNING can't cross to the view layer in SQLite.
 	async demoteTurnEntries(runId, turn) {
 		const targets = await this.#db.get_turn_demotion_targets.all({
 			run_id: runId,
@@ -736,12 +660,10 @@ export default class Entries {
 		return targets;
 	}
 
-	// Plugin-facing run lookup; avoids reaching into core.db.
 	async getRun(runId) {
 		return this.#db.get_run_by_id.get({ id: runId });
 	}
 
-	// Plugin-facing turn-stats write.
 	async updateTurnStats(stats) {
 		return this.#db.update_turn_stats.run(stats);
 	}

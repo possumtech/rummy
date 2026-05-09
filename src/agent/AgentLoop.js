@@ -156,11 +156,7 @@ export default class AgentLoop {
 				context_limit: contextLimit,
 			});
 			await this.#entries.forkEntries(existingRun.id, runRow.id);
-			// Absolute turn numbering across the lineage; SPEC
-			// §budget_enforcement. Without this, the fork's first
-			// dispatch lands at turn 1 while inherited run_views carry
-			// parent-side turn values, and the budget grinder's
-			// `current_turn − 1` rule sees nothing meaningful.
+			// Absolute turn numbering across the lineage; SPEC §budget_enforcement.
 			await this.#entries.setNextTurn(runRow.id, existingRun.next_turn);
 			await this.#writeRunEntry(runRow.id, alias, prompt, {
 				projectId,
@@ -693,14 +689,9 @@ export default class AgentLoop {
 
 		const nextTurn = runRow.next_turn;
 
-		// Resolve the owning loop_id BEFORE writing the prompt entry so
-		// it lands with correct loop scope. Active run → reuse the
-		// running loop; otherwise enqueue the next loop and write the
-		// prompt with the new loop's id.
+		// Resolve loop_id before writing the prompt entry so loop scope is correct.
 		let loopId;
 		if (this.#activeRuns.has(runRow.id)) {
-			// Active runs have exactly one loop at status=102 by the
-			// loops table invariant — trust the contract.
 			const currentLoop = await this.#db.get_current_loop.get({
 				run_id: runRow.id,
 			});

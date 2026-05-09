@@ -17,10 +17,6 @@ function isSetProposal(path) {
 	return m?.[1] === "set";
 }
 
-// Cap the size of the current-body context surfaced on conflict. Big
-// enough for typical known:// entries (plans, notes) and a useful slice
-// of files; small enough that a 100k-line file doesn't blow the budget
-// on every conflict. The model can `<get>` the path for the full body.
 const CONFLICT_FEEDBACK_MAX_CHARS = 4000;
 function truncateForFeedback(body) {
 	if (body == null) return null;
@@ -45,9 +41,7 @@ export default class Set {
 		});
 		core.filter("proposal.accepting", this.#vetoReadonly.bind(this));
 		core.filter("proposal.content", this.#preferExistingBody.bind(this));
-		// Materialization is shape-coupled (attrs.path + attrs.patched), not
-		// path-coupled. Any plugin emitting a proposal in that shape
-		// (set, cp, future tools) gets fs materialization for free.
+		// Shape-coupled (attrs.path + attrs.patched) — cp/set share one materializer.
 		core.on("proposal.accepted", this.#materializeFile.bind(this));
 	}
 
@@ -77,19 +71,13 @@ export default class Set {
 
 	async #materializeFile(ctx) {
 		const { attrs, runId, projectId, projectRoot, db, entries } = ctx;
-		// Shape gate, not path gate: any accepted proposal whose
-		// attributes describe a file materialization (target path +
-		// authoritative patched body) lands a fresh file body and writes
-		// to disk. Lets cp/set/future tools share one materializer.
 		if (!attrs?.path || attrs?.patched == null) return;
 
 		const existing = await entries.getBody(runId, attrs.path);
 		const isNewFile = existing === null;
 		const patched = attrs.patched;
 		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
-		// Visibility precedence: explicit attrs.visibility (mv/cp pass
-		// the model's tag attribute through) > current entry visibility
-		// (preserves an earlier <get>'s promotion) > scheme default.
+		// Visibility precedence: explicit attr > existing state > scheme default.
 		const existingState = await entries.getState(runId, attrs.path);
 		const visibility = attrs.visibility
 			? attrs.visibility
@@ -124,11 +112,7 @@ export default class Set {
 		const rawTags = typeof attrs.tags === "string" ? attrs.tags : null;
 		const tagsText = rawTags ? rawTags.slice(0, 80) : null;
 
-		// log:// is the immutable record of what happened. Visibility/metadata
-		// updates are fine (no body); rewriting the body destroys history.
-		// Models reach for this when the Demote example pattern primes
-		// `<set ... visibility="summarized">` and they tack on a body line —
-		// 405 here teaches the shape that's actually allowed.
+		// log:// is immutable; visibility flips OK, body rewrites are not.
 		if (attrs.path?.startsWith("log://") && entry.body) {
 			await store.set({
 				runId,
@@ -163,11 +147,6 @@ export default class Set {
 			return;
 		}
 
-		// Refuse parse-error edits (e.g., malformed sed). Without this the
-		// XmlParser would have either silently produced a corrupted edit
-		// or fallen through to body-replace, overwriting the target with
-		// the literal sed text. Surfacing the error gives the model a
-		// concrete signal it can adapt to.
 		if (attrs.error) {
 			await store.set({
 				runId,
@@ -182,10 +161,7 @@ export default class Set {
 			return;
 		}
 
-		// Manifest: universal preview gate. Fires before any operational
-		// branch so visibility flips, SEARCH/REPLACE edits, sed substitutions,
-		// pattern writes, and direct writes all support
-		// "list-without-doing" with the same flag.
+		// Manifest: universal preview gate, fires before any operational branch.
 		if (attrs.manifest !== undefined && attrs.path) {
 			const matches = await store.getEntriesByPattern(
 				runId,
@@ -255,22 +231,14 @@ export default class Set {
 			return;
 		}
 
-		// Build the new content. Either from the marker-parsed operation
-		// list (NEW / PREPEND / APPEND / REPLACE / DELETE / SEARCH+REPLACE)
-		// or from the plain body (full-replace shorthand).
 		const target = attrs.path;
 		if (!target) return;
 		let newContent;
 		if (attrs.operations) {
 			const existing = await store.getBody(runId, target);
-			// Implicit-edit recovery: if the path doesn't exist yet,
-			// transform every `search_replace` into an `append` (using
-			// just the replace content) and drop every `delete` (nothing
-			// to remove). APPEND on an empty body is byte-identical to
-			// NEW, but composes cleanly across multi-op blocks and is
-			// non-destructive if our null check is ever wrong. The
-			// transformation is silent — model emits the natural shape
-			// for "add this delta", we make it land.
+			// Missing-path recovery: search_replace → append (replace text only),
+			// delete → drop. Lets the model's edit-shaped emission land on a
+			// fresh path without first having to write a NEW.
 			const operations =
 				existing === null
 					? attrs.operations.flatMap((op) => {
@@ -281,9 +249,6 @@ export default class Set {
 							return [op];
 						})
 					: attrs.operations;
-			// Pure-delete on a missing path collapses to no-op — model
-			// asked to remove content that doesn't exist; nothing to do
-			// and nothing to materialize.
 			if (operations.length === 0) return;
 			const result = Set.#applyOperations(
 				existing == null ? "" : existing,
@@ -315,8 +280,7 @@ export default class Set {
 		if (newContent !== undefined) {
 			const scheme = Entries.scheme(target);
 			if (scheme === null) {
-				// File write — emit a "proposed" entry; #materializeFile
-				// writes to disk on accept.
+				// File write: proposed entry; #materializeFile writes to disk on accept.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
@@ -339,9 +303,7 @@ export default class Set {
 					loopId,
 				});
 			} else if (attrs.filter || target.includes("*")) {
-				// Pattern body-update: write the same body to every matching
-				// entry. Operations don't apply here (this is a bulk
-				// metadata-flavored body assignment).
+				// Pattern body-update: bulk body assignment, no operations.
 				const matches = await store.getEntriesByPattern(
 					runId,
 					target,
@@ -364,7 +326,6 @@ export default class Set {
 					{ loopId },
 				);
 			} else {
-				// Direct scheme write; same diff-against-existing shape as file writes.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
@@ -399,7 +360,6 @@ export default class Set {
 			}
 		}
 
-		// Apply visibility after all write operations
 		if (visibilityAttr && attrs.path) {
 			const target = attrs.path;
 			const scheme = Entries.scheme(target);
@@ -422,9 +382,6 @@ export default class Set {
 
 	full(entry) {
 		const attrs = entry.attributes;
-		// Conflict feedback path: not a model emission — synthesize a
-		// projection that surfaces error + attempted SEARCH + current
-		// body so the model can author a delta on the next turn.
 		if (attrs.error) {
 			const target = attrs.path || entry.path;
 			const lines = [`error at ${target}: ${attrs.error}`];
@@ -441,17 +398,9 @@ export default class Set {
 
 	summary(entry) {
 		if (!entry.body) return "";
-		// Contract: summarized projections are ≤ SUMMARY_MAX_CHARS. The
-		// merge body for an edit can be many KB; truncate. The model
-		// reads the full body via promotion to visible if it needs the
-		// edit's exact content.
 		return entry.body.slice(0, SUMMARY_MAX_CHARS);
 	}
 
-	// Walk the parsed marker operation list against a starting body, returning
-	// the final body or the first error. SEARCH/REPLACE and DELETE go through
-	// Hedberg.replace (fuzzy whitespace match); NEW/REPLACE/PREPEND/APPEND
-	// are direct string operations.
 	static #applyOperations(currentBody, operations) {
 		let body = currentBody;
 		for (const op of operations) {

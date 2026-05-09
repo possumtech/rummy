@@ -3,10 +3,7 @@ import { countTokens } from "../../agent/tokens.js";
 
 const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
 
-// Placeholders the budget tag emits during user-message assembly.
-// `ContextAssembler.assembleFromTurnContext` substitutes them after
-// the full packet has been assembled and measured. Single source of
-// truth for the model-facing tokenUsage / tokensFree numbers.
+// Substituted post-assembly by ContextAssembler with the headline numbers.
 export const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
 export const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 
@@ -14,24 +11,18 @@ export function ceiling(contextSize) {
 	return Math.floor(contextSize * CEILING_RATIO);
 }
 
-// Sum assembled-message token counts; used by the enforce gate.
 export function measureMessages(messages) {
 	return messages.reduce((sum, m) => sum + countTokens(m.content), 0);
 }
 
-// Sum projected row body token counts; used by prompt.js pre-assembly.
 export function measureRows(rows) {
 	return rows.reduce((sum, r) => sum + countTokens(r.body), 0);
 }
 
-// Single source of truth for the headline numbers the model sees and
-// the enforce gate measures. Both reach for this against the same
-// assembled bytes — they never diverge.
 export function computePacketTokens({ system = "", user = "" } = {}) {
 	return countTokens(system) + countTokens(user);
 }
 
-// Single source of truth for budget numbers; tokenUsage echoes totalTokens for the wire attribute.
 export function computeBudget({ contextSize, totalTokens }) {
 	const cap = ceiling(contextSize);
 	const tokensFree = Math.max(0, cap - totalTokens);
@@ -46,17 +37,12 @@ export function computeBudget({ contextSize, totalTokens }) {
 	};
 }
 
-// Substitute the post-assembly headline numbers into the placeholder
-// `<budget>` tag. Called by ContextAssembler after both messages are
-// assembled and measured. Idempotent: a packet without placeholders
-// passes through unchanged.
 export function substituteBudgetPlaceholders(text, { tokenUsage, tokensFree }) {
 	return text
 		.replaceAll(TOKEN_USAGE_PLACEHOLDER, String(tokenUsage))
 		.replaceAll(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
 }
 
-// 413 error body; wire format is part of the model contract.
 export function overflowBody(overflow, contextSize, demoted) {
 	const cap = ceiling(contextSize);
 	const size = cap + overflow;
@@ -81,10 +67,6 @@ export default class Budget {
 		core.filter("assembly.user", this.assembleBudget.bind(this), 90);
 	}
 
-	// Filter participant. Receives the assembled packet; returns a
-	// (possibly modified) packet. The pre-LLM grinder demotes-and-
-	// rechecks per SPEC §budget_enforcement; if it can't fit after the
-	// ladder runs, sets ok=false so TurnExecutor short-circuits.
 	async #onBeforeDispatch(packet, ctxBag) {
 		return this.enforce({
 			contextSize: packet.contextSize,
@@ -96,14 +78,8 @@ export default class Budget {
 		});
 	}
 
-	// Renders <budget> at assembly.user priority 90.
-	//
-	// The headline numbers (tokenUsage / tokensFree) are written as
-	// placeholders here. ContextAssembler post-substitutes them after
-	// the full packet has been assembled and measured — that's the
-	// single source of truth shared with the enforce gate. The
-	// breakdown table below comes from per-row aTokens/sTokens at
-	// materialization time and is independent of the headline math.
+	// Renders <budget> with placeholder headline numbers; ContextAssembler
+	// post-substitutes them after measuring the assembled packet.
 	assembleBudget(content, ctx) {
 		const { rows, contextSize } = ctx;
 		if (!contextSize) return content;
@@ -147,7 +123,6 @@ export default class Budget {
 			}
 		}
 
-		// Sort by current cost desc so biggest-impact rows are top.
 		const schemeRows = [...byScheme.entries()]
 			.toSorted(
 				([, a], [, b]) =>
@@ -220,16 +195,7 @@ export default class Budget {
 		);
 	}
 
-	// Pre-LLM grinder ladder. SPEC §budget_enforcement.
-	//
-	//   1. Check budget. ok → return.
-	//   2. Soft 413: demote (current_turn − 1) visible. Recheck.
-	//   3. Soft 413: demote current prompt. Recheck.
-	//   4. Hard 413: emit and return ok=false.
-	//
-	// Every step that demotes anything emits a 413 error://. Soft 413s
-	// keep the run alive (turn proceeds to LLM); the hard 413 bubbles
-	// through to AgentLoop.
+	// Pre-LLM grinder ladder; SPEC §budget_enforcement.
 	async enforce({
 		contextSize,
 		messages,
@@ -242,7 +208,6 @@ export default class Budget {
 			return { messages, rows, assembledTokens: 0, ok: true };
 		}
 
-		// Step 1.
 		const first = this.#check({
 			contextSize,
 			messages,
@@ -253,7 +218,7 @@ export default class Budget {
 
 		const store = rummy.entries;
 
-		// Step 2: previous-turn demotion.
+		// Step 1: previous-turn demotion.
 		const prevTurn = ctx.turn - 1;
 		const rawTurnDemoted =
 			prevTurn >= 0 ? await store.demoteTurnEntries(ctx.runId, prevTurn) : [];
@@ -290,7 +255,7 @@ export default class Budget {
 			first.overflow = rechecked.overflow;
 		}
 
-		// Step 3: current-prompt demotion.
+		// Step 2: current-prompt demotion.
 		const promptRow = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
@@ -336,7 +301,7 @@ export default class Budget {
 			first.overflow = rechecked.overflow;
 		}
 
-		// Step 4: hard 413.
+		// Hard 413.
 		const allDemoted = [...turnDemoted, ...promptDemoted];
 		await this.#emit({
 			message: overflowBody(first.overflow, contextSize, allDemoted),

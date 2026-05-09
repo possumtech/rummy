@@ -123,10 +123,6 @@ describe("Handler dispatch", () => {
 				"target promoted to full",
 			);
 
-			// The log entry is the model's proof in <log> that the fetch
-			// already happened; absence made the model re-issue identical
-			// gets until the cyclic-fingerprint detector struck the run.
-			// Body holds the model's verbatim emission (action-log paradigm).
 			const log = await store.getBody(RUN_ID, entry.resultPath);
 			assert.equal(log, '<get path="src/target.js"/>', "get:// log written");
 		});
@@ -194,11 +190,6 @@ describe("Handler dispatch", () => {
 			await hooks.tools.dispatch("set", entry, rummy);
 			await hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
-			// Bare-file edits land as a `proposed` log entry at the
-			// dispatch's resultPath. attrs.patched carries the
-			// authoritative new file body for the materializer; attrs.path
-			// names the target file. Acceptance writes that body to disk
-			// (proposal.accepted handler), not the dispatch.
 			const logPath = "log://turn_1/set/src%2Fedit_me.js";
 			const attrs = await store.getAttributes(RUN_ID, logPath);
 			assert.equal(attrs.path, "src/edit_me.js");
@@ -209,11 +200,6 @@ describe("Handler dispatch", () => {
 			assert.equal(logState.state, "proposed", "bare-file edit is proposed");
 		});
 
-		// Fuzzy-matched edits land via attrs.patched: the handler runs
-		// Hedberg.replace (whitespace-fuzzy) against the current body and
-		// stores the resulting body in attrs.patched; #materializeFile
-		// writes attrs.patched directly to disk on accept. No re-application
-		// path that could diverge from the handler's computed result.
 		it("fuzzy-matched edits land on materialization (no silent no-op)", async () => {
 			// File body has 4-space indent.
 			const original = "function add(a, b) {\n    return a + b;\n}\n";
@@ -269,13 +255,6 @@ describe("Handler dispatch", () => {
 			);
 		});
 
-		// Regression: mv/cp from bare-file to bare-file used to materialize
-		// the destination only for cp (which built a merge attribute);
-		// mv's proposal omitted both `path: to` and `merge`, so
-		// #materializeFile's gate skipped it. mv's #onAccepted rm'd the
-		// source, leaving no trace of the file. Both now build a
-		// whole-body-replace merge that flows through the shared
-		// materializer; visibility= flows with the proposal too.
 		it("bare→bare mv materializes destination and honors visibility", async () => {
 			await store.set({
 				runId: RUN_ID,
@@ -419,9 +398,6 @@ describe("Handler dispatch", () => {
 
 			await hooks.proposal.prepare.emit({ rummy, recorded: [entry1, entry2] });
 
-			// Each edit is its own proposal — predictable, parallel-friendly,
-			// no cross-dispatch canonical-entry state. Materialization (on
-			// proposal.accepted) writes the patched body to the actual file.
 			const a1 = await store.getAttributes(RUN_ID, path1);
 			assert.equal(a1.path, "src/math.txt");
 			assert.ok(
@@ -690,9 +666,6 @@ describe("Handler dispatch", () => {
 			);
 			assert.strictEqual(remaining.length, 0, "all matched entries removed");
 
-			// Exactly one aggregate rm:// log entry (action body holds the
-			// model's `<rm/>` emission verbatim — the action grammar is the
-			// projection contract; the impact lives in beforeActionTokens).
 			const allAfter = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
 			const rmEntries = allAfter.filter((e) => e.scheme === "rm");
 			assert.strictEqual(
@@ -729,8 +702,6 @@ describe("Handler dispatch", () => {
 				5,
 			);
 
-			// Core get handler is already at priority 10
-			// We just need to verify our priority-5 handler ran first
 			await store.set({
 				runId: RUN_ID,
 				turn: 1,
@@ -784,9 +755,6 @@ describe("Handler dispatch", () => {
 		});
 	});
 
-	// Behaviors previously characterized via real-LLM tests in
-	// record_behavior.test.js. Each test exercises a single dispatch
-	// path with a synthetic entry — fast, deterministic, no model.
 	describe("plugin handler behaviors (@unknown_plugin, @known_plugin, @update_plugin, @upsert_semantics)", () => {
 		it("unknown handler dedupes on identical body within a run", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 10 });
@@ -816,8 +784,7 @@ describe("Handler dispatch", () => {
 
 		it("known handler rejects a body over RUMMY_MAX_ENTRY_TOKENS", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 11 });
-			// Cap is 512 in .env.example; build a body well over so the
-			// test isn't sensitive to the exact tokenizer accounting.
+			// Build well over the .env.example cap of 512.
 			const oversized = "word ".repeat(2000);
 			const entry = {
 				scheme: "known",

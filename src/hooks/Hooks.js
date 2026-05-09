@@ -2,7 +2,6 @@ import HookRegistry from "./HookRegistry.js";
 import RpcRegistry from "./RpcRegistry.js";
 import ToolRegistry from "./ToolRegistry.js";
 
-// Strictly-typed hook surface; replaces the previous Proxy magic.
 export default function createHooks(debug = false) {
 	const registry = new HookRegistry(debug);
 	const tools = new ToolRegistry();
@@ -20,13 +19,10 @@ export default function createHooks(debug = false) {
 	});
 
 	return {
-		// Core Turn Pipeline
 		onTurn: registry.onTurn.bind(registry),
 		processTurn: registry.processTurn.bind(registry),
 
-		// Explicit Hook Schema
 		boot: {
-			// Post-init, pre-accept-connections; one-shot post-init actions subscribe here.
 			completed: createEvent("boot.completed"),
 		},
 		project: {
@@ -48,13 +44,6 @@ export default function createHooks(debug = false) {
 			step: {
 				completed: createEvent("run.step.completed"),
 			},
-			// Fire-and-forget wake: any plugin that wants to deliver a new
-			// prompt onto a (possibly dormant) run emits with
-			// {runAlias, body, mode}. AgentLoop subscribes and runs inject —
-			// writes prompt://<nextTurn>, enqueues a loop, ensures the
-			// drainer is up. This is the "streaming child closed after the
-			// loop ended" rendezvous: the producer doesn't care whether the
-			// run is alive or asleep, just that the prompt reaches it.
 			wake: createEvent("run.wake"),
 		},
 		loop: {
@@ -63,28 +52,12 @@ export default function createHooks(debug = false) {
 		},
 		turn: {
 			started: createEvent("turn.started"),
-			// Pre-LLM packet shaping. Filter chain: subscribers receive
-			// `{ messages, rows, contextSize, lastPromptTokens,
-			// assembledTokens, ok, overflow }` and return a transformed
-			// packet. Budget plugin participates here to enforce ceilings
-			// (may demote, may set ok=false on overflow). Other plugins
-			// could trim, re-order, or annotate — same surface.
 			beforeDispatch: createFilter("turn.beforeDispatch"),
 			response: createEvent("turn.response"),
-			// Post-dispatch event. Fired after the per-entry dispatch
-			// loop, before turn.completed. Budget subscribes here for
-			// post-dispatch demotion / 413 overflow detection.
 			dispatched: createEvent("turn.dispatched"),
 			completed: createEvent("turn.completed"),
-			// Verdict filter chain: each subscriber receives the current
-			// verdict object and returns a (possibly modified) one.
-			// Initial value is { continue: true }; final value drives the
-			// loop's continue/abandon decision. Multi-plugin: strike streak,
-			// cycle detect, stagnation pressure, future voters all
-			// participate via this surface.
 			verdict: createFilter("turn.verdict"),
 		},
-		// SPEC #resolution covers the proposal hook chain.
 		proposal: {
 			prepare: createEvent("proposal.prepare"),
 			pending: createEvent("proposal.pending"),
@@ -115,9 +88,7 @@ export default function createHooks(debug = false) {
 			},
 			messages: createFilter("llm.messages"),
 			response: createFilter("llm.response"),
-			// Plugins contribute reasoning text into reasoning_content; fires between parse and turn.response.
 			reasoning: createFilter("llm.reasoning"),
-			// Provider entries: { name, matches, completion, getContextSize }.
 			providers: [],
 		},
 		file: {},

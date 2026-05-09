@@ -12,10 +12,6 @@ export default class Sh {
 
 	constructor(core) {
 		this.#core = core;
-		// Streaming stdout/stderr is time-indexed activity output, not
-		// topic-indexed state — category="logging" so it renders in <log>
-		// adjacent to its action entry, not in <summary>/<visible> next
-		// to knowns and files. SPEC #streaming_entries.
 		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
@@ -66,10 +62,7 @@ export default class Sh {
 		});
 	}
 
-	// Action log entries (log://turn_N/sh/...) carry the model's emission
-	// in body; tab-indent for the markdown-recap convention. Stream entries
-	// (sh://turn_N/...) hold the program's actual stdout/stderr — render
-	// verbatim, no indent: the model needs byte-faithful output.
+	// log:// entries: emission, tab-indented. sh:// entries: stream bytes verbatim.
 	full(entry) {
 		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
 		return entry.body;

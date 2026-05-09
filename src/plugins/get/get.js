@@ -20,11 +20,8 @@ export default class Get {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		// Search-by-tags: same `tags` attribute that <set> writes onto
-		// entries. Same name on both ends — no in/out semantic split.
 		const tagsAttr = entry.attributes.tags;
-		// Tags-only get defaults path to "**" so the model can recall by
-		// folksonomic tags without remembering exact paths.
+		// Tags-only get defaults path to "**" for tag-only recall.
 		const target = entry.attributes.path || (tagsAttr ? "**" : null);
 		if (!target) {
 			await store.set({
@@ -75,7 +72,6 @@ export default class Get {
 			});
 		}
 
-		// Manifest: list matches + full-body token costs; no promotion.
 		if (manifest) {
 			await storePatternResult(
 				store,
@@ -90,11 +86,8 @@ export default class Get {
 			return;
 		}
 
-		// Partial read: line slice in the log entry; no promotion.
-		// Per getDoc: "line/limit works on any scheme — files, sh
-		// stdout, knowns, urls." Multi-match (glob, tags, or body
-		// filter narrowing) emits one slice section per match —
-		// model can scope further with body filter or tighter path.
+		// Partial read: slice into attrs.slice, no promotion. Multi-match
+		// emits one section per match.
 		if (line !== null || limit !== null) {
 			if (matches.length === 0) {
 				await store.set({
@@ -205,10 +198,7 @@ export default class Get {
 	}
 
 	full(entry) {
-		// Slice gets are emission-plus-result: the model sees its `<get>`
-		// echoed AND the slice it requested, both inside the same recap
-		// block. Promotion gets just project the emission — the promoted
-		// path's body is visible separately as its own entry.
+		// Slice gets project emission + slice; promotion gets just emission.
 		if (typeof entry.attributes.slice === "string") {
 			return projectEmission(`${entry.body}\n\n${entry.attributes.slice}`);
 		}

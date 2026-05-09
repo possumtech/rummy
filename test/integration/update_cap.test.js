@@ -44,8 +44,6 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 			/keep the update body to <= 80 characters/,
 			"soft error message names the contract",
 		);
-		// Stored body is the synthesized emission `<update ...>${text}</update>`;
-		// the cap is on the inner text (model-authored), not the wrapper.
 		const stored = await tdb.db.get_entry_body.get({ run_id: runId, path });
 		assert.equal(
 			stored.body,

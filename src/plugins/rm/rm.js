@@ -65,9 +65,6 @@ export default class Rm {
 			entry.attributes.body,
 		);
 
-		// Manifest: list what would be removed without performing the rm.
-		// Safety idiom for destructive bulk ops — the model can audit a
-		// glob's reach before committing to it.
 		if (entry.attributes.manifest !== undefined) {
 			await storePatternResult(
 				store,
@@ -99,7 +96,6 @@ export default class Rm {
 		const fileMatches = matches.filter((m) => m.scheme === null);
 		const schemeMatches = matches.filter((m) => m.scheme !== null);
 
-		// Scheme entries: remove all, write one aggregate result entry
 		for (const match of schemeMatches)
 			await store.rm({ runId: runId, path: match.path });
 		if (schemeMatches.length > 0) {
@@ -122,7 +118,7 @@ export default class Rm {
 			});
 		}
 
-		// File entries: individual proposals (require user resolution)
+		// File matches: individual proposals (require user resolution).
 		if (fileMatches.length > 0 && schemeMatches.length > 0)
 			await store.rm({ runId: runId, path: entry.resultPath });
 		for (const match of fileMatches) {

@@ -26,7 +26,6 @@ export default class Cp {
 			? entry.attributes.visibility
 			: undefined;
 
-		// Manifest: list what would be copied without performing the cp.
 		if (entry.attributes.manifest !== undefined) {
 			const matches = await store.getEntriesByPattern(runId, path);
 			await storePatternResult(store, runId, turn, "cp", path, null, matches, {
@@ -39,9 +38,7 @@ export default class Cp {
 
 		const source = await store.getBody(runId, path);
 		if (source === null) return;
-		// Tags propagate: explicit `tags=` on the cp wins; otherwise the
-		// destination inherits the source entry's tags. Same shape as
-		// visibility — explicit attr overrides, default inherits.
+		// Tags: explicit attr wins; otherwise destination inherits source's.
 		let destTags = null;
 		if (typeof entry.attributes.tags === "string") {
 			destTags = entry.attributes.tags;
@@ -57,21 +54,13 @@ export default class Cp {
 		const warning =
 			existing !== null ? `Overwrote existing entry at ${to}` : null;
 
-		// Token impact across the affected paths: before = source +
-		// existing-dest (if any); after = source + source (the copy
-		// duplicates the body at the destination).
 		const sourceTokens = countTokens(source);
 		const destOldTokens = existing !== null ? countTokens(existing) : 0;
 		const beforeTokens = sourceTokens + destOldTokens;
 		const afterTokens = sourceTokens * 2;
 
 		if (destScheme === null) {
-			// Bare-file destination: hand the shared materializer (set.js
-			// #materializeFile, gated on attrs.path + attrs.patched) the
-			// authoritative new body so it writes the source content to
-			// disk on accept. Without this the proposal accepted but no
-			// file landed — the model's "<cp src dest> then <set dest>
-			// SEARCH/REPLACE" sequence silently no-op'd at materialize.
+			// Bare-file: hand the shared set.js materializer attrs.patched.
 			await store.set({
 				runId,
 				turn,

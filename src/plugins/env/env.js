@@ -12,10 +12,7 @@ export default class Env {
 
 	constructor(core) {
 		this.#core = core;
-		// env vs sh: env is read-only (allowed in ask-mode); see plugin README.
-		// Streaming stdout/stderr is time-indexed activity output, not
-		// topic-indexed state — category="logging" so it renders in <log>
-		// adjacent to its action entry, not in <summary>/<visible>.
+		// env is read-only (allowed in ask-mode); see plugin README.
 		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
 		core.on("visible", this.full.bind(this));
@@ -66,8 +63,7 @@ export default class Env {
 		});
 	}
 
-	// Action log entries carry the model's emission; stream entries hold
-	// the program's stdout/stderr verbatim. See sh.js for full rationale.
+	// log:// entries: emission, tab-indented. env:// entries: stream bytes verbatim.
 	full(entry) {
 		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
 		return entry.body;

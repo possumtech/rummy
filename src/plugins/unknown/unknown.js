@@ -10,9 +10,7 @@ export default class Unknown {
 		core.on("visible", this.full.bind(this));
 		core.on("summarized", this.summary.bind(this));
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 350);
-		// Hidden from the advertised tool list — the model writes unknowns
-		// via <set path="unknown://..."/>. The unknown:// scheme lifecycle
-		// is taught in instructions-user.md, not in a separate tooldoc.
+		// Written via <set path="unknown://...">; lifecycle in instructions-user.md.
 		core.markHidden();
 	}
 
@@ -33,7 +31,6 @@ export default class Unknown {
 			return;
 		}
 
-		// tags > body for slug; lets the model round-trip via <get>.
 		const unknownPath = await store.slugPath(
 			runId,
 			"unknown",
@@ -54,7 +51,6 @@ export default class Unknown {
 		return entry.body;
 	}
 
-	// First SUMMARY_MAX_CHARS of the body. Matches <known> / <prompt>.
 	summary(entry) {
 		if (!entry.body) return "";
 		return entry.body.slice(0, SUMMARY_MAX_CHARS);

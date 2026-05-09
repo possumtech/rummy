@@ -16,8 +16,7 @@ export default class Known {
 		core.on("summarized", this.summary.bind(this));
 		core.filter("assembly.system", this.assembleSummarized.bind(this), 200);
 		core.filter("assembly.system", this.assembleVisible.bind(this), 250);
-		// Hidden from the advertised tool list — written via <set path="known://...">.
-		// The known:// scheme lifecycle is taught in instructions-user.md.
+		// Written via <set path="known://...">; lifecycle in instructions-user.md.
 		core.markHidden();
 	}
 
@@ -83,17 +82,11 @@ export default class Known {
 		return entry.body;
 	}
 
-	// Summarized: first SUMMARY_MAX_CHARS of the body. The model already
-	// knows summarized data is approximate (taught in instructions), so
-	// we don't owe it a "[truncated]" marker that would push the body
-	// past the contract floor.
 	summary(entry) {
 		if (!entry.body) return "";
 		return entry.body.slice(0, SUMMARY_MAX_CHARS);
 	}
 
-	// Identity-keyed summary lines: every data entry the run is tracking
-	// at visibility=visible or visibility=summarized.
 	async assembleSummarized(content, ctx) {
 		const entries = ctx.rows.filter(
 			(r) =>

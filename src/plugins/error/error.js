@@ -40,9 +40,6 @@ export default class ErrorPlugin {
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({ category: "logging" });
-		// Errors are harness-generated, not model-emitted, but they share
-		// the action-log paradigm: body holds the synthesized emission
-		// (`<error>...</error>`), full() tab-indents it.
 		core.on("visible", (entry) => projectEmission(entry.body));
 		core.on("summarized", (entry) => entry.body.slice(0, SUMMARY_MAX_CHARS));
 
@@ -51,11 +48,6 @@ export default class ErrorPlugin {
 		core.hooks.loop.completed.on(this.#onLoopCompleted.bind(this));
 		core.hooks.turn.started.on(this.#onTurnStarted.bind(this));
 
-		// Subscribe to the turn.verdict filter chain. Multi-plugin
-		// surface — strike streak, cycle detection, stagnation
-		// pressure all flow through here. Future voters (e.g. budget
-		// overflow termination, runaway-on-context-grow) participate
-		// via the same chain.
 		core.filter("turn.verdict", this.#verdict.bind(this));
 	}
 
@@ -88,15 +80,8 @@ export default class ErrorPlugin {
 	}) {
 		const statusValue = status ?? 400;
 		const path = await store.logPath(runId, turn, "error", message);
-		// Soft errors record but don't strike: the issue was already
-		// recovered (e.g. parser auto-corrected a closing-tag mismatch)
-		// and the entry exists only so the model can see what happened.
-		// state="resolved" keeps recordedFailed clean; skipping
-		// turnErrors++ keeps the strike machinery from firing. Per SPEC
-		// #entries, outcome is reserved for state ∈ {failed, cancelled}
-		// — soft entries land with outcome=null. Status carrier for
-		// rendering is attributes.status, consulted before outcome by
-		// log.js's renderLogTag.
+		// Soft errors record without striking — recovered issues the model
+		// should see but not be punished for. SPEC #entries.
 		await store.set({
 			runId,
 			turn,
@@ -116,31 +101,19 @@ export default class ErrorPlugin {
 		_currentVerdict,
 		{ store, runId, loopId, recorded, summaryText, turn: _turn },
 	) {
-		// _currentVerdict is the upstream filter's result. Today this is
-		// the only voter so it's always { continue: true }. When other
-		// plugins join the chain, they can short-circuit by setting
-		// continue=false; this implementation could honor that via an
-		// early return. Left noop for now to preserve current semantics.
 		const state = this.#loopState.get(loopId);
 
 		let cycleReason = null;
-		// Empty turns share a blank fingerprint; intentional.
 		const fp = recorded.map(fingerprint).toSorted().join("|");
 		state.history.push(fp);
 		const cycle = detectCycle(state.history);
 		if (cycle.detected) {
 			cycleReason = "Loop detected";
-			// Silent strike: increment turn-errors without a model-facing entry.
 			state.turnErrors++;
 		}
 
-		// Some failure outcomes are findings the model should adapt to,
-		// not contract violations. `not_found` (model tried to act on an
-		// entry that doesn't exist) and `conflict` (SEARCH text didn't
-		// match current body) are recoverable: the model reads the new
-		// state and tries again. Striking on these punishes legitimate
-		// state-discovery and accumulates 499s on otherwise productive
-		// runs. Hard outcomes (validation, permission, exit:N) still strike.
+		// Soft outcomes (not_found, conflict) are state-discovery findings
+		// the model adapts to; only hard failures count toward the strike.
 		let recordedFailed = false;
 		for (const e of recorded) {
 			const current = await store.getState(runId, e.path);
@@ -164,7 +137,7 @@ export default class ErrorPlugin {
 		if (struck) {
 			state.streak++;
 			if (state.streak >= MAX_STRIKES) {
-				// Abandoning-strike turn: same-turn terminal update wins over 499.
+				// Same-turn terminal update wins over 499.
 				if (summaryText) {
 					state.streak = 0;
 					const updateEntry = recorded?.findLast?.(
@@ -181,11 +154,6 @@ export default class ErrorPlugin {
 						`Abandoned after ${state.streak} consecutive strikes.`,
 				};
 			}
-			// No reason on continue: the model sees the actual failure
-			// entries directly in <log> next turn. Hardcoding "Missing
-			// update" mislabels strikes that fire on validation /
-			// permission / dispatch failures or cycles, when the update
-			// itself was emitted correctly.
 			return { continue: true };
 		}
 

@@ -1,10 +1,7 @@
 import { projectEmission, SUMMARY_MAX_CHARS } from "../helpers.js";
 import docs from "./ask_userDoc.js";
 
-// Per-side cap for the "question → answer" summary projection. Splitting
-// before the arrow preserves the structural separator the model uses to
-// read the pair as a unit; a single trailing slice could lose the arrow
-// entirely when either side is large.
+// Per-side cap so summary preserves the arrow separator on long Q/A.
 const ARROW = " → ";
 const HALF = Math.floor((SUMMARY_MAX_CHARS - ARROW.length) / 2);
 
@@ -42,7 +39,6 @@ export default class AskUser {
 
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
-		// XmlParser resolved question/options from attr-or-body already.
 		const { question, options: rawOptions } = entry.attributes;
 
 		let options = [];
@@ -66,10 +62,7 @@ export default class AskUser {
 	}
 
 	full(entry) {
-		// Action body is the model's `<ask_user>` emission. The user's
-		// answer (post-resolution) is harness-side metadata; surface it as
-		// a synthesized `<answer>` companion line so the model sees the
-		// full Q&A in its log.
+		// Append `<answer>` once resolved so the model sees the full Q&A.
 		const { answer } = entry.attributes;
 		const body = answer
 			? `${entry.body}\n<answer>${answer}</answer>`

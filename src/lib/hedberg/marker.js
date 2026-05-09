@@ -1,49 +1,14 @@
-// Edit-syntax marker parser. Recognizes bash-heredoc-shaped
-// `<<IDENT...IDENT` body markers inside `<set>` content and routes
-// by IDENT prefix to one of six operations: NEW, PREPEND, APPEND,
-// REPLACE, DELETE, SEARCH. Non-keyword IDENTs (e.g. `<<DOC`, `<<EOF`)
-// route to REPLACE — the content between markers becomes the full
-// new body.
-//
-// Grammar:
-//   - Opener: `<<IDENT` where IDENT matches `[A-Z][A-Za-z0-9_]*`.
-//     Boundary: preceded by start-of-body, whitespace, or `>` (so
-//     `vec<<SEARCH` mid-token does not false-trigger).
-//   - Closer: bare IDENT (matching opener exactly) with non-word
-//     boundaries — preceded by whitespace/start, followed by
-//     whitespace, `<`, `>`, or end.
-//   - SEARCH must be immediately followed by REPLACE; the pair maps
-//     to one search_replace op. Lone SEARCH is a parse error.
-//   - Trailing alphanumeric suffix on the IDENT is opaque to routing
-//     (`<<SEARCH1` and `<<SEARCH` both route to SEARCH). Suffix
-//     exists so nested markers can disambiguate, same convention as
-//     bash heredoc `<<EOF1` vs `<<EOF`. When a body literally
-//     contains the bare keyword (`SEARCH` in prose or code), the
-//     model picks a suffix so the inner literal does not prematurely
-//     close the outer marker.
-//
-// The bare `<<IDENT` shape is visibly distinct from the engine's
-// packet-rendering shape `<<:::IDENT` (see plugins/helpers.js). Edit
-// syntax is bare-only: a body with `<<:::IDENT` does NOT match this
-// parser and falls through to plain-body REPLACE with the markers
-// preserved as literal content. Keep the two grammars distinct so
-// model emissions and engine renderings can never be confused.
-//
-// Returns:
-//   { ops: null,    error: null }   — no markers found, treat body as plain.
-//   { ops: [{...}], error: null }   — well-formed marker(s).
-//   { ops: null,    error: "..." }  — parse failure (lone SEARCH, unclosed).
+// Edit-syntax marker parser for `<set>` bodies. Grammar in SPEC.md "Edit Syntax".
+// Returns { ops, error } — `ops: null` on either no-markers or parse failure.
 
 const KEYWORD_RE =
 	/^(NEW|PREPEND|APPEND|REPLACE|DELETE|SEARCH)([A-Za-z0-9_]*)$/;
 
-// Opener: `<<IDENT` preceded by start-of-input, whitespace, or `>`.
 const OPENER_RE = /(?<=^|[\s>])<<([A-Z][A-Za-z0-9_]*)/;
 
 function operationFromIdent(ident) {
 	const m = ident.match(KEYWORD_RE);
 	if (m) return m[1].toLowerCase();
-	// Non-keyword IDENT — treat as REPLACE.
 	return "replace";
 }
 
@@ -60,10 +25,7 @@ function findOpener(body, startIdx) {
 
 function findCloser(body, startIdx, ident) {
 	const escIdent = ident.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	// Closer: bare IDENT with non-word boundaries — preceded by
-	// whitespace or start-of-input, followed by whitespace, `<`, `>`,
-	// or end. The trailing `<` lets the SEARCH closer adjoin an
-	// immediately-following `<<REPLACE` opener (`SEARCH<<REPLACE`).
+	// Trailing `<` lets `SEARCH<<REPLACE` adjoin without intermediate whitespace.
 	const re = new RegExp(`(?<=^|\\s)${escIdent}(?=[\\s<>]|$)`);
 	const slice = body.slice(startIdx);
 	const match = slice.match(re);
@@ -81,21 +43,7 @@ function trimMarkerNewlines(content) {
 	return result;
 }
 
-// Detect a body that is exactly one heredoc wrapping its entire content.
-// Returns `{ ident, content }` if `body` is `<<IDENT\n...\nIDENT` (with
-// optional surrounding whitespace), otherwise `null`. Used by non-`<set>`
-// plugins to let models opaquely wrap multi-line scripts, tag-shaped
-// prose, or content with special characters — without requiring escaping
-// or string-quoting at the model layer. The plugin sees the unwrapped
-// inner content as its body; the IDENT is attached to the command as
-// `heredocIdent` for plugins that want to act on the label.
-//
-// Reuses the same `findOpener`/`findCloser` helpers as `parseMarkerBody`,
-// so the grammar (boundary rules, IDENT shape, suffix nesting) stays
-// single-sourced. Difference is just the validation: this function
-// requires the heredoc to span the body exactly (opener at start,
-// closer at end), where `parseMarkerBody` accepts multiple markers in
-// sequence.
+// Returns { ident, content } if `body` is exactly one heredoc; null otherwise.
 export function extractSingleHeredoc(body) {
 	if (!body) return null;
 	const trimmed = body.trim();
@@ -114,7 +62,6 @@ export function extractSingleHeredoc(body) {
 }
 
 export function parseMarkerBody(body) {
-	// Cheap rejection — most `<set>` bodies don't contain markers.
 	if (!/<<[A-Z]/.test(body)) return { ops: null, error: null };
 
 	const raw = [];
@@ -125,21 +72,13 @@ export function parseMarkerBody(body) {
 		const op = operationFromIdent(opener.ident);
 		const closer = findCloser(body, opener.openerEnd, opener.ident);
 		if (!closer) {
-			// Tail-close recovery: if this opener has no matching close
-			// AND there's no further opener after it in the body, treat
-			// the content from this opener's end to the body's end as
-			// the operation's content. Body bounds are set by the XML
-			// parser via `</set>`; the absent inner marker is the only
-			// thing keeping a structurally-complete `<set>` from a
-			// usable op. SEARCH stays strict — it needs a REPLACE pair
-			// and there's nothing to recover into.
+			// Tail-close recovery: last opener with no closer and no further
+			// opener absorbs body to EOF. SEARCH stays strict (needs REPLACE).
 			if (op === "search") {
 				return { ops: null, error: `unclosed <<${opener.ident}` };
 			}
 			const tail = body.slice(opener.openerEnd);
 			if (findOpener(tail, 0)) {
-				// Another opener follows — ambiguous where this one was
-				// supposed to end. Stay strict.
 				return { ops: null, error: `unclosed <<${opener.ident}` };
 			}
 			raw.push({ op, content: trimMarkerNewlines(tail) });
@@ -153,7 +92,6 @@ export function parseMarkerBody(body) {
 	}
 	if (raw.length === 0) return { ops: null, error: null };
 
-	// Pair adjacent SEARCH+REPLACE into one search_replace op.
 	const ops = [];
 	for (let j = 0; j < raw.length; j++) {
 		const cur = raw[j];

@@ -108,9 +108,6 @@ function renderLogTag(entry, rowsByPath) {
 		meta.lines = lineSource;
 	}
 	if (tokenSource != null) meta.tokens = tokenSource;
-	// Action-impact deltas: how this command's emission shifted the
-	// visible token budget at the paths it touched. Distinct from the
-	// envelope's own `tokens` (this entry's projection cost).
 	if (attrs?.beforeActionTokens != null) {
 		meta.beforeActionTokens = attrs.beforeActionTokens;
 	}

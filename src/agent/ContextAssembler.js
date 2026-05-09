@@ -4,7 +4,6 @@ import {
 	substituteBudgetPlaceholders,
 } from "../plugins/budget/budget.js";
 
-// Orchestrates assembly.system / assembly.user filter chains; plugins do all rendering.
 export default class ContextAssembler {
 	static async assembleFromTurnContext(
 		rows,
@@ -19,7 +18,6 @@ export default class ContextAssembler {
 		} = {},
 		hooks,
 	) {
-		// Loop boundary from active prompt; absent on turn 1 before prompt plugin's turn.started.
 		const promptEntry = rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
@@ -40,15 +38,9 @@ export default class ContextAssembler {
 		const system = await hooks.assembly.system.filter(systemPrompt, ctx);
 		const userWithPlaceholders = await hooks.assembly.user.filter("", ctx);
 
-		// Single source of truth for `<budget>` headline numbers: measure
-		// the fully-assembled packet, then substitute the placeholders
-		// the budget plugin emitted. The substituted strings are shorter
-		// than the placeholders (`"23456"` < `"{{tokenUsage}}"`), so the
-		// re-measured packet differs from the initial measurement.
-		// Iterate to a fixed point — converges in 1-2 passes in practice
-		// because the only thing changing is the digit-count of the
-		// substituted numbers. The enforce gate measures the same final
-		// bytes via `measureMessages`. SPEC §token_accounting.
+		// Iterate to a fixed point: substituted numbers are shorter than the
+		// placeholders, so the re-measured packet shifts slightly. Converges
+		// in 1-2 passes (only the digit-count varies). SPEC §token_accounting.
 		let tokenUsage = computePacketTokens({
 			system,
 			user: userWithPlaceholders,

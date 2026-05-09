@@ -3,17 +3,8 @@ import {
 	parseMarkerBody,
 } from "../lib/hedberg/marker.js";
 
-// Edit-marker body opacity. When `#findBodyEnd` is scanning a `<set>`
-// body and hits an opener, jump past the matching closer so tag-shaped
-// content inside the marker (`</set>`, `<get/>`, etc.) doesn't trigger
-// structural recovery.
-//
-// Two opener shapes are recognized for opacity:
-//   - `<<IDENT` — current edit syntax (parsed by marker.js).
-//   - `<<:::IDENT` — packet-rendering shape (engine emits via
-//     plugins/helpers.js). A model copy-pasting the packet shape into
-//     a `<set>` body should still get clean opacity even though
-//     marker.js routes such bodies to plain-body REPLACE.
+// Edit-marker body opacity inside `<set>`. Two opener shapes recognized:
+// `<<IDENT` (edit syntax) and `<<:::IDENT` (packet-rendering shape).
 function skipBareMarker(s, pos) {
 	const m = s.slice(pos).match(/^<<([A-Z][A-Za-z0-9_]*)/);
 	if (!m) return null;
@@ -53,15 +44,10 @@ export const ALL_TOOLS = new Set([
 	"think",
 ]);
 
-// Per-tool resolution: missing canonical attribute is filled silently from the body.
+// Per-tool resolution: missing canonical attribute is filled from the body.
 function resolveCommand(name, a, rawBody) {
-	// Generic heredoc affordance: any non-`<set>` plugin's body may be
-	// wrapped in a single `<<IDENT...IDENT` heredoc to opaquely contain
-	// multi-line scripts, tag-shaped prose, or content with special
-	// characters. Plugins consume the unwrapped inner body verbatim;
-	// the IDENT is exposed as `heredocIdent` on the command for plugins
-	// that want to act on the label. `<set>` is exempt because it does
-	// its own multi-op heredoc parsing via `parseMarkerBody`.
+	// Non-`<set>` plugins accept a single `<<IDENT...IDENT` heredoc wrapper
+	// for opaque multi-line content; `<set>` does its own marker parsing.
 	if (name !== "set") {
 		const heredoc = extractSingleHeredoc(rawBody);
 		if (heredoc) {
@@ -72,25 +58,15 @@ function resolveCommand(name, a, rawBody) {
 	const trimmed = rawBody.trim();
 
 	if (name === "set") {
-		// `search`/`replace` as attributes is no longer in the grammar;
-		// strip them so they can't sneak past via the attribute spread.
 		const { search: _s, replace: _r, ...rest } = a;
 		a = rest;
 
-		// Self-close / no-body: visibility/metadata op.
 		if (!trimmed) return { name, ...a, body: a.body || "" };
 
-		// Edit syntax (SPEC.md "Edit Syntax"): walks the body for
-		// `<<:::IDENT...:::IDENT` markers and returns an ordered op
-		// list. No markers → plain body, treated as full-replace.
-		// Non-keyword IDENTs (path-flavored, identifier-flavored)
-		// route to REPLACE so the model gets a working write whatever
-		// IDENT it picks.
 		const { ops, error } = parseMarkerBody(rawBody);
 		if (error) return { name, ...a, error };
 		if (ops) return { name, ...a, operations: ops };
 
-		// No markers — plain body, full-replace.
 		return { name, ...a, body: trimmed };
 	}
 
@@ -100,9 +76,7 @@ function resolveCommand(name, a, rawBody) {
 		return { name, ...a, body, status };
 	}
 
-	// Body shorthand fallback: when the attribute is unset (undefined),
-	// fall back to the trimmed body. Empty-string attrs are preserved
-	// as-is — handlers validate. `||` would conflate the two cases.
+	// Distinguish unset attr (falls back to body) from empty-string attr.
 	const fromBody = trimmed === "" ? null : trimmed;
 
 	if (name === "get" || name === "rm") {
@@ -137,43 +111,10 @@ const NAME_CHAR = /[a-zA-Z0-9_]/;
 const ATTR_KEY_CHAR = /[a-zA-Z0-9_:-]/;
 const WS = /\s/;
 
-// Tokenizer for rummy's closed set of tool tags. Body opacity for closed
-// bodies; tail recovery for unclosed bodies.
-//
-// Design contract:
-//   - Tool tags (<get>, <set>, <sh>, ...) are the only syntactic special tags.
-//     Any other "<...>" sequence in OUTER text is treated as literal text.
-//   - Inside a tool tag's body, content is OPAQUE: only the matching
-//     `</tagname>` close (depth-counted for same-name nesting) ends the
-//     body. Mismatched closes of OTHER tag names — `</env>`, `</mv>`,
-//     `</foo>` inside a `<set>` body — are body content, not structural
-//     signals.
-//   - Backtick spans (`...`) and triple-backtick fences (```...```)
-//     suppress tag recognition AT THE OUTER LEVEL ONLY (between tool
-//     calls). Documentation prose with backticked tag examples doesn't
-//     get parsed as commands. Inside tool bodies backticks are content;
-//     bodies that need opacity for tag-like content use the edit-syntax
-//     marker family (see SPEC.md "Edit Syntax"), which has no
-//     false-positive failure modes (unlike inside-body backtick
-//     tracking, which would suppress closing tags on bodies with stray
-//     unbalanced backticks).
-//   - Edit-syntax marker opacity (set only): `<<:::IDENT...:::IDENT`
-//     spans inside a `<set>` body are skipped during tag detection so
-//     content with `</set>` literals or marker-shaped text stays as
-//     body. Multiple markers per body supported; see marker.js.
-//   - Same-name nesting (`<set>...<set/>...</set>`) is depth-counted so
-//     nested examples don't prematurely close the outer. Same-name
-//     nesting also disables tail recovery — the model's intent is clearly
-//     opaque body content.
-//   - Unclosed openers (no matching close, no same-name nesting) try
-//     tail recovery: scan the captured body for the leftmost position
-//     whose suffix tokenizes cleanly into ≥1 well-formed tool calls
-//     with zero leftover text. If found, end the unclosed body there
-//     and let the trailing tags parse as proper siblings. The warning
-//     surfaces "Unclosed <name> — recovered N trailing tool call(s)"
-//     so the model can see what happened. If recovery finds nothing,
-//     capture body to EOF and emit "Unclosed <name> — content captured
-//     anyway".
+// Tokenizer for rummy's closed set of tool tags. See SPEC.md "XML Parser"
+// for the full design contract; in short: opaque tool bodies, outer-text
+// backtick suppression, edit-marker opacity inside `<set>`, depth-counted
+// same-name nesting, tail recovery for unclosed openers.
 export default class XmlParser {
 	static MAX_COMMANDS = Number(process.env.RUMMY_MAX_COMMANDS);
 
@@ -198,8 +139,7 @@ export default class XmlParser {
 				break;
 			}
 
-			// Triple-backtick fence toggles take precedence over single backtick
-			// because ``` overlaps `.
+			// Triple takes precedence over single because ``` overlaps `.
 			if (s[i] === "`" && s[i + 1] === "`" && s[i + 2] === "`") {
 				inTripleFence = !inTripleFence;
 				text.push("```");
@@ -250,8 +190,6 @@ export default class XmlParser {
 			const source = s.slice(openerStart, result.afterClose);
 			commands.push({ ...resolveCommand(name, attrs, body), source });
 			i = result.afterClose;
-
-			// Body terminated; reset outer-text fence tracking.
 			inSingleBacktick = false;
 			inTripleFence = false;
 		}
@@ -269,8 +207,7 @@ export default class XmlParser {
 		};
 	}
 
-	// Returns { name, attrs, selfClose, end } if `s[pos..]` opens a known tool,
-	// else null. `end` is the index after the closing `>` (or `/>`).
+	// Returns { name, attrs, selfClose, end } or null. `end` is post-`>`/`/>`.
 	static #matchOpener(s, pos) {
 		if (s[pos] !== "<") return null;
 		let i = pos + 1;
@@ -280,7 +217,6 @@ export default class XmlParser {
 		const name = s.slice(nameStart, i).toLowerCase();
 		if (!ALL_TOOLS.has(name)) return null;
 
-		// Char after the name must end the name token cleanly.
 		if (i < s.length && !WS.test(s[i]) && s[i] !== "/" && s[i] !== ">") {
 			return null;
 		}
@@ -325,7 +261,6 @@ export default class XmlParser {
 			i++;
 		}
 
-		// Hit EOF without closing — not a parseable opener.
 		return null;
 	}
 
@@ -370,33 +305,12 @@ export default class XmlParser {
 		return attrs;
 	}
 
-	// Scans body content from `fromPos` until the matching `</name>` closer,
-	// counting depth so same-name nested examples don't prematurely close.
-	// Returns { bodyEnd, afterClose, unclosed }.
-	//
-	// Strict body opacity: only `</name>` (matching the open) and same-name
-	// nested opens affect parsing. Mismatched closes of OTHER tag names are
-	// body content, period.
-	//
-	// Backtick fences (`…`, ```…```) inside the body suppress all tag
-	// recognition — a markdown table cell containing `<set>` examples
-	// stays as content, not interpreted as a nested tag. This matches
-	// the outer-level convention and is the load-bearing reason a model
-	// can write documentation about rummy commands inside a deliverable
-	// body without breaking parsing.
-	//
-	// If the matching close never arrives, emit "Unclosed" so the model
-	// sees a clear failure and corrects on the next turn.
+	// Returns { bodyEnd, afterClose, unclosed }. Same-name nesting is depth-counted.
 	static #findBodyEnd(s, name, fromPos) {
 		let depth = 1;
 		let sameNameNested = false;
 		let i = fromPos;
 		while (i < s.length) {
-			// Edit-syntax marker opacity: marker spans (bare `<<IDENT` or
-			// packet-shaped `<<:::IDENT`) are opaque — tag detection
-			// skips them so inner `</set>` and other tag-shaped content
-			// stays as body. Multiple markers per `<set>` body are
-			// supported; check on every iteration.
 			if (
 				name === "set" &&
 				(s.startsWith("<<:::", i) ||
@@ -439,17 +353,8 @@ export default class XmlParser {
 			}
 			i++;
 		}
-		// Unclosed: try tail recovery, but only if the body never
-		// nested a same-name opener. Same-name nesting is the model
-		// deliberately using opaque body for examples (`<set>` writing
-		// docs about `<set>`); we trust the body content as authored.
-		// No nesting means a plain botched `</set>` — recovery is safe.
-		// If the body's tail is a clean sequence of one or more
-		// well-formed tool calls (zero leftover text), end the body
-		// at the start of that tail and let the outer tokenizer parse
-		// those calls as proper siblings. Closes the silent-swallow
-		// gap when a model botches `</set>` after SEARCH/REPLACE and
-		// emits trailing `<sh>` / `<update>`.
+		// Unclosed → tail recovery, unless same-name nesting (treated as
+		// authored opaque body content with intentional tag examples).
 		if (sameNameNested) {
 			return { bodyEnd: s.length, afterClose: s.length, unclosed: true };
 		}
@@ -465,11 +370,7 @@ export default class XmlParser {
 		return { bodyEnd: s.length, afterClose: s.length, unclosed: true };
 	}
 
-	// Scan body content for the leftmost position whose suffix tokenizes
-	// cleanly into ≥1 commands with no leftover non-whitespace text.
-	// Returns { tailStart, commandCount } or null. Only considers opener
-	// positions; treats the suffix as outer-level so backtick fences and
-	// tag recognition match the parent tokenizer's behavior.
+	// Find leftmost suffix that tokenizes cleanly to ≥1 commands; null if none.
 	static #findTailRecovery(s, fromPos) {
 		let best = null;
 		let i = fromPos;
