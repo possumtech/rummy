@@ -363,6 +363,49 @@ Phases 1–2 don't unlock until the file-freshness story is
 designed; otherwise file plugins become stale silently. Phase 3
 is the gate.
 
+### Budget rescue: punish the latest, never compact older
+
+Under the new paradigm the engine has exactly one auto-archival
+move, and it operates on the most recently completed turn (`t-1`)
+only:
+
+| Budget state | Engine action |
+|---|---|
+| OK | log shows all turns |
+| `t`'s packet would overflow | archive **all of t-1's actions**, synthesize `<get path="log://turn_{t-1}/**" manifest/>` log entry whose body lists the archived paths |
+| Still overflows after that | hard 413 strike — model deals with it |
+
+**Why t-1 specifically:** the model just authored t-1, so it can
+reconstruct what it did without the engine keeping it visible.
+Older turns (t-2, t-3, …) carry context the model has long since
+integrated into knowns/plan/etc. — auto-hiding them is the
+"compaction / amnesia / spooky action" pattern rummy explicitly
+rejects.
+
+**Why a synthesized manifest get:** the engine's archival is
+mediated through the model's own command grammar. The model sees
+exactly what was archived (path list) and can re-issue
+`<get path="log://turn_{t-1}/some/path"/>` to recover specific
+entries. No mystery state, no engine voice — every engine action
+the model perceives arrives in the model's own idiom.
+
+**Hard rule:** no cascade beyond t-1. If archiving t-1 doesn't
+free enough budget, hard 413. Punish the most recent action
+(the one that violated the budget) — never guess at amnesia for
+older turns. This is the same principle as Phase 3's file
+SEARCH/REPLACE injection: the engine takes the constrained action
+it must, then communicates it in the model's voice.
+
+**Engine-action injection — generalized.** Any engine-mediated
+state change the model didn't author surfaces to the model as a
+synthetic log entry written in the model's command grammar:
+
+- Budget rescue: synthesized `<get manifest/>` shows what was archived
+- File external mutation (Phase 3): synthesized `<set><<SEARCH…REPLACE</set>` shows the disk diff
+
+Same shape, same channel, same idiom. The model can SEE every
+engine action and decide what to do, in the language it speaks.
+
 ## Open Items
 
 - [ ] **Budget math single source of truth.** Three measurements
