@@ -1,3 +1,14 @@
+import { projectEmission, summarizeEmission } from "../plugins/helpers.js";
+
+// Shared projection helpers for plugins (including external ones).
+// Action log entries tab-indent body via emission; summaries cap at
+// SUMMARY_MAX_CHARS via summarize. External plugins use these via
+// `core.projection` to avoid drift across the action-log paradigm.
+const PROJECTION = Object.freeze({
+	emission: projectEmission,
+	summarize: summarizeEmission,
+});
+
 // Plugin-only registration interface; tool verbs live on RummyContext. PLUGINS.md.
 export default class PluginContext {
 	#name;
@@ -6,6 +17,10 @@ export default class PluginContext {
 	constructor(name, hooks) {
 		this.#name = name;
 		this.#hooks = hooks;
+	}
+
+	get projection() {
+		return PROJECTION;
 	}
 
 	get name() {

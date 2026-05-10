@@ -292,6 +292,77 @@ make the codebase smaller and the contract crisper. If a proposed
 extraction adds a hop without separating concerns, it's ceremony
 — drop it.
 
+## Index/Archive Refactor (planned)
+
+Collapse the three-state visibility paradigm (`visible` /
+`summarized` / `archived`) to a two-state one (`indexed` /
+`archived`). The model owns every transition; the engine never
+auto-promotes, auto-demotes, or auto-revives.
+
+**Grammar** — every state mutation lives on `<set>`; `<get>` stays
+pure read; `<rm>` stays permanent delete:
+
+| Action | Body | Visibility |
+|---|---|---|
+| `<set path="x">…</set>` | writes | unchanged |
+| `<set path="x" archive/>` | — | archived |
+| `<set path="x" index/>` | — | indexed |
+| `<set path="x" archive>…</set>` | writes | archived |
+| `<set path="x" index>…</set>` | writes | indexed |
+| `<get path="x"/>` | reads into log | unchanged |
+| `<rm path="x"/>` | — | — (permanent delete) |
+
+No `visibility=` attribute. No `<get index/>` redundant variant.
+No engine-side helpfulness — writing to an archived path leaves
+it archived; reading an archived path leaves it archived. Only
+the explicit `archive` / `index` boolean flips state.
+
+**Mental model.** Index = ls (the catalog). Get = cat (read into
+log). Set = write. Archive = remove from catalog (recoverable).
+Rm = permanent delete.
+
+**Phases:**
+
+- **Phase 0 — Action-log paradigm (LANDED).** JSON envelope
+  absorbs attrs, body = inner content only, `projectEmission`
+  tab-indents recap. `core.projection.{emission,summarize}`
+  exposed to external plugins. rummy/main 2.3.1, rummy.web,
+  rummy.repo aligned.
+
+- **Phase 1 — Two-state visibility.** Replace `visibility="…"`
+  with boolean `archive`/`index` attrs on `<set>`. Drop the
+  `summarized` state entirely (downstream of Phase 2). Default
+  for new entries: indexed. Migration: every plugin's writer site
+  audited; visibility-aware code paths simplify.
+
+- **Phase 2 — Collapse `<visible>` and `<summary>` sections.**
+  Index entries render as one-line catalog summaries (path + tags
+  + tokens + freshness signal). Body content reaches the model
+  only via `<get>` (puts it in log). The plugin layer's
+  full/summary split disappears for indexable schemes — they have
+  one projection: the catalog line. Action log entries keep
+  full/summary because their projection is recap.
+
+- **Phase 3 — File freshness via SEARCH/REPLACE log injection.**
+  File plugin watches disk. External mutations between turns
+  synthesize a `<set path="x"><<SEARCH…SEARCH<<REPLACE…REPLACE</set>`
+  log entry capturing the diff. Model reads disk changes in the
+  same syntax it uses to write them, from a different source.
+  Closes the only real gap in the index/archive model: keeping
+  the model aware of state it didn't author.
+
+**Why Phase 3 is the hard one.** Knowns/unknowns are
+model-authored; their lifecycle is entirely the model's. Files
+have an external lifecycle — disk can change without the model's
+involvement, and under pure index/archive there's no auto-refresh
+mechanism. Synthesized SEARCH/REPLACE log entries solve this
+without reintroducing visibility=visible: the model sees changes
+in its native edit grammar, can read or ignore as it sees fit.
+
+Phases 1–2 don't unlock until the file-freshness story is
+designed; otherwise file plugins become stale silently. Phase 3
+is the gate.
+
 ## Open Items
 
 - [ ] **Budget math single source of truth.** Three measurements
