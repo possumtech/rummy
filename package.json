@@ -1,6 +1,6 @@
 {
 	"name": "@possumtech/rummy",
-	"version": "2.3.2",
+	"version": "2.3.3",
 	"description": "Relational Unknowns Memory Management Yoke",
 	"keywords": [
 		"llm"
@@ -30,6 +30,7 @@
 	"main": "service.js",
 	"files": [
 		"service.js",
+		".env.example",
 		"bin/",
 		"src/",
 		"migrations/",
