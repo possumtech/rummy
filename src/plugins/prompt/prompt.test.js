@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import createHooks from "../../hooks/Hooks.js";
 import PluginContext from "../../hooks/PluginContext.js";
-import { SUMMARY_MAX_CHARS } from "../helpers.js";
 import Prompt from "./prompt.js";
 
 function makeCore({ tools = ["set", "get"] } = {}) {
@@ -14,36 +13,12 @@ function makeCore({ tools = ["set", "get"] } = {}) {
 }
 
 describe("Prompt plugin", () => {
-	it("registers prompt visible/summarized views", async () => {
+	it("registers a prompt view that returns the raw body (no truncation)", async () => {
 		const { hooks } = makeCore();
 		assert.ok(hooks.tools.hasView("prompt"));
-		const visible = await hooks.tools.view("prompt", {
-			body: "hi",
-			visibility: "visible",
-		});
-		assert.equal(visible, "hi");
-	});
-
-	it("summarized view returns body unchanged when ≤ cap", async () => {
-		const { hooks } = makeCore();
-		const out = await hooks.tools.view("prompt", {
-			body: "short",
-			visibility: "summarized",
-		});
-		assert.equal(out, "short");
-	});
-
-	it("summarized view caps body at SUMMARY_MAX_CHARS", async () => {
-		const { hooks } = makeCore();
 		const body = "x".repeat(50000);
-		const out = await hooks.tools.view("prompt", {
-			body,
-			visibility: "summarized",
-		});
-		assert.ok(
-			out.length <= SUMMARY_MAX_CHARS,
-			`summary ≤ SUMMARY_MAX_CHARS; got ${out.length}`,
-		);
+		const out = await hooks.tools.view("prompt", { body });
+		assert.equal(out, body);
 	});
 
 	describe("turn.started: record prompt", () => {
@@ -175,7 +150,7 @@ describe("Prompt plugin", () => {
 			assert.match(out, /warn="File editing disallowed\."/);
 		});
 
-		it('includes reverted="N" when prior turn had a 413 demotion', async () => {
+		it('includes archived="N" when prior turn had a 413 archive', async () => {
 			const { hooks } = makeCore();
 			const out = await hooks.assembly.user.filter(
 				"",
@@ -191,14 +166,14 @@ describe("Prompt plugin", () => {
 						path: "log://turn_1/error/budget",
 						scheme: "log",
 						category: "logging",
-						attributes: { status: 413, demotedCount: 4 },
+						attributes: { status: 413, archivedCount: 4 },
 					},
 				]),
 			);
-			assert.match(out, /reverted="4"/);
+			assert.match(out, /archived="4"/);
 		});
 
-		it("omits reverted attribute when no 413 in prior turn", async () => {
+		it("omits archived attribute when no 413 in prior turn", async () => {
 			const { hooks } = makeCore();
 			const out = await hooks.assembly.user.filter(
 				"",
@@ -212,7 +187,7 @@ describe("Prompt plugin", () => {
 					},
 				]),
 			);
-			assert.equal(out.includes("reverted="), false);
+			assert.equal(out.includes("archived="), false);
 		});
 
 		it("renders empty <prompt> wrapper with no fenced entry when no prompt entry exists", async () => {

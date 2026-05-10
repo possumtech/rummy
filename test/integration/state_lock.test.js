@@ -89,7 +89,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 			path: "update://2",
 			body: "summary text",
 			state: "resolved",
-			visibility: "summarized",
+			visibility: "archived",
 		});
 
 		const unresolved = await store.getUnresolved(RUN_ID);

@@ -58,24 +58,11 @@ describe("ToolRegistry", () => {
 		assert.deepEqual(captured.rummy, { run: 1 });
 	});
 
-	it("onView + view default to 'visible'", async () => {
+	it("onView + view returns the registered projection", async () => {
 		const reg = new ToolRegistry();
 		reg.onView("set", async () => "body");
 		const out = await reg.view("set", { path: "x" });
 		assert.equal(out, "body");
-	});
-
-	it("view honors explicit visibility on the entry", async () => {
-		const reg = new ToolRegistry();
-		reg.onView("set", async () => "v", "visible");
-		reg.onView("set", async () => "s", "summarized");
-		assert.equal(await reg.view("set", { visibility: "summarized" }), "s");
-	});
-
-	it("view returns empty string when visibility has no view registered", async () => {
-		const reg = new ToolRegistry();
-		reg.onView("set", async () => "v", "visible");
-		assert.equal(await reg.view("set", { visibility: "summarized" }), "");
 	});
 
 	it("view normalizes nullish view returns to empty string", async () => {
@@ -84,12 +71,19 @@ describe("ToolRegistry", () => {
 		assert.equal(await reg.view("set", {}), "");
 	});
 
-	it("view throws when scheme has no view registered at all", async () => {
+	it("view falls back to default summarizeEmission when no view registered", async () => {
 		const reg = new ToolRegistry();
-		await assert.rejects(reg.view("nope", {}), /No view registered for scheme/);
+		const out = await reg.view("nope", { body: "hello" });
+		assert.equal(out, "\thello");
 	});
 
-	it("hasView reflects whether any visibility is registered", () => {
+	it("default fallback caps body at SUMMARY_MAX_CHARS", async () => {
+		const reg = new ToolRegistry();
+		const out = await reg.view("nope", { body: "x".repeat(50000) });
+		assert.ok(out.length <= 500);
+	});
+
+	it("hasView reflects whether a view is registered", () => {
 		const reg = new ToolRegistry();
 		assert.equal(reg.hasView("set"), false);
 		reg.onView("set", async () => "v");

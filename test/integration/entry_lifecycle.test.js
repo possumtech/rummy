@@ -38,24 +38,21 @@ describe("entry lifecycle (@entries, @upsert_semantics, @plugins_entry_lifecycle
 		assert.strictEqual(entry.state, "resolved");
 	});
 
-	it("summarized default makes data entries visible as summaries in v_model_context", async () => {
+	it("indexed default makes data entries appear in v_model_context", async () => {
 		const { runId } = await tdb.seedRun({ alias: "entry_vis_default" });
 		const store = new Entries(tdb.db);
 		await store.set({
 			runId,
 			turn: 1,
 			path: "known://lifecycle_vis",
-			body: "visible",
+			body: "body",
 			state: "resolved",
 		});
 
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const row = rows.find((r) => r.path === "known://lifecycle_vis");
 		assert.ok(row, "entry appears in v_model_context");
-		// Data-category default is `summarized` — summary indexes in,
-		// body on-demand via <get>. Writers that need `visible`
-		// pass visibility explicitly.
-		assert.strictEqual(row.visibility, "summarized");
+		assert.strictEqual(row.visibility, "indexed");
 	});
 
 	it("archived visibility hides an entry from v_model_context", async () => {

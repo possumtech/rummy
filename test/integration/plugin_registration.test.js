@@ -52,10 +52,14 @@ describe("plugin registration (@plugin_system, @plugin_convention, @scheme_regis
 			assert.ok(names.includes("unknown"));
 		});
 
-		it("every tool with a handler has a full view registered", () => {
-			for (const tool of ["get", "set", "rm", "mv", "cp", "known"]) {
+		it("action tools register a view; catalog tools rely on default truncation", () => {
+			// Action tools project log entries with projectEmission.
+			for (const tool of ["get", "set", "rm", "mv", "cp"]) {
 				assert.ok(tdb.hooks.tools.hasView(tool), `${tool} has view registered`);
 			}
+			// Catalog tools (known/unknown/file/skill/persona) don't register
+			// a view — ToolRegistry.view falls back to summarizeEmission.
+			assert.equal(tdb.hooks.tools.hasView("known"), false);
 		});
 	});
 

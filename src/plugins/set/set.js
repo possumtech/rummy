@@ -83,12 +83,15 @@ export default class Set {
 		const patched = attrs.patched;
 		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
 		// Visibility precedence: explicit attr > existing state > scheme default.
+		// Visibility precedence: archive/index booleans → attrs.visibility
+		// (set by upstream cp/mv which already resolved the model's
+		// archive/index attrs into a string) → existing entry's state.
 		const explicit = visibilityFromAttrs(attrs);
 		const existingState = await entries.getState(runId, attrs.path);
 		const visibility =
 			explicit && explicit !== "conflict"
 				? explicit
-				: existingState?.visibility;
+				: attrs.visibility || existingState?.visibility;
 		await entries.set({
 			runId,
 			turn,

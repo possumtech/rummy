@@ -151,7 +151,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 			await store.set({
 				runId: RUN_ID,
 				path: "src/*.js",
-				visibility: "summarized",
+				visibility: "archived",
 				pattern: true,
 			});
 			await store.get({
@@ -184,7 +184,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 			await store.set({
 				runId: RUN_ID,
 				path: "src/*.js",
-				visibility: "summarized",
+				visibility: "archived",
 				pattern: true,
 			});
 			const matches = await store.getEntriesByPattern(RUN_ID, "src/*.js", null);

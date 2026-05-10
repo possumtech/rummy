@@ -88,14 +88,14 @@ describe("Handler dispatch", () => {
 	});
 
 	describe("get handler", () => {
-		it("promotes target and writes a concise log so the model sees the action", async () => {
+		it("re-indexes target and writes a concise log so the model sees the action", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 0,
 				path: "src/target.js",
 				body: "const x = 1;",
 				state: "resolved",
-				visibility: "summarized",
+				visibility: "archived",
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
@@ -117,11 +117,7 @@ describe("Handler dispatch", () => {
 				run_id: RUN_ID,
 				path: "src/target.js",
 			});
-			assert.strictEqual(
-				state.visibility,
-				"visible",
-				"target promoted to full",
-			);
+			assert.strictEqual(state.visibility, "indexed", "target re-indexed");
 
 			const log = await store.getBody(RUN_ID, entry.resultPath);
 			assert.equal(
@@ -275,8 +271,8 @@ describe("Handler dispatch", () => {
 				attributes: {
 					path: "src/old_name.js",
 					to: "src/new_name.js",
-					visibility: "summarized",
-					source: '<mv path="src/old_name.js">src/new_name.js</mv>',
+					archive: true,
+					source: '<mv path="src/old_name.js" archive>src/new_name.js</mv>',
 				},
 				state: "resolved",
 				resultPath: logPath,
@@ -298,10 +294,10 @@ describe("Handler dispatch", () => {
 			const oldBody = await store.getBody(RUN_ID, "src/old_name.js");
 			assert.equal(oldBody, null, "source removed");
 			const newState = await store.getState(RUN_ID, "src/new_name.js");
-			assert.equal(newState.visibility, "summarized", "visibility honored");
+			assert.equal(newState.visibility, "archived", "archive attr honored");
 		});
 
-		it("bare→bare cp materializes destination and honors visibility", async () => {
+		it("bare→bare cp materializes destination and honors archive attr", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 1,
@@ -319,8 +315,8 @@ describe("Handler dispatch", () => {
 				attributes: {
 					path: "src/source.js",
 					to: "src/copy.js",
-					visibility: "archived",
-					source: '<cp path="src/source.js">src/copy.js</cp>',
+					archive: true,
+					source: '<cp path="src/source.js" archive>src/copy.js</cp>',
 				},
 				state: "resolved",
 				resultPath: logPath,
@@ -342,7 +338,7 @@ describe("Handler dispatch", () => {
 			const srcBody = await store.getBody(RUN_ID, "src/source.js");
 			assert.equal(srcBody, "const y = 2;\n", "source preserved");
 			const copyState = await store.getState(RUN_ID, "src/copy.js");
-			assert.equal(copyState.visibility, "archived", "visibility honored");
+			assert.equal(copyState.visibility, "archived", "archive attr honored");
 		});
 
 		it("two edits to the same file produce two independent proposals", async () => {
@@ -526,8 +522,8 @@ describe("Handler dispatch", () => {
 		});
 	});
 
-	describe("set visibility control", () => {
-		it("archives entry via stored attribute", async () => {
+	describe("set archive control", () => {
+		it("archives entry via boolean archive attr", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 1,
@@ -543,8 +539,8 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "known://demote_me",
-					visibility: "archived",
-					source: '<set path="known://demote_me" visibility="archived"/>',
+					archive: true,
+					source: '<set path="known://demote_me" archive/>',
 				},
 				state: "resolved",
 				resultPath: "set://known%3A%2F%2Fdemote_me",
@@ -714,7 +710,7 @@ describe("Handler dispatch", () => {
 				path: "src/priority_test.js",
 				body: "x",
 				state: "resolved",
-				visibility: "summarized",
+				visibility: "archived",
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });

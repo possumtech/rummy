@@ -29,10 +29,7 @@ function makeDb({ viewRows = [], lastContext = null } = {}) {
 describe("materializeContext", () => {
 	it("clears turn_context, repopulates from v_model_context, and assembles messages", async () => {
 		const hooks = createHooks();
-		// Project a known scheme so view() doesn't throw.
-		hooks.tools.onView("file", (e) => e.body || "", "visible");
-		hooks.tools.onView("file", (_e) => "", "summarized");
-
+		// No view registered → engine's default summarizeEmission falls through.
 		const db = makeDb({
 			viewRows: [
 				{
@@ -41,7 +38,7 @@ describe("materializeContext", () => {
 					body: "hello",
 					attributes: null,
 					category: "logging",
-					visibility: "visible",
+					visibility: "indexed",
 					state: "resolved",
 					outcome: null,
 					turn: 1,
@@ -72,15 +69,10 @@ describe("materializeContext", () => {
 	it("dispatches log entries to their action plugin's view via path segment", async () => {
 		const hooks = createHooks();
 		let viewedKey = null;
-		hooks.tools.onView(
-			"update",
-			(entry) => {
-				viewedKey = "update";
-				return entry.body;
-			},
-			"visible",
-		);
-		hooks.tools.onView("update", () => "", "summarized");
+		hooks.tools.onView("update", (entry) => {
+			viewedKey = "update";
+			return entry.body;
+		});
 
 		const db = makeDb({
 			viewRows: [
@@ -90,7 +82,7 @@ describe("materializeContext", () => {
 					body: "summary text",
 					attributes: null,
 					category: "logging",
-					visibility: "visible",
+					visibility: "indexed",
 					state: "resolved",
 					outcome: null,
 					turn: 1,
@@ -114,8 +106,6 @@ describe("materializeContext", () => {
 
 	it("defaults lastContextTokens=0 when no prior context recorded", async () => {
 		const hooks = createHooks();
-		hooks.tools.onView("file", () => "", "visible");
-		hooks.tools.onView("file", () => "", "summarized");
 		const db = makeDb({ viewRows: [], lastContext: null });
 		const result = await materializeContext({
 			db,

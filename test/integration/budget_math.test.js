@@ -59,7 +59,10 @@ describe("Budget math", () => {
 	});
 
 	describe("turn_context token accuracy", () => {
-		it("full entry body matches what was stored", async () => {
+		it("indexed entry appears in turn_context with stored body", async () => {
+			// Test helper materializes from v_model_context directly without
+			// running projection — turn_context body equals stored body.
+			// Real projection lives in materializeContext.js (unit-tested).
 			const body = pad(50);
 			await store.set({
 				runId: RUN_ID,
@@ -67,7 +70,7 @@ describe("Budget math", () => {
 				path: "known://full_entry",
 				body,
 				state: "resolved",
-				visibility: "visible",
+				visibility: "indexed",
 			});
 			await materialize(tdb.db, {
 				runId: RUN_ID,
@@ -80,11 +83,7 @@ describe("Budget math", () => {
 			});
 			const entry = rows.find((r) => r.path === "known://full_entry");
 			assert.ok(entry, "entry exists in turn_context");
-			assert.strictEqual(
-				entry.body,
-				body,
-				"projected body equals stored body for visible known",
-			);
+			assert.strictEqual(entry.body, body, "body equals stored body");
 		});
 
 		it("archived entry does not appear in turn_context", async () => {
@@ -113,37 +112,6 @@ describe("Budget math", () => {
 				"archived entry excluded from context",
 			);
 		});
-
-		it("summary entry body in view is full (onView transforms at runtime)", async () => {
-			// The view projects full body for summary entries. The onView
-			// callback (applied by TurnExecutor, not the test materialize
-			// helper) transforms it to summary text. This test verifies the
-			// view's behavior; E2E tests verify the full pipeline.
-			const body = pad(200);
-			await store.set({
-				runId: RUN_ID,
-				turn: 1,
-				path: "known://summary_entry",
-				body,
-				state: "resolved",
-				visibility: "summarized",
-				attributes: { summary: "test,keywords,here" },
-			});
-			await materialize(tdb.db, {
-				runId: RUN_ID,
-				turn: 1,
-				systemPrompt: "test",
-			});
-			const rows = await tdb.db.get_turn_context.all({
-				run_id: RUN_ID,
-				turn: 1,
-			});
-			const entry = rows.find((r) => r.path === "known://summary_entry");
-			assert.ok(entry, "summary entry appears in turn_context");
-			assert.strictEqual(entry.visibility, "summarized");
-			// Body is full until onView transforms it — that's by design
-			assert.ok(entry.body.length > 0, "view projects full body for summary");
-		});
 	});
 
 	describe("budget enforcement accuracy", () => {
@@ -166,7 +134,7 @@ describe("Budget math", () => {
 				path: "known://small",
 				body: "tiny fact",
 				state: "resolved",
-				visibility: "visible",
+				visibility: "indexed",
 			});
 
 			await materialize(tdb.db, {
@@ -220,7 +188,7 @@ describe("Budget math", () => {
 				path: "known://big",
 				body: pad(100),
 				state: "resolved",
-				visibility: "visible",
+				visibility: "indexed",
 			});
 
 			await materialize(tdb.db, {
@@ -274,34 +242,34 @@ describe("Budget math", () => {
 				path: "known://fact",
 				body,
 				state: "resolved",
-				visibility: "visible",
+				visibility: "indexed",
 			});
 			let entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			let entry = entries.find((e) => e.path === "known://fact");
 			assert.strictEqual(entry.tokens, expectedTokens, "tokens at full");
 
-			// Demote to summary — tokens should NOT change
+			// Archive — tokens should NOT change
 			await store.set({
 				runId: runId,
 				path: "known://fact",
-				visibility: "summarized",
+				visibility: "archived",
 			});
 			entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			entry = entries.find((e) => e.path === "known://fact");
 			assert.strictEqual(
 				entry.tokens,
 				expectedTokens,
-				"tokens unchanged after demotion",
+				"tokens unchanged after archive",
 			);
 
-			// Promote back — tokens should NOT change
+			// Re-index — tokens should NOT change
 			await store.get({ runId: runId, turn: 2, path: "known://fact" });
 			entries = await tdb.db.get_known_entries.all({ run_id: runId });
 			entry = entries.find((e) => e.path === "known://fact");
 			assert.strictEqual(
 				entry.tokens,
 				expectedTokens,
-				"tokens unchanged after promotion",
+				"tokens unchanged after re-index",
 			);
 		});
 
@@ -316,7 +284,7 @@ describe("Budget math", () => {
 				path: "known://tc_test",
 				body,
 				state: "resolved",
-				visibility: "visible",
+				visibility: "indexed",
 			});
 			await materialize(tdb.db, {
 				runId,
@@ -387,7 +355,7 @@ describe("Budget math", () => {
 				ordinal: 1,
 				path: "prompt://1",
 				scheme: "prompt",
-				visibility: "visible",
+				visibility: "indexed",
 				body,
 				tokens: countTokens(body),
 				attributes: JSON.stringify({ mode: "act" }),
@@ -411,7 +379,7 @@ describe("Budget math", () => {
 			);
 		});
 
-		it("reverted='N' surfaces when prior turn had a 413 demotion", async () => {
+		it("archived='N' surfaces when prior turn had a 413 archive", async () => {
 			const contextSize = 10000;
 			const out = await assemblePrompt("", {
 				rows: [
@@ -420,13 +388,13 @@ describe("Budget math", () => {
 						ordinal: 2,
 						path: "log://turn_2/error/Token%20Budget%20overflow%3A%20foo",
 						scheme: "log",
-						visibility: "summarized",
+						visibility: "indexed",
 						body: "Token Budget overflow: ...",
 						tokens: 30,
 						attributes: JSON.stringify({
 							status: 413,
-							demotedCount: 4,
-							demotedTokens: 22000,
+							archivedCount: 4,
+							archivedTokens: 22000,
 						}),
 						category: "logging",
 						source_turn: 2,
@@ -438,12 +406,12 @@ describe("Budget math", () => {
 				turn: 3,
 			});
 			assert.ok(
-				/reverted="4"/.test(out),
-				`reverted=4 must surface; got: ${out}`,
+				/archived="4"/.test(out),
+				`archived=4 must surface; got: ${out}`,
 			);
 		});
 
-		it("reverted absent when prior turn had no 413", async () => {
+		it("archived absent when prior turn had no 413", async () => {
 			const contextSize = 10000;
 			const out = await assemblePrompt("", {
 				rows: [fakePromptRow()],
@@ -453,16 +421,13 @@ describe("Budget math", () => {
 				turn: 3,
 			});
 			assert.ok(
-				!out.includes("reverted="),
-				"no reverted attr when no prior 413",
+				!out.includes("archived="),
+				"no archived attr when no prior 413",
 			);
 		});
 
-		it("reverted only looks at PRIOR turn, not older ones", async () => {
+		it("archived only looks at PRIOR turn, not older ones", async () => {
 			const contextSize = 10000;
-			// 413 occurred on turn 1. Current turn is 5. Prior turn is 4.
-			// We should NOT surface reverted from turn 1 — that's old news,
-			// the model has seen it many times.
 			const out = await assemblePrompt("", {
 				rows: [
 					fakePromptRow(),
@@ -470,13 +435,13 @@ describe("Budget math", () => {
 						ordinal: 2,
 						path: "log://turn_1/error/Token%20Budget%20overflow",
 						scheme: "log",
-						visibility: "summarized",
+						visibility: "indexed",
 						body: "Token Budget overflow: ...",
 						tokens: 30,
 						attributes: JSON.stringify({
 							status: 413,
-							demotedCount: 2,
-							demotedTokens: 8000,
+							archivedCount: 2,
+							archivedTokens: 8000,
 						}),
 						category: "logging",
 						source_turn: 1,
@@ -488,30 +453,27 @@ describe("Budget math", () => {
 				turn: 5,
 			});
 			assert.ok(
-				!out.includes("reverted="),
-				"reverted only for immediately-prior turn",
+				!out.includes("archived="),
+				"archived only for immediately-prior turn",
 			);
 		});
 	});
 
-	describe("413 error carries structured demotion attrs", () => {
-		it("step-2 demotion emits a 413 error entry with demotedCount and demotedTokens", async () => {
+	describe("413 error carries structured archive attrs", () => {
+		it("budget rescue emits a 413 error entry with archivedCount and archivedTokens", async () => {
 			const { runId } = await tdb.seedRun({ alias: "err_attrs_413" });
-			// Seed visible content at turn 0 (= prevTurn for the dispatch
-			// at turn 1) so the grinder's step-2 has something to demote.
+			// Seed indexed log entries at turn 0 (= prevTurn for the
+			// dispatch at turn 1) so the rescue has something to archive.
 			for (let i = 0; i < 20; i++) {
 				await store.set({
 					runId,
 					turn: 0,
-					path: `known://big_${i}`,
+					path: `log://turn_0/get/big_${i}`,
 					body: pad(100),
 					state: "resolved",
-					visibility: "visible",
+					visibility: "indexed",
 				});
 			}
-			// Force step 1 to fail by passing oversized messages directly.
-			// Step 2's demotion target is driven by the SQL turn=0 state,
-			// independent of the message construction here.
 			const messages = [
 				{ role: "system", content: "test" },
 				{ role: "user", content: pad(2000) },
@@ -538,8 +500,11 @@ describe("Budget math", () => {
 			assert.ok(err, "413 error entry written");
 			const attrs = JSON.parse(err.attributes);
 			assert.strictEqual(attrs.status, 413);
-			assert.ok(attrs.demotedCount > 0, "demotedCount present and positive");
-			assert.ok(attrs.demotedTokens > 0, "demotedTokens present and positive");
+			assert.ok(attrs.archivedCount > 0, "archivedCount present and positive");
+			assert.ok(
+				attrs.archivedTokens > 0,
+				"archivedTokens present and positive",
+			);
 		});
 	});
 });

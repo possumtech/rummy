@@ -2,8 +2,8 @@
 
 YOU SHOULD prefer minimal and multiple atomic edits to reduce the frequency and severity of conflicts and errors
 
-* `archive` (boolean): drop the entry from `<index>`. Body unchanged; recallable via path or pattern.
-* `index` (boolean): restore an archived entry to `<index>`.
+* `archive`: demote an entry from `<index>`.
+* `index`: promote an archived entry to `<index>`.
 * archive/index are mutually exclusive on the same `<set>`.
 
 * The <set/> command requires matching HEREDOC label string literal syntax
@@ -28,7 +28,7 @@ Example:
 	REPLACE</set>
 
 Example:
-	<set path="src/main.go" tags="go,source,unlinted"><<NEW
+	<set path="src/main.go" tags="go,source,unlinted" index><<NEW
 	package main
 	
 	func main() {}
@@ -51,11 +51,11 @@ Example:
 <!-- DELETE: remove a literal-matching region. -->
 
 Example:
-	<set path="docs/guide.md" tags="docs"><<GUIDE
+	<set path="docs/guide.md" tags="docs" archive><<GUIDE
 	The pair is <<SEARCH ... SEARCH<<REPLACE ... REPLACE.
 	GUIDE</set>
 
 Example:
 	<set path="trivia/capitals.csv" archive/>
-	<set path="known://stale_plan" archive/>
-	<set path="known://stale_plan" index/>
+	<set path="known://plans/irrelevant_entry" archive/>
+	<set path="known://plans/relevant_entry" index/>

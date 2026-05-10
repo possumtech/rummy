@@ -127,7 +127,7 @@ describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter,
 			await store.set({
 				runId,
 				path: "known://visibility_probe",
-				visibility: "summarized",
+				visibility: "archived",
 			});
 			assert.ok(
 				events.some((e) => e.changeType === "visibility"),

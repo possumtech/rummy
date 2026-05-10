@@ -31,9 +31,9 @@ describe("Schema V2 invariants", () => {
 	});
 
 	describe("visibility constraint", () => {
-		it("accepts the three canonical values", async () => {
+		it("accepts the two canonical values (indexed/archived)", async () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_accept" });
-			for (const visibility of ["visible", "summarized", "archived"]) {
+			for (const visibility of ["indexed", "archived"]) {
 				await store.set({
 					runId,
 					turn: 1,
@@ -43,12 +43,11 @@ describe("Schema V2 invariants", () => {
 					visibility,
 				});
 			}
-			// No throw = accepted.
 		});
 
 		it("rejects stale visibility vocabulary", async () => {
 			const { runId } = await tdb.seedRun({ alias: "fid_reject" });
-			for (const stale of ["full", "summary", "index", "archive"]) {
+			for (const stale of ["visible", "summarized", "full", "summary"]) {
 				await assert.rejects(
 					store.set({
 						runId,

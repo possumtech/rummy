@@ -104,7 +104,6 @@ export default class TurnExecutor {
 		const initial = await materializeContext({
 			db: this.#db,
 			hooks: this.#hooks,
-			entries: this.#entries,
 			contextSize,
 			...budgetCtx,
 		});

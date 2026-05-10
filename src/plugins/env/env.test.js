@@ -18,18 +18,9 @@ describe("Env", () => {
 		assert.equal(result, "\t<env>node --version</env>");
 	});
 
-	it("full passes stream entry bodies through verbatim", () => {
-		const result = plugin.full({
-			path: "env://turn_3/node_1",
-			attributes: { command: "node --version", channel: 1 },
-			body: "v25.8.1",
-		});
-		assert.equal(result, "v25.8.1");
-	});
-
-	it("summary returns empty for empty stream body", () => {
+	it("full returns empty for empty stream body", () => {
 		assert.strictEqual(
-			plugin.summary({
+			plugin.full({
 				path: "env://turn_3/foo_1",
 				attributes: {},
 				body: "",
@@ -38,8 +29,8 @@ describe("Env", () => {
 		);
 	});
 
-	it("summary returns body verbatim when total lines <= tail limit", () => {
-		const out = plugin.summary({
+	it("full returns stream body verbatim when total lines <= tail limit", () => {
+		const out = plugin.full({
 			path: "env://turn_3/ls_1",
 			attributes: { command: "ls -F", channel: 1 },
 			body: "a.out*\nhi.c\n",
@@ -47,9 +38,9 @@ describe("Env", () => {
 		assert.equal(out, "a.out*\nhi.c\n");
 	});
 
-	it("summary tail-truncates long stream bodies to last 20 lines", () => {
+	it("full tail-truncates long stream bodies to last 20 lines", () => {
 		const lines = Array.from({ length: 50 }, (_, i) => `line${i + 1}`);
-		const out = plugin.summary({
+		const out = plugin.full({
 			path: "env://turn_3/find_1",
 			attributes: { command: "find /", channel: 1 },
 			body: `${lines.join("\n")}\n`,

@@ -18,18 +18,9 @@ describe("Sh", () => {
 		assert.equal(result, "\t<sh>ls -la</sh>");
 	});
 
-	it("full passes stream entry bodies through verbatim", () => {
-		const result = plugin.full({
-			path: "sh://turn_3/ls_1",
-			attributes: { command: "ls", channel: 1 },
-			body: "file1\nfile2\n",
-		});
-		assert.equal(result, "file1\nfile2\n");
-	});
-
-	it("summary returns empty for empty stream body", () => {
+	it("full returns empty for empty stream body", () => {
 		assert.strictEqual(
-			plugin.summary({
+			plugin.full({
 				path: "sh://turn_3/ls_1",
 				attributes: {},
 				body: "",
@@ -38,8 +29,8 @@ describe("Sh", () => {
 		);
 	});
 
-	it("summary returns body verbatim when total lines <= tail limit", () => {
-		const out = plugin.summary({
+	it("full returns stream body verbatim when total lines <= tail limit", () => {
+		const out = plugin.full({
 			path: "sh://turn_3/ls_1",
 			attributes: { command: "ls -la", channel: 1 },
 			body: "file1\nfile2\n",
@@ -47,9 +38,9 @@ describe("Sh", () => {
 		assert.equal(out, "file1\nfile2\n");
 	});
 
-	it("summary tail-truncates long stream bodies to last 20 lines", () => {
+	it("full tail-truncates long stream bodies to last 20 lines", () => {
 		const lines = Array.from({ length: 50 }, (_, i) => `line${i + 1}`);
-		const out = plugin.summary({
+		const out = plugin.full({
 			path: "sh://turn_3/rg_1",
 			attributes: { command: "rg foo", channel: 1 },
 			body: `${lines.join("\n")}\n`,

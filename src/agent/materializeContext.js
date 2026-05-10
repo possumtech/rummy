@@ -7,7 +7,6 @@ import { countLines, countTokens } from "./tokens.js";
 export default async function materializeContext({
 	db,
 	hooks,
-	entries,
 	runId,
 	loopId,
 	turn,

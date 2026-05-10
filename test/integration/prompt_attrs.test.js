@@ -138,7 +138,7 @@ describe("Budget headline math (single source of truth)", () => {
 		assert.ok(/tokenUsage="\d+"/.test(user), "tokenUsage attr always present");
 		assert.ok(/tokensFree="\d+"/.test(user), "tokensFree attr always present");
 		assert.ok(user.includes("| scheme |"), "breakdown table header renders");
-		assert.ok(/Total: \d+ visible \+ \d+ summarized/.test(user), "Total line");
+		assert.ok(/Total: \d+ indexed \+ \d+ archived/.test(user), "Total line");
 	});
 
 	it("countTokens(system) + countTokens(user) is internally self-consistent", async () => {

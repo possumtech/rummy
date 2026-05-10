@@ -73,7 +73,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 				path: "src/app.js",
 				body: "const x = 1;\n// TODO: stuff\n",
 				state: "resolved",
-				visibility: "visible",
+				visibility: "indexed",
 				writer: "plugin",
 			});
 
@@ -109,7 +109,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			assert.ok(!entryBody.includes("// TODO: stuff"), "old content replaced");
 		});
 
-		it("preserves visibility=visible after edit (no silent downgrade)", async () => {
+		it("preserves visibility=indexed after edit (no silent flip)", async () => {
 			const { runId } = await seedProjectWithFile(
 				tdb,
 				"sr_vis_preserve_visible",
@@ -121,7 +121,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 				path: "src/app.js",
 				body: "const x = 1;\n// TODO: stuff\n",
 				state: "resolved",
-				visibility: "visible",
+				visibility: "indexed",
 				writer: "plugin",
 			});
 
@@ -146,12 +146,12 @@ describe("file freshness (@filesystem_freshness)", () => {
 			const state = await entries.getState(runId, "src/app.js");
 			assert.strictEqual(
 				state?.visibility,
-				"visible",
-				"visibility=visible preserved across SEARCH/REPLACE accept",
+				"indexed",
+				"visibility=indexed preserved across SEARCH/REPLACE accept",
 			);
 		});
 
-		it("preserves visibility=summarized after edit", async () => {
+		it("preserves visibility=archived after edit", async () => {
 			const { runId } = await seedProjectWithFile(
 				tdb,
 				"sr_vis_preserve_summarized",
@@ -163,7 +163,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 				path: "src/app.js",
 				body: "const x = 1;\n// TODO: stuff\n",
 				state: "resolved",
-				visibility: "summarized",
+				visibility: "archived",
 				writer: "plugin",
 			});
 
@@ -188,12 +188,12 @@ describe("file freshness (@filesystem_freshness)", () => {
 			const state = await entries.getState(runId, "src/app.js");
 			assert.strictEqual(
 				state?.visibility,
-				"summarized",
-				"visibility=summarized preserved across SEARCH/REPLACE accept",
+				"archived",
+				"visibility=archived preserved across SEARCH/REPLACE accept",
 			);
 		});
 
-		it("new file from SEARCH/REPLACE lands at visible (model just wrote it)", async () => {
+		it("new file from SEARCH/REPLACE lands at indexed (model just wrote it)", async () => {
 			const { projectRoot, runId } = await seedProjectWithFile(
 				tdb,
 				"sr_new_file",
@@ -223,8 +223,8 @@ describe("file freshness (@filesystem_freshness)", () => {
 			assert.strictEqual(body, "const y = 2;", "new file body landed");
 			assert.strictEqual(
 				state?.visibility,
-				"visible",
-				"newly-created file lands at visible — the model just wrote it; it should see what it created",
+				"indexed",
+				"newly-created file lands at indexed — the model just wrote it; it should see what it created",
 			);
 			const onDisk = await fs.readFile(join(projectRoot, "src/new.js"), "utf8");
 			assert.strictEqual(onDisk, "const y = 2;", "disk in sync");
@@ -244,7 +244,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 				path: "known://fact",
 				body: "first version",
 				state: "resolved",
-				visibility: "visible",
+				visibility: "indexed",
 				writer: "model",
 			});
 			await entries.set({
@@ -258,7 +258,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			const state = await entries.getState(runId, "known://fact");
 			assert.strictEqual(
 				state?.visibility,
-				"visible",
+				"indexed",
 				"visibility preserved when only body is updated",
 			);
 			const body = await entries.getBody(runId, "known://fact");

@@ -9,8 +9,8 @@
  * the rendering of prior-loop and current-loop entries. Filter
  * priority bands (@plugins_filter_bands) govern packet structure:
  * grammar + tooldocs are wrapped in `<system_commands>` (49–101);
- * `<summary>`/`<visible>`/`<log>`/`<unknowns>` are system-side
- * (priorities 200/250/300/350). User-side: persona at
+ * `<index>`/`<log>`/`<unknowns>` are system-side
+ * (priorities 200/300/350). User-side: persona at
  * `<system_instructions>` (10), `<prompt>` (30), `<budget>` (90),
  * per-turn rules at `<system_requirements>` (165).
  */
@@ -230,14 +230,14 @@ describe("Message assembly", () => {
 		assert.ok(system.content.includes('"action":"cp"'), "cp entry visible");
 	});
 
-	it("structural entries (summary/update) appear in messages", async () => {
+	it("structural entries (update) appear in <log>", async () => {
 		await store.set({
 			runId: RUN_ID,
 			turn: TURN,
 			path: "log://turn_1/update/test_sum",
 			body: "The answer is 42",
 			state: "resolved",
-			visibility: "summarized",
+			visibility: "indexed",
 		});
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
@@ -247,21 +247,13 @@ describe("Message assembly", () => {
 		);
 	});
 
-	it("data entries land in system <summary>/<visible>; user holds prompt + budget + unknowns", async () => {
+	it("data entries land in system <index>; user holds prompt + budget + unknowns", async () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(
-			system.content.includes("<summary>"),
-			"system has <summary> block",
-		);
-		assert.ok(
-			system.content.includes("<visible>"),
-			"system has <visible> block",
-		);
+		assert.ok(system.content.includes("<index>"), "system has <index> block");
 		assert.ok(system.content.includes("src/app.js"), "files in system");
-		assert.ok(!user.content.includes("<summary>"), "<summary> is not in user");
-		assert.ok(!user.content.includes("<visible>"), "<visible> is not in user");
+		assert.ok(!user.content.includes("<index>"), "<index> is not in user");
 		assert.ok(user.content.includes("<prompt"), "user retains <prompt>");
 	});
 });

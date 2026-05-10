@@ -85,8 +85,8 @@ describe("project manifest (@project_manifest)", () => {
 		assert.strictEqual(matches.length, 1, "one manifest entry registered");
 		assert.strictEqual(
 			matches[0].visibility,
-			"visible",
-			"manifest is visible at write",
+			"indexed",
+			"manifest is indexed at write",
 		);
 	});
 

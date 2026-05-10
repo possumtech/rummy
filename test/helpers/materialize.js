@@ -16,7 +16,7 @@ export default async function materialize(
 			turn,
 			ordinal: 0,
 			path: "system://prompt",
-			visibility: "visible",
+			visibility: "indexed",
 			state: "resolved",
 			body: systemPrompt,
 			attributes: null,

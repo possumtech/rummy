@@ -1,7 +1,7 @@
 /**
  * Skill plugin integration: <skill path="..."/> tag dispatched through
  * the real plugin pipeline. Covers single-file, folder, index.md
- * collapsing, archived/summarized visibility, and re-emit overwrite.
+ * collapsing, indexed/archived visibility, and re-emit overwrite.
  *
  * Covers @skill_plugin.
  */
@@ -93,7 +93,7 @@ describe("Skill ingest", () => {
 		return resultPath;
 	}
 
-	it("single .md → skill://<name> summarized", async () => {
+	it("single .md → skill://<name> indexed", async () => {
 		await writeFile(join(projectRoot, "playbook.md"), "playbook root body");
 		const resultPath = await dispatch("playbook.md");
 
@@ -105,13 +105,13 @@ describe("Skill ingest", () => {
 		assert.equal(entry.length, 1);
 		assert.equal(entry[0].body, "playbook root body");
 		const state = await store.getState(RUN_ID, "skill://playbook");
-		assert.equal(state.visibility, "summarized");
+		assert.equal(state.visibility, "indexed");
 
 		const log = await store.getBody(RUN_ID, resultPath);
 		assert.match(log, /skill 'playbook' added/);
 	});
 
-	it("folder → index summarized, others archived; foo/index.md collapses to skill://<name>/foo", async () => {
+	it("folder → root indexed, others archived; foo/index.md collapses to skill://<name>/foo", async () => {
 		const root = join(projectRoot, "playbook");
 		await mkdir(join(root, "foo"), { recursive: true });
 		await writeFile(join(root, "index.md"), "ROOT");
@@ -122,7 +122,7 @@ describe("Skill ingest", () => {
 		await dispatch("playbook");
 
 		const root_state = await store.getState(RUN_ID, "skill://playbook");
-		assert.equal(root_state.visibility, "summarized");
+		assert.equal(root_state.visibility, "indexed");
 		assert.equal(await store.getBody(RUN_ID, "skill://playbook"), "ROOT");
 
 		const intro_state = await store.getState(RUN_ID, "skill://playbook/intro");
@@ -176,7 +176,7 @@ describe("Skill ingest", () => {
 			"# url skill body",
 		);
 		const state = await store.getState(RUN_ID, "skill://team-skill");
-		assert.equal(state.visibility, "summarized");
+		assert.equal(state.visibility, "indexed");
 	});
 
 	it("validation when path attr missing", async () => {

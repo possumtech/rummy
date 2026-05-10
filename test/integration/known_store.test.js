@@ -222,32 +222,32 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		});
 	});
 
-	describe("promote and demote", () => {
-		it("promote sets visibility to full and updates turn", async () => {
+	describe("index and archive", () => {
+		it("get re-indexes an archived entry and updates turn", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 0,
 				path: "src/promoted.js",
 				body: "content",
 				state: "resolved",
-				visibility: "summarized",
+				visibility: "archived",
 			});
 			let row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/promoted.js",
 			});
-			assert.strictEqual(row.visibility, "summarized");
+			assert.strictEqual(row.visibility, "archived");
 
 			await store.get({ runId: RUN_ID, turn: 10, path: "src/promoted.js" });
 			row = await tdb.db.get_entry_state.get({
 				run_id: RUN_ID,
 				path: "src/promoted.js",
 			});
-			assert.strictEqual(row.visibility, "visible");
+			assert.strictEqual(row.visibility, "indexed");
 			assert.strictEqual(row.turn, 10);
 		});
 
-		it("demote sets visibility to stored", async () => {
+		it("archive flips visibility on an indexed entry", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 10,

@@ -32,7 +32,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 			path: "readme.md",
 			body: "# Hello",
 			state: "resolved",
-			visibility: "summarized",
+			visibility: "indexed",
 		});
 		await store.set({
 			runId: RUN_ID,
@@ -54,7 +54,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 			path: "update://1",
 			body: "did a thing",
 			state: "resolved",
-			visibility: "summarized",
+			visibility: "indexed",
 		});
 		await store.set({
 			runId: RUN_ID,

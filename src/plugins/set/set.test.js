@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SUMMARY_MAX_CHARS } from "../helpers.js";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the tool plugin's class is named "Set" by design
 import Set from "./set.js";
 
@@ -98,31 +97,6 @@ describe("Set plugin", () => {
 		});
 	});
 
-	describe("summary (compact projection)", () => {
-		const plugin = new Set(stubCore());
-
-		it("returns empty string when entry has no body", () => {
-			assert.equal(plugin.summary({ body: "" }), "");
-		});
-
-		it("tab-indents the body when ≤ SUMMARY_MAX_CHARS post-projection", () => {
-			const body = "<<<<<<< SEARCH\nfoo\n=======\nbar\n>>>>>>> REPLACE";
-			assert.equal(
-				plugin.summary({ body }),
-				"\t<<<<<<< SEARCH\n\tfoo\n\t=======\n\tbar\n\t>>>>>>> REPLACE",
-			);
-		});
-
-		it("truncates oversize bodies to SUMMARY_MAX_CHARS (contract floor)", () => {
-			const body = "x".repeat(50000);
-			const out = plugin.summary({ body });
-			assert.ok(
-				out.length <= SUMMARY_MAX_CHARS,
-				`summary ≤ SUMMARY_MAX_CHARS; got ${out.length}`,
-			);
-		});
-	});
-
 	describe("handler", () => {
 		it("rejects body writes against log:// with method_not_allowed outcome", async () => {
 			const plugin = new Set(stubCore());
@@ -134,8 +108,7 @@ describe("Set plugin", () => {
 					resultPath: "log://turn_2/set/log___turn_1/search/X",
 					attributes: {
 						path: "log://turn_1/search/X",
-						visibility: "summarized",
-						summary: "search,X",
+						archive: true,
 					},
 				},
 				{ entries: store, sequence: 2, runId: "r", loopId: "l" },
@@ -144,10 +117,9 @@ describe("Set plugin", () => {
 			assert.equal(store._calls[0].state, "failed");
 			assert.equal(store._calls[0].outcome, "method_not_allowed");
 			assert.match(store._calls[0].body, /log:\/\/ is immutable/);
-			assert.match(store._calls[0].body, /visibility="summarized"/);
 		});
 
-		it("body-less visibility update on log:// is allowed", async () => {
+		it("body-less archive on log:// is allowed", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			store.setEntry("log://turn_1/search/X", { body: "results" });
@@ -156,21 +128,18 @@ describe("Set plugin", () => {
 					body: "",
 					path: "log://turn_2/set/log___turn_1/search/X",
 					resultPath: "log://turn_2/set/log___turn_1/search/X",
-					attributes: {
-						path: "log://turn_1/search/X",
-						visibility: "summarized",
-					},
+					attributes: { path: "log://turn_1/search/X", archive: true },
 				},
 				{ entries: store, sequence: 2, runId: "r", loopId: "l" },
 			);
-			const visUpdate = store._calls.find(
+			const flip = store._calls.find(
 				(c) =>
-					c.path === "log://turn_1/search/X" && c.visibility === "summarized",
+					c.path === "log://turn_1/search/X" && c.visibility === "archived",
 			);
-			assert.ok(visUpdate, "visibility-only update on log:// goes through");
+			assert.ok(flip, "archive flip on log:// goes through");
 		});
 
-		it("rejects invalid visibility on body-less set with validation outcome", async () => {
+		it("rejects archive+index conflict with validation outcome", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -178,17 +147,17 @@ describe("Set plugin", () => {
 					body: "",
 					path: "log://turn_1/set/known%3A//x",
 					resultPath: "log://turn_1/set/known%3A//x",
-					attributes: { path: "known://x", visibility: "weird" },
+					attributes: { path: "known://x", archive: true, index: true },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
 			assert.equal(store._calls.length, 1);
 			assert.equal(store._calls[0].state, "failed");
 			assert.equal(store._calls[0].outcome, "validation");
-			assert.match(store._calls[0].body, /Invalid visibility/);
+			assert.match(store._calls[0].body, /both archive and index/);
 		});
 
-		it("visibility-only set with no matches → not_found result", async () => {
+		it("archive on missing path → not_found result", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -196,7 +165,7 @@ describe("Set plugin", () => {
 					body: "",
 					path: "log://turn_1/set/known%3A//missing",
 					resultPath: "log://turn_1/set/known%3A//missing",
-					attributes: { path: "known://missing", visibility: "archived" },
+					attributes: { path: "known://missing", archive: true },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
@@ -206,7 +175,7 @@ describe("Set plugin", () => {
 			assert.match(failed.body, /not found/);
 		});
 
-		it("visibility-only set on existing entry → updates visibility + summarizes", async () => {
+		it("archive on existing entry flips visibility + logs result", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			store.setEntry("known://x", { body: "v" });
@@ -215,16 +184,16 @@ describe("Set plugin", () => {
 					body: "",
 					path: "log://turn_1/set/known%3A//x",
 					resultPath: "log://turn_1/set/known%3A//x",
-					attributes: { path: "known://x", visibility: "summarized" },
+					attributes: { path: "known://x", archive: true },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const visUpdate = store._calls.find(
-				(c) => c.path === "known://x" && c.visibility === "summarized",
+			const flip = store._calls.find(
+				(c) => c.path === "known://x" && c.visibility === "archived",
 			);
-			assert.ok(visUpdate);
+			assert.ok(flip);
 			const log = store._calls.find((c) => c.state === "resolved" && c.body);
-			assert.match(log.body, /set to summarized/);
+			assert.match(log.body, /set to archived/);
 		});
 
 		it("ignores set with no path and no body (early return)", async () => {
@@ -258,7 +227,7 @@ describe("Set plugin", () => {
 				(c) => c.path === "known://x" && c.body === "v2",
 			);
 			assert.ok(target);
-			assert.equal(target.visibility, "visible");
+			assert.equal(target.visibility, "indexed");
 			const log = store._calls.find(
 				(c) => c.path === "log://turn_1/set/known%3A//x",
 			);
@@ -297,12 +266,11 @@ describe("Set plugin", () => {
 			assert.equal(core._get("instructions.toolDocs").length, 1);
 		});
 
-		it("registers handler/visible/summarized event handlers", () => {
+		it("registers a handler and a single view event", () => {
 			const core = stubCore();
 			new Set(core);
 			assert.equal(core._event("handler").length, 1);
-			assert.equal(core._event("visible").length, 1);
-			assert.equal(core._event("summarized").length, 1);
+			assert.equal(core._event("view").length, 1);
 		});
 
 		it("instructions.toolDocs filter populates docsMap.set", async () => {
@@ -627,13 +595,13 @@ describe("Set plugin: manifest is universal", () => {
 		loopId: "l",
 	});
 
-	it("manifest + visibility-pattern: lists matches without flipping visibility", async () => {
+	it("manifest + archive-pattern: lists matches without flipping visibility", async () => {
 		const store = manifestStore(matches);
 		await plugin.handler(
 			{
 				attributes: {
 					path: "known://hydrology/*",
-					visibility: "summarized",
+					archive: true,
 					manifest: "",
 				},
 				body: "",

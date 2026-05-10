@@ -97,7 +97,7 @@ describe("Budget", () => {
 		});
 	}
 
-	function makeRummy({ demoteResult = [] } = {}) {
+	function makeRummy({ archiveResult = [] } = {}) {
 		const emitted = [];
 		const setCalls = [];
 		return {
@@ -105,7 +105,7 @@ describe("Budget", () => {
 			setCalls,
 			rummy: {
 				entries: {
-					demoteTurnEntries: async () => demoteResult,
+					archiveTurnEntries: async () => archiveResult,
 					set: async (args) => setCalls.push(args),
 				},
 				hooks: {
@@ -134,9 +134,9 @@ describe("Budget", () => {
 		assert.strictEqual(emitted.length, 0, "no 413 emitted under budget");
 	});
 
-	it("enforce hits step 4 hard 413 when nothing is demotable", async () => {
+	it("enforce hits hard 413 when nothing in t-1 to archive", async () => {
 		const budget = makeBudget();
-		const { rummy, emitted } = makeRummy({ demoteResult: [] });
+		const { rummy, emitted } = makeRummy({ archiveResult: [] });
 		const result = await budget.enforce({
 			contextSize: 10,
 			messages: [{ role: "system", content: "x".repeat(1000) }],
@@ -148,7 +148,7 @@ describe("Budget", () => {
 		assert.ok(result.overflow > 0);
 		assert.strictEqual(emitted.length, 1, "hard 413 emitted exactly once");
 		assert.strictEqual(emitted[0].status, 413);
-		assert.strictEqual(emitted[0].attributes.demotedCount, 0);
+		assert.strictEqual(emitted[0].attributes.archivedCount, 0);
 	});
 
 	it("enforce returns ok with no contextSize", async () => {
@@ -173,13 +173,12 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		});
 	}
 
-	function row({ scheme, vTokens, sTokens, visibility = "visible" }) {
+	function row({ scheme, vTokens, visibility = "indexed" }) {
 		return {
 			scheme,
 			visibility,
 			vTokens,
-			sTokens,
-			aTokens: vTokens - sTokens,
+			aTokens: vTokens,
 		};
 	}
 
@@ -190,8 +189,8 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		// token_accounting).
 		const plugin = makePlugin();
 		const rows = [
-			row({ scheme: "log", vTokens: 700, sTokens: 100 }),
-			row({ scheme: "https", vTokens: 600, sTokens: 200 }),
+			row({ scheme: "log", vTokens: 700 }),
+			row({ scheme: "https", vTokens: 600 }),
 		];
 		const out = plugin.assembleBudget("", {
 			rows,
@@ -203,35 +202,25 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 			),
 			`<budget> carries placeholders; got: ${out}`,
 		);
-		// The breakdown table renders with real per-scheme numbers.
-		assert.ok(out.includes("| log | 1 | 0 | 700 | 100 | 600 |"));
-		assert.ok(out.includes("| https | 1 | 0 | 600 | 200 | 400 |"));
+		// Three columns now: indexed | archived | tokens.
+		assert.ok(out.includes("| log | 1 | 0 | 700 |"));
+		assert.ok(out.includes("| https | 1 | 0 | 600 |"));
 	});
 
-	it("table cells render six columns sorted by current cost descending", () => {
+	it("table cells sorted by indexed-token cost descending", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
-				row({ scheme: "small", vTokens: 200, sTokens: 100 }),
-				row({ scheme: "large", vTokens: 5000, sTokens: 0 }),
-				row({ scheme: "medium", vTokens: 1000, sTokens: 200 }),
+				row({ scheme: "small", vTokens: 200 }),
+				row({ scheme: "large", vTokens: 5000 }),
+				row({ scheme: "medium", vTokens: 1000 }),
 			],
 			contextSize: 10000,
 			systemPrompt: "",
 		});
-		// Format: | scheme | vis | sum | cost | if-all-sum | premium |
-		assert.ok(
-			out.includes("| large | 1 | 0 | 5000 | 0 | 5000 |"),
-			`large row; got: ${out}`,
-		);
-		assert.ok(
-			out.includes("| medium | 1 | 0 | 1000 | 200 | 800 |"),
-			`medium row; got: ${out}`,
-		);
-		assert.ok(
-			out.includes("| small | 1 | 0 | 200 | 100 | 100 |"),
-			`small row; got: ${out}`,
-		);
+		assert.ok(out.includes("| large | 1 | 0 | 5000 |"));
+		assert.ok(out.includes("| medium | 1 | 0 | 1000 |"));
+		assert.ok(out.includes("| small | 1 | 0 | 200 |"));
 		const largeIdx = out.indexOf("| large |");
 		const mediumIdx = out.indexOf("| medium |");
 		const smallIdx = out.indexOf("| small |");
@@ -241,42 +230,23 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		);
 	});
 
-	it("summarized rows render with vis=0, sum=count and aggregate in Total line", () => {
+	it("archived rows render with indexed=0, archived=count and aggregate in Total line", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
-				row({ scheme: "visible_thing", vTokens: 200, sTokens: 50 }),
-				row({
-					scheme: "sum_a",
-					vTokens: 800,
-					sTokens: 80,
-					visibility: "summarized",
-				}),
-				row({
-					scheme: "sum_b",
-					vTokens: 1200,
-					sTokens: 120,
-					visibility: "summarized",
-				}),
+				row({ scheme: "indexed_thing", vTokens: 200 }),
+				row({ scheme: "arc_a", vTokens: 0, visibility: "archived" }),
+				row({ scheme: "arc_b", vTokens: 0, visibility: "archived" }),
 			],
 			contextSize: 10000,
 			systemPrompt: "",
 		});
+		assert.ok(out.includes("| indexed_thing | 1 | 0 | 200 |"));
+		assert.ok(out.includes("| arc_a | 0 | 1 | 0 |"));
+		assert.ok(out.includes("| arc_b | 0 | 1 | 0 |"));
 		assert.ok(
-			out.includes("| visible_thing | 1 | 0 | 200 | 50 | 150 |"),
-			`visible row; got: ${out}`,
-		);
-		assert.ok(
-			out.includes("| sum_a | 0 | 1 | 80 | 80 | 0 |"),
-			`sum_a row; got: ${out}`,
-		);
-		assert.ok(
-			out.includes("| sum_b | 0 | 1 | 120 | 120 | 0 |"),
-			`sum_b row; got: ${out}`,
-		);
-		assert.ok(
-			/1 visible \+ 2 summarized entries/.test(out),
-			`Total line carries summarized count; got: ${out}`,
+			/1 indexed \+ 2 archived entries/.test(out),
+			`Total line carries archived count; got: ${out}`,
 		);
 	});
 
@@ -284,8 +254,8 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
-				row({ scheme: "data", vTokens: 100, sTokens: 20 }),
-				{ scheme: "audit", visibility: "visible" }, // no token fields
+				row({ scheme: "data", vTokens: 100 }),
+				{ scheme: "audit", visibility: "indexed" }, // no token fields
 			],
 			contextSize: 10000,
 			systemPrompt: "",
@@ -308,19 +278,14 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleBudget("", {
 			rows: [
-				row({ scheme: "a", vTokens: 500, sTokens: 100 }),
-				row({
-					scheme: "b",
-					vTokens: 300,
-					sTokens: 60,
-					visibility: "summarized",
-				}),
+				row({ scheme: "a", vTokens: 500 }),
+				row({ scheme: "b", vTokens: 0, visibility: "archived" }),
 			],
 			contextSize: 10000,
 		});
 		assert.ok(
-			/Total: 1 visible \+ 1 summarized entries/.test(out),
-			`total names visible + summarized counts; got: ${out}`,
+			/Total: 1 indexed \+ 1 archived entries/.test(out),
+			`total names indexed + archived counts; got: ${out}`,
 		);
 		assert.ok(
 			/tokenUsage \{\{tokenUsage\}\} \/ ceiling \d+/.test(out),
@@ -397,70 +362,53 @@ describe("substituteBudgetPlaceholders", () => {
 	});
 });
 
-// The 413 body is what the model reads. When it doesn't name the
-// demoted paths, the model re-promotes the same entries next turn and
-// the loop cycles (observed: same Wikipedia URL promoted 9 times in
-// rummy_dev.db::test:demo). This is the contract.
+// The 413 body is what the model reads. Names what was archived from
+// t-1 so the model can re-issue <get> for specific paths.
 describe("overflowBody — 413 error body shape", () => {
 	const contextSize = 10000;
-	const cap = ceiling(contextSize); // depends on RUMMY_BUDGET_CEILING
+	const cap = ceiling(contextSize);
 
-	it("0 demoted: header only, no Demoted: section", () => {
+	it("0 archived: header only, no Archived: section", () => {
 		const body = overflowBody(500, contextSize, []);
 		assert.ok(body.startsWith("Token Budget overflow:"));
 		assert.ok(
-			body.includes("0 promotions (0 tokens) demoted."),
-			`header mentions 0 promotions; got: ${body}`,
+			body.includes("0 entries (0 tokens) archived from t-1."),
+			`header mentions 0 entries; got: ${body}`,
 		);
 		assert.ok(
-			!body.includes("Demoted:"),
-			"no Demoted: section when nothing was demoted",
+			!body.includes("Archived:"),
+			"no Archived: section when nothing was archived",
 		);
 	});
 
-	it("1 demoted: singular 'promotion', path named with turn and tokens", () => {
+	it("1 archived: singular 'entry', path named with turn and tokens", () => {
 		const body = overflowBody(500, contextSize, [
-			{ path: "https://example.com/wiki/X", tokens: 4418, turn: 7 },
+			{ path: "log://turn_7/get/x", tokens: 4418, turn: 7 },
 		]);
 		assert.ok(
-			body.includes("1 promotion (4418 tokens) demoted."),
+			body.includes("1 entry (4418 tokens) archived from t-1."),
 			`singular grammar; got: ${body}`,
 		);
-		assert.ok(body.includes("Demoted:"));
+		assert.ok(body.includes("Archived:"));
 		assert.ok(
-			body.includes("- https://example.com/wiki/X (turn 7, 4418 tokens)"),
+			body.includes("- log://turn_7/get/x (turn 7, 4418 tokens)"),
 			`path named with turn and tokens; got:\n${body}`,
 		);
 	});
 
-	it("N demoted: plural 'promotions', each path named, token sum correct", () => {
+	it("N archived: plural 'entries', each path named, token sum correct", () => {
 		const body = overflowBody(2753, contextSize, [
-			{ path: "https://a.example/one", tokens: 1200, turn: 3 },
-			{ path: "https://b.example/two", tokens: 900, turn: 5 },
-			{ path: "known://fact", tokens: 250, turn: 6 },
+			{ path: "log://turn_3/sh/a", tokens: 1200, turn: 3 },
+			{ path: "log://turn_3/get/b", tokens: 900, turn: 3 },
+			{ path: "log://turn_3/set/c", tokens: 250, turn: 3 },
 		]);
 		assert.ok(
-			body.includes("3 promotions (2350 tokens) demoted."),
+			body.includes("3 entries (2350 tokens) archived from t-1."),
 			`plural + sum; got: ${body}`,
 		);
-		assert.ok(body.includes("- https://a.example/one (turn 3, 1200 tokens)"));
-		assert.ok(body.includes("- https://b.example/two (turn 5, 900 tokens)"));
-		assert.ok(body.includes("- known://fact (turn 6, 250 tokens)"));
-	});
-
-	it("ordering: lines appear in the order the caller provides", () => {
-		// Caller stitches step-2 demotions then step-3 prompt demote;
-		// overflowBody renders that order verbatim so the model reads it
-		// as the grinder reasoned about it.
-		const body = overflowBody(500, contextSize, [
-			{ path: "first", tokens: 100, turn: 3 },
-			{ path: "second", tokens: 100, turn: 3 },
-			{ path: "prompt://4", tokens: 100, turn: 4 },
-		]);
-		const i1 = body.indexOf("- first");
-		const i2 = body.indexOf("- second");
-		const i3 = body.indexOf("- prompt://4");
-		assert.ok(i1 < i2 && i2 < i3, "caller-provided order preserved");
+		assert.ok(body.includes("- log://turn_3/sh/a (turn 3, 1200 tokens)"));
+		assert.ok(body.includes("- log://turn_3/get/b (turn 3, 900 tokens)"));
+		assert.ok(body.includes("- log://turn_3/set/c (turn 3, 250 tokens)"));
 	});
 
 	it("packet size reported = ceiling + overflow", () => {
@@ -471,23 +419,5 @@ describe("overflowBody — 413 error body shape", () => {
 			`packet = ceiling + overflow (${cap} + ${overflow}); got: ${body}`,
 		);
 		assert.ok(body.includes(`ceiling is ${cap}`));
-	});
-
-	it("regression: named paths let the model avoid the 9-retry loop", () => {
-		// Original bug: turns 3–12 in rummy_dev.db::test:demo all tried
-		// to promote the same Wikipedia URL because the 413 body said
-		// "N promotions demoted" without naming them. Next turn the
-		// model saw the page summarized, re-promoted, re-demoted.
-		const body = overflowBody(500, contextSize, [
-			{
-				path: "https://en.wikipedia.org/wiki/White_River_(Indiana)",
-				tokens: 17744,
-				turn: 3,
-			},
-		]);
-		assert.ok(
-			body.includes("https://en.wikipedia.org/wiki/White_River_(Indiana)"),
-			"model can now see which URL got demoted",
-		);
 	});
 });

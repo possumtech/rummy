@@ -6,27 +6,17 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import Skill from "./skill.js";
 
 function makeCore() {
-	const views = new Map();
 	const schemes = [];
 	let handler = null;
 	const toolDocFilters = [];
 	return {
 		registerScheme: (opts) => schemes.push(opts),
-		hooks: {
-			tools: {
-				onView: (scheme, fn, vis) => {
-					if (!views.has(scheme)) views.set(scheme, new Map());
-					views.get(scheme).set(vis, fn);
-				},
-			},
-		},
 		on: (event, fn) => {
 			if (event === "handler") handler = fn;
 		},
 		filter: (name, fn) => {
 			if (name === "instructions.toolDocs") toolDocFilters.push(fn);
 		},
-		_view: (scheme, vis) => views.get(scheme)?.get(vis),
 		_schemes: schemes,
 		_handler: () => handler,
 		_toolDocs: async () => {
@@ -73,12 +63,10 @@ describe("Skill plugin", () => {
 		await rm(tmp, { recursive: true, force: true });
 	});
 
-	it("registers skill scheme + visible/summarized views + handler + tooldoc", async () => {
+	it("registers skill scheme + handler + tooldoc (default projection — no view registration)", async () => {
 		const core = makeCore();
 		new Skill(core);
 		assert.deepEqual(core._schemes, [{ name: "skill", category: "data" }]);
-		assert.equal(core._view("skill", "visible")({ body: "hi" }), "hi");
-		assert.equal(core._view("skill", "summarized")(), "");
 		assert.equal(typeof core._handler(), "function");
 		const docs = await core._toolDocs();
 		assert.match(docs.skill, /<skill path/);
@@ -97,7 +85,7 @@ describe("Skill plugin", () => {
 		assert.equal(fail.outcome, "validation");
 	});
 
-	it("ingests single .md file as skill://<basename> (summarized)", async () => {
+	it("ingests single .md file as skill://<basename> (indexed)", async () => {
 		await writeFile(join(tmp, "playbook.md"), "# playbook root");
 		const core = makeCore();
 		new Skill(core);
@@ -112,12 +100,12 @@ describe("Skill plugin", () => {
 		const entry = store.writes.find((w) => w.path === "skill://playbook");
 		assert.ok(entry);
 		assert.equal(entry.body, "# playbook root");
-		assert.equal(entry.visibility, "summarized");
+		assert.equal(entry.visibility, "indexed");
 		const result = store.writes.find((w) => w.path === "log://turn_0/skill/_");
 		assert.equal(result.state, "resolved");
 	});
 
-	it("ingests folder: index.md → root summarized, others archived; foo/index.md collapses", async () => {
+	it("ingests folder: index.md → root indexed, others archived; foo/index.md collapses", async () => {
 		const root = join(tmp, "playbook");
 		await mkdir(join(root, "foo"), { recursive: true });
 		await writeFile(join(root, "index.md"), "root");
@@ -142,7 +130,7 @@ describe("Skill plugin", () => {
 				.map((w) => [w.path, w]),
 		);
 		assert.ok(byPath["skill://playbook"]);
-		assert.equal(byPath["skill://playbook"].visibility, "summarized");
+		assert.equal(byPath["skill://playbook"].visibility, "indexed");
 		assert.equal(byPath["skill://playbook/intro"].visibility, "archived");
 		assert.equal(byPath["skill://playbook/foo"].body, "foo root");
 		assert.equal(byPath["skill://playbook/foo"].visibility, "archived");

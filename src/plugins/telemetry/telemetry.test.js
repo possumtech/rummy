@@ -192,7 +192,7 @@ describe("Telemetry plugin", () => {
 			assert.equal(reasoning.body, "thoughts");
 		});
 
-		it("writes content://N as visible+failed when unparsed text present", async () => {
+		it("writes content://N as indexed+failed when unparsed text present", async () => {
 			const { hooks } = makeCore();
 			const { rummy, _calls: calls } = makeRummy();
 			await hooks.turn.response.emit({
@@ -214,7 +214,7 @@ describe("Telemetry plugin", () => {
 			assert.ok(content);
 			assert.equal(content.state, "failed");
 			assert.equal(content.outcome, "unparsed");
-			assert.equal(content.visibility, "visible");
+			assert.equal(content.visibility, "indexed");
 		});
 
 		it("calls updateTurnStats with cost from upstream_inference_cost when usage.cost is 0", async () => {

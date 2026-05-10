@@ -42,7 +42,7 @@ describe("Streaming primitives", () => {
 				path,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 			});
 
 			await store.set({
@@ -85,7 +85,7 @@ describe("Streaming primitives", () => {
 				path,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 			});
 
 			await store.set({
@@ -126,7 +126,7 @@ describe("Streaming primitives", () => {
 				path,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 			});
 			await store.set({
 				runId: runId,
@@ -155,7 +155,7 @@ describe("Streaming primitives", () => {
 				path,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 			});
 			await store.set({
 				runId: runId,
@@ -185,7 +185,7 @@ describe("Streaming primitives", () => {
 				path: base,
 				body: "ran 'cmd'",
 				state: "resolved",
-				visibility: "summarized",
+				visibility: "indexed",
 				attributes: { command: "cmd" },
 			});
 			// Data channels at 102
@@ -195,7 +195,7 @@ describe("Streaming primitives", () => {
 				path: `${base}_1`,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 				attributes: { command: "cmd", channel: 1 },
 			});
 			await store.set({
@@ -204,7 +204,7 @@ describe("Streaming primitives", () => {
 				path: `${base}_2`,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 				attributes: { command: "cmd", channel: 2 },
 			});
 
@@ -258,7 +258,7 @@ describe("Streaming primitives", () => {
 				path,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 			});
 			// Simulate 100 lines of streamed output
 			for (let i = 1; i <= 100; i++) {

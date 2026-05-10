@@ -3,33 +3,21 @@ import { describe, it } from "node:test";
 import Persona from "./persona.js";
 
 function makeCore() {
-	const views = new Map();
 	const schemes = [];
 	const filters = [];
 	return {
 		registerScheme: (opts) => schemes.push(opts),
 		filter: (name, fn, priority) => filters.push({ name, fn, priority }),
-		hooks: {
-			tools: {
-				onView: (scheme, fn, vis) => {
-					if (!views.has(scheme)) views.set(scheme, new Map());
-					views.get(scheme).set(vis, fn);
-				},
-			},
-		},
-		_view: (scheme, vis) => views.get(scheme)?.get(vis),
 		_schemes: schemes,
 		_filters: filters,
 	};
 }
 
 describe("Persona plugin", () => {
-	it("registers persona scheme + visible/summarized views", () => {
+	it("registers persona scheme (default projection — no view registration)", () => {
 		const core = makeCore();
 		new Persona(core);
 		assert.deepEqual(core._schemes, [{ name: "persona", category: "data" }]);
-		assert.equal(core._view("persona", "visible")({ body: "hi" }), "hi");
-		assert.equal(core._view("persona", "summarized")(), "");
 	});
 
 	it("registers an assembly.user filter at priority 10 (top of user)", () => {

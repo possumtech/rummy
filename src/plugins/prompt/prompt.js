@@ -48,24 +48,24 @@ export default class Prompt {
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
 
-		// reverted="N" surfaces last turn's 413 demotion count next to budget numbers.
-		let reverted = "";
+		// archived="N" surfaces last turn's 413 archive count next to budget numbers.
+		let archivedAttr = "";
 		const priorTurn = ctx.turn - 1;
 		if (priorTurn >= 1) {
-			const priorDemotion = rows.find((r) => {
+			const prior = rows.find((r) => {
 				if (!r.path.startsWith(`log://turn_${priorTurn}/error/`)) return false;
 				const attrs =
 					typeof r.attributes === "string"
 						? JSON.parse(r.attributes)
 						: r.attributes;
-				return attrs?.status === 413 && attrs?.demotedCount > 0;
+				return attrs?.status === 413 && attrs?.archivedCount > 0;
 			});
-			if (priorDemotion) {
+			if (prior) {
 				const attrs =
-					typeof priorDemotion.attributes === "string"
-						? JSON.parse(priorDemotion.attributes)
-						: priorDemotion.attributes;
-				reverted = ` reverted="${attrs.demotedCount}"`;
+					typeof prior.attributes === "string"
+						? JSON.parse(prior.attributes)
+						: prior.attributes;
+				archivedAttr = ` archived="${attrs.archivedCount}"`;
 			}
 		}
 
@@ -77,6 +77,6 @@ export default class Prompt {
 		if (promptEntry?.aTokens != null) meta.tokens = promptEntry.aTokens;
 		if (promptEntry?.vLines != null) meta.lines = promptEntry.vLines;
 		const fenced = promptEntry ? renderEntry(promptEntry.path, meta, body) : "";
-		return `${content}<prompt commands="${commands}"${warn}${reverted}>\n${fenced}\n</prompt>`;
+		return `${content}<prompt commands="${commands}"${warn}${archivedAttr}>\n${fenced}\n</prompt>`;
 	}
 }

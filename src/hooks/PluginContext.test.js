@@ -78,9 +78,9 @@ describe("PluginContext", () => {
 		assert.equal(invoked, 1);
 	});
 
-	it("on('visible', cb) registers a visibility view", async () => {
+	it("on('view', cb) registers the scheme's projection", async () => {
 		const { hooks, ctx: c } = ctx("v");
-		c.on("visible", () => "rendered");
+		c.on("view", () => "rendered");
 		c.ensureTool();
 		const out = await hooks.tools.view("v", { path: "x" });
 		assert.equal(out, "rendered");

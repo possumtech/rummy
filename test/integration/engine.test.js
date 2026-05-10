@@ -97,7 +97,7 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 	});
 
 	describe("tokens accounting", () => {
-		it("tokens unchanged through demote and promote cycle", async () => {
+		it("tokens unchanged through archive and re-index cycle", async () => {
 			await store.set({
 				runId: RUN_ID,
 				turn: 1,
@@ -119,143 +119,27 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 				path: "known://test_entry",
 				visibility: "archived",
 			});
-			const demoted = await store.getEntriesByPattern(
+			const archived = await store.getEntriesByPattern(
 				RUN_ID,
 				"known://test_entry",
 				null,
 			);
 			assert.strictEqual(
-				demoted[0].tokens,
+				archived[0].tokens,
 				originalTokens,
-				"tokens unchanged after demote",
+				"tokens unchanged after archive",
 			);
 
 			await store.get({ runId: RUN_ID, turn: 3, path: "known://test_entry" });
-			const promoted = await store.getEntriesByPattern(
+			const reindexed = await store.getEntriesByPattern(
 				RUN_ID,
 				"known://test_entry",
 				null,
 			);
 			assert.strictEqual(
-				promoted[0].tokens,
+				reindexed[0].tokens,
 				originalTokens,
-				"tokens unchanged after promote",
-			);
-		});
-	});
-
-	describe("symbol file visibility via VIEW", () => {
-		it("files at summary visibility appear in turn_context", async () => {
-			await store.set({
-				runId: RUN_ID,
-				turn: 1,
-				path: "src/demoted.js",
-				body: pad(100),
-				state: "resolved",
-				visibility: "summarized",
-				attributes: { symbols: "function foo()" },
-			});
-
-			await materialize(tdb.db, {
-				runId: RUN_ID,
-				turn: 1,
-				systemPrompt: "test system prompt",
-			});
-
-			const rows = await tdb.db.get_turn_context.all({
-				run_id: RUN_ID,
-				turn: 1,
-			});
-			const demoted = rows.find((r) => r.path === "src/demoted.js");
-			assert.ok(demoted, "demoted file should appear in turn_context");
-			assert.strictEqual(
-				demoted.visibility,
-				"summarized",
-				"demoted visibility should be preserved",
-			);
-		});
-
-		it("demoted files have demoted visibility with body passed through (engine symbol view)", async () => {
-			await store.set({
-				runId: RUN_ID,
-				turn: 3,
-				path: "src/active.js",
-				body: "function bar() {}",
-				state: "resolved",
-				visibility: "summarized",
-			});
-
-			await materialize(tdb.db, {
-				runId: RUN_ID,
-				turn: 4,
-				systemPrompt: "test system prompt",
-			});
-
-			const rows = await tdb.db.get_turn_context.all({
-				run_id: RUN_ID,
-				turn: 4,
-			});
-			const active = rows.find((r) => r.path === "src/active.js");
-			assert.ok(active, "demoted file should appear in turn_context");
-			assert.strictEqual(
-				active.visibility,
-				"summarized",
-				"demoted visibility preserved",
-			);
-			assert.ok(
-				active.body.includes("function bar()"),
-				"engine plugin's symbol view shows body at demoted visibility",
-			);
-		});
-
-		it("promoted view returns body", async () => {
-			await store.set({
-				runId: RUN_ID,
-				turn: 5,
-				path: "src/described.js",
-				body: "const x = 1;",
-				state: "resolved",
-				visibility: "visible",
-				attributes: { summary: "Utility module for X" },
-			});
-
-			const viewResult = await tdb.hooks.tools.view("file", {
-				path: "src/described.js",
-				scheme: null,
-				body: "const x = 1;",
-				visibility: "visible",
-				attributes: { summary: "Utility module for X" },
-				category: "data",
-			});
-			assert.ok(
-				viewResult.includes("const x = 1;"),
-				"promoted view should include body",
-			);
-		});
-
-		it("demoted view returns empty body (tag attribute carries summary)", async () => {
-			await store.set({
-				runId: RUN_ID,
-				turn: 6,
-				path: "src/noview.js",
-				body: "const y = 2;",
-				state: "resolved",
-				visibility: "summarized",
-				attributes: { summary: "Helper for Y calculations" },
-			});
-
-			const viewResult = await tdb.hooks.tools.view("file", {
-				path: "src/noview.js",
-				scheme: null,
-				body: "const y = 2;",
-				visibility: "summarized",
-				attributes: { summary: "Helper for Y calculations" },
-				category: "data",
-			});
-			assert.strictEqual(
-				viewResult,
-				"",
-				"file plugin returns empty at demoted visibility — renderer wraps with summary attr",
+				"tokens unchanged after re-index",
 			);
 		});
 	});

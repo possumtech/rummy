@@ -19,13 +19,13 @@ before(async () => {
 
 describe("ContextAssembler", () => {
 	describe("assembleFromTurnContext", () => {
-		it("renders system prompt; known + visible bodies in system", async () => {
+		it("renders system prompt; catalog entries in <index>; prompt in user", async () => {
 			const rows = [
 				{
 					ordinal: 1,
 					path: "known://auth",
 					scheme: "known",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "JWT",
 					tokens: 1,
 					attributes: null,
@@ -36,7 +36,7 @@ describe("ContextAssembler", () => {
 					ordinal: 2,
 					path: "src/app.js",
 					scheme: null,
-					visibility: "visible",
+					visibility: "indexed",
 					body: "const x = 1;",
 					tokens: 5,
 					attributes: null,
@@ -47,7 +47,7 @@ describe("ContextAssembler", () => {
 					ordinal: 3,
 					path: "prompt://1",
 					scheme: "prompt",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "What does this do?",
 					tokens: 3,
 					attributes: JSON.stringify({ mode: "ask" }),
@@ -74,16 +74,11 @@ describe("ContextAssembler", () => {
 			assert.strictEqual(messages[1].role, "user");
 			const system = messages[0].content;
 			const user = messages[1].content;
-			assert.ok(system.includes("<summary>"), "system has <summary>");
-			assert.ok(system.includes("<visible>"), "system has <visible>");
-			assert.ok(system.includes("known://auth"), "known summary in system");
-			assert.ok(system.includes("const x = 1;"), "file body in <visible>");
+			assert.ok(system.includes("<index>"), "system has <index>");
+			assert.ok(system.includes("known://auth"), "known tile in index");
+			assert.ok(system.includes("const x = 1;"), "file body tile in index");
 			assert.ok(user.includes("<prompt"), "user has <prompt>");
 			assert.ok(user.includes("What does this do?"));
-			assert.ok(
-				system.indexOf("<summary>") < system.indexOf("<visible>"),
-				"<summary> renders above <visible> in system",
-			);
 		});
 
 		it("user message sandwich: persona → prompt → budget → instructions", async () => {
@@ -92,7 +87,7 @@ describe("ContextAssembler", () => {
 					ordinal: 1,
 					path: "prompt://1",
 					scheme: "prompt",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "The question",
 					tokens: 3,
 					attributes: JSON.stringify({ mode: "ask" }),
@@ -133,7 +128,7 @@ describe("ContextAssembler", () => {
 					ordinal: 1,
 					path: "log://turn_1/get/old.js",
 					scheme: "log",
-					visibility: "visible",
+					visibility: "indexed",
 					state: "resolved",
 					body: "old result",
 					tokens: 5,
@@ -145,7 +140,7 @@ describe("ContextAssembler", () => {
 					ordinal: 2,
 					path: "prompt://3",
 					scheme: "prompt",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "New question",
 					tokens: 3,
 					attributes: JSON.stringify({ mode: "ask" }),
@@ -156,7 +151,7 @@ describe("ContextAssembler", () => {
 					ordinal: 3,
 					path: "log://turn_3/get/new.js",
 					scheme: "log",
-					visibility: "visible",
+					visibility: "indexed",
 					state: "resolved",
 					body: "new result",
 					tokens: 5,
@@ -184,7 +179,7 @@ describe("ContextAssembler", () => {
 					ordinal: 1,
 					path: "prompt://1",
 					scheme: "prompt",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "Fix it",
 					tokens: 2,
 					attributes: JSON.stringify({ mode: "act" }),
@@ -195,7 +190,7 @@ describe("ContextAssembler", () => {
 					ordinal: 2,
 					path: "log://turn_1/set/app.js",
 					scheme: "log",
-					visibility: "visible",
+					visibility: "indexed",
 					state: "resolved",
 					body: "",
 					tokens: 0,
@@ -207,7 +202,7 @@ describe("ContextAssembler", () => {
 					ordinal: 3,
 					path: "log://turn_1/update/done",
 					scheme: "log",
-					visibility: "visible",
+					visibility: "indexed",
 					state: "resolved",
 					body: "Fixed it",
 					tokens: 2,
@@ -287,7 +282,7 @@ describe("ContextAssembler", () => {
 					ordinal: 1,
 					path: "src/app.js",
 					scheme: null,
-					visibility: "visible",
+					visibility: "indexed",
 					body: "const x = 1;",
 					tokens: 5,
 					attributes: null,
@@ -298,7 +293,7 @@ describe("ContextAssembler", () => {
 					ordinal: 2,
 					path: "src/old.js",
 					scheme: null,
-					visibility: "visible",
+					visibility: "indexed",
 					body: "const y = 2;",
 					tokens: 5,
 					attributes: null,
@@ -309,7 +304,7 @@ describe("ContextAssembler", () => {
 					ordinal: 3,
 					path: "known://auth",
 					scheme: "known",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "JWT",
 					tokens: 1,
 					attributes: null,
@@ -325,9 +320,9 @@ describe("ContextAssembler", () => {
 			const system = messages[0].content;
 
 			assert.ok(system.includes("<<:::known://auth"), "known fence in system");
-			assert.ok(system.includes("const y = 2;"), "old file body in <visible>");
-			assert.ok(system.includes("JWT"), "known body in <visible>");
-			assert.ok(system.includes("const x = 1;"), "new file body in <visible>");
+			assert.ok(system.includes("const y = 2;"), "old file body in <index>");
+			assert.ok(system.includes("JWT"), "known body in <index>");
+			assert.ok(system.includes("const x = 1;"), "new file body in <index>");
 		});
 
 		it("renders unknowns in their own <unknowns> block in the system message", async () => {
@@ -336,7 +331,7 @@ describe("ContextAssembler", () => {
 					ordinal: 1,
 					path: "unknown://config",
 					scheme: "unknown",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "which database adapter",
 					tokens: 3,
 					attributes: null,
@@ -347,7 +342,7 @@ describe("ContextAssembler", () => {
 					ordinal: 2,
 					path: "prompt://1",
 					scheme: "prompt",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "Do it",
 					tokens: 2,
 					attributes: JSON.stringify({ mode: "act" }),
@@ -369,11 +364,6 @@ describe("ContextAssembler", () => {
 				"unknown fenced inside its own block",
 			);
 			assert.ok(system.includes("which database adapter"));
-			assert.ok(
-				!system.includes("<summary>") ||
-					system.indexOf("<unknowns>") > system.indexOf("<summary>"),
-				"unknowns block does not nest inside <summary>",
-			);
 			assert.ok(!user.includes("<unknowns>"), "no <unknowns> in user");
 			assert.ok(!user.includes("<<:::unknown://"), "no unknowns in user");
 		});
@@ -384,7 +374,7 @@ describe("ContextAssembler", () => {
 					ordinal: 1,
 					path: "prompt://1",
 					scheme: "prompt",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "Build it",
 					tokens: 2,
 					attributes: JSON.stringify({ mode: "act" }),
@@ -409,16 +399,15 @@ describe("ContextAssembler", () => {
 			);
 		});
 
-		it("summary projection renders as the tag body inside <summary>", async () => {
+		it("catalog projection renders as the tag body inside <index>", async () => {
 			const rows = [
 				{
 					ordinal: 1,
 					path: "src/agent/AgentLoop.js",
 					scheme: null,
-					visibility: "summarized",
+					visibility: "indexed",
 					body: "class AgentLoop { #foo; async start(); }",
-					sBody: "class AgentLoop { #foo; async start(); }",
-					vBody: "class AgentLoop { #foo; async start() { /* full body */ } }",
+					vBody: "\tclass AgentLoop { #foo; async start(); }",
 					tokens: 12,
 					attributes: null,
 					category: "data",
@@ -428,7 +417,7 @@ describe("ContextAssembler", () => {
 					ordinal: 2,
 					path: "prompt://1",
 					scheme: "prompt",
-					visibility: "visible",
+					visibility: "indexed",
 					body: "Refactor",
 					tokens: 1,
 					attributes: JSON.stringify({ mode: "ask" }),
@@ -442,59 +431,16 @@ describe("ContextAssembler", () => {
 				hooks,
 			);
 			const system = messages[0].content;
-			const summarizedBlock = system.match(
-				/<summary>([\s\S]*?)<\/summary>/,
-			)?.[1];
-			assert.ok(summarizedBlock, "<summary> block exists in system");
+			const indexBlock = system.match(/<index>([\s\S]*?)<\/index>/)?.[1];
+			assert.ok(indexBlock, "<index> block exists in system");
 			assert.ok(
-				summarizedBlock.includes("class AgentLoop"),
-				"summary projection renders inside heredoc — symbols visible to model",
+				indexBlock.includes("class AgentLoop"),
+				"catalog projection renders inside heredoc",
 			);
 			assert.ok(
-				summarizedBlock.includes("<<:::src/agent/AgentLoop.js"),
+				indexBlock.includes("<<:::src/agent/AgentLoop.js"),
 				"entry uses heredoc fence with path-as-marker",
 			);
-		});
-
-		it("visible block renders the full visible projection, summarized block renders the summarized projection", async () => {
-			const rows = [
-				{
-					ordinal: 1,
-					path: "known://fact",
-					scheme: "known",
-					visibility: "visible",
-					body: "FULL BODY HERE",
-					sBody: "short summary",
-					vBody: "FULL BODY HERE",
-					attributes: null,
-					category: "data",
-					source_turn: 2,
-				},
-				{
-					ordinal: 2,
-					path: "prompt://1",
-					scheme: "prompt",
-					visibility: "visible",
-					body: "ask",
-					attributes: JSON.stringify({ mode: "ask" }),
-					category: "prompt",
-					source_turn: 2,
-				},
-			];
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				rows,
-				{ systemPrompt: "sys" },
-				hooks,
-			);
-			const system = messages[0].content;
-			const summarizedBlock = system.match(
-				/<summary>([\s\S]*?)<\/summary>/,
-			)?.[1];
-			const visibleBlock = system.match(/<visible>([\s\S]*?)<\/visible>/)?.[1];
-			assert.ok(summarizedBlock.includes("short summary"));
-			assert.ok(!summarizedBlock.includes("FULL BODY HERE"));
-			assert.ok(visibleBlock.includes("FULL BODY HERE"));
-			assert.ok(!visibleBlock.includes("short summary"));
 		});
 	});
 });
