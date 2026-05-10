@@ -163,6 +163,7 @@ export default class RummyContext {
 		outcome = null,
 		visibility,
 		attributes,
+		writer,
 	} = {}) {
 		if (!path) {
 			path = await this.entries.slugPath(
@@ -182,6 +183,7 @@ export default class RummyContext {
 			visibility,
 			attributes,
 			loopId: this.loopId,
+			...(writer !== undefined && { writer }),
 		});
 		return path;
 	}

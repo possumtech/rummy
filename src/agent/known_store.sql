@@ -115,7 +115,7 @@ WHERE run_id = :run_id AND entry_id IN (
 -- PREP: promote_path
 UPDATE run_views
 SET
-	visibility = 'visible'
+	visibility = 'indexed'
 	, state = 'resolved'
 	, outcome = NULL
 	, turn = :turn

@@ -17,6 +17,7 @@ import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
+let LOOP_ID;
 const TURN = 1;
 const MARKER = "VISIBILITY_TEST_CONTENT";
 
@@ -28,6 +29,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {
@@ -109,16 +111,16 @@ describe("Tool visibility: v_model_context content projection", () => {
 		);
 	});
 
-	it("log://turn_N/<action>/ entries (the production path) project content", async () => {
+	it("log://<L>/<T>/<S>/<action> entries (the production path) project content", async () => {
 		// After the unified-log-namespace migration, tool results don't
 		// live at `<action>://<slug>` — they live at
-		// `log://turn_N/<action>/<slug>`. Production code never writes to
+		// `log://<L>/<T>/<S>/<action>`. Production code never writes to
 		// the scheme-native paths the first test uses; that test exercises
 		// a hypothetical. This one exercises the real path every tool
 		// produces.
 		const actions = ["set", "get", "rm", "sh", "env", "search", "ask_user"];
 		for (const action of actions) {
-			const path = await store.logPath(RUN_ID, TURN, action, `probe_${action}`);
+			const path = await store.logPath(RUN_ID, LOOP_ID, TURN, action);
 			await store.set({
 				runId: RUN_ID,
 				turn: TURN,
@@ -150,15 +152,16 @@ describe("Tool visibility: v_model_context content projection", () => {
 		});
 
 		const failures = [];
+		const tailRe = (action) =>
+			new RegExp(`^log://\\d+/${TURN}/\\d+/${action}$`);
 		for (const action of actions) {
+			const re = tailRe(action);
 			const row = rows.find(
-				(r) =>
-					r.path.startsWith(`log://turn_${TURN}/${action}/`) &&
-					r.body?.includes(`${MARKER}_${action}`),
+				(r) => re.test(r.path) && r.body?.includes(`${MARKER}_${action}`),
 			);
 			if (!row) {
 				failures.push(
-					`${action}: no log://turn_${TURN}/${action}/ row with MARKER`,
+					`${action}: no log://*/${TURN}/*/${action} row with MARKER`,
 				);
 			}
 		}
