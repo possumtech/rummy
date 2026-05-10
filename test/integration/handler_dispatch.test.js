@@ -119,14 +119,12 @@ describe("Handler dispatch", () => {
 			});
 			assert.strictEqual(state.visibility, "indexed", "target re-indexed");
 
+			// <get> is the fat-fetch verb: log body = retrieved content (S6).
 			const log = await store.getBody(RUN_ID, entry.resultPath);
-			assert.equal(
-				log,
-				"",
-				"get:// log written with empty body (path in JSON envelope)",
-			);
+			assert.equal(log, "const x = 1;", "log body = retrieved content");
 			const attrs = await store.getAttributes(RUN_ID, entry.resultPath);
 			assert.equal(attrs.path, "src/target.js");
+			assert.ok(attrs.afterActionTokens > 0, "tokens reflect retrieval cost");
 		});
 
 		it("writes log on not-found so the attempt is recorded", async () => {

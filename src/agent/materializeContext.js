@@ -40,11 +40,21 @@ export default async function materializeContext({
 			row.visibility === "archived"
 				? ""
 				: await hooks.tools.view(projectionKey, baseEntry);
-		const tokens = countTokens(projection);
-		const lines = countLines(projection);
+		// Two distinct token counts:
+		//   tileTokens = what the projected tile body costs in budget now.
+		//   bodyTokens = what the entry's full body costs (what <get> brings).
+		// The index tile's JSON meta surfaces bodyTokens so the model knows
+		// the cost of fetching. The <turn> budget breakdown sums tileTokens
+		// because that's what's actually consuming context this turn.
+		const tileTokens = countTokens(projection);
+		const tileLines = countLines(projection);
+		const bodyTokens = countTokens(row.body);
+		const bodyLines = countLines(row.body);
 		tokenAccounting.set(row.path, {
-			tokens,
-			lines,
+			tileTokens,
+			tileLines,
+			bodyTokens,
+			bodyLines,
 			body: projection,
 		});
 		await db.insert_turn_context.run({
@@ -66,10 +76,14 @@ export default async function materializeContext({
 	for (const row of rows) {
 		const t = tokenAccounting.get(row.path);
 		if (!t) continue;
-		row.vTokens = t.tokens;
-		row.aTokens = t.tokens;
-		row.vLines = t.lines;
+		// vTokens/aTokens = tile cost (what budget sees in packet).
+		// bodyTokens/bodyLines = full entry body cost (what <get> brings).
+		row.vTokens = t.tileTokens;
+		row.aTokens = t.tileTokens;
+		row.vLines = t.tileLines;
 		row.vBody = t.body;
+		row.bodyTokens = t.bodyTokens;
+		row.bodyLines = t.bodyLines;
 	}
 	const lastCtx = await db.get_last_context_tokens.get({ run_id: runId });
 	let lastContextTokens = 0;

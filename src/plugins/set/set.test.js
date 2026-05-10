@@ -234,6 +234,7 @@ describe("Set plugin", () => {
 			assert.ok(log);
 			assert.equal(log.attributes.beforeActionTokens, 0);
 			assert.ok(log.attributes.afterActionTokens > 0);
+			assert.ok(log.attributes.patch, "udiff stored for client-side diff");
 		});
 
 		it("file write (no scheme on path) issues a `proposed` log entry with patched body", async () => {
@@ -255,6 +256,7 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/foo.js");
 			assert.equal(log.attributes.patched, "new content");
+			assert.ok(log.attributes.patch, "udiff stored for client-side diff");
 		});
 	});
 
@@ -385,6 +387,7 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/app.js");
 			assert.equal(log.attributes.patched, "new line");
+			assert.ok(log.attributes.patch, "udiff stored for client-side diff");
 		});
 
 		it("does not write a set:// canonical entry (no detour)", async () => {

@@ -168,21 +168,25 @@ export default class Get {
 				attributes: { path: target, error: `${target} not found` },
 			});
 		} else {
-			const promotedTokens = matches.reduce(
-				(n, m) => n + countTokens(m.body),
-				0,
-			);
+			// <get> is the fat-fetch verb: log body = retrieved content
+			// (S6). Single match → body is the entry's body. Multi-match
+			// (rare in non-pattern path) → concatenated with path headers.
+			const body =
+				matches.length === 1
+					? matches[0].body
+					: matches.map((m) => `${m.path}\n${m.body}`).join("\n\n");
+			const retrievedTokens = countTokens(body);
 			await store.set({
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: "",
+				body,
 				state: "resolved",
 				loopId,
 				attributes: {
 					path: target,
 					beforeActionTokens: 0,
-					afterActionTokens: promotedTokens,
+					afterActionTokens: retrievedTokens,
 				},
 			});
 		}

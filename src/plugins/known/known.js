@@ -95,7 +95,12 @@ function renderContextTag(entry, projectedBody) {
 	if (typeof attrs?.tags === "string") {
 		meta.tags = attrs.tags.slice(0, 80);
 	}
-	if (entry.aTokens != null) meta.tokens = entry.aTokens;
-	if (entry.vLines != null) meta.lines = entry.vLines;
+	// Meta `tokens`/`lines` = full body size (what <get> would cost).
+	// The tile's projected body might be smaller (symbols only, partial,
+	// or empty). Budget accounting uses aTokens directly via <turn>.
+	if (entry.bodyTokens != null) meta.tokens = entry.bodyTokens;
+	else if (entry.aTokens != null) meta.tokens = entry.aTokens;
+	if (entry.bodyLines != null) meta.lines = entry.bodyLines;
+	else if (entry.vLines != null) meta.lines = entry.vLines;
 	return renderEntry(entry.path, meta, projectedBody);
 }

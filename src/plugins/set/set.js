@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import Hedberg from "../../lib/hedberg/hedberg.js";
+import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
 import File from "../file/file.js";
 import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
@@ -284,8 +284,11 @@ export default class Set {
 			const scheme = Entries.scheme(target);
 			if (scheme === null) {
 				// File write: proposed entry; #materializeFile writes to disk on accept.
+				// Log body = model's verbatim emission (S6); attrs.patch =
+				// udiff (client-side wire, e.g., rummy.nvim renders the diff).
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
+				const udiff = generatePatch(target, oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 				await store.set({
@@ -296,6 +299,7 @@ export default class Set {
 					state: "proposed",
 					attributes: {
 						path: target,
+						patch: udiff,
 						patched: newContent,
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
@@ -327,8 +331,12 @@ export default class Set {
 					{ loopId },
 				);
 			} else {
+				// Scheme write (known://, unknown://, etc.): the underlying
+				// entry resolves directly. Log body = verbatim emission;
+				// attrs.patch = udiff for client-side diff rendering.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
+				const udiff = generatePatch(target, oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 
@@ -351,6 +359,7 @@ export default class Set {
 					loopId,
 					attributes: {
 						path: target,
+						patch: udiff,
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,
