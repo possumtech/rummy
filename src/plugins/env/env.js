@@ -57,7 +57,7 @@ export default class Env {
 			runId,
 			turn,
 			path: entry.resultPath,
-			body: entry.attributes.source,
+			body: "",
 			state: "proposed",
 			attributes: { ...entry.attributes, tags: entry.attributes.command },
 			loopId,

@@ -45,11 +45,7 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 			"soft error message names the contract",
 		);
 		const stored = await tdb.db.get_entry_body.get({ run_id: runId, path });
-		assert.equal(
-			stored.body,
-			`<update status="200">${"x".repeat(80)}</update>`,
-			"inner text capped at 80, wrapper synthesized around it",
-		);
+		assert.equal(stored.body, "x".repeat(80), "inner text capped at 80");
 	});
 
 	it("body <= 80 chars passes through untouched, no soft error", async () => {
@@ -69,6 +65,6 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 		});
 		assert.equal(softErrors.length, 0, "onSoftError did not fire");
 		const stored = await tdb.db.get_entry_body.get({ run_id: runId, path });
-		assert.equal(stored.body, `<update status="200">${fine}</update>`);
+		assert.equal(stored.body, fine);
 	});
 });

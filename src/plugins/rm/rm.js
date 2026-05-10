@@ -88,7 +88,7 @@ export default class Rm {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: entry.attributes.source,
+				body: "",
 				state: "failed",
 				outcome: "not_found",
 				attributes: { path: target, error: `${target} not found` },
@@ -111,7 +111,7 @@ export default class Rm {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: entry.attributes.source,
+				body: "",
 				state: "resolved",
 				attributes: {
 					path: target,
@@ -134,7 +134,7 @@ export default class Rm {
 				runId,
 				turn,
 				path: resultPath,
-				body: entry.attributes.source,
+				body: "",
 				state: "proposed",
 				attributes: {
 					path: match.path,

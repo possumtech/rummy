@@ -124,7 +124,13 @@ describe("Handler dispatch", () => {
 			);
 
 			const log = await store.getBody(RUN_ID, entry.resultPath);
-			assert.equal(log, '<get path="src/target.js"/>', "get:// log written");
+			assert.equal(
+				log,
+				"",
+				"get:// log written with empty body (path in JSON envelope)",
+			);
+			const attrs = await store.getAttributes(RUN_ID, entry.resultPath);
+			assert.equal(attrs.path, "src/target.js");
 		});
 
 		it("writes log on not-found so the attempt is recorded", async () => {
@@ -144,11 +150,7 @@ describe("Handler dispatch", () => {
 			await hooks.tools.dispatch("get", entry, rummy);
 
 			const log = await store.getBody(RUN_ID, entry.resultPath);
-			assert.equal(
-				log,
-				'<get path="src/missing.js"/>',
-				"not-found log written",
-			);
+			assert.equal(log, "", "not-found log: empty body, path in JSON envelope");
 			const state = await store.getState(RUN_ID, entry.resultPath);
 			assert.equal(state.outcome, "not_found", "outcome marks the miss");
 			const attrs = await store.getAttributes(RUN_ID, entry.resultPath);
@@ -173,8 +175,8 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/edit_me.js",
-					source:
-						'<set path="src/edit_me.js"><<SEARCH\nconst port = 3000;\nSEARCH<<REPLACE\nconst port = 8080;\nREPLACE</set>',
+					inner:
+						"<<SEARCH\nconst port = 3000;\nSEARCH<<REPLACE\nconst port = 8080;\nREPLACE",
 					operations: [
 						{
 							op: "search_replace",
@@ -220,7 +222,7 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/fuzzy.js",
-					source: '<set path="src/fuzzy.js"/>',
+					inner: "",
 					operations: [
 						{
 							op: "search_replace",
@@ -362,7 +364,7 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
-					source: '<set path="src/math.txt"/>',
+					inner: "",
 					operations: [
 						{
 							op: "search_replace",
@@ -382,7 +384,7 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
-					source: '<set path="src/math.txt"/>',
+					inner: "",
 					operations: [
 						{
 							op: "search_replace",
@@ -434,7 +436,7 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "known://config",
-					source: '<set path="known://config"/>',
+					inner: "",
 					operations: [
 						{ op: "search_replace", search: "3000", replace: "8080" },
 					],
@@ -673,10 +675,14 @@ describe("Handler dispatch", () => {
 				1,
 				"one aggregate result entry",
 			);
-			const rmEntry = rmEntries.find(
-				(e) => e.body === '<rm path="known://bulk_*"/>',
-			);
-			assert.ok(rmEntry, "aggregate entry holds verbatim emission body");
+			const rmEntry = rmEntries.find((e) => {
+				const a =
+					typeof e.attributes === "string"
+						? JSON.parse(e.attributes)
+						: e.attributes;
+				return a?.path === "known://bulk_*";
+			});
+			assert.ok(rmEntry, "aggregate rm entry exists with target attr");
 			assert.strictEqual(rmEntry.state, "resolved");
 			const rmAttrs =
 				typeof rmEntry.attributes === "string"
@@ -833,11 +839,11 @@ describe("Handler dispatch", () => {
 				(e) =>
 					e.scheme === "log" &&
 					/^log:\/\/turn_12\/update\//.test(e.path) &&
-					e.body === '<update status="144">working through unknowns</update>',
+					e.body === "working through unknowns",
 			);
 			assert.ok(
 				updateLog,
-				"update emission lands at log://turn_N/update/<slug> with synthesized body",
+				"update emission lands at log://turn_N/update/<slug> with inner text",
 			);
 		});
 	});

@@ -290,7 +290,7 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: attrs.source,
+					body: attrs.inner,
 					state: "proposed",
 					attributes: {
 						path: target,
@@ -346,7 +346,7 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: attrs.source,
+					body: attrs.inner,
 					state: "resolved",
 					loopId,
 					attributes: {

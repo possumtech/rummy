@@ -1,6 +1,6 @@
 {
 	"name": "@possumtech/rummy",
-	"version": "2.2.1",
+	"version": "2.3.1",
 	"description": "Relational Unknowns Memory Management Yoke",
 	"keywords": [
 		"llm"
@@ -28,6 +28,14 @@
 	},
 	"type": "module",
 	"main": "service.js",
+	"files": [
+		"service.js",
+		"bin/",
+		"src/",
+		"migrations/",
+		"lang/",
+		"!**/*.test.js"
+	],
 	"scripts": {
 		"postinstall": "node ./bin/postinstall.js",
 		"start": "node --env-file-if-exists=.env.example --env-file-if-exists=.env service.js",

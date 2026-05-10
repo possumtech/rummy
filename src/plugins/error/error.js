@@ -86,7 +86,7 @@ export default class ErrorPlugin {
 			runId,
 			turn,
 			path,
-			body: `<error>${message}</error>`,
+			body: message,
 			state: soft ? "resolved" : "failed",
 			outcome: soft ? null : `status:${statusValue}`,
 			loopId,

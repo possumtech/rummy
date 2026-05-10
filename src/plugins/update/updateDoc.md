@@ -1,4 +1,4 @@
-## <update status="N">{ direct answer or one-line summary }</update> - Turn termination
+## <update status="N">{ direct one-line answer or one-line summary }</update> - Turn termination
 
 YOU MUST conclude every turn with one (and only one) <update status="N"></update>.
 YOU MUST keep the update body to <= 80 characters.

@@ -74,7 +74,7 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
-		const slice = result.attributes.slice;
+		const slice = result.body;
 		assert.ok(
 			slice.startsWith("src/agent/AgentLoop.js\n[lines 10–14 / 100 total]"),
 			`unexpected slice header: ${slice.slice(0, 60)}`,
@@ -113,7 +113,7 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const slice = store.upserted[0].attributes.slice;
+		const slice = store.upserted[0].body;
 		assert.ok(
 			slice.startsWith("src/agent/AgentLoop.js\n[lines 1–3 / 5 total]"),
 		);
@@ -137,7 +137,7 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const slice = store.upserted[0].attributes.slice;
+		const slice = store.upserted[0].body;
 		assert.ok(
 			slice.startsWith("sh://turn_3/npm_test_1\n[lines 91–100 / 100 total]"),
 			`unexpected slice header: ${slice.slice(0, 60)}`,
@@ -164,7 +164,7 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const slice = store.upserted[0].attributes.slice;
+		const slice = store.upserted[0].body;
 		assert.ok(
 			slice.startsWith("sh://turn_3/npm_test_1\n[lines 81–85 / 100 total]"),
 			`unexpected slice header: ${slice.slice(0, 60)}`,
@@ -183,7 +183,7 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const slice = store.upserted[0].attributes.slice;
+		const slice = store.upserted[0].body;
 		assert.ok(slice.startsWith("x\n[lines 1–3 / 3 total]"));
 		assert.ok(slice.includes("a\nb\nc"));
 	});
@@ -198,7 +198,7 @@ describe("Get partial read (line/limit)", () => {
 
 		await plugin.handler(entry, rummy);
 
-		const slice = store.upserted[0].attributes.slice;
+		const slice = store.upserted[0].body;
 		assert.ok(
 			slice.startsWith("src/agent/AgentLoop.js\n[lines 2–3 / 3 total]"),
 		);
@@ -228,8 +228,8 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
-		assert.ok(result.attributes.slice.includes("[lines 1–5 / 50 total]"));
-		assert.ok(result.attributes.slice.includes("line 1"));
+		assert.ok(result.body.includes("[lines 1–5 / 50 total]"));
+		assert.ok(result.body.includes("line 1"));
 	});
 
 	// Multi-match line/limit: emit one sliced section per match. Per
@@ -251,7 +251,7 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
-		const slice = result.attributes.slice;
+		const slice = result.body;
 		assert.ok(slice.includes("src/a.js"));
 		assert.ok(slice.includes("src/b.js"));
 		assert.ok(slice.includes("a1\na2\na3"));

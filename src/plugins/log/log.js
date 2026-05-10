@@ -94,11 +94,17 @@ function renderLogTag(entry, rowsByPath) {
 
 	const meta = { action };
 	if (attrs?.path) meta.target = attrs.path;
-	// Suppress status on prompts; uniform 200 carries no signal.
 	if (statusValue != null && action !== "prompt") meta.status = statusValue;
 	if (entry.outcome) meta.outcome = entry.outcome;
 	if (typeof attrs?.query === "string") meta.query = attrs.query;
 	if (typeof attrs?.command === "string") meta.command = attrs.command;
+	if (typeof attrs?.from === "string") meta.from = attrs.from;
+	if (typeof attrs?.to === "string") meta.to = attrs.to;
+	if (typeof attrs?.question === "string") meta.question = attrs.question;
+	if (typeof attrs?.answer === "string") meta.answer = attrs.answer;
+	if (attrs?.line != null) meta.line = attrs.line;
+	if (attrs?.limit != null) meta.limit = attrs.limit;
+	if (attrs?.manifest !== undefined) meta.manifest = true;
 	if (attrs?.channel === 1) meta.channel = "stdout";
 	else if (attrs?.channel === 2) meta.channel = "stderr";
 	if (typeof attrs?.tags === "string") meta.tags = attrs.tags.slice(0, 80);

@@ -58,7 +58,7 @@ export default class AskUser {
 			runId,
 			turn,
 			path: entry.resultPath,
-			body: entry.attributes.source,
+			body: "",
 			state: "proposed",
 			attributes: { question, options },
 			loopId,
@@ -66,12 +66,7 @@ export default class AskUser {
 	}
 
 	full(entry) {
-		// Append `<answer>` once resolved so the model sees the full Q&A.
-		const { answer } = entry.attributes;
-		const body = answer
-			? `${entry.body}\n<answer>${answer}</answer>`
-			: entry.body;
-		return projectEmission(body);
+		return projectEmission(entry.body);
 	}
 
 	summary(entry) {

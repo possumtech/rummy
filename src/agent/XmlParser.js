@@ -171,7 +171,11 @@ export default class XmlParser {
 
 			if (selfClose) {
 				const source = s.slice(openerStart, openerEnd);
-				commands.push({ ...resolveCommand(name, attrs, ""), source });
+				commands.push({
+					...resolveCommand(name, attrs, ""),
+					source,
+					inner: "",
+				});
 				i = openerEnd;
 				continue;
 			}
@@ -188,7 +192,12 @@ export default class XmlParser {
 				}
 			}
 			const source = s.slice(openerStart, result.afterClose);
-			commands.push({ ...resolveCommand(name, attrs, body), source });
+			const inner = body.replace(/^\n+/, "").replace(/\n+$/, "");
+			commands.push({
+				...resolveCommand(name, attrs, body),
+				source,
+				inner,
+			});
 			i = result.afterClose;
 			inSingleBacktick = false;
 			inTripleFence = false;

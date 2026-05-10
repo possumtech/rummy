@@ -532,7 +532,7 @@ export default class Entries {
 			runId,
 			turn,
 			path,
-			body: `<update status="${status}">${storedBody}</update>`,
+			body: storedBody,
 			state: "resolved",
 			loopId,
 			writer,

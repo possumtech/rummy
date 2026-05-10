@@ -69,7 +69,7 @@ export default class Cp {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: entry.attributes.source,
+				body: "",
 				state: "proposed",
 				attributes: {
 					from: path,
@@ -99,7 +99,7 @@ export default class Cp {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: entry.attributes.source,
+				body: "",
 				state: "resolved",
 				attributes: {
 					from: path,

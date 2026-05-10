@@ -98,11 +98,16 @@ export default class Get {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: entry.attributes.source,
+					body: "",
 					state: "resolved",
 					outcome: "not_found",
 					loopId,
-					attributes: { path: target, error: `${target} not found` },
+					attributes: {
+						path: target,
+						line,
+						limit,
+						error: `${target} not found`,
+					},
 				});
 				return;
 			}
@@ -110,7 +115,8 @@ export default class Get {
 			const sliceBody = sections.map((s) => s.text).join("\n\n");
 			const attributes = {
 				path: target,
-				slice: sliceBody,
+				line,
+				limit,
 				beforeActionTokens: 0,
 				afterActionTokens: countTokens(sliceBody),
 			};
@@ -126,7 +132,7 @@ export default class Get {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: entry.attributes.source,
+				body: sliceBody,
 				state: "resolved",
 				loopId,
 				attributes,
@@ -174,7 +180,7 @@ export default class Get {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: entry.attributes.source,
+				body: "",
 				state: "resolved",
 				outcome: "not_found",
 				loopId,
@@ -189,7 +195,7 @@ export default class Get {
 				runId,
 				turn,
 				path: entry.resultPath,
-				body: entry.attributes.source,
+				body: "",
 				state: "resolved",
 				loopId,
 				attributes: {
@@ -202,10 +208,6 @@ export default class Get {
 	}
 
 	full(entry) {
-		// Slice gets project emission + slice; promotion gets just emission.
-		if (typeof entry.attributes.slice === "string") {
-			return projectEmission(`${entry.body}\n\n${entry.attributes.slice}`);
-		}
 		return projectEmission(entry.body);
 	}
 

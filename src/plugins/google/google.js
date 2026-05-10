@@ -10,6 +10,21 @@ const PROVIDER = "google";
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const COMPAT_URL = `${BASE_URL}/openai`;
 
+// Documented input-token limits, prefix-matched. The native introspection
+// endpoint (/v1beta/models/{model}) requires a key permission separate from
+// generateContent — keys provisioned for chat-only return 403 here, crashing
+// any run that depends on the lookup. Trust the docs first; hit the API only
+// for unknown models.
+const KNOWN_CONTEXT = [
+	["gemini-3.1-flash-lite", 1_048_576],
+	["gemini-3.1-flash", 1_048_576],
+	["gemini-3.1-pro", 1_048_576],
+	["gemini-3.0", 1_048_576],
+	["gemini-2.5", 1_048_576],
+	["gemini-2.0", 1_048_576],
+	["gemini-1.5", 1_048_576],
+];
+
 // Repo-root-relative key file. Resolved relative to this source file so
 // CWD changes during runs (programbench/tbench cd into workspaces) don't
 // break the lookup. Plugin is inert if the file is missing. Tests may
@@ -94,9 +109,14 @@ export default class Google {
 	async #getContextSize(model) {
 		if (this.#contextCache.has(model)) return this.#contextCache.get(model);
 
-		// Native /v1beta/models/{model} requires API key as `?key=` query
-		// parameter — Bearer auth (which works on the OpenAI-compat layer)
-		// returns 401 here. Different auth surface, same key.
+		const known = KNOWN_CONTEXT.find(([prefix]) => model.startsWith(prefix));
+		if (known) {
+			this.#contextCache.set(model, known[1]);
+			return known[1];
+		}
+
+		// /v1beta/models/{model} requires `?key=` (Bearer 401s here) AND a
+		// key scope that includes models.get — chat-only keys return 403.
 		const url = `${BASE_URL}/models/${model}?key=${encodeURIComponent(this.#apiKey)}`;
 		const res = await fetch(url, {
 			signal: AbortSignal.timeout(FETCH_TIMEOUT),
