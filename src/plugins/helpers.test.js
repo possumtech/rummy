@@ -43,25 +43,12 @@ describe("logPathToDataBase", () => {
 	it("returns null for non-log paths", () => {
 		assert.equal(logPathToDataBase("known://x"), null);
 		assert.equal(logPathToDataBase("src/app.js"), null);
-		assert.equal(logPathToDataBase("log://no-turn"), null);
+		assert.equal(logPathToDataBase("log://malformed"), null);
 	});
 
-	it("transforms log://turn_N/{action}/{rest} → {action}://turn_N/{rest}", () => {
-		assert.equal(
-			logPathToDataBase("log://turn_3/sh/echo_hello"),
-			"sh://turn_3/echo_hello",
-		);
-		assert.equal(
-			logPathToDataBase("log://turn_42/env/ls_-la"),
-			"env://turn_42/ls_-la",
-		);
-	});
-
-	it("preserves the rest including extra slashes", () => {
-		assert.equal(
-			logPathToDataBase("log://turn_1/get/known%3A//foo"),
-			"get://turn_1/known%3A//foo",
-		);
+	it("transforms log://<L>/<T>/<S>/<action> → <action>://<L>/<T>/<S>", () => {
+		assert.equal(logPathToDataBase("log://1/3/2/sh"), "sh://1/3/2");
+		assert.equal(logPathToDataBase("log://2/42/1/env"), "env://2/42/1");
 	});
 });
 
@@ -137,8 +124,8 @@ describe("storePatternResult", () => {
 	it("writes a log entry with manifest header (when manifest=true)", async () => {
 		const writes = [];
 		const store = {
-			async logPath(_runId, turn, scheme, path) {
-				return `log://turn_${turn}/${scheme}/${path}`;
+			async logPath(_runId, _loopId, turn, action) {
+				return `log://1/${turn}/1/${action}`;
 			},
 			async set(args) {
 				writes.push(args);
@@ -160,7 +147,7 @@ describe("storePatternResult", () => {
 
 		assert.equal(writes.length, 1);
 		const w = writes[0];
-		assert.equal(w.path, "log://turn_3/get/src/**/*.js");
+		assert.equal(w.path, "log://1/3/1/get");
 		assert.match(
 			w.body,
 			/^MANIFEST get path="src\/\*\*\/\*\.js": 2 matched \(300 tokens\)/,
@@ -173,8 +160,8 @@ describe("storePatternResult", () => {
 	it("includes body filter in body text when bodyFilter provided", async () => {
 		const writes = [];
 		const store = {
-			async logPath(_runId, turn, scheme, path) {
-				return `log://turn_${turn}/${scheme}/${path}`;
+			async logPath(_runId, _loopId, turn, action) {
+				return `log://1/${turn}/1/${action}`;
 			},
 			async set(args) {
 				writes.push(args);

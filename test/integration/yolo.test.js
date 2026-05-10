@@ -43,9 +43,8 @@ async function waitForChannelsTerminal(entries, runId, dataBase) {
 	]);
 }
 
-async function seedSetProposal(entries, runId, turn, relPath, content) {
-	const slug = encodeURIComponent(relPath);
-	const proposalPath = `log://turn_${turn}/set/${slug}`;
+async function seedSetProposal(entries, runId, loopId, turn, relPath, content) {
+	const proposalPath = await entries.logPath(runId, loopId, turn, "set");
 	await entries.set({
 		runId,
 		turn,
@@ -60,9 +59,8 @@ async function seedSetProposal(entries, runId, turn, relPath, content) {
 	return proposalPath;
 }
 
-async function seedShProposal(entries, runId, turn, command) {
-	const slug = encodeURIComponent(command);
-	const proposalPath = `log://turn_${turn}/sh/${slug}`;
+async function seedShProposal(entries, runId, loopId, turn, command) {
+	const proposalPath = await entries.logPath(runId, loopId, turn, "sh");
 	await entries.set({
 		runId,
 		turn,
@@ -88,7 +86,7 @@ describe("yolo mode (@yolo_mode)", () => {
 	it("set proposal auto-accepts and materializes the file on yolo run", async () => {
 		const projectRoot = join(tmpdir(), `yolo_set_${Date.now()}`);
 		await fs.mkdir(projectRoot, { recursive: true });
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, projectId, loopId } = await tdb.seedRun({
 			alias: "yolo_set",
 			projectRoot,
 		});
@@ -98,6 +96,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		const proposalPath = await seedSetProposal(
 			rummy.entries,
 			runId,
+			loopId,
 			1,
 			"out.md",
 			content,
@@ -134,7 +133,7 @@ describe("yolo mode (@yolo_mode)", () => {
 	it("non-yolo run leaves proposal alone (regression guard)", async () => {
 		const projectRoot = join(tmpdir(), `yolo_nonyolo_${Date.now()}`);
 		await fs.mkdir(projectRoot, { recursive: true });
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, projectId, loopId } = await tdb.seedRun({
 			alias: "yolo_nonyolo",
 			projectRoot,
 		});
@@ -143,6 +142,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		const proposalPath = await seedSetProposal(
 			rummy.entries,
 			runId,
+			loopId,
 			1,
 			"untouched.md",
 			"should not land",
@@ -168,7 +168,7 @@ describe("yolo mode (@yolo_mode)", () => {
 	it("sh proposal spawns command server-side and streams output", async () => {
 		const projectRoot = join(tmpdir(), `yolo_sh_${Date.now()}`);
 		await fs.mkdir(projectRoot, { recursive: true });
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, projectId, loopId } = await tdb.seedRun({
 			alias: "yolo_sh",
 			projectRoot,
 		});
@@ -177,6 +177,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		const proposalPath = await seedShProposal(
 			rummy.entries,
 			runId,
+			loopId,
 			1,
 			'echo "hello yolo"',
 		);
@@ -220,7 +221,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		// post-mortem packet (rummy.db / turns/ / last_run.txt).
 		const projectRoot = join(tmpdir(), `yolo_sh_abort_${Date.now()}`);
 		await fs.mkdir(projectRoot, { recursive: true });
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, projectId, loopId } = await tdb.seedRun({
 			alias: "yolo_sh_abort",
 			projectRoot,
 		});
@@ -238,6 +239,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		const proposalPath = await seedShProposal(
 			rummy.entries,
 			runId,
+			loopId,
 			1,
 			"sleep 30",
 		);
@@ -274,7 +276,7 @@ describe("yolo mode (@yolo_mode)", () => {
 	it("sh nonzero exit transitions channels to failed", async () => {
 		const projectRoot = join(tmpdir(), `yolo_sh_fail_${Date.now()}`);
 		await fs.mkdir(projectRoot, { recursive: true });
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, projectId, loopId } = await tdb.seedRun({
 			alias: "yolo_sh_fail",
 			projectRoot,
 		});
@@ -283,6 +285,7 @@ describe("yolo mode (@yolo_mode)", () => {
 		const proposalPath = await seedShProposal(
 			rummy.entries,
 			runId,
+			loopId,
 			1,
 			'echo "to stderr" 1>&2; exit 7',
 		);

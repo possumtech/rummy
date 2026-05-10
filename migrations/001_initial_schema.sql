@@ -78,6 +78,9 @@ CREATE TABLE IF NOT EXISTS loops (
 	, status INTEGER NOT NULL DEFAULT 100 CHECK (status BETWEEN 100 AND 599)
 	, config JSON
 	, result JSON
+	-- Per-loop turn counter. Path scheme: log://<L>/<T>/<S>/<action>.
+	-- T resets at each new loop.
+	, next_turn INTEGER NOT NULL DEFAULT 1 CHECK (next_turn >= 1)
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	, UNIQUE (run_id, sequence)
 );
@@ -100,6 +103,9 @@ CREATE TABLE IF NOT EXISTS turns (
 	, reasoning_tokens INTEGER NOT NULL DEFAULT 0 CHECK (reasoning_tokens >= 0)
 	, total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0)
 	, cost REAL NOT NULL DEFAULT 0 CHECK (cost >= 0)
+	-- Per-turn sequence counter for log path generation. S in
+	-- log://<L>/<T>/<S>/<action>. Resets at each new turn.
+	, next_seq INTEGER NOT NULL DEFAULT 1 CHECK (next_seq >= 1)
 	-- Full response metadata from the provider — everything except
 	-- content/reasoning_content (those live on the assistant://N entry
 	-- and turns.reasoning_content respectively). Catches finish_reason,
@@ -109,7 +115,10 @@ CREATE TABLE IF NOT EXISTS turns (
 	, response_metadata JSON NOT NULL DEFAULT '{}' CHECK (json_valid(response_metadata))
 	, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_turns_run_seq ON turns (run_id, sequence);
+-- Turns are per-loop now: (run_id, loop_id, sequence) is unique;
+-- two loops in the same run can both have sequence=1.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_turns_run_loop_seq
+ON turns (run_id, loop_id, sequence);
 
 -- File constraints: client-set visibility rules, project-scoped.
 -- Persists across runs. Orthogonal to visibility.

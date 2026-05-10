@@ -181,7 +181,7 @@ describe("Skill ingest", () => {
 
 	it("validation when path attr missing", async () => {
 		const rummy = rummyFor(hooks, tdb.db, store, 99);
-		const resultPath = "log://turn_99/skill/_";
+		const resultPath = "log://1/99/1/skill";
 		await hooks.tools.dispatch(
 			"skill",
 			{

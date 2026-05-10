@@ -91,10 +91,37 @@ UPDATE runs SET
 WHERE id = :id;
 
 -- PREP: next_turn
+-- Run-absolute turn counter (used by turns.sequence and other run-level
+-- accounting). Path generation uses next_loop_turn instead.
 UPDATE runs
 SET next_turn = next_turn + 1
 WHERE id = :run_id
 RETURNING next_turn - 1 AS turn;
+
+-- PREP: next_loop_turn
+-- Per-loop turn counter — increments on each new turn within a loop.
+-- Resets to 1 at each new loop. Used in log://<L>/<T>/<S>/<action>.
+UPDATE loops
+SET next_turn = next_turn + 1
+WHERE id = :loop_id
+RETURNING next_turn - 1 AS turn;
+
+-- PREP: get_loop_sequence
+SELECT sequence FROM loops WHERE id = :id;
+
+-- PREP: next_turn_seq
+-- Per-turn sequence counter — increments on each new log entry within
+-- a turn. Resets to 1 at each new turn. Used as S in log://<L>/<T>/<S>/<action>.
+-- UPSERT: handles both the real flow (turn row created by TurnExecutor
+-- before any logPath call → first call lands on ON CONFLICT, returns 1)
+-- and the synthetic flow (tests that mint log paths without a turn row
+-- → first call inserts with next_seq=2, returns 1). Counters stay
+-- monotonic in both cases.
+INSERT INTO turns (run_id, loop_id, sequence, next_seq)
+VALUES (:run_id, :loop_id, :turn, 2)
+ON CONFLICT (run_id, loop_id, sequence) DO UPDATE
+SET next_seq = next_seq + 1
+RETURNING next_seq - 1 AS seq;
 
 -- PREP: fork_known_entries
 -- Cheap fork: copy only view rows. Entries stay shared between parent

@@ -103,7 +103,19 @@ export default class TestDb {
 			persona: null,
 			context_limit: null,
 		});
-		return { projectId: project.id, runId: run.id };
+		// Path generation is per-loop now (log://<L>/<T>/<S>/<action>);
+		// every test that calls nextTurn/logPath needs a loop to scope
+		// its counters. Seed a default loop so existing tests don't have
+		// to manage loop creation themselves.
+		const loop = await this.db.enqueue_loop.get({
+			run_id: run.id,
+			sequence: 1,
+			mode: "act",
+			model: null,
+			prompt: "",
+			config: JSON.stringify({}),
+		});
+		return { projectId: project.id, runId: run.id, loopId: loop.id };
 	}
 
 	async seedModel({ alias = "test_model", actual = "test/model" } = {}) {

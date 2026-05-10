@@ -24,6 +24,7 @@ export default class TurnExecutor {
 		currentRunId,
 		currentAlias,
 		currentLoopId,
+		currentLoopSequence,
 		requestedModel,
 		loopPrompt,
 		loopIteration,
@@ -37,7 +38,7 @@ export default class TurnExecutor {
 		options,
 		signal,
 	}) {
-		const turn = await this.#entries.nextTurn(currentRunId);
+		const turn = await this.#entries.nextTurn(currentRunId, currentLoopId);
 
 		const turnRow = await this.#db.create_turn.get({
 			run_id: currentRunId,
@@ -66,6 +67,7 @@ export default class TurnExecutor {
 				sequence: turn,
 				runId: currentRunId,
 				loopId: currentLoopId,
+				loopSequence: currentLoopSequence,
 				turnId: turnRow.id,
 				noRepo,
 				noWeb,
@@ -411,9 +413,9 @@ export default class TurnExecutor {
 		if (cmd.path && (cmd.path.length > 2048 || /\p{Cc}/u.test(cmd.path))) {
 			const rejectPath = await this.#entries.logPath(
 				runId,
+				loopId,
 				turn,
 				scheme,
-				"invalid",
 			);
 			await this.#entries.set({
 				runId,
@@ -436,7 +438,7 @@ export default class TurnExecutor {
 			};
 		}
 		const target = rawTarget;
-		const resultPath = await this.#entries.logPath(runId, turn, scheme, target);
+		const resultPath = await this.#entries.logPath(runId, loopId, turn, scheme);
 
 		const { name: _, ...attributes } = cmd;
 		if (cmd.path) attributes.path = target;

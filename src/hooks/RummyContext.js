@@ -8,6 +8,7 @@ const CONTEXT_DEFAULTS = Object.freeze({
 	runId: null,
 	turnId: null,
 	loopId: null,
+	loopSequence: 0,
 	toolSet: null,
 	contextSize: null,
 	systemPrompt: "",
@@ -80,6 +81,10 @@ export default class RummyContext {
 
 	get loopId() {
 		return this.#context.loopId;
+	}
+
+	get loopSequence() {
+		return this.#context.loopSequence;
 	}
 
 	get noRepo() {

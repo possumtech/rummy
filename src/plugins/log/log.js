@@ -26,14 +26,14 @@ export default class Log {
 	}
 }
 
-// Action label for the entry's <log> rendering. log://turn_N/<action>/<slug>
-// uses the path's action segment; env://turn_N/* and sh://turn_N/* are
-// streaming channels, so the scheme itself is the action.
+// Action label for the entry's <log> rendering. log://<L>/<T>/<S>/<action>
+// — terminal segment is the action verb. env://turn_N/* and sh://turn_N/*
+// are streaming channels, so the scheme itself is the action.
 function actionFromPath(path) {
 	if (path?.startsWith("prompt://")) return "prompt";
 	if (path?.startsWith("env://")) return "env";
 	if (path?.startsWith("sh://")) return "sh";
-	const match = path?.match(/^log:\/\/turn_\d+\/([^/]+)\//);
+	const match = path?.match(/^log:\/\/\d+\/\d+\/\d+\/(\w+)$/);
 	return match ? match[1] : "log";
 }
 

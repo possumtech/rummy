@@ -24,7 +24,7 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 	});
 
 	it("body > 80 chars chops to 80 and fires onSoftError", async () => {
-		const { runId } = await tdb.seedRun({ alias: "update_cap_chop" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "update_cap_chop" });
 		const softErrors = [];
 		const store = new Entries(tdb.db, {
 			onSoftError: (event) => softErrors.push(event),
@@ -36,7 +36,7 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 			turn: 1,
 			body: giant,
 			status: 200,
-			loopId: null,
+			loopId,
 		});
 		assert.equal(softErrors.length, 1, "onSoftError fires once");
 		assert.match(
@@ -49,7 +49,7 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 	});
 
 	it("body <= 80 chars passes through untouched, no soft error", async () => {
-		const { runId } = await tdb.seedRun({ alias: "update_cap_ok" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "update_cap_ok" });
 		const softErrors = [];
 		const store = new Entries(tdb.db, {
 			onSoftError: (event) => softErrors.push(event),
@@ -61,7 +61,7 @@ describe("Entries.update body cap (@failure_reporting)", () => {
 			turn: 1,
 			body: fine,
 			status: 200,
-			loopId: null,
+			loopId,
 		});
 		assert.equal(softErrors.length, 0, "onSoftError did not fire");
 		const stored = await tdb.db.get_entry_body.get({ run_id: runId, path });

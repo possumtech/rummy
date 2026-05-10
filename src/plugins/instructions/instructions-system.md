@@ -18,6 +18,15 @@ Example:
 * `<log>` — time-ordered activity tape. Action recaps, errors, retrievals, prompts. Active task = the last `<log>` entry.
 * `<turn>` — per-turn meta: commands list, mode warn, archived count from prior 413, tokenUsage / tokensFree headlines, per-scheme breakdown table.
 
+## Line numbers are display-only
+
+Every projected entry body in `<index>` and `<log>` is rendered as
+`<linenum>:\t<line>` per line. Line numbers help you reference slices
+(`<get path="X" line="42" limit="10"/>`) without counting. **Never
+include the `<n>:\t` prefix in your own emissions.** Your `<set>` and
+SEARCH/REPLACE bodies should be raw content — the engine adds the
+numbering when rendering the projection back to you.
+
 ## Core XML Command Grammar
 
 <{set|get|mv|cp|rm} path="{path}" {archive|index} tags="{tags}" {manifest}>{body}</{set|get|mv|cp|rm}>

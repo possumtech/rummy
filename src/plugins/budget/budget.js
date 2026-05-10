@@ -143,7 +143,9 @@ export default class Budget {
 		const priorTurn = ctx.turn - 1;
 		if (priorTurn >= 1) {
 			const prior = rows.find((r) => {
-				if (!r.path?.startsWith(`log://turn_${priorTurn}/error/`)) return false;
+				if (r.scheme !== "log") return false;
+				if (r.source_turn !== priorTurn) return false;
+				if (!r.path?.endsWith("/error")) return false;
 				const a =
 					typeof r.attributes === "string"
 						? JSON.parse(r.attributes)
@@ -219,8 +221,9 @@ export default class Budget {
 
 		// Collect fat replay candidates: get/set log entries from turns
 		// strictly less than the current turn, with non-empty bodies.
+		// log://<L>/<T>/<S>/<action> — terminal segment is the action.
 		const candidates = [];
-		const logActionRe = /^log:\/\/turn_(\d+)\/([^/]+)\//;
+		const logActionRe = /^log:\/\/\d+\/(\d+)\/\d+\/(\w+)$/;
 		for (const r of rows) {
 			if (r.scheme !== "log") continue;
 			const m = logActionRe.exec(r.path);

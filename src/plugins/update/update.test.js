@@ -14,11 +14,7 @@ describe("Update", () => {
 	const plugin = new Update(NOOP_CORE);
 
 	it("full returns body", () => {
-		assert.ok(plugin.full({ body: "working" }).includes("working"));
-	});
-
-	it("summary returns full", () => {
-		assert.ok(plugin.summary({ body: "working" }).includes("working"));
+		assert.equal(plugin.full({ body: "working" }), "working");
 	});
 });
 

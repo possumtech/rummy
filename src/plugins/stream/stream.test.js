@@ -51,11 +51,11 @@ describe("Stream plugin", () => {
 			await assert.rejects(def.handler({}, {}), /run is required/);
 			await assert.rejects(def.handler({ run: "r" }, {}), /path is required/);
 			await assert.rejects(
-				def.handler({ run: "r", path: "log://turn_1/sh/x" }, {}),
+				def.handler({ run: "r", path: "log://1/1/1/sh" }, {}),
 				/channel is required/,
 			);
 			await assert.rejects(
-				def.handler({ run: "r", path: "log://turn_1/sh/x", channel: 1 }, {}),
+				def.handler({ run: "r", path: "log://1/1/1/sh", channel: 1 }, {}),
 				/chunk is required/,
 			);
 		});
@@ -85,7 +85,7 @@ describe("Stream plugin", () => {
 			};
 			await assert.rejects(
 				def.handler(
-					{ run: "missing", path: "log://turn_1/sh/x", channel: 1, chunk: "c" },
+					{ run: "missing", path: "log://1/1/1/sh", channel: 1, chunk: "c" },
 					ctx,
 				),
 				/run not found/,
@@ -102,11 +102,11 @@ describe("Stream plugin", () => {
 				projectAgent: { entries: store },
 			};
 			const result = await def.handler(
-				{ run: "r", path: "log://turn_5/sh/run", channel: 1, chunk: "out" },
+				{ run: "r", path: "log://1/5/1/sh", channel: 1, chunk: "out" },
 				ctx,
 			);
 			assert.deepEqual(result, { status: "ok" });
-			assert.equal(store._calls[0].path, "sh://turn_5/run_1");
+			assert.equal(store._calls[0].path, "sh://1/5/1_1");
 			assert.equal(store._calls[0].body, "out");
 			assert.equal(store._calls[0].append, true);
 		});
@@ -119,8 +119,8 @@ describe("Stream plugin", () => {
 			const def = core._method("stream/completed");
 			const store = makeStore({
 				channels: [
-					{ path: "sh://turn_1/run_1", body: "out", tokens: 1 },
-					{ path: "sh://turn_1/run_2", body: "", tokens: 0 },
+					{ path: "sh://1/1/1_1", body: "out", tokens: 1 },
+					{ path: "sh://1/1/1_2", body: "", tokens: 0 },
 				],
 				attrs: { command: "ls" },
 			});
@@ -129,7 +129,7 @@ describe("Stream plugin", () => {
 				projectAgent: { entries: store },
 			};
 			const result = await def.handler(
-				{ run: "r", path: "log://turn_1/sh/run", exit_code: 0, duration: "1s" },
+				{ run: "r", path: "log://1/1/1/sh", exit_code: 0, duration: "1s" },
 				ctx,
 			);
 			assert.deepEqual(result, { ok: true, channels: 2, woke: false });
@@ -139,10 +139,10 @@ describe("Stream plugin", () => {
 			assert.equal(channelUpdates.length, 2);
 			assert.ok(channelUpdates.every((c) => c.state === "resolved"));
 			const logUpdate = store._calls.find(
-				(c) => c.path === "log://turn_1/sh/run",
+				(c) => c.path === "log://1/1/1/sh",
 			);
 			assert.match(logUpdate.body, /ran 'ls', exit=0 \(1s\)/);
-			assert.match(logUpdate.body, /sh:\/\/turn_1\/run_1 \(1 tokens\)/);
+			assert.match(logUpdate.body, /sh:\/\/1\/1\/1_1 \(1 tokens\)/);
 		});
 
 		it("transitions channels to failed on non-zero exit_code", async () => {
@@ -150,7 +150,7 @@ describe("Stream plugin", () => {
 			new Stream(core);
 			const def = core._method("stream/completed");
 			const store = makeStore({
-				channels: [{ path: "sh://turn_1/x_1", body: "err", tokens: 1 }],
+				channels: [{ path: "sh://1/1/1_1", body: "err", tokens: 1 }],
 				attrs: { summary: "ls" },
 			});
 			const ctx = {
@@ -158,7 +158,7 @@ describe("Stream plugin", () => {
 				projectAgent: { entries: store },
 			};
 			await def.handler(
-				{ run: "r", path: "log://turn_1/sh/x", exit_code: 2 },
+				{ run: "r", path: "log://1/1/1/sh", exit_code: 2 },
 				ctx,
 			);
 			const channelUpdate = store._calls.find((c) =>
@@ -167,7 +167,7 @@ describe("Stream plugin", () => {
 			assert.equal(channelUpdate.state, "failed");
 			assert.equal(channelUpdate.outcome, "exit:2");
 			const logUpdate = store._calls.find(
-				(c) => c.path === "log://turn_1/sh/x",
+				(c) => c.path === "log://1/1/1/sh",
 			);
 			assert.match(logUpdate.body, /exit=2/);
 		});
@@ -193,7 +193,7 @@ describe("Stream plugin", () => {
 			new Stream(core);
 			const def = core._method("stream/aborted");
 			const store = makeStore({
-				channels: [{ path: "sh://turn_1/x_1", body: "", tokens: 0 }],
+				channels: [{ path: "sh://1/1/1_1", body: "", tokens: 0 }],
 				attrs: { command: "ls" },
 			});
 			const ctx = {
@@ -203,7 +203,7 @@ describe("Stream plugin", () => {
 			const result = await def.handler(
 				{
 					run: "r",
-					path: "log://turn_1/sh/x",
+					path: "log://1/1/1/sh",
 					reason: "user cancelled",
 					duration: "0.5s",
 				},
@@ -213,7 +213,7 @@ describe("Stream plugin", () => {
 			const ch = store._calls.find((c) => c.path.startsWith("sh://"));
 			assert.equal(ch.state, "cancelled");
 			assert.equal(ch.outcome, "user cancelled");
-			const log = store._calls.find((c) => c.path === "log://turn_1/sh/x");
+			const log = store._calls.find((c) => c.path === "log://1/1/1/sh");
 			assert.match(log.body, /aborted 'ls' \(user cancelled, 0\.5s\)/);
 		});
 
@@ -222,14 +222,14 @@ describe("Stream plugin", () => {
 			new Stream(core);
 			const def = core._method("stream/aborted");
 			const store = makeStore({
-				channels: [{ path: "sh://turn_1/x_1", body: "", tokens: 0 }],
+				channels: [{ path: "sh://1/1/1_1", body: "", tokens: 0 }],
 				attrs: {},
 			});
 			const ctx = {
 				db: RUN_DB(),
 				projectAgent: { entries: store },
 			};
-			await def.handler({ run: "r", path: "log://turn_1/sh/x" }, ctx);
+			await def.handler({ run: "r", path: "log://1/1/1/sh" }, ctx);
 			const ch = store._calls.find((c) => c.path.startsWith("sh://"));
 			assert.equal(ch.outcome, "aborted");
 		});
@@ -245,7 +245,7 @@ describe("Stream plugin", () => {
 				cancelled = evt;
 			});
 			const store = makeStore({
-				channels: [{ path: "sh://turn_1/x_1", body: "", tokens: 0 }],
+				channels: [{ path: "sh://1/1/1_1", body: "", tokens: 0 }],
 				attrs: { command: "ls" },
 			});
 			const ctx = {
@@ -254,14 +254,14 @@ describe("Stream plugin", () => {
 				projectId: "p1",
 			};
 			const result = await def.handler(
-				{ run: "r", path: "log://turn_1/sh/x", reason: "stale" },
+				{ run: "r", path: "log://1/1/1/sh", reason: "stale" },
 				ctx,
 			);
 			assert.deepEqual(result, { ok: true, channels: 1 });
 			assert.deepEqual(cancelled, {
 				projectId: "p1",
 				run: "r",
-				path: "log://turn_1/sh/x",
+				path: "log://1/1/1/sh",
 				reason: "stale",
 			});
 		});

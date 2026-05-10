@@ -45,7 +45,7 @@ export default class Prompt {
 			prompt.length > PREVIEW_MAX_CHARS
 				? prompt.slice(0, PREVIEW_MAX_CHARS)
 				: prompt;
-		const logPath = await store.logPath(runId, turn, "prompt", String(turn));
+		const logPath = await store.logPath(runId, loopId, turn, "prompt");
 		await store.set({
 			runId,
 			turn,

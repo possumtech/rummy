@@ -74,11 +74,10 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
+		// Body is the slice content only — no header. Range info lives
+		// in attrs (lineStart/lineEnd/totalLines).
 		const slice = result.body;
-		assert.ok(
-			slice.startsWith("src/agent/AgentLoop.js\n[lines 10–14 / 100 total]"),
-			`unexpected slice header: ${slice.slice(0, 60)}`,
-		);
+		assert.ok(slice.startsWith("line 10"));
 		assert.ok(slice.includes("line 10"));
 		assert.ok(slice.includes("line 14"));
 		assert.ok(!slice.includes("line 15"));
@@ -114,11 +113,7 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		const slice = store.upserted[0].body;
-		assert.ok(
-			slice.startsWith("src/agent/AgentLoop.js\n[lines 1–3 / 5 total]"),
-		);
-		assert.ok(slice.includes("a\nb\nc"));
-		assert.ok(!slice.includes("d"));
+		assert.equal(slice, "a\nb\nc");
 	});
 
 	it("negative line reads tail from end", async () => {
@@ -138,12 +133,8 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		const slice = store.upserted[0].body;
-		assert.ok(
-			slice.startsWith("sh://turn_3/npm_test_1\n[lines 91–100 / 100 total]"),
-			`unexpected slice header: ${slice.slice(0, 60)}`,
-		);
+		assert.ok(slice.startsWith("line 91"));
 		assert.ok(slice.includes("line 100"));
-		assert.ok(slice.includes("line 91"));
 		assert.ok(!slice.includes("line 90\n"));
 	});
 
@@ -165,11 +156,7 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		const slice = store.upserted[0].body;
-		assert.ok(
-			slice.startsWith("sh://turn_3/npm_test_1\n[lines 81–85 / 100 total]"),
-			`unexpected slice header: ${slice.slice(0, 60)}`,
-		);
-		assert.ok(slice.includes("line 81"));
+		assert.ok(slice.startsWith("line 81"));
 		assert.ok(slice.includes("line 85"));
 		assert.ok(!slice.includes("line 86"));
 	});
@@ -184,8 +171,7 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		const slice = store.upserted[0].body;
-		assert.ok(slice.startsWith("x\n[lines 1–3 / 3 total]"));
-		assert.ok(slice.includes("a\nb\nc"));
+		assert.equal(slice, "a\nb\nc");
 	});
 
 	it("clamps end to total lines when limit exceeds file length", async () => {
@@ -199,10 +185,7 @@ describe("Get partial read (line/limit)", () => {
 		await plugin.handler(entry, rummy);
 
 		const slice = store.upserted[0].body;
-		assert.ok(
-			slice.startsWith("src/agent/AgentLoop.js\n[lines 2–3 / 3 total]"),
-		);
-		assert.ok(slice.includes("y\nz"));
+		assert.equal(slice, "y\nz");
 	});
 
 	// Regression: body content alongside line/limit on a single path
@@ -228,8 +211,10 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
-		assert.ok(result.body.includes("[lines 1–5 / 50 total]"));
-		assert.ok(result.body.includes("line 1"));
+		assert.equal(result.attributes.lineStart, 1);
+		assert.equal(result.attributes.lineEnd, 5);
+		assert.equal(result.attributes.totalLines, 50);
+		assert.ok(result.body.startsWith("line 1"));
 	});
 
 	// Multi-match line/limit: emit one sliced section per match. Per
@@ -252,8 +237,8 @@ describe("Get partial read (line/limit)", () => {
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
 		const slice = result.body;
-		assert.ok(slice.includes("src/a.js"));
-		assert.ok(slice.includes("src/b.js"));
+		// Multi-match slices concatenate without per-section headers; the
+		// matchCount in attrs tells the model there were multiple sections.
 		assert.ok(slice.includes("a1\na2\na3"));
 		assert.ok(slice.includes("b1\nb2\nb3"));
 		assert.strictEqual(result.attributes.matchCount, 2);

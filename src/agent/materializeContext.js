@@ -1,3 +1,4 @@
+import { numberLines } from "../plugins/helpers.js";
 import ContextAssembler from "./ContextAssembler.js";
 import { countLines, countTokens } from "./tokens.js";
 
@@ -25,7 +26,7 @@ export default async function materializeContext({
 		// Log entries dispatch to their action plugin's view via path segment.
 		let projectionKey = scheme;
 		if (scheme === "log") {
-			const m = row.path.match(/^log:\/\/turn_\d+\/([^/]+)\//);
+			const m = row.path.match(/^log:\/\/\d+\/\d+\/\d+\/(\w+)$/);
 			if (m) projectionKey = m[1];
 		}
 		const baseEntry = {
@@ -35,17 +36,12 @@ export default async function materializeContext({
 			attributes: attrs,
 			category: row.category,
 		};
-		// Archived rows skip projection — they don't appear in any section.
-		const projection =
+		const rawProjection =
 			row.visibility === "archived"
 				? ""
 				: await hooks.tools.view(projectionKey, baseEntry);
-		// Two distinct token counts:
-		//   tileTokens = what the projected tile body costs in budget now.
-		//   bodyTokens = what the entry's full body costs (what <get> brings).
-		// The index tile's JSON meta surfaces bodyTokens so the model knows
-		// the cost of fetching. The <turn> budget breakdown sums tileTokens
-		// because that's what's actually consuming context this turn.
+		const projection = numberLines(rawProjection);
+		// tileTokens = packet cost; bodyTokens = what <get> would bring.
 		const tileTokens = countTokens(projection);
 		const tileLines = countLines(projection);
 		const bodyTokens = countTokens(row.body);
@@ -76,8 +72,6 @@ export default async function materializeContext({
 	for (const row of rows) {
 		const t = tokenAccounting.get(row.path);
 		if (!t) continue;
-		// vTokens/aTokens = tile cost (what budget sees in packet).
-		// bodyTokens/bodyLines = full entry body cost (what <get> brings).
 		row.vTokens = t.tileTokens;
 		row.aTokens = t.tileTokens;
 		row.vLines = t.tileLines;

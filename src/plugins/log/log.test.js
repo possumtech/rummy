@@ -21,9 +21,10 @@ function makeHooks() {
 }
 
 function logRow({
+	loop = 1,
 	turn = 1,
+	seq = 1,
 	action,
-	slug,
 	body = "",
 	tokens = 0,
 	state = "resolved",
@@ -32,7 +33,7 @@ function logRow({
 }) {
 	return {
 		ordinal: 0,
-		path: `log://turn_${turn}/${action}/${slug}`,
+		path: `log://${loop}/${turn}/${seq}/${action}`,
 		scheme: "log",
 		visibility: "indexed",
 		state,
@@ -57,7 +58,7 @@ describe("log plugin tokens= invariant", () => {
 	it("<get> tokens= reports retrieved-content tokens (the log body)", async () => {
 		const getLog = logRow({
 			action: "get",
-			slug: "auth_js",
+			seq: 1,
 			body: "export async function login(req, res) { ... }",
 			tokens: 1240,
 			attrs: { path: "src/auth.js" },
@@ -69,7 +70,7 @@ describe("log plugin tokens= invariant", () => {
 	it("<set> tokens= reports emission tokens (the log body)", async () => {
 		const setLog = logRow({
 			action: "set",
-			slug: "known%3A%2F%2Ffact",
+			seq: 1,
 			body: "<<NEW\nthe fact body\nNEW",
 			tokens: 40,
 			attrs: { path: "known://fact" },
@@ -81,7 +82,7 @@ describe("log plugin tokens= invariant", () => {
 	it("<search> tokens= is the log body tokens (results listing)", async () => {
 		const searchLog = logRow({
 			action: "search",
-			slug: "query",
+			seq: 1,
 			body: "* https://a.com - 80 tokens\n* https://b.com - 120 tokens",
 			tokens: 204,
 			attrs: { query: "query" },
@@ -93,7 +94,7 @@ describe("log plugin tokens= invariant", () => {
 	it("<update> tokens= is the log body tokens", async () => {
 		const updateLog = logRow({
 			action: "update",
-			slug: "done",
+			seq: 1,
 			body: "Fixed it",
 			tokens: 8,
 			attrs: { status: 200 },
@@ -105,7 +106,7 @@ describe("log plugin tokens= invariant", () => {
 	it("<error> tokens= is the log body tokens", async () => {
 		const errLog = logRow({
 			action: "error",
-			slug: "overflow",
+			seq: 1,
 			body: "Token Budget overflow: packet was 40623 tokens...",
 			tokens: 54,
 			attrs: { status: 413 },
@@ -119,7 +120,7 @@ describe("log plugin tokens= invariant", () => {
 	it("<sh> recap is slim (empty body) — tokens omitted", async () => {
 		const shLog = logRow({
 			action: "sh",
-			slug: "echo",
+			seq: 1,
 			body: "",
 			tokens: 0,
 			attrs: { command: "echo hi" },
@@ -132,7 +133,7 @@ describe("log plugin tokens= invariant", () => {
 	it("<env> recap is slim — tokens omitted", async () => {
 		const envLog = logRow({
 			action: "env",
-			slug: "pwd",
+			seq: 1,
 			body: "",
 			tokens: 0,
 			attrs: { command: "pwd" },
@@ -145,7 +146,7 @@ describe("log plugin tokens= invariant", () => {
 	it("<get> slice render: lines= attr + slice tokens (the slice body)", async () => {
 		const sliceLog = logRow({
 			action: "get",
-			slug: "page",
+			seq: 1,
 			body: "[lines 1–50 / 262 total]\n…slice…",
 			tokens: 200,
 			attrs: {

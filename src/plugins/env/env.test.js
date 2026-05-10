@@ -9,13 +9,13 @@ describe("Env", () => {
 		filter() {},
 	});
 
-	it("full tab-indents the model's emission for action log entries", () => {
+	it("full returns raw emission for action log entries (line-numbering happens in materializeContext)", () => {
 		const result = plugin.full({
 			path: "log://turn_3/env/node",
 			attributes: { command: "node --version" },
 			body: "<env>node --version</env>",
 		});
-		assert.equal(result, "\t<env>node --version</env>");
+		assert.equal(result, "<env>node --version</env>");
 	});
 
 	it("full returns empty for empty stream body", () => {

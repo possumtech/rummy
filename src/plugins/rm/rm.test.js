@@ -9,20 +9,20 @@ describe("Rm", () => {
 		filter() {},
 	});
 
-	it("full tab-indents the model's emission body", () => {
+	it("full returns raw emission body (line-numbering in materializeContext)", () => {
 		const result = plugin.full({
 			attributes: { path: "known://old" },
 			body: '<rm path="known://old"/>',
 		});
-		assert.equal(result, '\t<rm path="known://old"/>');
+		assert.equal(result, '<rm path="known://old"/>');
 	});
 
-	it("full passes through multi-line emissions with one tab per line", () => {
+	it("full passes multi-line emissions through verbatim", () => {
 		const result = plugin.full({
 			attributes: { path: "known://chunk_*" },
 			body: '<rm path="known://chunk_*">\nbody\n</rm>',
 		});
-		assert.equal(result, '\t<rm path="known://chunk_*">\n\tbody\n\t</rm>');
+		assert.equal(result, '<rm path="known://chunk_*">\nbody\n</rm>');
 	});
 
 	it("manifest: lists matched paths without removing", async () => {

@@ -136,7 +136,7 @@ export default class Cli {
 			.filter(
 				(e) =>
 					e.scheme === "log" &&
-					/^log:\/\/turn_\d+\/update\//.test(e.path) &&
+					/^log:\/\/\d+\/\d+\/\d+\/update$/.test(e.path) &&
 					e.state === "resolved",
 			)
 			.toSorted((a, b) => a.turn - b.turn);

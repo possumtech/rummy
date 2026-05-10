@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { projectEmission, storePatternResult } from "../helpers.js";
+import { storePatternResult } from "../helpers.js";
 import docs from "./cpDoc.js";
 
 function visibilityFromAttrs(attrs) {
@@ -130,6 +130,6 @@ export default class Cp {
 	}
 
 	full(entry) {
-		return projectEmission(entry.body);
+		return entry.body;
 	}
 }

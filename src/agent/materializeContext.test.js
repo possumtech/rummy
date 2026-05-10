@@ -77,7 +77,7 @@ describe("materializeContext", () => {
 		const db = makeDb({
 			viewRows: [
 				{
-					path: "log://turn_1/update/x",
+					path: "log://1/1/1/update",
 					scheme: "log",
 					body: "summary text",
 					attributes: null,

@@ -70,22 +70,13 @@ async function _runVerdict(hooks, store, loopId, turn, status) {
 	);
 }
 
-describe("error plugin: views", () => {
-	it("visible projection tab-indents the synthesized emission body", async () => {
+describe("error plugin: view", () => {
+	it("returns raw body (line-numbering in materializeContext)", async () => {
 		const { hooks } = makeCore();
 		const out = await hooks.tools.view("error", {
 			body: "<error>boom</error>",
 		});
-		assert.equal(out, "\t<error>boom</error>");
-	});
-
-	it("summarized projection tab-indents the body (recap signal parity)", async () => {
-		const { hooks } = makeCore();
-		const out = await hooks.tools.view("error", {
-			body: "boom",
-			visibility: "summarized",
-		});
-		assert.equal(out, "\tboom");
+		assert.equal(out, "<error>boom</error>");
 	});
 });
 

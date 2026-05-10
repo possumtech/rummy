@@ -61,22 +61,19 @@ describe("Set plugin", () => {
 	describe("full (visible projection)", () => {
 		const plugin = new Set(stubCore());
 
-		it("tab-indents the model's verbatim emission", () => {
+		it("returns the model's verbatim emission (line numbering in materializeContext)", () => {
 			const out = plugin.full({
 				attributes: { path: "x.js" },
 				body: '<set path="x.js"><<NEW\nfoo\nNEW</set>',
 			});
-			assert.equal(out, '\t<set path="x.js"><<NEW\n\tfoo\n\tNEW</set>');
+			assert.equal(out, '<set path="x.js"><<NEW\nfoo\nNEW</set>');
 		});
 
-		it("multi-line emissions keep one tab per line", () => {
+		it("multi-line emissions pass through verbatim", () => {
 			const body =
 				'<set path="x"><<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE</set>';
 			const out = plugin.full({ attributes: { path: "x" }, body });
-			assert.equal(
-				out,
-				'\t<set path="x"><<SEARCH\n\told\n\tSEARCH<<REPLACE\n\tnew\n\tREPLACE</set>',
-			);
+			assert.equal(out, body);
 		});
 
 		it("conflict synthesizes an error projection with attempted + current body", () => {
@@ -93,7 +90,7 @@ describe("Set plugin", () => {
 			assert.match(out, /--- attempted ---/);
 			assert.match(out, /- \[ \] step 1/);
 			assert.match(out, /--- current body of known:\/\/plan ---/);
-			assert.match(out, /- \[x\] step 1\n\t- \[ \] step 2/);
+			assert.match(out, /- \[x\] step 1\n- \[ \] step 2/);
 		});
 	});
 
@@ -104,10 +101,10 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "search results for X",
-					path: "log://turn_2/set/log___turn_1/search/X",
-					resultPath: "log://turn_2/set/log___turn_1/search/X",
+					path: "log://1/2/1/set",
+					resultPath: "log://1/2/1/set",
 					attributes: {
-						path: "log://turn_1/search/X",
+						path: "log://1/1/1/search",
 						archive: true,
 					},
 				},
@@ -122,19 +119,19 @@ describe("Set plugin", () => {
 		it("body-less archive on log:// is allowed", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
-			store.setEntry("log://turn_1/search/X", { body: "results" });
+			store.setEntry("log://1/1/1/search", { body: "results" });
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_2/set/log___turn_1/search/X",
-					resultPath: "log://turn_2/set/log___turn_1/search/X",
-					attributes: { path: "log://turn_1/search/X", archive: true },
+					path: "log://1/2/1/set",
+					resultPath: "log://1/2/1/set",
+					attributes: { path: "log://1/1/1/search", archive: true },
 				},
 				{ entries: store, sequence: 2, runId: "r", loopId: "l" },
 			);
 			const flip = store._calls.find(
 				(c) =>
-					c.path === "log://turn_1/search/X" && c.visibility === "archived",
+					c.path === "log://1/1/1/search" && c.visibility === "archived",
 			);
 			assert.ok(flip, "archive flip on log:// goes through");
 		});
@@ -145,8 +142,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/known%3A//x",
-					resultPath: "log://turn_1/set/known%3A//x",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: { path: "known://x", archive: true, index: true },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -163,8 +160,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/known%3A//missing",
-					resultPath: "log://turn_1/set/known%3A//missing",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: { path: "known://missing", archive: true },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -182,8 +179,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/known%3A//x",
-					resultPath: "log://turn_1/set/known%3A//x",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: { path: "known://x", archive: true },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -202,8 +199,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/x",
-					resultPath: "log://turn_1/set/x",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: {},
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -217,8 +214,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "v2",
-					path: "log://turn_1/set/known%3A//x",
-					resultPath: "log://turn_1/set/known%3A//x",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: { path: "known://x" },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -229,7 +226,7 @@ describe("Set plugin", () => {
 			assert.ok(target);
 			assert.equal(target.visibility, "indexed");
 			const log = store._calls.find(
-				(c) => c.path === "log://turn_1/set/known%3A//x",
+				(c) => c.path === "log://1/1/1/set",
 			);
 			assert.ok(log);
 			assert.equal(log.attributes.beforeActionTokens, 0);
@@ -243,14 +240,14 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "new content",
-					path: "log://turn_1/set/foo.js",
-					resultPath: "log://turn_1/set/foo.js",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: { path: "src/foo.js" },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
 			const log = store._calls.find(
-				(c) => c.path === "log://turn_1/set/foo.js",
+				(c) => c.path === "log://1/1/1/set",
 			);
 			assert.ok(log);
 			assert.equal(log.state, "proposed");
@@ -290,7 +287,7 @@ describe("Set plugin", () => {
 			new Set(core);
 			const fn = core._get("proposal.accepting")[0];
 			const existing = { allow: true };
-			const out = await fn(existing, { path: "log://turn_1/set/x" });
+			const out = await fn(existing, { path: "log://1/1/1/set" });
 			assert.strictEqual(out, existing);
 		});
 
@@ -298,7 +295,7 @@ describe("Set plugin", () => {
 			const core = stubCore();
 			new Set(core);
 			const fn = core._get("proposal.accepting")[0];
-			const out = await fn(null, { path: "log://turn_1/get/x", attrs: {} });
+			const out = await fn(null, { path: "log://1/1/1/get", attrs: {} });
 			assert.equal(out, null);
 		});
 
@@ -307,7 +304,7 @@ describe("Set plugin", () => {
 			new Set(core);
 			const fn = core._get("proposal.accepting")[0];
 			const ctx = {
-				path: "log://turn_1/set/x",
+				path: "log://1/1/1/set",
 				attrs: { path: "src/locked.js" },
 				db: {
 					get_file_constraints: {
@@ -329,7 +326,7 @@ describe("Set plugin", () => {
 			new Set(core);
 			const fn = core._get("proposal.content")[0];
 			const out = await fn("default-body", {
-				path: "log://turn_1/set/x",
+				path: "log://1/1/1/set",
 				entries: { getBody: async () => "existing-body" },
 				runId: "r",
 			});
@@ -341,7 +338,7 @@ describe("Set plugin", () => {
 			new Set(core);
 			const fn = core._get("proposal.content")[0];
 			const out = await fn("default-body", {
-				path: "log://turn_1/set/x",
+				path: "log://1/1/1/set",
 				entries: { getBody: async () => null },
 				runId: "r",
 			});
@@ -353,7 +350,7 @@ describe("Set plugin", () => {
 			new Set(core);
 			const fn = core._get("proposal.content")[0];
 			const out = await fn("default", {
-				path: "log://turn_1/get/x",
+				path: "log://1/1/1/get",
 				entries: {},
 			});
 			assert.equal(out, "default");
@@ -374,14 +371,14 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/src%2Fapp.js",
-					resultPath: "log://turn_1/set/src%2Fapp.js",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: { path: "src/app.js", operations: editOps },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
 			const log = store._calls.find(
-				(c) => c.path === "log://turn_1/set/src%2Fapp.js",
+				(c) => c.path === "log://1/1/1/set",
 			);
 			assert.ok(log);
 			assert.equal(log.state, "proposed");
@@ -401,8 +398,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/src%2Fapp.js",
-					resultPath: "log://turn_1/set/src%2Fapp.js",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: { path: "src/app.js", operations: editOps },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -424,8 +421,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/known%3A%2F%2Fnew",
-					resultPath: "log://turn_1/set/known%3A%2F%2Fnew",
+					path: "log://1/1/2/set",
+					resultPath: "log://1/1/2/set",
 					attributes: {
 						path: "known://new",
 						operations: [
@@ -443,7 +440,7 @@ describe("Set plugin", () => {
 			assert.ok(upsert, "path was created");
 			assert.equal(upsert.body, "fresh body");
 			const log = store._calls.find(
-				(c) => c.path === "log://turn_1/set/known%3A%2F%2Fnew",
+				(c) => c.path === "log://1/1/2/set",
 			);
 			assert.notEqual(log?.state, "failed", "no not_found error");
 		});
@@ -454,8 +451,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/known%3A%2F%2Fnew",
-					resultPath: "log://turn_1/set/known%3A%2F%2Fnew",
+					path: "log://1/1/2/set",
+					resultPath: "log://1/1/2/set",
 					attributes: {
 						path: "known://new",
 						operations: [{ op: "delete", content: "anything" }],
@@ -468,7 +465,7 @@ describe("Set plugin", () => {
 			const upsert = store._calls.find((c) => c.path === "known://new");
 			assert.equal(upsert, undefined);
 			const log = store._calls.find(
-				(c) => c.path === "log://turn_1/set/known%3A%2F%2Fnew",
+				(c) => c.path === "log://1/1/2/set",
 			);
 			assert.notEqual(log?.state, "failed");
 		});
@@ -479,8 +476,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/known%3A%2F%2Fnew",
-					resultPath: "log://turn_1/set/known%3A%2F%2Fnew",
+					path: "log://1/1/2/set",
+					resultPath: "log://1/1/2/set",
 					attributes: {
 						path: "known://new",
 						operations: [
@@ -514,8 +511,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/known%3A%2F%2Fexists",
-					resultPath: "log://turn_1/set/known%3A%2F%2Fexists",
+					path: "log://1/1/3/set",
+					resultPath: "log://1/1/3/set",
 					attributes: {
 						path: "known://exists",
 						operations: [
@@ -526,7 +523,7 @@ describe("Set plugin", () => {
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
 			const log = store._calls.find(
-				(c) => c.path === "log://turn_1/set/known%3A%2F%2Fexists",
+				(c) => c.path === "log://1/1/3/set",
 			);
 			assert.equal(log.state, "failed");
 			assert.equal(log.outcome, "conflict");
@@ -543,8 +540,8 @@ describe("Set plugin", () => {
 			await plugin.handler(
 				{
 					body: "",
-					path: "log://turn_1/set/src%2Fapp.js",
-					resultPath: "log://turn_1/set/src%2Fapp.js",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
 					attributes: {
 						path: "src/app.js",
 						operations: [
@@ -555,7 +552,7 @@ describe("Set plugin", () => {
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
 			const log = store._calls.find(
-				(c) => c.path === "log://turn_1/set/src%2Fapp.js",
+				(c) => c.path === "log://1/1/1/set",
 			);
 			assert.equal(log.state, "failed");
 			assert.equal(log.outcome, "conflict");
@@ -581,7 +578,7 @@ describe("Set plugin: manifest is universal", () => {
 				return null;
 			},
 			async logPath(_r, t, s, p) {
-				return `log://turn_${t}/${s}/${encodeURIComponent(p)}`;
+				return `log://1/${t}/1/${s}`;
 			},
 		};
 	}

@@ -1,11 +1,7 @@
-import {
-	logPathToDataBase,
-	projectEmission,
-	streamSummary,
-} from "../helpers.js";
+import { logPathToDataBase, streamSummary } from "../helpers.js";
 import docs from "./shDoc.js";
 
-const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+const LOG_ACTION_RE = /^log:\/\/\d+\/\d+\/\d+\/(\w+)$/;
 
 export default class Sh {
 	#core;
@@ -64,11 +60,8 @@ export default class Sh {
 		});
 	}
 
-	// log:// entries: emission, tab-indented. sh:// entries: tail stream
-	// (last 20 lines, capped at SUMMARY_MAX_CHARS) so giants don't blow
-	// the budget — full bytes available in the row's stored body.
 	full(entry) {
-		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
+		if (entry.path.startsWith("log://")) return entry.body;
 		return streamSummary("sh", entry);
 	}
 }

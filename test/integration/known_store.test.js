@@ -14,12 +14,14 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 	let tdb;
 	let store;
 	let RUN_ID;
+	let LOOP_ID;
 
 	before(async () => {
 		tdb = await TestDb.create();
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "test_1" });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {
@@ -304,10 +306,10 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 	});
 
 	describe("turn generation", () => {
-		it("generates sequential turn numbers starting at 1", async () => {
-			const t1 = await store.nextTurn(RUN_ID);
-			const t2 = await store.nextTurn(RUN_ID);
-			const t3 = await store.nextTurn(RUN_ID);
+		it("generates sequential per-loop turn numbers starting at 1", async () => {
+			const t1 = await store.nextTurn(RUN_ID, LOOP_ID);
+			const t2 = await store.nextTurn(RUN_ID, LOOP_ID);
+			const t3 = await store.nextTurn(RUN_ID, LOOP_ID);
 
 			assert.strictEqual(t1, 1);
 			assert.strictEqual(t2, 2);

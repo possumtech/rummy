@@ -9,12 +9,12 @@ describe("Mv", () => {
 		filter() {},
 	});
 
-	it("full tab-indents the model's emission body", () => {
+	it("full returns raw emission body (line-numbering happens in materializeContext)", () => {
 		const result = plugin.full({
 			attributes: { from: "a", to: "b" },
 			body: '<mv path="a">b</mv>',
 		});
-		assert.equal(result, '\t<mv path="a">b</mv>');
+		assert.equal(result, '<mv path="a">b</mv>');
 	});
 
 	it("schemed → bare-path: creates a proposal (not auto-resolved)", async () => {

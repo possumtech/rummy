@@ -28,6 +28,7 @@ import { registerPlugins } from "../../src/plugins/index.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
+let LOOP_ID;
 let PROJECT;
 
 function makeRummy(
@@ -55,6 +56,7 @@ function makeRummy(
 		type: "act",
 		sequence,
 		runId: RUN_ID,
+		loopId: LOOP_ID,
 		turnId: 1,
 		noRepo: false,
 		contextSize,
@@ -71,6 +73,7 @@ describe("Handler dispatch", () => {
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "dispatch_1" });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
 
 		hooks = createHooks();
@@ -163,9 +166,10 @@ describe("Handler dispatch", () => {
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
+			const logPath = "log://1/1/3/set";
 			const entry = {
 				scheme: "set",
-				path: "log://turn_1/set/src%2Fedit_me.js",
+				path: logPath,
 				body: "",
 				attributes: {
 					path: "src/edit_me.js",
@@ -180,13 +184,12 @@ describe("Handler dispatch", () => {
 					],
 				},
 				state: "resolved",
-				resultPath: "log://turn_1/set/src%2Fedit_me.js",
+				resultPath: logPath,
 			};
 
 			await hooks.tools.dispatch("set", entry, rummy);
 			await hooks.proposal.prepare.emit({ rummy, recorded: [entry] });
 
-			const logPath = "log://turn_1/set/src%2Fedit_me.js";
 			const attrs = await store.getAttributes(RUN_ID, logPath);
 			assert.equal(attrs.path, "src/edit_me.js");
 			assert.ok(attrs.patched.includes("8080"), "patched has new content");
@@ -207,7 +210,7 @@ describe("Handler dispatch", () => {
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
-			const logPath = "log://turn_1/set/src%2Ffuzzy.js";
+			const logPath = "log://1/1/4/set";
 			// SEARCH has tab indent (mismatched). Fuzzy matcher should heal.
 			const entry = {
 				scheme: "set",
@@ -260,7 +263,7 @@ describe("Handler dispatch", () => {
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
-			const logPath = "log://turn_1/mv/src%2Fold_name.js";
+			const logPath = "log://1/1/5/mv";
 			const entry = {
 				scheme: "mv",
 				path: logPath,
@@ -304,7 +307,7 @@ describe("Handler dispatch", () => {
 			});
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
-			const logPath = "log://turn_1/cp/src%2Fsource.js";
+			const logPath = "log://1/1/6/cp";
 			const entry = {
 				scheme: "cp",
 				path: logPath,
@@ -349,8 +352,8 @@ describe("Handler dispatch", () => {
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 
-			const path1 = "log://turn_1/set/src%2Fmath.txt";
-			const path2 = "log://turn_1/set/src%2Fmath.txt_1";
+			const path1 = "log://1/1/7/set";
+			const path2 = "log://1/1/8/set";
 			const entry1 = {
 				scheme: "set",
 				path: path1,
@@ -781,15 +784,15 @@ describe("Handler dispatch", () => {
 			);
 		});
 
-		it("update handler writes a log entry under log://turn_N/update/", async () => {
+		it("update handler writes a log entry under log://<L>/<T>/<S>/update", async () => {
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 12 });
 			const entry = {
 				scheme: "update",
-				path: "log://turn_12/update/test_status",
+				path: "log://1/12/9/update",
 				body: "working through unknowns",
 				attributes: { status: 144 },
 				state: "resolved",
-				resultPath: "log://turn_12/update/test_status",
+				resultPath: "log://1/12/10/update",
 			};
 
 			await hooks.tools.dispatch("update", entry, rummy);
@@ -798,12 +801,12 @@ describe("Handler dispatch", () => {
 			const updateLog = all.find(
 				(e) =>
 					e.scheme === "log" &&
-					/^log:\/\/turn_12\/update\//.test(e.path) &&
+					/^log:\/\/\d+\/12\/\d+\/update$/.test(e.path) &&
 					e.body === "working through unknowns",
 			);
 			assert.ok(
 				updateLog,
-				"update emission lands at log://turn_N/update/<slug> with inner text",
+				"update emission lands at log://<L>/<T>/<S>/update with inner text",
 			);
 		});
 	});

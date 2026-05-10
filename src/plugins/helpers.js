@@ -2,34 +2,13 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Hard ceiling on <index> body projections. Catalog entries (known,
-// unknown, file) get summarized this small so the index stays a
-// glance-and-scan ls; full bodies arrive via <get> into <log>.
+// Soft rule of thumb for tail-style projections (stream tail, etc.).
+// Not engine-enforced — plugins decide their own caps.
 export const SUMMARY_MAX_CHARS = 500;
 
-// Tab-indent every line so a column-zero `:::path` in the body can't
-// prematurely close the outer heredoc envelope.
-export function projectEmission(source) {
-	if (!source) return "";
-	return source
-		.split("\n")
-		.map((line) => `\t${line}`)
-		.join("\n");
-}
-
-// Catalog projection: tab-indented and capped post-projection. Used by
-// known/unknown/file when their entries land in <index>.
-export function summarizeEmission(body) {
-	if (!body) return "";
-	const projected = projectEmission(body);
-	return projected.length > SUMMARY_MAX_CHARS
-		? projected.slice(0, SUMMARY_MAX_CHARS)
-		: projected;
-}
-
 // Tail-truncate stream output to last MAX_LINES, then chop to
-// SUMMARY_MAX_CHARS for one-line giants (ANSI/cmatrix shape). Used
-// by sh/env when their streaming sh://N / env://N entries land in <log>.
+// SUMMARY_MAX_CHARS for one-line giants. Used by sh/env when their
+// streaming sh://N / env://N entries appear in <index>.
 export function streamSummary(_label, entry, MAX_LINES = 20) {
 	if (!entry.body) return "";
 	const { body } = entry;
@@ -45,6 +24,18 @@ export function streamSummary(_label, entry, MAX_LINES = 20) {
 	return lineTail.length > SUMMARY_MAX_CHARS
 		? lineTail.slice(0, SUMMARY_MAX_CHARS)
 		: lineTail;
+}
+
+// Apply `1:\t<line>` numbering to a projected body. Display-only.
+// The leading digit prevents column-zero `:::path` collisions and
+// gives the model line refs for free (`<get path="X" line="42" limit="5"/>`).
+export function numberLines(body) {
+	if (!body) return "";
+	const trailingNewline = body.endsWith("\n");
+	const source = trailingNewline ? body.slice(0, -1) : body;
+	const lines = source.split("\n");
+	const numbered = lines.map((line, i) => `${i + 1}:\t${line}`).join("\n");
+	return trailingNewline ? `${numbered}\n` : numbered;
 }
 
 // Heredoc fence (path is the terminator) — distinct from XML so model
@@ -77,10 +68,13 @@ export function loadDoc(metaUrl, name) {
 		.trim();
 }
 
+// log://<L>/<T>/<S>/<action> → <action>://<L>/<T>/<S>
+// Used by streaming actions (sh, env) to derive their data-channel
+// base path from the action's log entry path.
 export function logPathToDataBase(logPath) {
-	const m = logPath?.match(/^log:\/\/turn_(\d+)\/([^/]+)\/(.+)$/);
+	const m = logPath?.match(/^log:\/\/(\d+)\/(\d+)\/(\d+)\/(\w+)$/);
 	if (!m) return null;
-	return `${m[2]}://turn_${m[1]}/${m[3]}`;
+	return `${m[4]}://${m[1]}/${m[2]}/${m[3]}`;
 }
 
 export async function storePatternResult(
@@ -93,7 +87,7 @@ export async function storePatternResult(
 	matches,
 	{ manifest = false, loopId = null, attributes = null } = {},
 ) {
-	const logSlug = await store.logPath(runId, turn, scheme, path);
+	const logSlug = await store.logPath(runId, loopId, turn, scheme);
 	const filter = bodyFilter ? ` body="${bodyFilter}"` : "";
 	const total = matches.reduce((s, m) => s + m.tokens, 0);
 	const listing = matches.map((m) => `${m.path} (${m.tokens})`).join("\n");

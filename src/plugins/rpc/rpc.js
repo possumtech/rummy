@@ -136,7 +136,7 @@ export default class Rpc {
 				return { ok: true, path };
 			},
 			description:
-				"Write a status update at log://turn_N/update/<slug> carrying a " +
+				"Write a status update at log://<L>/<T>/<S>/update carrying a " +
 				"turn's continuation/terminal signal. Not general — this is the " +
 				"lifecycle verb.",
 			params: {
@@ -743,13 +743,13 @@ async function buildRunContext(hooks, ctx, runAlias) {
 	};
 }
 
-async function dispatchTool(hooks, rummy, scheme, path, body, attributes) {
+async function dispatchTool(hooks, rummy, scheme, _path, body, attributes) {
 	const store = rummy.entries;
 	const resultPath = await store.logPath(
 		rummy.runId,
+		rummy.loopId,
 		rummy.sequence,
 		scheme,
-		path,
 	);
 
 	await store.set({

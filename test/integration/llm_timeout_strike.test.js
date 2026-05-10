@@ -119,7 +119,7 @@ describe("LLM fetch timeout → 504 strike (@plugins_run_loop_lifecycle)", () =>
 		// Verify the 504 strike entry was written for turn 1.
 		const errorRows = await tdb.db.get_entries_by_pattern.all({
 			run_id: runRow.id,
-			path: "log://turn_1/error/*",
+			path: "log://*/1/*/error",
 			body: null,
 			limit: null,
 			offset: null,

@@ -26,8 +26,8 @@ describe("Prompt plugin", () => {
 			const calls = [];
 			const store = {
 				set: async (args) => calls.push(args),
-				logPath: async (_runId, turn, action, target) =>
-					`log://turn_${turn}/${action}/${target}`,
+				logPath: async (_runId, _loopId, turn, action) =>
+					`log://1/${turn}/1/${action}`,
 			};
 			return {
 				rummy: {
@@ -55,7 +55,7 @@ describe("Prompt plugin", () => {
 			assert.equal(catalog.body, "do thing");
 			assert.equal(catalog.visibility, "archived");
 			assert.equal(catalog.attributes.mode, "act");
-			const log = calls.find((c) => c.path?.startsWith("log://turn_3/prompt/"));
+			const log = calls.find((c) => c.path === "log://1/3/1/prompt");
 			assert.ok(log, "log entry");
 			assert.equal(log.body, "do thing");
 			assert.equal(log.attributes.path, "prompt://3");
@@ -73,7 +73,7 @@ describe("Prompt plugin", () => {
 				isContinuation: false,
 			});
 			const catalog = calls.find((c) => c.path === "prompt://3");
-			const log = calls.find((c) => c.path?.startsWith("log://turn_3/prompt/"));
+			const log = calls.find((c) => c.path === "log://1/3/1/prompt");
 			assert.equal(catalog.body.length, 2000, "catalog has full body");
 			assert.equal(log.body.length, 500, "log body capped at 500");
 		});

@@ -40,8 +40,8 @@ async function seedProject(tdb, alias) {
 		`proposal_lifecycle_${alias}_${Date.now()}`,
 	);
 	await fs.mkdir(projectRoot, { recursive: true });
-	const { runId, projectId } = await tdb.seedRun({ alias, projectRoot });
-	return { projectRoot, runId, projectId };
+	const { runId, projectId, loopId } = await tdb.seedRun({ alias, projectRoot });
+	return { projectRoot, runId, projectId, loopId };
 }
 
 describe("proposal lifecycle (@resolution)", () => {
@@ -62,8 +62,8 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	describe("set proposal accept", () => {
 		it("creates bare-path entry with patched content", async () => {
-			const { projectRoot, runId } = await seedProject(tdb, "set_bare_path");
-			const proposalPath = await entries.logPath(runId, 1, "set", "a.md");
+			const { projectRoot, runId, loopId } = await seedProject(tdb, "set_bare_path");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			const newContent = "# A\nbody line";
 			await entries.set({
 				runId,
@@ -104,13 +104,13 @@ describe("proposal lifecycle (@resolution)", () => {
 		});
 
 		it("readonly constraint vetoes accept with outcome=readonly", async () => {
-			const { projectId, runId } = await seedProject(tdb, "set_readonly_veto");
+			const { projectId, runId, loopId } = await seedProject(tdb, "set_readonly_veto");
 			await tdb.db.upsert_file_constraint.run({
 				project_id: projectId,
 				pattern: "locked.md",
 				visibility: "readonly",
 			});
-			const proposalPath = await entries.logPath(runId, 1, "set", "locked.md");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -142,7 +142,7 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	describe("rm proposal accept", () => {
 		it("removes bare-path entry and unlinks disk file", async () => {
-			const { projectRoot, runId } = await seedProject(tdb, "rm_accept");
+			const { projectRoot, runId, loopId } = await seedProject(tdb, "rm_accept");
 			await fs.writeFile(join(projectRoot, "doomed.md"), "bye");
 			await entries.set({
 				runId,
@@ -151,7 +151,7 @@ describe("proposal lifecycle (@resolution)", () => {
 				body: "bye",
 				state: "resolved",
 			});
-			const proposalPath = await entries.logPath(runId, 1, "rm", "doomed.md");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "rm");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -179,7 +179,7 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	describe("mv proposal accept", () => {
 		it("removes source entry when isMove attribute is set", async () => {
-			const { runId } = await seedProject(tdb, "mv_accept");
+			const { runId, loopId } = await seedProject(tdb, "mv_accept");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -187,12 +187,7 @@ describe("proposal lifecycle (@resolution)", () => {
 				body: "content",
 				state: "resolved",
 			});
-			const proposalPath = await entries.logPath(
-				runId,
-				1,
-				"mv",
-				"known://dest",
-			);
+			const proposalPath = await entries.logPath(runId, loopId, 1, "mv");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -214,13 +209,8 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	describe("ask_user proposal accept", () => {
 		it("stores user output as `answer` attribute on the entry", async () => {
-			const { runId } = await seedProject(tdb, "ask_user_accept");
-			const proposalPath = await entries.logPath(
-				runId,
-				1,
-				"ask_user",
-				"pick one",
-			);
+			const { runId, loopId } = await seedProject(tdb, "ask_user_accept");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "ask_user");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -247,8 +237,8 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	describe("sh proposal accept", () => {
 		it("seeds _1 and _2 companion data entries at state=streaming", async () => {
-			const { runId } = await seedProject(tdb, "sh_accept");
-			const proposalPath = await entries.logPath(runId, 1, "sh", "echo hi");
+			const { runId, loopId } = await seedProject(tdb, "sh_accept");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "sh");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -286,8 +276,8 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	describe("proposal reject", () => {
 		it("flips proposal to state=failed with outcome=permission", async () => {
-			const { runId } = await seedProject(tdb, "rejected");
-			const proposalPath = await entries.logPath(runId, 1, "set", "nope.md");
+			const { runId, loopId } = await seedProject(tdb, "rejected");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -321,12 +311,12 @@ describe("proposal lifecycle (@resolution)", () => {
 	// state (102 mid-run, 200 at completion).
 	describe("resolve response carries current run status (@resolution)", () => {
 		it("accept mid-run returns status=102, not hardcoded 200", async () => {
-			const { runId } = await seedProject(tdb, "resolve_status_accept");
+			const { runId, loopId } = await seedProject(tdb, "resolve_status_accept");
 			// Transition run into the mid-run state the client sees during
 			// an active drain loop.
 			await tdb.db.update_run_status.run({ id: runId, status: 102 });
 
-			const proposalPath = await entries.logPath(runId, 1, "set", "x.md");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -353,10 +343,10 @@ describe("proposal lifecycle (@resolution)", () => {
 		});
 
 		it("reject mid-run returns status=102", async () => {
-			const { runId } = await seedProject(tdb, "resolve_status_reject");
+			const { runId, loopId } = await seedProject(tdb, "resolve_status_reject");
 			await tdb.db.update_run_status.run({ id: runId, status: 102 });
 
-			const proposalPath = await entries.logPath(runId, 1, "set", "y.md");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
 				turn: 1,
@@ -383,11 +373,11 @@ describe("proposal lifecycle (@resolution)", () => {
 			// Edge case: if a client accepts after the run already moved
 			// to a terminal state (rare but possible with async races),
 			// the response should report that terminal state honestly.
-			const { runId } = await seedProject(tdb, "resolve_status_done");
+			const { runId, loopId } = await seedProject(tdb, "resolve_status_done");
 			await tdb.db.update_run_status.run({ id: runId, status: 102 });
 			await tdb.db.update_run_status.run({ id: runId, status: 200 });
 
-			const proposalPath = await entries.logPath(runId, 1, "set", "z.md");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
 				turn: 1,

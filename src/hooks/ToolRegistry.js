@@ -1,5 +1,3 @@
-import { summarizeEmission } from "../plugins/helpers.js";
-
 // gather → reason → act → communicate; update pinned last (turn-closer).
 const TOOL_ORDER = [
 	"think",
@@ -66,11 +64,10 @@ export default class ToolRegistry {
 
 	async view(scheme, entry) {
 		const fn = this.#views.get(scheme);
-		// Default fallback: summarizeEmission (tab-indent + ≤500 chars).
-		// Plugins override via core.on("view", fn) when their projection
-		// needs a different shape — log entries (full projectEmission),
-		// stream tails, or rummy.repo's full-file / symbols.
-		const body = fn ? await fn(entry) : summarizeEmission(entry.body);
+		// Default: empty body. Plugins opt in to a projection via
+		// core.on("view", fn). materializeContext applies universal
+		// `1:\t` line numbering after the projection returns.
+		const body = fn ? await fn(entry) : "";
 		return body == null ? "" : body;
 	}
 

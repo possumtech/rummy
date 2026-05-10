@@ -71,16 +71,10 @@ describe("ToolRegistry", () => {
 		assert.equal(await reg.view("set", {}), "");
 	});
 
-	it("view falls back to default summarizeEmission when no view registered", async () => {
+	it("view returns empty when no view is registered for the scheme", async () => {
 		const reg = new ToolRegistry();
 		const out = await reg.view("nope", { body: "hello" });
-		assert.equal(out, "\thello");
-	});
-
-	it("default fallback caps body at SUMMARY_MAX_CHARS", async () => {
-		const reg = new ToolRegistry();
-		const out = await reg.view("nope", { body: "x".repeat(50000) });
-		assert.ok(out.length <= 500);
+		assert.equal(out, "");
 	});
 
 	it("hasView reflects whether a view is registered", () => {

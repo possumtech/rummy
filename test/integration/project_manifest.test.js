@@ -1,5 +1,5 @@
 /**
- * `log://turn_0/repo/manifest` entry contract.
+ * `repo://manifest` entry contract.
  *
  * Covers @project_manifest — the `rummy.repo` plugin's run-start
  * orientation entry. Verifies: a single visible manifest is registered
@@ -64,7 +64,7 @@ describe("project manifest (@project_manifest)", () => {
 		await tdb.cleanup();
 	});
 
-	it("scan registers a single visible log://turn_0/repo/manifest entry", async () => {
+	it("scan registers a single visible repo://manifest entry", async () => {
 		const root = await makeProject("basic");
 		const { runId, projectId } = await tdb.seedRun({
 			alias: "manifest_basic",
@@ -80,7 +80,7 @@ describe("project manifest (@project_manifest)", () => {
 
 		const matches = await entries.getEntriesByPattern(
 			runId,
-			"log://turn_0/repo/manifest",
+			"repo://manifest",
 		);
 		assert.strictEqual(matches.length, 1, "one manifest entry registered");
 		assert.strictEqual(
@@ -103,7 +103,7 @@ describe("project manifest (@project_manifest)", () => {
 			projectId,
 			projectRoot: root,
 		});
-		const body = await entries.getBody(runId, "log://turn_0/repo/manifest");
+		const body = await entries.getBody(runId, "repo://manifest");
 		assert.ok(body, "manifest body exists");
 
 		// Two sections joined by a markdown horizontal rule.
@@ -159,14 +159,14 @@ describe("project manifest (@project_manifest)", () => {
 		});
 		const firstBody = await entries.getBody(
 			runId,
-			"log://turn_0/repo/manifest",
+			"repo://manifest",
 		);
 
 		writeFileSync(join(root, "added_later.js"), "export const z = 0;\n");
 		await fireTurnStarted({ tdb, runId, projectId, projectRoot: root });
 		const secondBody = await entries.getBody(
 			runId,
-			"log://turn_0/repo/manifest",
+			"repo://manifest",
 		);
 
 		assert.strictEqual(
@@ -220,7 +220,7 @@ describe("project manifest (@project_manifest)", () => {
 
 		const manifest = await entries.getEntriesByPattern(
 			runId,
-			"log://turn_0/repo/manifest",
+			"repo://manifest",
 		);
 		assert.strictEqual(manifest.length, 0, "no manifest when noRepo");
 		const files = await entries.getEntriesByPattern(runId, "src/a.js");

@@ -1,7 +1,6 @@
-import { projectEmission } from "../helpers.js";
 import docs from "./ask_userDoc.js";
 
-const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+const LOG_ACTION_RE = /^log:\/\/\d+\/\d+\/\d+\/(\w+)$/;
 
 export default class AskUser {
 	#core;
@@ -57,6 +56,6 @@ export default class AskUser {
 	}
 
 	full(entry) {
-		return projectEmission(entry.body);
+		return entry.body;
 	}
 }

@@ -36,17 +36,9 @@ describe("error verdict (@response_healing)", () => {
 		const alias = `verdict_${Date.now()}_${Math.random()
 			.toString(36)
 			.slice(2, 6)}`;
-		const { runId } = await tdb.seedRun({ alias });
+		const { runId, loopId } = await tdb.seedRun({ alias });
 		RUN_ID = runId;
-		const loop = await tdb.db.enqueue_loop.get({
-			run_id: runId,
-			sequence: 1,
-			mode: "act",
-			model: null,
-			prompt: "test",
-			config: null,
-		});
-		LOOP_ID = loop.id;
+		LOOP_ID = loopId;
 		await tdb.hooks.loop.started.emit({ runId, loopId: LOOP_ID });
 		await bumpTurn(turn);
 	}
@@ -359,7 +351,7 @@ describe("error verdict (@response_healing)", () => {
 		// "validation" is a hard outcome (not in SOFT_FAILURE_OUTCOMES);
 		// soft outcomes like "not_found" / "conflict" are findings the
 		// model adapts to, not contract violations, and don't strike.
-		const path = "log://turn_1/set/bad_path";
+		const path = "log://1/1/1/set";
 		await store.set({
 			runId: RUN_ID,
 			turn: 1,

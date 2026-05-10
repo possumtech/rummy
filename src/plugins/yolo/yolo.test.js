@@ -28,7 +28,7 @@ describe("Yolo plugin", () => {
 		// No yolo flag → no-op even when proposed array provided.
 		await hooks.proposal.pending.emit({
 			rummy: { yolo: false },
-			proposed: [{ path: "log://turn_1/sh/x" }],
+			proposed: [{ path: "log://1/1/1/sh" }],
 		});
 	});
 
@@ -37,7 +37,7 @@ describe("Yolo plugin", () => {
 		const store = makeStore();
 		await hooks.proposal.pending.emit({
 			rummy: { yolo: false, runId: "r", entries: store, db: {} },
-			proposed: [{ path: "log://turn_1/sh/x" }],
+			proposed: [{ path: "log://1/1/1/sh" }],
 		});
 		assert.deepEqual(store._calls, []);
 	});
@@ -62,7 +62,7 @@ describe("Yolo plugin", () => {
 					},
 				},
 			},
-			proposed: [{ path: "log://turn_1/set/x" }],
+			proposed: [{ path: "log://1/1/1/set" }],
 		});
 		const fail = store._calls.find((c) => c.state === "failed");
 		assert.ok(fail);
@@ -90,7 +90,7 @@ describe("Yolo plugin", () => {
 					},
 				},
 			},
-			proposed: [{ path: "log://turn_1/set/x" }],
+			proposed: [{ path: "log://1/1/1/set" }],
 		});
 		const resolved = store._calls.find((c) => c.state === "resolved");
 		assert.ok(resolved);

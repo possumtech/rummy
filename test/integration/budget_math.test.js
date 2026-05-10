@@ -325,7 +325,7 @@ describe("Budget math", () => {
 
 	describe("413 error carries structured archive attrs", () => {
 		it("grinder reclaims fat get/set replays + emits 413 with archivedCount/Tokens", async () => {
-			const { runId } = await tdb.seedRun({ alias: "err_attrs_413" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "err_attrs_413" });
 			// Seed turn-0 fat get replays in DB so reassembly sees them.
 			const fatBodies = [];
 			for (let i = 0; i < 5; i++) {
@@ -334,7 +334,7 @@ describe("Budget math", () => {
 				await store.set({
 					runId,
 					turn: 0,
-					path: `log://turn_0/get/big_${i}`,
+					path: `log://1/0/${i + 1}/get`,
 					body,
 					state: "resolved",
 					visibility: "indexed",
@@ -368,7 +368,7 @@ describe("Budget math", () => {
 				rows,
 				ctx: {
 					runId,
-					loopId: null,
+					loopId,
 					turn: 1,
 					systemPrompt: "test",
 					mode: "act",
@@ -379,7 +379,7 @@ describe("Budget math", () => {
 
 			const stored = await tdb.db.get_known_entries.all({ run_id: runId });
 			const err = stored.find(
-				(r) => r.path.startsWith("log://turn_1/error/") && r.scheme === "log",
+				(r) => /^log:\/\/\d+\/1\/\d+\/error$/.test(r.path) && r.scheme === "log",
 			);
 			assert.ok(err, "413 error entry written");
 			const attrs = JSON.parse(err.attributes);

@@ -9,13 +9,13 @@ describe("Sh", () => {
 		filter() {},
 	});
 
-	it("full tab-indents the model's emission for action log entries", () => {
+	it("full returns raw emission for action log entries (line-numbering happens in materializeContext)", () => {
 		const result = plugin.full({
 			path: "log://turn_3/sh/ls",
 			attributes: { command: "ls -la" },
 			body: "<sh>ls -la</sh>",
 		});
-		assert.equal(result, "\t<sh>ls -la</sh>");
+		assert.equal(result, "<sh>ls -la</sh>");
 	});
 
 	it("full returns empty for empty stream body", () => {

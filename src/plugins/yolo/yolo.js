@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { logPathToDataBase } from "../helpers.js";
 import finalizeStream from "../stream/finalize.js";
 
-const SH_PATH_RE = /^log:\/\/turn_\d+\/(sh|env)\//;
+const SH_PATH_RE = /^log:\/\/\d+\/\d+\/\d+\/(sh|env)$/;
 
 // Auto-resolves proposals + spawns sh/env locally for runs started with yolo:true. SPEC #yolo_mode.
 export default class Yolo {

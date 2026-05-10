@@ -24,12 +24,12 @@ function makeDb({ pendingLoops = [], latestLoop = null } = {}) {
 
 describe("finalizeStream", () => {
 	const runRow = { id: 7, alias: "run_7" };
-	const path = "log://turn_1/sh/cmd";
+	const path = "log://1/1/1/sh";
 
 	it("sets channel terminal states to resolved on exit 0", async () => {
 		const channels = [
-			{ path: "sh://turn_1/cmd_1", body: "out", tokens: 1 },
-			{ path: "sh://turn_1/cmd_2", body: "", tokens: 0 },
+			{ path: "sh://1/1/1_1", body: "out", tokens: 1 },
+			{ path: "sh://1/1/1_2", body: "", tokens: 0 },
 		];
 		const entries = makeEntries({ channels });
 		const db = makeDb();
@@ -54,7 +54,7 @@ describe("finalizeStream", () => {
 	});
 
 	it("sets channel terminal states to failed on non-zero exit", async () => {
-		const channels = [{ path: "sh://turn_1/cmd_1", body: "", tokens: 0 }];
+		const channels = [{ path: "sh://1/1/1_1", body: "", tokens: 0 }];
 		const entries = makeEntries({ channels });
 		const db = makeDb();
 		const hooks = createHooks();
@@ -68,15 +68,15 @@ describe("finalizeStream", () => {
 			exitCode: 7,
 		});
 
-		const ch = entries._calls.find((c) => c.path === "sh://turn_1/cmd_1");
+		const ch = entries._calls.find((c) => c.path === "sh://1/1/1_1");
 		assert.equal(ch.state, "failed");
 		assert.equal(ch.outcome, "exit:7");
 	});
 
 	it("rewrites the log entry with command, exit, duration, and channel summary", async () => {
 		const channels = [
-			{ path: "sh://turn_1/cmd_1", body: "hi", tokens: 5 },
-			{ path: "sh://turn_1/cmd_2", body: "", tokens: 0 },
+			{ path: "sh://1/1/1_1", body: "hi", tokens: 5 },
+			{ path: "sh://1/1/1_2", body: "", tokens: 0 },
 		];
 		const entries = makeEntries({
 			channels,
@@ -99,12 +99,12 @@ describe("finalizeStream", () => {
 		assert.ok(logSet);
 		assert.equal(logSet.state, "resolved");
 		assert.match(logSet.body, /ran 'echo hi', exit=0 \(1s\)/);
-		assert.match(logSet.body, /sh:\/\/turn_1\/cmd_1 \(5 tokens\)/);
-		assert.match(logSet.body, /sh:\/\/turn_1\/cmd_2 \(empty\)/);
+		assert.match(logSet.body, /sh:\/\/1\/1\/1_1 \(5 tokens\)/);
+		assert.match(logSet.body, /sh:\/\/1\/1\/1_2 \(empty\)/);
 	});
 
 	it("emits run.wake on a dormant run with the latest loop's mode", async () => {
-		const channels = [{ path: "sh://turn_1/cmd_1", body: "", tokens: 0 }];
+		const channels = [{ path: "sh://1/1/1_1", body: "", tokens: 0 }];
 		const entries = makeEntries({ channels });
 		const db = makeDb({
 			pendingLoops: [],
@@ -131,7 +131,7 @@ describe("finalizeStream", () => {
 	});
 
 	it("does not wake when an active loop exists on the run", async () => {
-		const channels = [{ path: "sh://turn_1/cmd_1", body: "", tokens: 0 }];
+		const channels = [{ path: "sh://1/1/1_1", body: "", tokens: 0 }];
 		const entries = makeEntries({ channels });
 		const db = makeDb({
 			pendingLoops: [{ id: 4, status: 102 }],
@@ -155,7 +155,7 @@ describe("finalizeStream", () => {
 	});
 
 	it("does not wake when wake=false (abort/cancel paths)", async () => {
-		const channels = [{ path: "sh://turn_1/cmd_1", body: "", tokens: 0 }];
+		const channels = [{ path: "sh://1/1/1_1", body: "", tokens: 0 }];
 		const entries = makeEntries({ channels });
 		const db = makeDb({
 			pendingLoops: [],
@@ -180,7 +180,7 @@ describe("finalizeStream", () => {
 	});
 
 	it("does not wake when there is no completed loop on the run", async () => {
-		const channels = [{ path: "sh://turn_1/cmd_1", body: "", tokens: 0 }];
+		const channels = [{ path: "sh://1/1/1_1", body: "", tokens: 0 }];
 		const entries = makeEntries({ channels });
 		const db = makeDb({ pendingLoops: [], latestLoop: null });
 		const hooks = createHooks();

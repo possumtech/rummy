@@ -1,4 +1,3 @@
-import { projectEmission } from "../helpers.js";
 import docs from "./updateDoc.js";
 
 const CONTRACT_REMINDER = "UPDATE missing";
@@ -55,10 +54,6 @@ export default class Update {
 	}
 
 	full(entry) {
-		return projectEmission(entry.body);
-	}
-
-	summary(entry) {
-		return this.full(entry);
+		return entry.body;
 	}
 }

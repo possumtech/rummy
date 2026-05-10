@@ -24,21 +24,13 @@ export default async function finalizeStream({
 	const rawBase = logPathToDataBase(path);
 	if (!rawBase) {
 		throw new Error(
-			`path must be a log entry (log://turn_N/...); got: ${path}`,
+			`path must be a log entry (log://<L>/<T>/<S>/<action>); got: ${path}`,
 		);
 	}
-	// The log entry path may arrive in its raw URL-encoded form (e.g.
-	// `%20` for spaces) but the data-channel rows are stored under the
-	// canonical form (`%20` → `_` via encodeSegment). Normalize the
-	// derived dataBase so `${dataBase}_*` matches the stored channel
-	// paths regardless of which form the caller passed in.
+	// Normalize for `${dataBase}_*` glob matching against stored channels.
 	const dataBase = Entries.normalizePath(rawBase);
-	// Pin every state-transition write to the action's originating turn.
-	// Without this, entries.set's default turn=0 re-stamps the entry's
-	// run_view.turn to 0 — and the auto-failure hook then derives
-	// log://turn_0/error/... for failures that actually happened on
-	// turn N.
-	const turnMatch = path.match(/^log:\/\/turn_(\d+)\//);
+	// Pin state-transition writes to the action's originating turn.
+	const turnMatch = path.match(/^log:\/\/\d+\/(\d+)\/\d+\/\w+$/);
 	const turn = turnMatch ? Number(turnMatch[1]) : 0;
 
 	const runId = runRow.id;

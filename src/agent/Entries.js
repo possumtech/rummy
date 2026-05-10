@@ -19,10 +19,14 @@ function translateBodyOverflow(err, path, body) {
 }
 
 // Skipped by the auto-failure hook to break recursion (error.log emits its own).
-const ERROR_PATH_RE = /^log:\/\/turn_\d+\/error\//;
+const ERROR_PATH_RE = /^log:\/\/\d+\/\d+\/\d+\/error$/;
 
 // Stream channels — failure already captured by the parent action entry.
-const CHANNEL_PATH_RE = /^(env|sh):\/\/turn_\d+\//;
+const CHANNEL_PATH_RE = /^(env|sh):\/\/\d+\/\d+\/\d+_\d+$/;
+
+// Run-status writes set state via writer:"system" with no loop scope.
+// These are lifecycle markers, not action failures — no strike.
+const RUN_PATH_RE = /^run:\/\//;
 
 export default class Entries {
 	#db;
@@ -38,7 +42,7 @@ export default class Entries {
 	// onError: catches storage-layer rejections (EntryOverflowError) and routes
 	// to error.log → strike; callers don't handle at each write site.
 	// onFailed: every state="failed" on a non-error path fires this so a
-	// sibling log://turn_N/error/ entry materializes (model-facing).
+	// sibling log://<L>/<T>/<S>/error entry materializes (model-facing).
 	constructor(
 		db,
 		{
@@ -98,9 +102,22 @@ export default class Entries {
 		}
 	}
 
-	async nextTurn(runId) {
-		const row = await this.#db.next_turn.get({ run_id: runId });
+	async nextTurn(runId, loopId) {
+		// Per-loop turn counter. log://<L>/<T>/<S>/<action>'s T resets
+		// at each new loop. We also bump runs.next_turn for run-absolute
+		// telemetry (rpc /run/{alias} reports it as "last turn").
+		await this.#db.next_turn.run({ run_id: runId });
+		const row = await this.#db.next_loop_turn.get({ loop_id: loopId });
 		return row.turn;
+	}
+
+	async nextSeq(runId, loopId, turn) {
+		const row = await this.#db.next_turn_seq.get({
+			run_id: runId,
+			loop_id: loopId,
+			turn,
+		});
+		return row.seq;
 	}
 
 	async dedup(runId, scheme, target, turn) {
@@ -115,18 +132,12 @@ export default class Entries {
 		return `${candidate}_${++this.#seq}`;
 	}
 
-	// log://turn_N/action/slug — slugify caps + collision-suffixes.
-	async logPath(runId, turn, action, target) {
-		const slug = target == null ? "" : slugify(String(target));
-		const base = slug
-			? `log://turn_${turn}/${action}/${slug}`
-			: `log://turn_${turn}/${action}/_`;
-		const existing = await this.#db.get_entry_body.get({
-			run_id: runId,
-			path: base,
-		});
-		if (!existing) return base;
-		return `${base}_${++this.#seq}`;
+	// log://<L>/<T>/<S>/<action> — L=loop.sequence, T=turn (per-loop),
+	// S=allocated per-turn sequence. Action is the verb.
+	async logPath(runId, loopId, turn, action) {
+		const loop = await this.#db.get_loop_sequence.get({ id: loopId });
+		const seq = await this.nextSeq(runId, loopId, turn);
+		return `log://${loop.sequence}/${turn}/${seq}/${action}`;
 	}
 
 	async slugPath(runId, scheme, content, tags) {
@@ -324,7 +335,7 @@ export default class Entries {
 		const scope = this.#resolveScope(kind, runId, projectId);
 		const effectiveAttributes = attributes ? { ...attributes } : null;
 		if (scheme === "log" && effectiveAttributes) {
-			const m = normalized.match(/^log:\/\/turn_\d+\/([^/]+)\//);
+			const m = normalized.match(/^log:\/\/\d+\/\d+\/\d+\/(\w+)$/);
 			if (m) effectiveAttributes.action = m[1];
 		}
 		let entry;
@@ -383,6 +394,7 @@ export default class Entries {
 		if (!this.#onFailed) return;
 		if (ERROR_PATH_RE.test(path)) return;
 		if (CHANNEL_PATH_RE.test(path)) return;
+		if (RUN_PATH_RE.test(path)) return;
 		let message = body;
 		if (!message) {
 			if (outcome) message = `failed: ${outcome}`;
@@ -523,7 +535,7 @@ export default class Entries {
 				});
 			}
 		}
-		const path = await this.logPath(runId, turn, "update", storedBody);
+		const path = await this.logPath(runId, loopId, turn, "update");
 		await this.set({
 			runId,
 			turn,

@@ -1,9 +1,9 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { projectEmission, storePatternResult } from "../helpers.js";
+import { storePatternResult } from "../helpers.js";
 import docs from "./mvDoc.js";
 
-const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+const LOG_ACTION_RE = /^log:\/\/\d+\/\d+\/\d+\/(\w+)$/;
 
 function visibilityFromAttrs(attrs) {
 	const wantArchive = attrs.archive !== undefined;
@@ -165,6 +165,6 @@ export default class Mv {
 	}
 
 	full(entry) {
-		return projectEmission(entry.body);
+		return entry.body;
 	}
 }

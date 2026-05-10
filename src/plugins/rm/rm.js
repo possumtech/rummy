@@ -1,9 +1,9 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { projectEmission, storePatternResult } from "../helpers.js";
+import { storePatternResult } from "../helpers.js";
 import docs from "./rmDoc.js";
 
-const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+const LOG_ACTION_RE = /^log:\/\/\d+\/\d+\/\d+\/(\w+)$/;
 
 export default class Rm {
 	#core;
@@ -124,7 +124,7 @@ export default class Rm {
 			const resultPath =
 				schemeMatches.length === 0 && fileMatches.length === 1
 					? entry.resultPath
-					: await store.logPath(runId, turn, "rm", match.path);
+					: await store.logPath(runId, loopId, turn, "rm");
 			await store.set({
 				runId,
 				turn,
@@ -142,6 +142,6 @@ export default class Rm {
 	}
 
 	full(entry) {
-		return projectEmission(entry.body);
+		return entry.body;
 	}
 }

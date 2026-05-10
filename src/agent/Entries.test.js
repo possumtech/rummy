@@ -6,7 +6,10 @@ import { EntryOverflowError } from "./errors.js";
 function mockDb({ entryExists = () => null } = {}) {
 	return {
 		get_all_schemes: { all: async () => [] },
-		next_turn: { get: async () => ({ turn: 1 }) },
+		next_turn: { run: async () => ({}), get: async () => ({ turn: 1 }) },
+		next_loop_turn: { get: async () => ({ turn: 1 }) },
+		next_turn_seq: { get: async () => ({ seq: 1 }) },
+		get_loop_sequence: { get: async () => ({ sequence: 1 }) },
 		get_entry_body: { get: async ({ path }) => entryExists(path) },
 	};
 }
@@ -82,55 +85,34 @@ describe("Entries instance methods (DB-backed)", () => {
 		assert.ok(e);
 	});
 
-	it("nextTurn delegates to db.next_turn.get", async () => {
+	it("nextTurn returns per-loop turn from next_loop_turn", async () => {
 		const e = new Entries(mockDb());
-		assert.equal(await e.nextTurn(7), 1);
+		// runId=7, loopId=42 — mock returns turn=1 regardless.
+		assert.equal(await e.nextTurn(7, 42), 1);
 	});
 
-	it("logPath produces slugified log://turn_N/action/<slug> paths", async () => {
+	it("nextSeq returns the per-turn sequence from next_turn_seq", async () => {
 		const e = new Entries(mockDb());
-		// slugify preserves "/" as separator and encodes per-segment.
-		const path = await e.logPath(7, 3, "set", "src/app.js");
-		assert.equal(path, "log://turn_3/set/src/app.js");
+		assert.equal(await e.nextSeq(1, 1, 1), 1);
 	});
 
-	it("logPath caps slug at slugify's 80-char limit", async () => {
-		const e = new Entries(mockDb());
-		const long = "x".repeat(500);
-		const path = await e.logPath(1, 1, "error", long);
-		const slug = path.slice("log://turn_1/error/".length);
-		assert.ok(slug.length <= 80, `slug too long: ${slug.length}`);
-		assert.ok(slug.startsWith("xxxxx"));
-	});
-
-	it("logPath stays well under DB 2048-char limit even on huge targets", async () => {
-		const e = new Entries(mockDb());
-		const huge = "y".repeat(10000);
-		const path = await e.logPath(1, 1, "set", huge);
-		assert.ok(
-			path.length < 200,
-			`logPath should stay <200 chars: ${path.length}`,
-		);
-		assert.ok(path.length <= 2048);
-	});
-
-	it("logPath uses '_' placeholder when target is empty", async () => {
-		const e = new Entries(mockDb());
-		assert.equal(await e.logPath(1, 1, "update", ""), "log://turn_1/update/_");
-		assert.equal(
-			await e.logPath(1, 1, "update", null),
-			"log://turn_1/update/_",
-		);
-	});
-
-	it("logPath sequence-suffixes when path collides", async () => {
-		let calls = 0;
-		const db = mockDb({
-			entryExists: () => (++calls === 1 ? { body: "exists" } : null),
-		});
+	it("logPath produces log://<L>/<T>/<S>/<action>", async () => {
+		// loopSeq=4, turn=3, seq=1, action=set
+		const db = mockDb();
+		db.get_loop_sequence.get = async () => ({ sequence: 4 });
+		db.next_turn_seq.get = async () => ({ seq: 1 });
 		const e = new Entries(db);
-		const collided = await e.logPath(1, 1, "set", "x");
-		assert.match(collided, /^log:\/\/turn_1\/set\/x_\d+$/);
+		const path = await e.logPath(7, 99, 3, "set");
+		assert.equal(path, "log://4/3/1/set");
+	});
+
+	it("logPath fits in any sane path budget — no slug to grow", async () => {
+		const db = mockDb();
+		db.get_loop_sequence.get = async () => ({ sequence: 1 });
+		db.next_turn_seq.get = async () => ({ seq: 1 });
+		const e = new Entries(db);
+		const path = await e.logPath(1, 1, 1, "set");
+		assert.ok(path.length < 50, `logPath stays short: ${path.length}`);
 	});
 
 	it("slugPath uses summary, falls back to content, then sequence-only", async () => {

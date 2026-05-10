@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import { projectEmission, storePatternResult } from "../helpers.js";
+import { storePatternResult } from "../helpers.js";
 import docs from "./getDoc.js";
 
 export default class Get {
@@ -193,7 +193,7 @@ export default class Get {
 	}
 
 	full(entry) {
-		return projectEmission(entry.body);
+		return entry.body;
 	}
 }
 
@@ -208,7 +208,8 @@ function sliceSection(match, line, limit) {
 				: Math.max(1, line);
 	const startIdx = startLine - 1;
 	const endIdx = limit !== null ? Math.min(startIdx + limit, total) : total;
-	const slice = allLines.slice(startIdx, endIdx).join("\n");
-	const text = `${match.path}\n[lines ${startLine}–${endIdx} / ${total} total]\n${slice}`;
+	// Body is the slice content only. Range info lives in the JSON
+	// envelope (lineStart/lineEnd/totalLines attrs). No header in body.
+	const text = allLines.slice(startIdx, endIdx).join("\n");
 	return { text, startLine, endLine: endIdx, total };
 }

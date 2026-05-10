@@ -2,10 +2,10 @@ import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
 import File from "../file/file.js";
-import { projectEmission, storePatternResult } from "../helpers.js";
+import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
-const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+const LOG_ACTION_RE = /^log:\/\/\d+\/\d+\/\d+\/(\w+)$/;
 
 // <set archive>/<set index> are boolean attrs. Both → conflict.
 // Returns "archived" | "indexed" | null (no flip), or "conflict".
@@ -399,9 +399,9 @@ export default class Set {
 			if (attrs.currentBody != null) {
 				lines.push("", `--- current body of ${target} ---`, attrs.currentBody);
 			}
-			return projectEmission(lines.join("\n"));
+			return lines.join("\n");
 		}
-		return projectEmission(entry.body);
+		return entry.body;
 	}
 
 	static #applyOperations(currentBody, operations) {
