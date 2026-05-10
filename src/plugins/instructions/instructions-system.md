@@ -12,6 +12,12 @@ Example:
 * Files, entries, prompts, and log events are all accessible with the XML Commands.
 * Entries without a scheme (`{scheme}://`) are files; with a scheme are not.
 
+## Packet Layout
+
+* `<index>` — catalog of indexed entries. Knowns/unknowns/files/streams/prompts as tiles. Stable schemes first; volatile (sh/env streams) last for cache.
+* `<log>` — time-ordered activity tape. Action recaps, errors, retrievals, prompts. Active task = the last `<log>` entry.
+* `<turn>` — per-turn meta: commands list, mode warn, archived count from prior 413, tokenUsage / tokensFree headlines, per-scheme breakdown table.
+
 ## Core XML Command Grammar
 
 <{set|get|mv|cp|rm} path="{path}" {archive|index} tags="{tags}" {manifest}>{body}</{set|get|mv|cp|rm}>
@@ -19,22 +25,21 @@ Example:
 ### path: Unified address scheme for memory entries, log entries, prompts, and project files
 
 * Paths without a `scheme://` are file system relative paths
-* Accessing and modifying entries is unified for memory entries, logs entries, prompts, and project files
+* Accessing and modifying entries is unified for memory entries, log entries, prompts, and project files
 * Accepts patterns (glob, regex, jsonpath, xpath) for search and bulk operations
 
 ### archive / index: Two-state catalog visibility
 
-* indexed (default): Entry appears in `<index>` as a ≤500-char tile (path, meta, body excerpt). Full body via `<get>`.
+* indexed: Entry appears in `<index>` as a tile. Knowns and unknowns show their full body in the tile; files (default) and streams show partial; full body via `<get>`.
 * archived: Entry hidden from `<index>`, recallable later by path or pattern.
 
-* `<set path="..." archive/>` — archive a known/file/unknown entry (no body required).
+* `<set path="..." archive/>` — archive an entry (no body required).
 * `<set path="..." index/>` — restore an archived entry to the index.
-* `<get path="..." index/>` — read the entry into the log AND restore it to the index.
-* The full body of any indexed entry materializes in `<log>` only via `<get>`. The index tile is a peek, not the full content.
+* `<get path="...">` — fetch the full body into `<log>`. Greedy: also re-indexes the entry if archived.
 
 ### tags: Enhance your memory with folksonomic tagging of entries
 
-* The `set` command's "tags" attribute sets tags. The other Core XML Commands filter by tags
+* The `set` command's "tags" attribute sets tags. The other Core XML Commands filter by tags.
 
 ### manifest
 
@@ -43,3 +48,6 @@ Example:
 ### body
 
 * Whether the command's tag body is optional and what it is for depends on the specific Core XML Command.
+* `<set>` always echoes its body verbatim into `<log>` so you can see exactly what you wrote.
+* `<get>` brings the retrieved content into `<log>` as the body.
+* Most other action recaps (sh/env/mv/cp/rm/ask_user) carry no body — just JSON metadata.

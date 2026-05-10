@@ -81,7 +81,7 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
 		const entry = rows.find((r) => r.path === "unknown://what_is_x");
 		assert.ok(entry, "unknown entry visible in model context");
-		assert.strictEqual(entry.category, "unknown");
+		assert.strictEqual(entry.category, "data");
 	});
 
 	it("audit entries hidden from model context", async () => {
@@ -146,18 +146,30 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 		assert.ok(!entry, "stored entry should be hidden");
 	});
 
-	it("prompt entries visible in model context", async () => {
+	it("prompt entries are catalog data, archived by default", async () => {
 		await store.set({
 			runId,
 			turn: 1,
 			path: "prompt://1",
 			body: "what is this?",
 			state: "resolved",
+			visibility: "archived",
 			attributes: { mode: "ask" },
 		});
 		const rows = await tdb.db.get_model_context.all({ run_id: runId });
+		// Archived → filtered out of v_model_context.
 		const entry = rows.find((r) => r.path === "prompt://1");
-		assert.ok(entry, "prompt entry visible in model context");
-		assert.strictEqual(entry.category, "prompt");
+		assert.ok(!entry, "archived prompt hidden from model context by default");
+
+		// Indexing it puts it in <index> like any other catalog entry.
+		await store.set({
+			runId,
+			path: "prompt://1",
+			visibility: "indexed",
+		});
+		const rows2 = await tdb.db.get_model_context.all({ run_id: runId });
+		const indexed = rows2.find((r) => r.path === "prompt://1");
+		assert.ok(indexed, "indexed prompt visible in model context");
+		assert.strictEqual(indexed.category, "data");
 	});
 });

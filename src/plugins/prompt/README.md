@@ -1,48 +1,43 @@
 # prompt {#prompt_plugin}
 
-Renders the `<prompt>` tag at the front of the user message —
-the model sees its task first, then the dynamic state blocks,
-then the late-bound rules and budget. Always present on every
-turn.
+Records each turn's prompt as both a catalog entry (archived by
+default) and a log entry (with body = ≤500-char preview). No
+`<prompt>` section — the active task surfaces as the last `<log>`
+entry by recency.
 
 ## Registration
 
-- **Filter**: `assembly.user` at priority 30 (front of user
-  message, before all dynamic state and the `<system_requirements>`
-  block at 165)
+- **Scheme**: `prompt`, category `data`, `writableBy: ["plugin"]` —
+  the model can't `<set path="prompt://N">` body content directly,
+  but visibility flips (`archive`/`index`) work like any catalog entry.
+- **View**: returns the entry body verbatim (used both for the
+  catalog tile when indexed and for `<get path="prompt://N">`
+  retrievals into `<log>`).
+- **Event**: `turn.started` — writes both entries.
 
-## Behavior
+## What turn.started writes
 
-Finds the latest `prompt://` entry in the turn_context rows. Renders
-with `commands` attribute (available tool list) and an optional
-`warn="File editing disallowed."` attribute when the loop's mode is
-`ask` (read from `attributes.mode` on the prompt entry, falling back
-to the type passed by the core). The mode itself is not rendered as
-a tag attribute — the warn copy carries the only model-relevant
-consequence.
+For each new (non-continuation) prompt:
 
-## Archived prompts disappear, by design
+1. `prompt://N` — catalog entry, full body, `visibility: "archived"`.
+   Hidden from `<index>` by default. Recallable via
+   `<get path="prompt://N">` or `<set path="prompt://N" index/>`.
 
-`v_model_context.sql` filters archived entries out of the model's
-context for every scheme — `prompt` included. There is no carve-out.
-An archived `prompt://N` does not appear in the user message at
-all: no tag, no body, no metadata.
+2. `log://turn_N/prompt/<slug>` — log entry, body = ≤500-char
+   preview, `attrs.path = "prompt://N"`. The log preview is the
+   active-task signal: under the slim-log paradigm, body-bearing
+   log entries pop out of a wall of slim manifests, and the latest
+   prompt entry is naturally last in `<log>` (recency).
 
-The model receives no instruction-side hint not to archive the
-active prompt. If it archives the prompt anyway, the run will
-visibly fail on the next turn (no `<prompt>` tag for the model to
-act on; the model emits "please provide a prompt to act upon" or
-similar confusion). That instructive failure mode is intentional —
-paradigm purity (archived means archived, no exceptions) over
-silent data-layer rescue.
+## Why archived by default
 
-If practical behavior at scale ever demands a guard, the right
-surface is an action-gate (refuse the `<set>` of `visibility="archived"`
-on the active `prompt://N` with a soft 403 the model can read),
-not a read-view carve-out that quietly keeps the entry visible.
+Older prompts are time-tape items, not reference catalog. Mixing
+them with knowns/files/streams in `<index>` would muddle the
+catalog's role. Archived means hidden from `<index>` but present
+in storage — model retrieves freely.
 
-System-level auto-archive on new prompt is unaffected: when a fresh
-`prompt://M` arrives, the engine archives `prompt://N` (M > N) so
-the prior cycle's prompt cleanly leaves context. `unknown://` /
-`known://` entries persist across cycles; logs are demoted per
-stage instructions.
+## Why the 500-char preview cap
+
+Bounded log cost. If the prompt is more of a data packet than an
+instruction, the model `<get>`s `prompt://N` for the full body.
+The cap is a fixed render rule, not a budget reaction.

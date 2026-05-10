@@ -1,32 +1,23 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 import { renderEntry } from "../helpers.js";
 
-// sh/env span multiple channels; channels render their own tokens in <visible>.
-const STREAM_NO_TOKENS = new Set(["sh", "env"]);
-
 export default class Log {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
-		core.filter("assembly.system", this.assembleLog.bind(this), 300);
+		// `<log>` lives in the user message (not system). Cache discipline:
+		// system stays stable; volatile activity tape lives in user.
+		// Priority 50 = between persona (10) and <turn> (90).
+		core.filter("assembly.user", this.assembleLog.bind(this), 50);
 	}
 
 	async assembleLog(content, ctx) {
-		// Includes prior prompts; the latest prompt is rendered separately as <prompt>.
-		const latestPrompt = ctx.rows.findLast(
-			(r) => r.category === "prompt" && r.scheme === "prompt",
+		// Time-indexed activity: action recaps, errors, updates,
+		// retrievals, prompt log entries. Archived rows skip rendering.
+		const entries = ctx.rows.filter(
+			(r) => r.category === "logging" && r.visibility === "indexed",
 		);
-		// Time-indexed activity: action logs, errors, updates, sh/env
-		// streams, prior prompts. Archived rows skip rendering entirely.
-		const entries = ctx.rows.filter((r) => {
-			if (r.visibility === "archived") return false;
-			if (r.category === "logging") return true;
-			if (r.category === "prompt" && r.scheme === "prompt") {
-				return r !== latestPrompt;
-			}
-			return false;
-		});
 		if (entries.length === 0) return content;
 		const rowsByPath = new Map();
 		for (const r of ctx.rows) rowsByPath.set(r.path, r);
@@ -51,7 +42,7 @@ function projectedBody(entry) {
 	return entry.body;
 }
 
-function renderLogTag(entry, rowsByPath) {
+function renderLogTag(entry, _rowsByPath) {
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -65,22 +56,13 @@ function renderLogTag(entry, rowsByPath) {
 				? stateToStatus(entry.state, entry.outcome)
 				: null;
 	const isSlice = attrs?.lineStart != null;
-	const targetEntry = attrs?.path ? rowsByPath.get(attrs.path) : null;
-	let tokenSource = null;
-	let lineSource = null;
-	if (STREAM_NO_TOKENS.has(action)) {
-		tokenSource = null;
-		lineSource = null;
-	} else if (isSlice) {
-		tokenSource = entry.aTokens;
-		lineSource = entry.vLines;
-	} else if (targetEntry) {
-		tokenSource = targetEntry.aTokens;
-		lineSource = targetEntry.vLines;
-	} else {
-		tokenSource = entry.aTokens;
-		lineSource = entry.vLines;
-	}
+
+	// Tokens/lines come from the entry itself — its body is what costs
+	// budget in <log>. Slim recaps (sh/mv/cp/rm/ask_user) have empty body
+	// → aTokens=0 → tokens omitted. Linked data entries (attrs.path) have
+	// their own tile in <index> with their own meta.
+	const tokenSource = entry.aTokens > 0 ? entry.aTokens : null;
+	const lineSource = entry.vLines > 0 ? entry.vLines : null;
 
 	const meta = { action };
 	if (attrs?.path) meta.target = attrs.path;

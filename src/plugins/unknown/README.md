@@ -7,18 +7,14 @@ The Rumsfeld mechanism. The model registers what it doesn't know before acting.
 ## Registration
 
 - **Tool**: `unknown`
-- **Category**: `unknown`
-- **Handler**: None — recorded by TurnExecutor, deduplicated against existing unknowns.
-- **Filter**: `assembly.system` at priority 350 — renders `<unknowns>` at the bottom of the system message (after `<summary>` 200, `<visible>` 250, `<log>` 300). Open work surfaces alongside the rest of the accumulated state in system; the user message holds prompt + budget + per-turn requirements.
-
-## Projection
-
-`# unknown\n{body}`
+- **Category**: `data` — unknowns are catalog entries; they appear in
+  `<index>` alongside knowns/files/streams (S2a).
+- **Handler**: Records the unknown body at a slugged `unknown://` path, dedupes against existing unknowns.
+- **View**: returns the entry body verbatim — full-body tile in `<index>`.
 
 ## Behavior
 
 Unknowns are sticky — they persist across turns until the model explicitly
-removes them with `<rm>`. The model investigates unknowns using `<get>`,
-`<env>`, or `<ask_user>`, then removes resolved ones. Server deduplicates
-on insert. Each unknown renders with turn, visibility, and tokens for
-temporal reasoning and context management.
+removes them with `<rm>` or `<set archive/>`. The model investigates unknowns
+using `<get>`, `<env>`, or `<ask_user>`, then archives or removes resolved
+ones. Server deduplicates on insert.

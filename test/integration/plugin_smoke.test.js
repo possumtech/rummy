@@ -25,14 +25,14 @@ describe("plugin smoke (@skill_plugin, @telemetry_plugin, @think_plugin, @unknow
 		await tdb.cleanup();
 	});
 
-	it("unknown plugin registers unknown:// scheme", async () => {
+	it("unknown plugin registers unknown:// scheme as data", async () => {
 		const schemes = await tdb.db.get_all_schemes.all();
 		const unknown = schemes.find((s) => s.name === "unknown");
 		assert.ok(unknown, "unknown scheme registered");
 		assert.strictEqual(
 			unknown.category,
-			"unknown",
-			"unknown scheme is the `unknown` category",
+			"data",
+			"unknown:// is catalog data — appears in <index> alongside knowns",
 		);
 	});
 

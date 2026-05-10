@@ -90,8 +90,6 @@ const AUDIT_SCHEMES = [
 	"content",
 ];
 
-const PROMPT_SCHEMES = ["prompt"];
-
 // Lifecycle entries mirror server state; writable by system/plugin/client.
 const LIFECYCLE_SCHEMES = ["run"];
 
@@ -103,18 +101,9 @@ export async function initPlugins(db, hooks, instances) {
 		await db.upsert_scheme.run({
 			name,
 			model_visible: 0,
-			category: "audit",
+			category: "logging",
 			default_scope: "run",
 			writable_by: JSON.stringify(["system"]),
-		});
-	}
-	for (const name of PROMPT_SCHEMES) {
-		await db.upsert_scheme.run({
-			name,
-			model_visible: 1,
-			category: "prompt",
-			default_scope: "run",
-			writable_by: JSON.stringify(["plugin"]),
 		});
 	}
 	for (const name of LOG_SCHEMES) {
@@ -148,7 +137,6 @@ export async function initPlugins(db, hooks, instances) {
 		for (const s of ctx.schemes) registered.add(s.name);
 	}
 	for (const name of AUDIT_SCHEMES) registered.add(name);
-	for (const name of PROMPT_SCHEMES) registered.add(name);
 
 	for (const toolName of hooks.tools.names) {
 		if (registered.has(toolName)) continue;

@@ -63,7 +63,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 			turn: 1,
 			state: "proposed",
 			outcome: null,
-			visibility: "summarized",
+			visibility: "indexed",
 		});
 		return path;
 	}
@@ -109,20 +109,18 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 
 		assert.ok(logEntry, "log entry exists");
 		assert.strictEqual(status(logEntry), 200, "log entry transitioned to 200");
-		assert.ok(
-			logEntry.body.includes("echo hello"),
-			`log body mentions command: ${logEntry.body}`,
-		);
-		assert.ok(
-			logEntry.body.includes(`${dataBase}_1`),
-			"log body references stdout channel",
-		);
+		// Slim log: body is empty; command lives in attrs.
+		const attrs =
+			typeof logEntry.attributes === "string"
+				? JSON.parse(logEntry.attributes)
+				: logEntry.attributes;
+		assert.strictEqual(attrs?.command, "echo hello", "command in attrs");
 
 		assert.ok(stdoutEntry, "_1 entry exists");
 		assert.strictEqual(stdoutEntry.scheme, "sh", "_1 uses sh scheme (data)");
 		assert.strictEqual(status(stdoutEntry), 102, "_1 at status 102");
 		assert.strictEqual(stdoutEntry.body, "", "_1 body empty");
-		assert.strictEqual(stdoutEntry.visibility, "summarized", "_1 demoted");
+		assert.strictEqual(stdoutEntry.visibility, "indexed", "_1 indexed");
 
 		assert.ok(stderrEntry, "_2 entry exists");
 		assert.strictEqual(stderrEntry.scheme, "sh", "_2 uses sh scheme (data)");

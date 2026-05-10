@@ -12,7 +12,10 @@ export default class Sh {
 
 	constructor(core) {
 		this.#core = core;
-		core.registerScheme({ category: "logging" });
+		// sh:// stream entries are catalog data (live in <index>, sorted to
+		// bottom as volatile). Action recap log entries (scheme="log") are
+		// unaffected — they're owned by the log scheme and render in <log>.
+		core.registerScheme({ category: "data", volatile: true });
 		core.on("handler", this.handler.bind(this));
 		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {

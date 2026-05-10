@@ -90,7 +90,7 @@ describe("computeBudget", () => {
 describe("Budget", () => {
 	function makeBudget() {
 		return new Budget({
-			hooks: { budget: null, tools: { onView: () => {} } },
+			hooks: { tools: { onView: () => {} } },
 			registerScheme: () => {},
 			filter: () => {},
 			on: () => {},
@@ -163,10 +163,16 @@ describe("Budget", () => {
 	});
 });
 
-describe("assembleBudget — <budget> table (@token_accounting)", () => {
+describe("assembleTurn — <turn> table (@token_accounting)", () => {
 	function makePlugin() {
 		return new Budget({
-			hooks: { budget: null, tools: { onView: () => {} } },
+			hooks: {
+				tools: {
+					onView: () => {},
+					names: ["get", "set"],
+					advertisedNames: ["get", "set"],
+				},
+			},
 			registerScheme: () => {},
 			filter: () => {},
 			on: () => {},
@@ -182,7 +188,7 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 		};
 	}
 
-	it("renders <budget> with placeholder headline tokens", () => {
+	it("renders <turn> with placeholder headline tokens", () => {
 		// `assembleBudget` emits placeholders only — the real headline
 		// numbers are post-substituted by ContextAssembler against the
 		// fully-assembled packet (single source of truth, SPEC §
@@ -192,16 +198,14 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 			row({ scheme: "log", vTokens: 700 }),
 			row({ scheme: "https", vTokens: 600 }),
 		];
-		const out = plugin.assembleBudget("", {
+		const out = plugin.assembleTurn("", {
 			rows,
 			contextSize: 10000,
 		});
-		assert.ok(
-			out.includes(
-				'<budget tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">',
-			),
-			`<budget> carries placeholders; got: ${out}`,
-		);
+		assert.match(out, /<turn /, `opens with <turn ; got: ${out}`);
+		assert.match(out, /tokenUsage="\{\{tokenUsage\}\}"/);
+		assert.match(out, /tokensFree="\{\{tokensFree\}\}"/);
+		assert.match(out, /commands="get,set"/, "commands attr present");
 		// Three columns now: indexed | archived | tokens.
 		assert.ok(out.includes("| log | 1 | 0 | 700 |"));
 		assert.ok(out.includes("| https | 1 | 0 | 600 |"));
@@ -209,7 +213,7 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 
 	it("table cells sorted by indexed-token cost descending", () => {
 		const plugin = makePlugin();
-		const out = plugin.assembleBudget("", {
+		const out = plugin.assembleTurn("", {
 			rows: [
 				row({ scheme: "small", vTokens: 200 }),
 				row({ scheme: "large", vTokens: 5000 }),
@@ -232,7 +236,7 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 
 	it("archived rows render with indexed=0, archived=count and aggregate in Total line", () => {
 		const plugin = makePlugin();
-		const out = plugin.assembleBudget("", {
+		const out = plugin.assembleTurn("", {
 			rows: [
 				row({ scheme: "indexed_thing", vTokens: 200 }),
 				row({ scheme: "arc_a", vTokens: 0, visibility: "archived" }),
@@ -252,7 +256,7 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 
 	it("ignores rows without aTokens (audit/system entries)", () => {
 		const plugin = makePlugin();
-		const out = plugin.assembleBudget("", {
+		const out = plugin.assembleTurn("", {
 			rows: [
 				row({ scheme: "data", vTokens: 100 }),
 				{ scheme: "audit", visibility: "indexed" }, // no token fields
@@ -266,7 +270,7 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 
 	it("returns content unchanged when contextSize is missing", () => {
 		const plugin = makePlugin();
-		const out = plugin.assembleBudget("preamble", {
+		const out = plugin.assembleTurn("preamble", {
 			rows: [],
 			contextSize: 0,
 			systemPrompt: "",
@@ -276,7 +280,7 @@ describe("assembleBudget — <budget> table (@token_accounting)", () => {
 
 	it("total prose line names counts and placeholders for tokenUsage/free", () => {
 		const plugin = makePlugin();
-		const out = plugin.assembleBudget("", {
+		const out = plugin.assembleTurn("", {
 			rows: [
 				row({ scheme: "a", vTokens: 500 }),
 				row({ scheme: "b", vTokens: 0, visibility: "archived" }),
@@ -327,7 +331,7 @@ describe("substituteBudgetPlaceholders", () => {
 	it("replaces {{tokenUsage}} and {{tokensFree}} with the supplied numbers", async () => {
 		const { substituteBudgetPlaceholders } = await import("./budget.js");
 		const text =
-			'<budget tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">\nbody\n</budget>';
+			'<turn tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">\nbody\n</budget>';
 		const out = substituteBudgetPlaceholders(text, {
 			tokenUsage: 1234,
 			tokensFree: 567,
@@ -350,7 +354,7 @@ describe("substituteBudgetPlaceholders", () => {
 	it("substitutes every occurrence (also in the Total line)", async () => {
 		const { substituteBudgetPlaceholders } = await import("./budget.js");
 		const text =
-			'<budget tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">\nTotal: tokenUsage {{tokenUsage}} / ceiling 100. {{tokensFree}} tokens free.\n</budget>';
+			'<turn tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">\nTotal: tokenUsage {{tokenUsage}} / ceiling 100. {{tokensFree}} tokens free.\n</budget>';
 		const out = substituteBudgetPlaceholders(text, {
 			tokenUsage: 42,
 			tokensFree: 58,
@@ -363,61 +367,40 @@ describe("substituteBudgetPlaceholders", () => {
 });
 
 // The 413 body is what the model reads. Names what was archived from
-// t-1 so the model can re-issue <get> for specific paths.
+// Names what fat replays were reclaimed so the model can re-fetch.
 describe("overflowBody — 413 error body shape", () => {
 	const contextSize = 10000;
 	const cap = ceiling(contextSize);
 
-	it("0 archived: header only, no Archived: section", () => {
+	it("0 reclaimed: header only, no listing", () => {
 		const body = overflowBody(500, contextSize, []);
 		assert.ok(body.startsWith("Token Budget overflow:"));
-		assert.ok(
-			body.includes("0 entries (0 tokens) archived from t-1."),
-			`header mentions 0 entries; got: ${body}`,
-		);
-		assert.ok(
-			!body.includes("Archived:"),
-			"no Archived: section when nothing was archived",
-		);
+		assert.match(body, /0 fat replays \(0 tokens\) reclaimed\./);
+		assert.equal(body.includes("\n*"), false);
 	});
 
-	it("1 archived: singular 'entry', path named with turn and tokens", () => {
+	it("1 reclaimed: singular grammar; manifest line", () => {
 		const body = overflowBody(500, contextSize, [
 			{ path: "log://turn_7/get/x", tokens: 4418, turn: 7 },
 		]);
-		assert.ok(
-			body.includes("1 entry (4418 tokens) archived from t-1."),
-			`singular grammar; got: ${body}`,
-		);
-		assert.ok(body.includes("Archived:"));
-		assert.ok(
-			body.includes("- log://turn_7/get/x (turn 7, 4418 tokens)"),
-			`path named with turn and tokens; got:\n${body}`,
-		);
+		assert.match(body, /1 fat replay \(4418 tokens\) reclaimed\./);
+		assert.match(body, /\* log:\/\/turn_7\/get\/x - 4418 tokens/);
 	});
 
-	it("N archived: plural 'entries', each path named, token sum correct", () => {
+	it("N reclaimed: plural; each path in manifest format (S8)", () => {
 		const body = overflowBody(2753, contextSize, [
-			{ path: "log://turn_3/sh/a", tokens: 1200, turn: 3 },
 			{ path: "log://turn_3/get/b", tokens: 900, turn: 3 },
 			{ path: "log://turn_3/set/c", tokens: 250, turn: 3 },
 		]);
-		assert.ok(
-			body.includes("3 entries (2350 tokens) archived from t-1."),
-			`plural + sum; got: ${body}`,
-		);
-		assert.ok(body.includes("- log://turn_3/sh/a (turn 3, 1200 tokens)"));
-		assert.ok(body.includes("- log://turn_3/get/b (turn 3, 900 tokens)"));
-		assert.ok(body.includes("- log://turn_3/set/c (turn 3, 250 tokens)"));
+		assert.match(body, /2 fat replays \(1150 tokens\) reclaimed\./);
+		assert.match(body, /\* log:\/\/turn_3\/get\/b - 900 tokens/);
+		assert.match(body, /\* log:\/\/turn_3\/set\/c - 250 tokens/);
 	});
 
 	it("packet size reported = ceiling + overflow", () => {
 		const overflow = 2753;
 		const body = overflowBody(overflow, contextSize, []);
-		assert.ok(
-			body.includes(`packet was ${cap + overflow} tokens`),
-			`packet = ceiling + overflow (${cap} + ${overflow}); got: ${body}`,
-		);
-		assert.ok(body.includes(`ceiling is ${cap}`));
+		assert.match(body, new RegExp(`packet was ${cap + overflow} tokens`));
+		assert.match(body, new RegExp(`ceiling is ${cap}`));
 	});
 });

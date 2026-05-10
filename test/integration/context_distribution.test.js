@@ -105,14 +105,19 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		assert.ok(logging.entries >= 1, "logging bucket has result entries");
 	});
 
-	it("unknown bucket includes unknown entries", async () => {
+	it("unknown:// entries roll up into the data bucket", async () => {
+		// Unknowns are catalog data now (S2a) — same bucket as knowns/files.
 		const dist = await tdb.db.get_turn_distribution.all({
 			run_id: RUN_ID,
 			turn: TURN,
 		});
-		const unknown = dist.find((b) => b.bucket === "unknown");
-		assert.ok(unknown, "unknown bucket exists");
-		assert.ok(unknown.entries >= 1, "unknown bucket has entries");
+		const data = dist.find((b) => b.bucket === "data");
+		assert.ok(data, "data bucket exists");
+		// Setup has 1 unknown + at least 2 data entries (file + known).
+		assert.ok(
+			data.entries >= 3,
+			"data bucket includes unknowns alongside knowns",
+		);
 	});
 
 	it("system bucket includes system prompt", async () => {

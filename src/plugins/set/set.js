@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
+import Hedberg from "../../lib/hedberg/hedberg.js";
 import File from "../file/file.js";
 import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
@@ -286,7 +286,6 @@ export default class Set {
 				// File write: proposed entry; #materializeFile writes to disk on accept.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
-				const udiff = generatePatch(target, oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 				await store.set({
@@ -297,7 +296,6 @@ export default class Set {
 					state: "proposed",
 					attributes: {
 						path: target,
-						patch: udiff,
 						patched: newContent,
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
@@ -331,7 +329,6 @@ export default class Set {
 			} else {
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
-				const udiff = generatePatch(target, oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 
@@ -354,7 +351,6 @@ export default class Set {
 					loopId,
 					attributes: {
 						path: target,
-						patch: udiff,
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,

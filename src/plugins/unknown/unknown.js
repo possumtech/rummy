@@ -1,14 +1,13 @@
-import { renderEntry } from "../helpers.js";
-
 export default class Unknown {
 	constructor(core) {
 		core.ensureTool();
-		core.registerScheme({
-			category: "unknown",
-		});
+		// Unknowns are catalog data — they appear in <index> alongside knowns
+		// and files. No special <unknowns> section.
+		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
-		// No view registered: default summarizeEmission (≤500-char tile).
-		core.filter("assembly.system", this.assembleUnknowns.bind(this), 350);
+		// Full-body tile (like known): unknown bodies are short by intent —
+		// they're questions the model is tracking.
+		core.on("view", (entry) => entry.body);
 		// Written via <set path="unknown://...">; lifecycle in instructions-user.md.
 		core.markHidden();
 	}
@@ -45,27 +44,4 @@ export default class Unknown {
 			loopId,
 		});
 	}
-
-	async assembleUnknowns(content, ctx) {
-		const entries = ctx.rows.filter(
-			(r) => r.category === "unknown" && r.visibility === "indexed",
-		);
-		if (entries.length === 0) return content;
-		const lines = entries.map((e) => renderUnknownTag(e));
-		return `${content}<unknowns>\n${lines.join("\n")}\n</unknowns>\n`;
-	}
-}
-
-function renderUnknownTag(entry) {
-	const attrs =
-		typeof entry.attributes === "string"
-			? JSON.parse(entry.attributes)
-			: entry.attributes;
-	const meta = {};
-	if (entry.source_turn) meta.turn = entry.source_turn;
-	if (typeof attrs?.tags === "string") {
-		meta.tags = attrs.tags.slice(0, 80);
-	}
-	if (entry.aTokens != null) meta.tokens = entry.aTokens;
-	return renderEntry(entry.path, meta, entry.body);
 }

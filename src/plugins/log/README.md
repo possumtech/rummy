@@ -1,48 +1,49 @@
 # log {#log_plugin}
 
 Assembles the `<log>` block in the user message: every
-`category="logging"` entry across the entire run, rendered as XML tool
-tags in v_model_context sort order.
+`category="logging"` entry from past turns, rendered as XML tool tags
+in v_model_context sort order. Active task = the last entry.
 
 ## Registration
 
-- **Filter**: `assembly.user` (priority 100) — contributes the `<log>`
-  block to the user packet.
+- **Filter**: `assembly.user` priority 50 — between persona (10)
+  and `<turn>` (90).
 
 ## Rendering
 
 Each logging entry renders with its scheme as the tag name (`<get>`,
 `<set>`, `<search>`, `<rm>`, `<cp>`, `<mv>`, `<sh>`, `<env>`,
-`<update>`, `<ask_user>`, `<error>`, `<budget>`). Attributes:
-`path`, `turn`, `status`, `state`, `outcome`, `summary`, `visibility`,
-`tokens`.
+`<update>`, `<ask_user>`, `<error>`, `<prompt>`). Attributes:
+`action`, `target`, `status`, `outcome`, `command`, `query`, `tokens`,
+`lines`, etc.
 
-**`tokens=` invariant.** The value is always the full-visibility cost
-of the thing the tag represents — never the log entry's own stub body
-size. Resolution:
+## Body shape (S5–S6)
 
-- If the log entry has `attrs.path` referencing a data entry (`get`,
-  `set`, `mv`, `cp`): `tokens=` is that target's tokens. Promotes the
-  audit record into a cost-accurate signal the model can plan against.
-- If the action's log body itself IS the cost-bearing content
-  (`search`, `update`, `error`, `ask_user`): `tokens=` is the entry's
-  own body tokens.
-- `sh` and `env` own multiple streaming channels (`sh://turn_N/{slug}_N`)
-  — no single target to point at. `tokens=` is omitted; the channels
-  render their own tokens in `<visible>`.
+Bodies are **optional**. Default is empty — just the JSON envelope.
+
+**Body present:**
+- `<set>` — verbatim model emission, tab-indented. Always.
+- `<get>` — retrieved content (the explicit fat-fetch verb).
+- `<search>` — manifest format URL listing.
+- `<error>` — error description.
+- `<update>` — short prose status.
+- `<prompt>` — ≤500-char preview of the prompt content.
+
+**Body empty:**
+- `<sh>` / `<env>` recap — command in attrs; stream output in `<index>`
+  via `sh://N` / `env://N` data tiles.
+- `<mv>` / `<cp>` / `<rm>` — op + path in attrs.
+- `<ask_user>` — Q+A in attrs.
+
+## `tokens=` invariant
+
+`tokens=` reflects the entry's own body cost. Slim recaps with empty
+body omit `tokens=` entirely. Body-bearing entries surface
+`countTokens(body)`. Linked data entries (via `attrs.path`) have their
+own tile in `<index>` with their own meta; the log doesn't double-count.
 
 ## Behavior
 
 No loop-boundary split. The `turn` attribute on every entry carries
 when it happened; the model derives loop membership from the data if
 it matters. One chronological log from turn 1 to now.
-
-## Scheme invariant
-
-Log entries (`log://turn_N/{action}/{slug}`) are audit records —
-summary, exit status, references to where the data lives — and never
-carry the payload itself. Payload for streaming actions lives under the
-producer's own scheme (`sh://`, `env://`, future `search://`, etc.) at
-`category=data`, and is rendered inside `<visible>` by the known
-plugin. Scheme determines category; data and logging never share a
-scheme. See [scheme_category_split](#scheme_category_split).

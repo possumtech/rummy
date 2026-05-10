@@ -42,6 +42,7 @@ export default class PluginContext {
 		category = "logging",
 		scope = "run",
 		writableBy = ["model", "plugin"],
+		volatile = false,
 	} = {}) {
 		if (!PluginContext.CATEGORIES.has(category)) {
 			throw new Error(
@@ -66,12 +67,12 @@ export default class PluginContext {
 			category,
 			default_scope: scope,
 			writable_by: JSON.stringify(writableBy),
+			volatile: volatile ? 1 : 0,
 		});
 	}
 
-	static CATEGORIES = Object.freeze(
-		new Set(["data", "logging", "unknown", "prompt"]),
-	);
+	// Two categories: data (catalog, lives in <index>) and logging (activity tape, lives in <log>).
+	static CATEGORIES = Object.freeze(new Set(["data", "logging"]));
 
 	static SCOPES = Object.freeze(new Set(["run", "project", "global"]));
 

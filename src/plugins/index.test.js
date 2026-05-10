@@ -125,10 +125,11 @@ describe("initPlugins", () => {
 		};
 	}
 
-	it("upserts the audit/prompt/log/lifecycle schemes regardless of plugin set", async () => {
+	it("upserts the audit/log/lifecycle schemes regardless of plugin set", async () => {
 		const db = makeDb();
 		await initPlugins(db, createHooks(), new Map());
 		const names = db._writes.map((w) => w.name);
+		// `prompt` no longer bootstrapped here — it's owned by the prompt plugin.
 		for (const expected of [
 			"instructions",
 			"system",
@@ -137,7 +138,6 @@ describe("initPlugins", () => {
 			"user",
 			"assistant",
 			"content",
-			"prompt",
 			"log",
 			"run",
 		]) {

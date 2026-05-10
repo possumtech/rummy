@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS schemes (
 	, writable_by JSON NOT NULL DEFAULT '["model","plugin"]'
 	CHECK (json_valid(writable_by))
 	, capability_class TEXT
+	, volatile BOOLEAN NOT NULL DEFAULT 0
 );
 
 -- Schemes are registered by plugins at startup via core.registerScheme().

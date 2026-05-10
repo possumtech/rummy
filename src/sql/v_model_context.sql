@@ -15,6 +15,7 @@ visible AS (
 		, rv.updated_at
 		, e.attributes
 		, COALESCE(s.category, 'logging') AS category
+		, COALESCE(s.volatile, 0) AS volatile
 		, CASE
 			WHEN s.model_visible = 0 THEN NULL
 			WHEN rv.visibility = 'archived' THEN NULL
@@ -36,8 +37,8 @@ projected AS (
 		, turn
 		, updated_at
 		, attributes
-		-- Category comes from schemes table — plugins declare it via registerScheme().
 		, category
+		, volatile
 		, body
 	FROM visible
 	WHERE effective_visibility IS NOT NULL
@@ -56,14 +57,15 @@ SELECT
 	, ROW_NUMBER() OVER (
 		PARTITION BY run_id
 		ORDER BY
+			-- data first (catalog), then logging, then prompt.
 			CASE category
-				WHEN 'tool' THEN 1
-				WHEN 'data' THEN 2
-				WHEN 'logging' THEN 3
-				WHEN 'unknown' THEN 4
-				WHEN 'prompt' THEN 5
-				ELSE 5
+				WHEN 'data' THEN 1
+				WHEN 'logging' THEN 2
+				WHEN 'prompt' THEN 3
+				ELSE 4
 			END
+			-- Within data: stable schemes first, volatile last (for cache).
+			, volatile
 			, scheme
 			, turn
 			, updated_at

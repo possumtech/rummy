@@ -21,11 +21,13 @@ describe("Prompt plugin", () => {
 		assert.equal(out, body);
 	});
 
-	describe("turn.started: record prompt", () => {
+	describe("turn.started: writes catalog entry + log entry", () => {
 		function buildRummy() {
 			const calls = [];
 			const store = {
 				set: async (args) => calls.push(args),
+				logPath: async (_runId, turn, action, target) =>
+					`log://turn_${turn}/${action}/${target}`,
 			};
 			return {
 				rummy: {
@@ -38,7 +40,7 @@ describe("Prompt plugin", () => {
 			};
 		}
 
-		it("on new prompt: writes prompt://N at the current turn", async () => {
+		it("writes archived prompt://N catalog + log entry with preview body", async () => {
 			const { hooks } = makeCore();
 			const { rummy, calls } = buildRummy();
 			await hooks.turn.started.emit({
@@ -47,12 +49,33 @@ describe("Prompt plugin", () => {
 				prompt: "do thing",
 				isContinuation: false,
 			});
-			assert.equal(calls.length, 1);
-			assert.equal(calls[0].path, "prompt://3");
-			assert.equal(calls[0].turn, 3);
-			assert.equal(calls[0].body, "do thing");
-			assert.equal(calls[0].attributes.mode, "act");
-			assert.equal(calls[0].writer, "plugin");
+			assert.equal(calls.length, 2);
+			const catalog = calls.find((c) => c.path === "prompt://3");
+			assert.ok(catalog, "catalog entry");
+			assert.equal(catalog.body, "do thing");
+			assert.equal(catalog.visibility, "archived");
+			assert.equal(catalog.attributes.mode, "act");
+			const log = calls.find((c) => c.path?.startsWith("log://turn_3/prompt/"));
+			assert.ok(log, "log entry");
+			assert.equal(log.body, "do thing");
+			assert.equal(log.attributes.path, "prompt://3");
+			assert.equal(log.attributes.mode, "act");
+		});
+
+		it("truncates the log preview to 500 chars; catalog keeps full body", async () => {
+			const { hooks } = makeCore();
+			const { rummy, calls } = buildRummy();
+			const long = "x".repeat(2000);
+			await hooks.turn.started.emit({
+				rummy,
+				mode: "act",
+				prompt: long,
+				isContinuation: false,
+			});
+			const catalog = calls.find((c) => c.path === "prompt://3");
+			const log = calls.find((c) => c.path?.startsWith("log://turn_3/prompt/"));
+			assert.equal(catalog.body.length, 2000, "catalog has full body");
+			assert.equal(log.body.length, 500, "log body capped at 500");
 		});
 
 		it("on continuation: writes nothing", async () => {
@@ -77,125 +100,6 @@ describe("Prompt plugin", () => {
 				isContinuation: false,
 			});
 			assert.equal(calls.length, 0);
-		});
-	});
-
-	describe("assembly.user filter renders <prompt>", () => {
-		function ctxWith(rows, extras = {}) {
-			return {
-				rows,
-				toolSet: ["set", "get"],
-				type: "act",
-				turn: 2,
-				...extras,
-			};
-		}
-
-		it("renders <prompt> with mode + commands when prompt entry present", async () => {
-			const { hooks } = makeCore();
-			const out = await hooks.assembly.user.filter(
-				"PRE",
-				ctxWith([
-					{
-						path: "prompt://1",
-						scheme: "prompt",
-						category: "prompt",
-						body: "hello",
-						attributes: { mode: "ask" },
-					},
-				]),
-			);
-			assert.match(out, /^PRE/);
-			assert.match(out, /<prompt /);
-			assert.match(out, /commands="get,set"/);
-			assert.match(out, /<<:::prompt:\/\/1/);
-			assert.match(out, /\nhello\n/);
-			assert.match(out, /:::prompt:\/\/1\n<\/prompt>/);
-		});
-
-		it('ask mode triggers warn="File editing disallowed."', async () => {
-			const { hooks } = makeCore();
-			const out = await hooks.assembly.user.filter(
-				"",
-				ctxWith([
-					{
-						path: "prompt://1",
-						scheme: "prompt",
-						category: "prompt",
-						body: "x",
-						attributes: { mode: "ask" },
-					},
-				]),
-			);
-			assert.match(out, /warn="File editing disallowed."/);
-		});
-
-		it("falls back to ctx.type when prompt entry has no mode attribute (ask warn renders)", async () => {
-			const { hooks } = makeCore();
-			const out = await hooks.assembly.user.filter(
-				"",
-				ctxWith(
-					[
-						{
-							path: "prompt://1",
-							scheme: "prompt",
-							category: "prompt",
-							body: "",
-							attributes: {},
-						},
-					],
-					{ type: "ask" },
-				),
-			);
-			assert.match(out, /warn="File editing disallowed\."/);
-		});
-
-		it('includes archived="N" when prior turn had a 413 archive', async () => {
-			const { hooks } = makeCore();
-			const out = await hooks.assembly.user.filter(
-				"",
-				ctxWith([
-					{
-						path: "prompt://2",
-						scheme: "prompt",
-						category: "prompt",
-						body: "x",
-						attributes: { mode: "act" },
-					},
-					{
-						path: "log://turn_1/error/budget",
-						scheme: "log",
-						category: "logging",
-						attributes: { status: 413, archivedCount: 4 },
-					},
-				]),
-			);
-			assert.match(out, /archived="4"/);
-		});
-
-		it("omits archived attribute when no 413 in prior turn", async () => {
-			const { hooks } = makeCore();
-			const out = await hooks.assembly.user.filter(
-				"",
-				ctxWith([
-					{
-						path: "prompt://2",
-						scheme: "prompt",
-						category: "prompt",
-						body: "x",
-						attributes: { mode: "act" },
-					},
-				]),
-			);
-			assert.equal(out.includes("archived="), false);
-		});
-
-		it("renders empty <prompt> wrapper with no fenced entry when no prompt entry exists", async () => {
-			const { hooks } = makeCore();
-			const out = await hooks.assembly.user.filter("", ctxWith([]));
-			assert.match(out, /<prompt /);
-			assert.equal(out.includes("<<:::prompt:"), false);
-			assert.match(out, /<\/prompt>$/);
 		});
 	});
 });

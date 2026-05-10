@@ -52,23 +52,25 @@ describe("plugin registration (@plugin_system, @plugin_convention, @scheme_regis
 			assert.ok(names.includes("unknown"));
 		});
 
-		it("action tools register a view; catalog tools rely on default truncation", () => {
+		it("action and catalog tools register views per S2", () => {
 			// Action tools project log entries with projectEmission.
 			for (const tool of ["get", "set", "rm", "mv", "cp"]) {
 				assert.ok(tdb.hooks.tools.hasView(tool), `${tool} has view registered`);
 			}
-			// Catalog tools (known/unknown/file/skill/persona) don't register
-			// a view — ToolRegistry.view falls back to summarizeEmission.
-			assert.equal(tdb.hooks.tools.hasView("known"), false);
+			// Catalog tools known/unknown register a view returning their
+			// authored body verbatim (S2 — full-body tile rule).
+			for (const tool of ["known", "unknown"]) {
+				assert.ok(tdb.hooks.tools.hasView(tool), `${tool} has view registered`);
+			}
 		});
 	});
 
 	describe("scheme registry (@scheme_registry)", () => {
-		it("CATEGORIES is frozen with exactly four roles", () => {
+		it("CATEGORIES is frozen with exactly two roles (data, logging)", () => {
 			const cats = PluginContext.CATEGORIES;
 			assert.ok(Object.isFrozen(cats), "CATEGORIES is frozen");
-			assert.strictEqual(cats.size, 4);
-			for (const name of ["data", "logging", "unknown", "prompt"]) {
+			assert.strictEqual(cats.size, 2);
+			for (const name of ["data", "logging"]) {
 				assert.ok(cats.has(name), `${name} is a valid category`);
 			}
 		});

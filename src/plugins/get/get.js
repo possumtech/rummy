@@ -135,40 +135,15 @@ export default class Get {
 			return;
 		}
 
-		// <get index>/<get archive> = read + visibility flip on the same op.
-		const wantArchive = entry.attributes.archive !== undefined;
-		const wantIndex = entry.attributes.index !== undefined;
-		let visibilityAttr = null;
-		if (wantArchive && wantIndex) {
-			await store.set({
-				runId,
-				turn,
-				loopId,
-				path: entry.resultPath,
-				body: "Cannot specify both archive and index on the same <get>.",
-				state: "failed",
-				outcome: "validation",
-				attributes: { path: target },
-			});
-			return;
-		}
-		if (wantArchive) visibilityAttr = "archived";
-		else if (wantIndex) visibilityAttr = "indexed";
-
+		// <get> greedily re-indexes any matched archived entries (S7).
+		// Asymmetric: get can promote archived → indexed, never reverse.
+		// Visibility flips between directions are <set archive/> / <set index/>.
 		await store.get({
 			runId: runId,
 			turn: turn,
 			path: normalized,
 			bodyFilter: bodyFilter,
 		});
-		if (visibilityAttr) {
-			for (const match of matches)
-				await store.set({
-					runId: runId,
-					path: match.path,
-					visibility: visibilityAttr,
-				});
-		}
 
 		if (isPattern) {
 			await storePatternResult(

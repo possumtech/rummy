@@ -192,7 +192,6 @@ describe("Handler dispatch", () => {
 			const attrs = await store.getAttributes(RUN_ID, logPath);
 			assert.equal(attrs.path, "src/edit_me.js");
 			assert.ok(attrs.patched.includes("8080"), "patched has new content");
-			assert.ok(attrs.patch, "udiff patch stored for telemetry");
 
 			const logState = await store.getState(RUN_ID, logPath);
 			assert.equal(logState.state, "proposed", "bare-file edit is proposed");
@@ -781,39 +780,6 @@ describe("Handler dispatch", () => {
 				matches.length,
 				1,
 				`identical unknown body collapses to one entry, got ${matches.length}`,
-			);
-		});
-
-		it("known handler rejects a body over RUMMY_MAX_ENTRY_TOKENS", async () => {
-			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 11 });
-			// Build well over the .env.example cap of 512.
-			const oversized = "word ".repeat(2000);
-			const entry = {
-				scheme: "known",
-				path: "known://oversized",
-				body: oversized,
-				attributes: { summary: "oversized" },
-				state: "resolved",
-				resultPath: "known://oversized",
-			};
-
-			await hooks.tools.dispatch("known", entry, rummy);
-
-			const all = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
-			const failed = all.find(
-				(e) => e.state === "failed" && e.outcome?.startsWith("overflow:"),
-			);
-			assert.ok(
-				failed,
-				"oversize known produces a failed entry with overflow:N outcome",
-			);
-			const accepted = all.find(
-				(e) => e.path === "known://oversized" && e.state === "resolved",
-			);
-			assert.strictEqual(
-				accepted,
-				undefined,
-				"oversize body never reaches resolved at the requested path",
 			);
 		});
 

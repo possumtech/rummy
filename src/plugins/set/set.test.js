@@ -211,7 +211,7 @@ describe("Set plugin", () => {
 			assert.deepEqual(store._calls, []);
 		});
 
-		it("scheme write: stores resolved body + log entry with udiff patch", async () => {
+		it("scheme write: stores resolved body + log entry with verbatim emission", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -231,7 +231,9 @@ describe("Set plugin", () => {
 			const log = store._calls.find(
 				(c) => c.path === "log://turn_1/set/known%3A//x",
 			);
-			assert.ok(log.attributes.patch);
+			assert.ok(log);
+			assert.equal(log.attributes.beforeActionTokens, 0);
+			assert.ok(log.attributes.afterActionTokens > 0);
 		});
 
 		it("file write (no scheme on path) issues a `proposed` log entry with patched body", async () => {
@@ -253,7 +255,6 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/foo.js");
 			assert.equal(log.attributes.patched, "new content");
-			assert.ok(log.attributes.patch);
 		});
 	});
 
@@ -384,7 +385,6 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/app.js");
 			assert.equal(log.attributes.patched, "new line");
-			assert.ok(log.attributes.patch);
 		});
 
 		it("does not write a set:// canonical entry (no detour)", async () => {

@@ -43,6 +43,7 @@ async function assembleMessages(tdb, _store) {
 		rows,
 		{
 			type: "ask",
+			contextSize: 32768,
 			toolSet: hooks.tools.resolveForLoop("ask"),
 		},
 		hooks,
@@ -69,37 +70,8 @@ describe("Message assembly", () => {
 		await tdb.cleanup();
 	});
 
-	it("ask prompt: warn signals file-edit prohibition; sh excluded from tools", async () => {
-		await store.set({
-			runId: RUN_ID,
-			turn: TURN,
-			path: "prompt://1",
-			body: "What is the port?",
-			state: "resolved",
-			attributes: { mode: "ask" },
-		});
-		const messages = await assembleMessages(tdb, store);
-		const user = messages.find((m) => m.role === "user");
-		assert.ok(
-			user.content.includes('warn="File editing disallowed."'),
-			"ask mode should surface warn attribute",
-		);
-		assert.ok(
-			user.content.includes("What is the port?"),
-			"should contain prompt text",
-		);
-		assert.ok(!user.content.includes("sh,"), "ask tools should not include sh");
-	});
-
-	it("act prompt: prompt tag rendered without warn", async () => {
-		await store.set({
-			runId: RUN_ID,
-			turn: TURN,
-			path: "prompt://1",
-			body: "Refactor the code",
-			state: "resolved",
-			attributes: { mode: "act" },
-		});
+	it("ask mode: <turn> surfaces warn attr; sh excluded from commands", async () => {
+		// Warn lives on <turn> per S11 (not <prompt>).
 		await materialize(tdb.db, {
 			runId: RUN_ID,
 			turn: TURN,
@@ -111,11 +83,43 @@ describe("Message assembly", () => {
 		});
 		const messages = await ContextAssembler.assembleFromTurnContext(
 			rows,
-			{ type: "act" },
+			{
+				type: "ask",
+				toolSet: hooks.tools.resolveForLoop("ask"),
+				contextSize: 32768,
+			},
 			hooks,
 		);
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(user.content.includes("<prompt "), "prompt tag should render");
+		assert.ok(
+			user.content.includes('warn="File editing disallowed."'),
+			"ask mode should surface warn attribute on <turn>",
+		);
+		assert.match(user.content, /<turn[^>]*commands="[^"]*"/);
+		assert.doesNotMatch(
+			user.content,
+			/<turn[^>]*commands="[^"]*\bsh\b/,
+			"ask commands should not include sh",
+		);
+	});
+
+	it("act mode: <turn> rendered without warn", async () => {
+		await materialize(tdb.db, {
+			runId: RUN_ID,
+			turn: TURN,
+			systemPrompt: "You are a test assistant.",
+		});
+		const rows = await tdb.db.get_turn_context.all({
+			run_id: RUN_ID,
+			turn: TURN,
+		});
+		const messages = await ContextAssembler.assembleFromTurnContext(
+			rows,
+			{ type: "act", contextSize: 32768 },
+			hooks,
+		);
+		const user = messages.find((m) => m.role === "user");
+		assert.ok(user.content.includes("<turn "), "turn tag rendered");
 		assert.ok(
 			!user.content.includes("warn="),
 			"act mode should not emit a warn attribute",
@@ -151,14 +155,14 @@ describe("Message assembly", () => {
 			state: "resolved",
 		});
 		const messages = await assembleMessages(tdb, store);
-		const system = messages.find((m) => m.role === "system");
+		const user = messages.find((m) => m.role === "user");
 		assert.ok(
-			system.content.includes("2 matched"),
-			"match count rendered in system <log>",
+			user.content.includes("2 matched"),
+			"match count rendered in user <log>",
 		);
 		assert.ok(
-			system.content.includes("src/app.js"),
-			"matched paths in system <log>",
+			user.content.includes("src/app.js"),
+			"matched paths in user <log>",
 		);
 	});
 
@@ -171,10 +175,10 @@ describe("Message assembly", () => {
 			state: "resolved",
 		});
 		const messages = await assembleMessages(tdb, store);
-		const system = messages.find((m) => m.role === "system");
+		const user = messages.find((m) => m.role === "user");
 		assert.ok(
-			system.content.includes("MANIFEST"),
-			"MANIFEST prefix rendered in system <log>",
+			user.content.includes("MANIFEST"),
+			"MANIFEST prefix rendered in user <log>",
 		);
 	});
 
@@ -216,18 +220,18 @@ describe("Message assembly", () => {
 		});
 
 		const messages = await assembleMessages(tdb, store);
-		const system = messages.find((m) => m.role === "system");
+		const user = messages.find((m) => m.role === "user");
 
 		assert.ok(
-			system.content.includes('"action":"search"') ||
-				system.content.includes('"action":"env"'),
-			"action metadata present in system <log>",
+			user.content.includes('"action":"search"') ||
+				user.content.includes('"action":"env"'),
+			"action metadata present in user <log>",
 		);
-		assert.ok(system.content.includes("10 results"), "search entry visible");
-		assert.ok(system.content.includes("node"), "env entry visible");
-		assert.ok(system.content.includes('"action":"rm"'), "rm entry visible");
-		assert.ok(system.content.includes('"action":"mv"'), "mv entry visible");
-		assert.ok(system.content.includes('"action":"cp"'), "cp entry visible");
+		assert.ok(user.content.includes("10 results"), "search entry visible");
+		assert.ok(user.content.includes("node"), "env entry visible");
+		assert.ok(user.content.includes('"action":"rm"'), "rm entry visible");
+		assert.ok(user.content.includes('"action":"mv"'), "mv entry visible");
+		assert.ok(user.content.includes('"action":"cp"'), "cp entry visible");
 	});
 
 	it("structural entries (update) appear in <log>", async () => {
@@ -240,20 +244,20 @@ describe("Message assembly", () => {
 			visibility: "indexed",
 		});
 		const messages = await assembleMessages(tdb, store);
-		const system = messages.find((m) => m.role === "system");
+		const user = messages.find((m) => m.role === "user");
 		assert.ok(
-			system.content.includes("The answer is 42"),
-			"update body rendered in system <log>",
+			user.content.includes("The answer is 42"),
+			"update body rendered in user <log>",
 		);
 	});
 
-	it("data entries land in system <index>; user holds prompt + budget + unknowns", async () => {
+	it("data entries land in <index> (system); <log>+<turn> live in user", async () => {
 		const messages = await assembleMessages(tdb, store);
 		const system = messages.find((m) => m.role === "system");
 		const user = messages.find((m) => m.role === "user");
-		assert.ok(system.content.includes("<index>"), "system has <index> block");
-		assert.ok(system.content.includes("src/app.js"), "files in system");
-		assert.ok(!user.content.includes("<index>"), "<index> is not in user");
-		assert.ok(user.content.includes("<prompt"), "user retains <prompt>");
+		assert.ok(system.content.includes("<index>"), "system has <index>");
+		assert.ok(system.content.includes("src/app.js"), "files in <index>");
+		assert.ok(user.content.includes("<log>"), "<log> in user");
+		assert.ok(user.content.includes("<turn"), "<turn> in user");
 	});
 });

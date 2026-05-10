@@ -5,7 +5,9 @@ YOU MUST distill unknowns into key, relevant knowns that are topical, taxonomize
 YOU MUST ONLY populate known entries with linked source entry information you brought into `<log>` via `<get>`, NOT from index tiles or model training.
 YOU SHOULD archive entries you no longer need so they don't crowd the index.
 
-* The `"tokens":N` field shows how much context an entry consumes when its full body is in `<log>`. Index tiles cost ≤500 chars regardless.
+* The `"tokens":N` field on a `<log>` entry is what that entry currently costs in budget. Slim recaps (sh/env/mv/cp/rm/ask_user) omit tokens entirely — they cost nothing.
+* `<index>` tiles cost as much as their projection: knowns/unknowns show their full authored body; files default to empty (rummy.repo overrides with symbols if loaded); streams show a tail preview; URLs show title+description.
+* The `<turn>` tag carries `tokenUsage`/`tokensFree` headlines plus a per-scheme breakdown table — read it to budget.
 * Use `<get path="..." manifest/>` to list paths and their token amounts for bulk operations.
 * Use `<get tags="..." manifest/>` to recall entries by tags when paths are forgotten.
 * Use `<get path="..." line="X" limit="Y"/>` to read subsets of entries that would exceed your `tokensFree` budget.

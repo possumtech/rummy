@@ -13,7 +13,9 @@ export default class Env {
 	constructor(core) {
 		this.#core = core;
 		// env is read-only (allowed in ask-mode); see plugin README.
-		core.registerScheme({ category: "logging" });
+		// env:// stream entries are catalog data (live in <index>, sorted to
+		// bottom as volatile).
+		core.registerScheme({ category: "data", volatile: true });
 		core.on("handler", this.handler.bind(this));
 		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {

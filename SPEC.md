@@ -123,12 +123,12 @@ hooks-and-filters system. Plugins subscribe to events (fire-and-forget
 side effects) and filters (transformation chains that thread a value
 through subscribers in priority order).
 
-**Every `<tag>` the model sees is a plugin.** `<summary>` /
-`<visible>` → known plugin. `<unknowns>` → unknown plugin. `<log>`
-→ log plugin. `<instructions>` → instructions plugin. `<prompt>` →
-prompt plugin. `<budget>` → budget plugin. No monolithic assembler
-decides what goes where. Each plugin filters for its own data from
-the shared row set, renders its section, returns.
+**Every `<tag>` the model sees is a plugin.** `<index>` → known
+plugin (collects all `category="data"` entries). `<log>` → log
+plugin. `<system_commands>` / `<system_requirements>` →
+instructions plugin. `<turn>` → budget plugin. No monolithic
+assembler decides what goes where. Each plugin filters for its
+own data from the shared row set, renders its section, returns.
 
 **Plugins compose, they don't coordinate.** A plugin subscribes to a
 filter at a priority, receives the accumulator value, appends its
@@ -248,31 +248,28 @@ operation. See `demote_turn_entries` in `known_store.sql`.
 Paths use URI scheme syntax. Bare paths (no `://`) are files, stored
 with `scheme IS NULL` (JOINs treat NULL as `'file'` via COALESCE).
 
-Every entry plays one of four roles:
+Every entry plays one of two roles:
 
 | Role | Category | Section | Description |
 |------|----------|---------|-------------|
-| **Data** | `data` | `<summary>` + `<visible>` | Entries the model works with — persistent state and captured payload. Summary line in `<summary>` for visible+summarized tiers; full body in `<visible>` only when promoted. |
-| **Logging** | `logging` | `<log>` | Records of what happened — tool results, lifecycle signals |
-| **Unknowns** | `unknown` | `<unknowns>` | Open questions the model is tracking |
-| **Prompt** | `prompt` | `<prompt>` | The task driving the loop |
+| **Data** | `data` | `<index>` | Catalog entries the model works with — knowns, unknowns, files, streams, URLs, prompts. Tile body per scheme: knowns/unknowns show full body; files (default) empty; streams a tail preview; URLs title+description. Stable schemes first, volatile (sh/env) sort to bottom for cache. |
+| **Logging** | `logging` | `<log>` | Time-ordered activity tape — action recaps, errors, retrievals, prompts. Slim by default (JSON envelope only); body present for `<set>` (verbatim emission), `<get>` (retrieved content), `<search>`, `<error>`, `<update>`, `<prompt>` (≤500-char preview). |
 
 `logging` is the default category. Plugins opt into `data` explicitly.
 
 | Scheme | Category | `writable_by` | Description |
 |--------|----------|---------------|-------------|
 | `NULL` (bare path) | data | `model, plugin` | File content. JOINs via `COALESCE(scheme, 'file')`. |
-| `known://` | data | `model, plugin` | Model-registered knowledge. One fact per entry. |
-| `skill://` | data | `model, plugin` | Skill docs. Rendered in system message. |
-| `http://`, `https://` | data | `model, plugin` | Web content. |
-| `sh://`, `env://` | data | `model, plugin` | Streaming-producer payload — stdout/stderr channel entries from shell/env commands. **Channels only**; the action audit record lives in `log://`. See [scheme_category_split](#scheme_category_split). |
-| `unknown://` | unknown | `model, plugin` | Unresolved questions. |
-| `prompt://` | prompt | `plugin` | User prompt with `mode` attribute. Written by prompt plugin, never by model. |
-| `log://` | logging | `system, plugin, model` | Unified audit record namespace for all tool actions. One entry per action at `log://turn_N/{action}/{slug}`. |
+| `known://` | data | `model, plugin` | Model-registered knowledge. One fact per entry. Full-body tile in `<index>`. |
+| `unknown://` | data | `model, plugin` | Unresolved questions. Full-body tile in `<index>`. |
+| `skill://` | data | `model, plugin` | Skill docs. |
+| `http://`, `https://` | data | `model, plugin` | Web content. rummy.web overrides view with title+meta+description tile. |
+| `sh://`, `env://` | data (volatile) | `model, plugin` | Streaming-producer payload — stdout/stderr channel entries. Volatile: sort to bottom of `<index>`. **Channels only**; the action audit record lives in `log://`. See [scheme_category_split](#scheme_category_split). |
+| `prompt://` | data | `plugin` | User prompt. Written by prompt plugin (model can't `<set>` body). Default `visibility=archived` — model `<get>`s for full body or `<set index/>` to pin in `<index>`. |
+| `log://` | logging | `system, plugin, model` | Unified activity tape namespace for all tool actions and prompts. One entry per action at `log://turn_N/{action}/{slug}`. |
 | `update://` | logging | `model, plugin` | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
 | `error://` | logging | `model, plugin` | Runtime errors — policy rejection, budget overflow (status 413), dispatch crashes, protocol violations. Unified channel via `hooks.error.log.emit`. |
-| `tool://` | audit | `system` | Internal plugin metadata. `model_visible = 0`. |
-| `instructions://`, `system://`, `reasoning://`, `model://`, `user://`, `assistant://`, `content://` | audit | `system` | Audit entries. `model_visible = 0`. Written only by server-level code. |
+| `instructions://`, `system://`, `reasoning://`, `model://`, `user://`, `assistant://`, `content://` | logging | `system` | Audit entries. `model_visible = 0`. Written only by server-level code; never reach model context. |
 
 ### Scheme / Category Split {#scheme_category_split}
 
@@ -284,17 +281,17 @@ Streaming producers (sh, env, and future fetch/search/tail/watch) split
 across two namespaces as a direct consequence:
 
 - **Action audit record** lives in `log://turn_N/{action}/{slug}` —
-  scheme=`log`, category=`logging`. Renders in `<log>`.
+  scheme=`log`, category=`logging`. Renders as a slim recap in `<log>`.
 - **Payload channels** live in `{action}://turn_N/{slug}_N` —
-  scheme=`{action}` (registered as `category: "data"`). Render in
-  `<summary>` (always, while tracked) and `<visible>` (when
-  promoted).
+  scheme=`{action}` (registered as `category: "data"`, `volatile: true`).
+  Render in `<index>` at the bottom (volatile-sorted) with a tail
+  preview. Full bytes retrievable via `<get>`.
 
-This keeps `<log>` a terse audit trail (what happened, exit code,
-paths) while `<visible>` carries the actual streamed bytes the model
-reads. Conflating the two — e.g., writing channels under `log://...` —
-mislabels payload as audit and pollutes the logging section with
-multi-line command output. See [streaming_entries](#streaming_entries).
+This keeps `<log>` a terse activity tape (what happened, exit code,
+paths) while `<index>` carries the catalog of stream payloads with
+tail previews. Conflating the two — e.g., writing channels under
+`log://...` — mislabels payload as audit. See
+[streaming_entries](#streaming_entries).
 
 ### Scheme Registry {#scheme_registry}
 
@@ -533,23 +530,22 @@ export default class Rm {
         core.ensureTool();
         core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("visible", this.full.bind(this));
-        core.on("summarized", this.summary.bind(this));
+        core.on("view", this.full.bind(this));
     }
 
     async handler(entry, rummy) {
         // rummy here is per-turn RummyContext (not the startup PluginContext)
     }
 
-    full(entry)    { return `# rm ${entry.attributes.path}`; }
-    summary(entry) { return ""; }
+    full(entry) { return `# rm ${entry.attributes.path}`; }
 }
 ```
 
 **Registration verbs on PluginContext:**
 - `"handler"` — tool handler (dispatches when a matching entry is recorded).
-- `"visible"` / `"summarized"` — visibility view projections. Return the
-  projected body string for the given visibility level.
+- `"view"` — single projection per scheme. Return the projected body
+  for entries with this scheme (or for log entries dispatched to this
+  action). No view registered = engine default fallback (empty).
 - Any hook name (e.g. `"turn.started"`, `"entry.created"`) — subscribes
   to that event.
 - `core.filter(name, callback, priority)` — subscribes to a filter chain.
@@ -559,7 +555,7 @@ export default class Rm {
 - `rummy` argument — RummyContext (per-turn). For runtime: tool verbs, queries.
 
 **Plugin types:**
-- **Tool plugins**: register `handler` + `visible`/`summarized`. Model-invokable.
+- **Tool plugins**: register `handler` + `view`. Model-invokable.
 - **Assembly plugins**: register `core.filter("assembly.system"|"assembly.user", ...)`. Own a packet tag.
 - **Infrastructure plugins**: subscribe to lifecycle events
   (`turn.started`, `turn.response`, `turn.completed`, `entry.created`,
@@ -705,7 +701,7 @@ of tokens into context before any work happens.
 
 - Path: `log://turn_0/repo/manifest` (log scheme; turn-0 marks "before
   any model turn"). One entry per run, written once.
-- Visibility: `visible` at write; demotable like any log entry.
+- Visibility: `indexed` at write; archivable like any log entry.
 - Body: a flat list of `* <relative-path> - <N> tokens` lines, one
   per file, sorted by path. No headers, no directory aggregation, no
   constraints, no navigation legend — those are the model's business
@@ -717,14 +713,13 @@ entries (mtime/hash-driven, change-only writes). The model can
 `<get path="**" preview/>` for a fresh listing if it suspects
 staleness.
 
-**File default visibility flip.**
+**File default visibility.**
 
-`FileScanner` registers each tracked file at `archived` by default
-(was `summarized`). Files with `constraint=active` still register at
-`visible`. The model uses the manifest to discover paths, then
-promotes individual files via `<get path=...>` (visible, full body)
-or whole subtrees via `<set path=".../**" visibility="summarized"/>`
-(skim mode, symbols only).
+`FileScanner` registers each tracked file at `archived` by default.
+Files with `constraint=active` register at `indexed`. The model uses
+the manifest to discover paths, then `<get path=...>` brings the
+full content into `<log>` and greedily re-indexes the file in
+`<index>`.
 
 **Disabled when noRepo.** Setting `noRepo: true` on a run skips the
 scan entirely; no manifest is created and no file entries are
@@ -753,16 +748,16 @@ log://turn_N/{action}/{slug}    scheme=log       category=logging   status=202�
                                 body: "ran 'command', exit=0, Output: {paths}"
                                 (renders in <log>)
 
-{action}://turn_N/{slug}_1      scheme={action}  category=data      status=102 → 200/500
+{action}://turn_N/{slug}_1      scheme={action}  category=data (volatile)  status=102 → 200/500
                                 body: primary stream (stdout for shell)
-                                tags="{command}" visibility=summarized
-                                (line in <summary>; full body in
-                                 <visible> when promoted)
+                                tags="{command}" visibility=indexed
+                                (tail-preview tile in <index> at the
+                                 bottom; full body via <get>)
 
-{action}://turn_N/{slug}_2      scheme={action}  category=data      status=102 → 200/500
+{action}://turn_N/{slug}_2      scheme={action}  category=data (volatile)  status=102 → 200/500
                                 body: alt stream (stderr for shell)
-                                (line in <summary>; full body in
-                                 <visible> when promoted, often empty)
+                                (tail-preview tile in <index>;
+                                 often empty)
 ```
 
 `{action}` is the producer plugin's name (`sh`, `env`, future: `search`,
@@ -821,90 +816,67 @@ Two messages per turn. System = stable truth. User = active task.
     cache-stable across all turns within a run. The assembly.system
     filter chain exists but currently has no subscribers; the
     system message is the resolved system prompt verbatim.
-[user message]                     (sandwich ordering — see below)
-    <prompt tokenUsage="N" tokensFree="M">user prompt</prompt>
-        (prompt.js, assembly.user priority 30 — front, cacheable
-         across the run within a loop)
-    <summary>
-        one entry per category=data entry whose visibility is visible
-        or summarized. Each entry renders under its scheme tag with
-        its summarized projection as the tag body — the compact-but-
-        informative view produced by the plugin's summarized() hook
-        (truncated knowns, code symbols for files, page abstracts
-        for URLs). Identity-keyed, slow-mutating: only grows when a
-        new entry lands. Archived entries — including prompts —
-        are filtered out uniformly. There is no instruction-side
-        guard against archiving the active prompt — if the model
-        archives it, the next turn renders without a <prompt> tag
-        and visibly fails (paradigm purity over silent rescue;
-        action-gate is the principled future fix per
-        src/plugins/prompt/README.md).
-        (known.js, assembly.user priority 50)
-    </summary>
-    <visible>
-        each category=data entry whose visibility is visible, rendered
-        under its scheme tag with its visible projection as the tag
-        body (full body per the plugin's visible() hook). Working-set:
-        append on promote, remove on demote. A visible entry exists in
-        BOTH blocks — summary projection up top, full body below.
-        (known.js, assembly.user priority 75)
-    </visible>
+
+[system message]
+    <system_commands>
+        Folksonomic XML Command grammar + per-tool tooldocs.
+        Stable across the run.
+        (instructions.js, assembly.system priority 50/100)
+    </system_commands>
+    <index>
+        Catalog of every indexed data entry. Stable schemes first
+        (knowns, unknowns, files, URLs); volatile schemes (sh/env
+        streams) sort to the bottom for cache. Tile body per scheme:
+        knowns/unknowns full body; files default empty (rummy.repo
+        overrides with symbols); streams a tail preview; URLs
+        title+description. (known.js, assembly.system priority 200)
+    </index>
+
+[user message]
+    <system_instructions>
+        Persona body, when ctx.persona is set.
+        (persona.js, assembly.user priority 10)
+    </system_instructions>
     <log>
-        action history — all logging-category entries (log:// audit
-        records, error://, update://) plus pre-latest prompt://
-        entries (the active prompt is extracted to <prompt>).
-        (log.js, assembly.user priority 100)
+        Time-ordered activity tape — all category=logging entries
+        (log:// recaps, error://, update://, log://turn_N/prompt/...).
+        Slim by default (JSON envelope only); body present for
+        <set> (verbatim emission), <get> (retrieved content),
+        <search>, <error>, <update>, <prompt> (≤500-char preview).
+        Active task = the last entry. (log.js, assembly.user priority 50)
     </log>
-    <unknowns>
-        open questions at category=unknown, rendered under <unknown>
-        children with their bodies as questions. (unknown.js,
-        assembly.user priority 150)
-    </unknowns>
-    <instructions>
+    <turn commands="…" warn="…" archived="N" tokenUsage="N" tokensFree="M">
+        Per-turn meta: per-scheme breakdown table + total prose +
+        commands list + mode warn + archived count from prior 413.
+        (budget.js, assembly.user priority 90)
+    </turn>
+    <system_requirements>
         instructions-user.md text. Per-turn imperative reminders.
-        Same bytes every turn — no phase keying, no status-driven
-        selection. (instructions.js, assembly.user priority 165)
-    </instructions>
-    <budget tokenUsage="N" tokensFree="M">…breakdown table…</budget>
-        (budget.js, assembly.user priority 175 — last, recency for
-         the live accounting at the action site)
+        Same bytes every turn. (instructions.js, assembly.user priority 165)
+    </system_requirements>
 ```
 
-**System** = stable world state the model operates within (identity,
-tools, tool docs, persona). Stable across turns within a run, which
-keeps prompt caching intact. **User** = active work: the project's
-data surface, history, open questions, current task, and live
-accounting. The user message changes turn-to-turn so it sits outside
-the prefix-cacheable region; both `<instructions>` and the codebase
-blocks (`<summary>` / `<visible>`) live here because they mutate at
-turn cadence — putting mutable state in system would invalidate the
-cache on every promote.
+**System** = stable across turns. `<system_commands>` (grammar +
+tooldocs) is fixed for the run. `<index>` is stable until the model
+archives or indexes (rare, intentional). The system message holds
+the cacheable prefix.
 
-**Sandwich ordering.** User-message blocks are arranged
-`<prompt>` (30, front) → `<summary>` (50) → `<visible>` (75) →
-`<log>` (100) → `<unknowns>` (150) → `<instructions>` (165) →
-`<budget>` (175, last). The prompt sits at the front (cacheable
-across turns of a loop, since it doesn't change within a loop); the
-instructions and budget sit at the tail so the rules and live
-accounting have recency at the action site. An earlier front-loaded
-ordering (instructions first for max cache) regressed terminal-
-`<update>` discipline in e2e — the model lost the rule when it sat
-3K tokens upstream of the action. Recency at the action site beats
-cache savings when the action depends on remembering a rule.
+**User** = volatile per-turn delta. `<log>` mutates every turn as
+new entries land. `<turn>` recomputes the headline and table every
+turn. Persona and `<system_requirements>` are stable across the run
+but live in user (paradigm choice — model retraining benefits from
+having the persona in the user role for some providers).
 
-**Why two blocks instead of one `<context>`.** Promote/demote is the
-dominant intra-loop operation. A single-block render would
-invalidate the entire data surface on every promote. With the split,
-`<summary>` mutates only when a new entry lands (slow); `<visible>`
-mutates on every promote/demote (fast). Ordering slow-above-fast
-preserves the prefix cache for `<summary>` across the common case.
-Cognitively: `<summary>` is "what I know exists" (identity);
-`<visible>` is "what I'm reading right now" (working memory).
+**Active task signal.** The latest prompt's log entry is the last
+entry in `<log>` by recency. After a wall of slim manifest recaps,
+a body-bearing prompt entry naturally pops out. No special
+`<prompt>` section.
 
-The `<prompt>` tag is present on every turn — first turn and
-continuations alike. The model always sees its task. The
-`tokenUsage` / `tokensFree` attributes also appear on `<budget>` so
-the model can do budget arithmetic at both ends of the user message.
+**Cache discipline.** Stable schemes precede volatile in `<index>`,
+so the cacheable prefix doesn't break when stream tails update.
+Inside the system message, `<system_commands>` (run-stable) precedes
+`<index>` (slow-mutating), so the cache holds wherever the model
+isn't actively reorganizing the catalog.
 
 ### Loops and Cross-Loop Continuity {#loops_previous_performed}
 
@@ -916,20 +888,15 @@ Cross-loop continuity is carried by the entry store itself:
 
 - **Knowns, files, unknowns** persist across loop boundaries with
   whatever visibility the model left them at. They render in
-  `<summary>` / `<visible>` per visibility, regardless of which
-  loop wrote them.
-- **Log entries** (action audit, errors, updates) accumulate at
-  `log://turn_N/...` for every turn of every loop; `log.js`
-  renders all logging-category entries plus pre-latest prompts in
-  `<log>` in chronological order.
-- **The active prompt** is extracted from its chronological
-  position and rendered as `<prompt>` at priority 30 (front);
-  prior prompts render in `<log>` like any other logging entry.
-
-When a new prompt arrives on an existing run, the prior loop's
-`prompt://N` entry stays in the store; on the next assembly it
-falls out of `<prompt>` (replaced by the new prompt) and into
-`<log>` — visibility-driven re-rendering of the same entry rows.
+  `<index>` per visibility, regardless of which loop wrote them.
+- **Log entries** (action audit, errors, updates, prompt log
+  entries) accumulate at `log://turn_N/...` for every turn of every
+  loop; `log.js` renders all logging-category entries in `<log>` in
+  chronological order. Active task = the last entry.
+- **Prompts** are catalog entries (`prompt://N`, archived by
+  default) plus a log entry (`log://turn_N/prompt/<slug>`, body =
+  ≤500-char preview). Latest prompt's log entry is naturally last
+  in `<log>` (recency).
 
 ### Key Entries {#key_entries}
 
@@ -956,46 +923,43 @@ Each turn:
    AGENTS.md "Architectural exceptions"). Returns
    `instructions-system.md` with `[%TOOLS%]` / `[%TOOLDOCS%]`
    expanded, persona body appended.
-4. Query `v_model_context` VIEW → visible entries (joined from
-   `run_views` + `entries` + `schemes`)
-5. Project each entry through its scheme's `visible`/`summarized` projection
-6. Insert projected rows into `turn_context`
-7. Invoke `assembly.system` filter chain — currently no
-   subscribers, so the system message is the resolved system
-   prompt verbatim.
+4. Query `v_model_context` VIEW → indexed entries (joined from
+   `run_views` + `entries` + `schemes`); rows pre-sorted with
+   stable schemes first, volatile schemes last.
+5. Project each entry through its scheme's `onView` (or the engine
+   default if none registered).
+6. Insert projected rows into `turn_context`.
+7. Invoke `assembly.system` filter chain:
+   - Instructions plugin (priorities 50/100) → `<system_commands>`
+   - Known plugin (priority 200) → `<index>` section (every
+     `category=data` row)
 8. Invoke `assembly.user` filter chain (empty string as base):
-   - Prompt plugin (priority 30) → `<prompt>` element (carries
-     `tokenUsage` / `tokensFree` attrs)
-   - Known plugin (priority 50) → `<summary>` section
-   - Known plugin (priority 75) → `<visible>` section
-   - Log plugin (priority 100) → `<log>` section
-   - Unknown plugin (priority 150) → `<unknowns>` section
-   - Instructions plugin (priority 165) → `<instructions>` section
-     (renders `instructions-user.md`)
-   - Budget plugin (priority 175) → `<budget>` element (carries
-     `tokenUsage` / `tokensFree` and per-scheme breakdown)
-9. Store as `system://N` and `user://N` audit entries (telemetry plugin)
+   - Persona plugin (priority 10) → `<system_instructions>` (when
+     `ctx.persona` is set)
+   - Log plugin (priority 50) → `<log>` section
+   - Budget plugin (priority 90) → `<turn>` element (commands /
+     warn / archived / tokenUsage / tokensFree + breakdown table)
+   - Instructions plugin (priority 165) → `<system_requirements>`
+     section (renders `instructions-user.md`)
+9. Store as `system://N` and `user://N` audit entries (telemetry plugin).
 
-The VIEW determines visibility from `visibility` and `status`:
-- `visibility = 'visible'` → full body visible in `<visible>` (data) or `<log>` (logging).
-- `visibility = 'summarized'` → summarized projection visible (typically path +
-  summary attr). Promote with `<get>` to expand.
-- `visibility = 'archived'` → invisible. Discoverable via pattern search
-  (`<get path="known://*">keyword</get>`); promote to bring back into view.
+The VIEW filters visibility from `visibility` and `status`:
+- `visibility = 'indexed'` → row appears in v_model_context →
+  rendered in `<index>` (data) or `<log>` (logging).
+- `visibility = 'archived'` → filtered out. Discoverable via
+  `<get path="...">` (which greedily re-indexes) or
+  `<set path="..." index/>`.
 - `status = 202` → invisible (proposed, pending client resolution).
 - `model_visible = 0` → invisible (audit schemes: instructions, system,
-  reasoning, model, user, assistant, content, tool).
+  reasoning, model, user, assistant, content).
 
 **Partial read:** `<get path="..." line="N" limit="M"/>` returns lines N
-through N+M−1 of the entry body as the log item without changing
-visibility or promoting the entry to context. Use after reading a
-demoted entry (which shows path + summary) to target a specific slice.
-Single-path only — glob or body filter with `line`/`limit` is a 400 error.
+through N+M−1 of the entry body in the log entry's body. Single-path
+only — glob or body filter with `line`/`limit` is a 400 error.
 
-Model controls visibility via `<set>` attributes:
-`visibility="archived|summarized|visible"`. The `summary="..."` attribute
-attaches a description (≤ 80 chars) that persists across visibility
-changes.
+Model controls visibility via `<set>` boolean attrs:
+`<set path="..." archive/>` and `<set path="..." index/>`.
+`<get>` greedily re-indexes any archived match it touches.
 
 ### Filesystem Freshness {#filesystem_freshness}
 
@@ -1008,8 +972,8 @@ projection of current state — there is no read-after-write skew.
 The invariant has two parts:
 
 1. **Body freshness** — a write that changes the entry body shows
-   the new body on the next assembly's `<visible>` (when visible)
-   or under `<get>` (when summarized/archived).
+   the new body on the next assembly's `<index>` tile (when indexed)
+   or under `<get>` (when archived).
 2. **Visibility freshness** — a write that explicitly sets
    `visibility=...` honors the requested level on the next
    assembly. Edit-path side effects (e.g., a SEARCH/REPLACE accept
@@ -1168,15 +1132,10 @@ with a "context too long" error (detected via the regex in
 which TurnExecutor catches and emits a 413 error through the same
 channel.
 
-**Known-scheme size gate** (in the `known` plugin). Writes to
-`known://` entries exceeding `RUMMY_MAX_ENTRY_TOKENS` (default 512)
-are rejected at the handler with an instructive error message. Forces
-atomic entries instead of dumping transcripts into a single `known://`.
-
 **Advisory feedback.** The model reads `tokensFree` / `tokenUsage`
-attributes on `<budget>` every turn and self-regulates. The full
-breakdown (per-scheme visible cost, summarized aggregate, system
-overhead) lives in the same tag — see [token_accounting](#token_accounting)
+attributes on `<turn>` every turn and self-regulates. The full
+breakdown (per-scheme indexed/archived counts and indexed-token cost)
+lives in the same tag — see [token_accounting](#token_accounting)
 for the rendered shape and the contract for what each number means.
 No threshold-based warnings. When the ceiling is actually breached the
 413 `error://` entry is the feedback.
@@ -1853,7 +1812,6 @@ Full reference is `.env.example` — these are the load-bearing vars.
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `RUMMY_BUDGET_CEILING` | 0.9 | Fraction of `contextSize` used as ceiling |
-| `RUMMY_MAX_ENTRY_TOKENS` | 512 | `known://` write rejection threshold |
 | `RUMMY_TOKEN_DIVISOR` | 2 | `ceil(chars/N)` token estimate divisor |
 
 **Loop controls:**

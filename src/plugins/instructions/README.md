@@ -17,11 +17,11 @@ run.
   participants mutate a docsMap keyed by tool name). Render order
   follows tool-registration order.
 - **Filter**: `assembly.user` (priority 165) — renders
-  `instructions-user.md` as `<system_requirements>` late in the user
-  message, between `<unknowns>` (150) and `<budget>` (175). The
-  user message is a sandwich: `<prompt>` (30) leads for cache
-  stability, dynamic state fills the middle, then rules and
-  budget close out so the action site sees them with recency.
+  `instructions-user.md` as `<system_requirements>` at the bottom
+  of the user message, after `<turn>` (90). The user message is
+  ordered persona → `<log>` (50) → `<turn>` (90) → `<system_requirements>` (165),
+  so per-turn protocol reminders land last and the model reads them
+  with recency.
 - **Filter**: `instructions.toolDocs` — sub-filter the toolDocs
   participant calls. Tool plugins (and skill) extend this filter
   to publish their per-tool docs.

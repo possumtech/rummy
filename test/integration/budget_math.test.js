@@ -323,156 +323,40 @@ describe("Budget math", () => {
 		});
 	});
 
-	// The wire contract between budget math and what the model sees.
-	// These tests verify the two signals the model actually reads when
-	// regulating itself: `<prompt tokenUsage="N" tokensFree="M">` and
-	// the `reverted="N"` attribute that surfaces after a demotion.
-	describe("prompt signal correctness", () => {
-		let Prompt;
-		let assemblePrompt;
-
-		before(async () => {
-			Prompt = (await import("../../src/plugins/prompt/prompt.js")).default;
-			// Construct the plugin against a shim core so we can call the
-			// assemblePrompt filter directly.
-			const shim = {
-				hooks: {
-					tools: {
-						onView() {},
-						names: ["get", "set"],
-						advertisedNames: ["get", "set"],
-					},
-				},
-				on() {},
-				filter() {},
-			};
-			const plugin = new Prompt(shim);
-			assemblePrompt = plugin.assemblePrompt.bind(plugin);
-		});
-
-		function fakePromptRow(body = "hello") {
-			return {
-				ordinal: 1,
-				path: "prompt://1",
-				scheme: "prompt",
-				visibility: "indexed",
-				body,
-				tokens: countTokens(body),
-				attributes: JSON.stringify({ mode: "act" }),
-				category: "prompt",
-				source_turn: 1,
-			};
-		}
-
-		it("prompt no longer carries tokenUsage/tokensFree (moved to <budget>)", async () => {
-			const contextSize = 10000;
-			const out = await assemblePrompt("", {
-				rows: [fakePromptRow()],
-				contextSize,
-				lastContextTokens: 8421,
-				type: "act",
-				turn: 2,
-			});
-			assert.ok(
-				!/tokenUsage=|tokensFree=/.test(out),
-				"prompt has no budget attrs",
-			);
-		});
-
-		it("archived='N' surfaces when prior turn had a 413 archive", async () => {
-			const contextSize = 10000;
-			const out = await assemblePrompt("", {
-				rows: [
-					fakePromptRow(),
-					{
-						ordinal: 2,
-						path: "log://turn_2/error/Token%20Budget%20overflow%3A%20foo",
-						scheme: "log",
-						visibility: "indexed",
-						body: "Token Budget overflow: ...",
-						tokens: 30,
-						attributes: JSON.stringify({
-							status: 413,
-							archivedCount: 4,
-							archivedTokens: 22000,
-						}),
-						category: "logging",
-						source_turn: 2,
-					},
-				],
-				contextSize,
-				lastContextTokens: 5000,
-				type: "act",
-				turn: 3,
-			});
-			assert.ok(
-				/archived="4"/.test(out),
-				`archived=4 must surface; got: ${out}`,
-			);
-		});
-
-		it("archived absent when prior turn had no 413", async () => {
-			const contextSize = 10000;
-			const out = await assemblePrompt("", {
-				rows: [fakePromptRow()],
-				contextSize,
-				lastContextTokens: 5000,
-				type: "act",
-				turn: 3,
-			});
-			assert.ok(
-				!out.includes("archived="),
-				"no archived attr when no prior 413",
-			);
-		});
-
-		it("archived only looks at PRIOR turn, not older ones", async () => {
-			const contextSize = 10000;
-			const out = await assemblePrompt("", {
-				rows: [
-					fakePromptRow(),
-					{
-						ordinal: 2,
-						path: "log://turn_1/error/Token%20Budget%20overflow",
-						scheme: "log",
-						visibility: "indexed",
-						body: "Token Budget overflow: ...",
-						tokens: 30,
-						attributes: JSON.stringify({
-							status: 413,
-							archivedCount: 2,
-							archivedTokens: 8000,
-						}),
-						category: "logging",
-						source_turn: 1,
-					},
-				],
-				contextSize,
-				lastContextTokens: 5000,
-				type: "act",
-				turn: 5,
-			});
-			assert.ok(
-				!out.includes("archived="),
-				"archived only for immediately-prior turn",
-			);
-		});
-	});
-
 	describe("413 error carries structured archive attrs", () => {
-		it("budget rescue emits a 413 error entry with archivedCount and archivedTokens", async () => {
+		it("grinder reclaims fat get/set replays + emits 413 with archivedCount/Tokens", async () => {
 			const { runId } = await tdb.seedRun({ alias: "err_attrs_413" });
-			// Seed indexed log entries at turn 0 (= prevTurn for the
-			// dispatch at turn 1) so the rescue has something to archive.
-			for (let i = 0; i < 20; i++) {
+			// Seed turn-0 fat get replays in DB so reassembly sees them.
+			const fatBodies = [];
+			for (let i = 0; i < 5; i++) {
+				const body = pad(100);
+				fatBodies.push(body);
 				await store.set({
 					runId,
 					turn: 0,
 					path: `log://turn_0/get/big_${i}`,
-					body: pad(100),
+					body,
 					state: "resolved",
 					visibility: "indexed",
 				});
+			}
+			// Materialize and pass the rows to enforce — the grinder
+			// candidates come from the rows it received, not from DB.
+			await materialize(tdb.db, {
+				runId,
+				turn: 1,
+				systemPrompt: "test",
+			});
+			const rows = await tdb.db.get_turn_context.all({
+				run_id: runId,
+				turn: 1,
+			});
+			// vBody/aTokens decoration so the grinder picks the rows up.
+			for (const r of rows) {
+				if (r.scheme === "log") {
+					r.aTokens = countTokens(r.body);
+					r.vBody = r.body;
+				}
 			}
 			const messages = [
 				{ role: "system", content: "test" },
@@ -481,7 +365,7 @@ describe("Budget math", () => {
 			await cascade.enforce({
 				contextSize: 1000,
 				messages,
-				rows: [],
+				rows,
 				ctx: {
 					runId,
 					loopId: null,

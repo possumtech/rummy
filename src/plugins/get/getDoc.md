@@ -1,4 +1,4 @@
-## <get path="[path]" {archive|index}/> - Read an entry's full body into `<log>`
+## <get path="[path]"/> - Read an entry's full body into `<log>` (greedily re-indexes if archived)
 
 Example: <get path="known://*">auth</get>
 <!-- Body is a content filter, not new content. Path glob + body keyword = filtered recall. -->
@@ -12,5 +12,6 @@ Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200
 <!-- URL slice. line/limit works on any scheme — files, sh stdout, knowns, urls. -->
 Example: <get path="*.md"/>
 <!-- One glob per call fans out. For unrelated paths, emit one `<get>` per path — `path` is a single entry or one pattern, not a space-separated list. -->
-Example: <get path="known://archived_plan" index/>
-<!-- index: restore an archived entry to `<index>` while reading it. archive: drop from `<index>` after reading. Mutually exclusive. -->
+<!-- `<get>` greedily re-indexes any archived match. To explicitly
+flip visibility without reading, use `<set path="..." index/>` or
+`<set path="..." archive/>`. -->

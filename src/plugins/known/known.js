@@ -1,8 +1,5 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
-import { countTokens } from "../../agent/tokens.js";
 import { renderEntry } from "../helpers.js";
-
-const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS);
 
 export default class Known {
 	#core;
@@ -12,7 +9,9 @@ export default class Known {
 		core.ensureTool();
 		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
-		// No view registered: default summarizeEmission (≤500-char tile).
+		// Full-body tile: knowns are model-authored short content; the
+		// body is the tile.
+		core.on("view", (entry) => entry.body);
 		core.filter("assembly.system", this.assembleIndex.bind(this), 200);
 		// Written via <set path="known://...">; lifecycle in instructions-user.md.
 		core.markHidden();
@@ -21,20 +20,6 @@ export default class Known {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		if (!entry.body) return;
-
-		const entryTokens = countTokens(entry.body);
-		if (entryTokens > MAX_ENTRY_TOKENS) {
-			await store.set({
-				runId,
-				turn,
-				loopId,
-				path: entry.resultPath,
-				body: `Entry too large (${entryTokens} tokens, max ${MAX_ENTRY_TOKENS}). Sort the information, ideas, or plans carefully into multiple entries.`,
-				state: "failed",
-				outcome: `overflow:${entryTokens}`,
-			});
-			return;
-		}
 
 		let knownPath = entry.attributes?.path;
 		if (knownPath && !knownPath.includes("://")) {
@@ -76,9 +61,9 @@ export default class Known {
 		});
 	}
 
-	// Single section: catalog of indexed data entries. Body is the
-	// projection (the model's authored content). Archived entries skip
-	// rendering. Model brings full body into context via <get>.
+	// <index> assembles every indexed catalog row (category=data) in a
+	// single section. v_model_context returns rows already sorted: stable
+	// schemes first, volatile last.
 	async assembleIndex(content, ctx) {
 		const entries = ctx.rows.filter(
 			(r) => r.category === "data" && r.visibility === "indexed",

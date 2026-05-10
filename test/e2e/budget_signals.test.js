@@ -91,7 +91,7 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 	it("budget tag carries non-zero tokenUsage and tokensFree on every turn", {
 		timeout: TIMEOUT,
 	}, async () => {
-		// Per @token_accounting, tokenUsage and tokensFree live on <budget>
+		// Per @token_accounting, tokenUsage and tokensFree live on <turn>
 		// (materialization-derived: floor + premium + system) rather than
 		// echoing the API's prompt_tokens. The signal is self-consistent
 		// with the visible-scheme table inside the same tag — that's the
@@ -123,14 +123,14 @@ describe("E2E: budget signals match API ground truth (@budget_enforcement)", {
 		for (const t of turns) {
 			const body = userMsgs[t.sequence];
 			assert.ok(body, `user message for turn ${t.sequence} exists`);
-			const attrs = tagAttrs(body, "budget");
+			const attrs = tagAttrs(body, "turn");
 			assert.ok(
 				attrs.tokenUsage,
-				`turn ${t.sequence} <budget> has tokenUsage attr`,
+				`turn ${t.sequence} <turn> has tokenUsage attr`,
 			);
 			assert.ok(
 				attrs.tokensFree,
-				`turn ${t.sequence} <budget> has tokensFree attr`,
+				`turn ${t.sequence} <turn> has tokensFree attr`,
 			);
 			const used = Number(attrs.tokenUsage);
 			const free = Number(attrs.tokensFree);

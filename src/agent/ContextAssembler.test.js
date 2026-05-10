@@ -17,86 +17,117 @@ before(async () => {
 	await registerPlugins([pluginsDir], hooks);
 });
 
+function dataRow({
+	path,
+	scheme,
+	body,
+	tokens = 0,
+	attributes = null,
+	turn = 1,
+}) {
+	return {
+		ordinal: 1,
+		path,
+		scheme,
+		visibility: "indexed",
+		state: "resolved",
+		body,
+		vBody: body,
+		vTokens: tokens,
+		aTokens: tokens,
+		vLines: 0,
+		attributes,
+		category: "data",
+		source_turn: turn,
+	};
+}
+
+function logRow({
+	path,
+	body = "",
+	tokens = 0,
+	attributes = null,
+	turn = 1,
+	state = "resolved",
+}) {
+	return {
+		ordinal: 1,
+		path,
+		scheme: "log",
+		visibility: "indexed",
+		state,
+		outcome: null,
+		body,
+		vBody: body,
+		vTokens: tokens,
+		aTokens: tokens,
+		vLines: 0,
+		attributes:
+			typeof attributes === "object" && attributes !== null
+				? JSON.stringify(attributes)
+				: attributes,
+		category: "logging",
+		source_turn: turn,
+	};
+}
+
 describe("ContextAssembler", () => {
 	describe("assembleFromTurnContext", () => {
-		it("renders system prompt; catalog entries in <index>; prompt in user", async () => {
+		it("system carries <system_commands> + <index>; user carries <log> + <turn>", async () => {
 			const rows = [
-				{
-					ordinal: 1,
+				dataRow({
 					path: "known://auth",
 					scheme: "known",
-					visibility: "indexed",
 					body: "JWT",
 					tokens: 1,
-					attributes: null,
-					category: "data",
-					source_turn: 1,
-				},
-				{
-					ordinal: 2,
+				}),
+				dataRow({
 					path: "src/app.js",
 					scheme: null,
-					visibility: "indexed",
 					body: "const x = 1;",
 					tokens: 5,
-					attributes: null,
-					category: "data",
-					source_turn: 1,
-				},
-				{
-					ordinal: 3,
-					path: "prompt://1",
-					scheme: "prompt",
-					visibility: "indexed",
+				}),
+				logRow({
+					path: "log://turn_1/prompt/1",
 					body: "What does this do?",
-					tokens: 3,
-					attributes: JSON.stringify({ mode: "ask" }),
-					category: "prompt",
-					source_turn: 1,
-				},
+					tokens: 4,
+					attributes: { path: "prompt://1", mode: "ask" },
+				}),
 			];
 			const messages = await ContextAssembler.assembleFromTurnContext(
 				rows,
-				{ systemPrompt: "You are helpful." },
+				{ systemPrompt: "You are helpful.", contextSize: 32768 },
 				hooks,
 			);
 
 			assert.strictEqual(messages.length, 2);
 			assert.strictEqual(messages[0].role, "system");
-			assert.ok(
-				messages[0].content.startsWith("You are helpful."),
-				"assembly.system chain seeds with the supplied systemPrompt",
-			);
-			assert.ok(
-				messages[0].content.includes("Folksonomic XML Command Definitions"),
-				"instructions plugin contributes the header at priority 50",
-			);
 			assert.strictEqual(messages[1].role, "user");
 			const system = messages[0].content;
 			const user = messages[1].content;
+			assert.ok(system.startsWith("You are helpful."));
+			assert.ok(system.includes("Folksonomic XML Command Definitions"));
 			assert.ok(system.includes("<index>"), "system has <index>");
 			assert.ok(system.includes("known://auth"), "known tile in index");
-			assert.ok(system.includes("const x = 1;"), "file body tile in index");
-			assert.ok(user.includes("<prompt"), "user has <prompt>");
-			assert.ok(user.includes("What does this do?"));
+			assert.ok(user.includes("<log>"), "log lives in user");
+			assert.ok(user.includes("What does this do?"), "prompt body in log");
+			assert.ok(user.includes("<turn"), "turn meta in user");
+			// system_commands tooldocs may mention <log>/<index>; check for
+			// the rendered section opening (newline-anchored) instead.
+			assert.doesNotMatch(user, /^<index>/m, "<index> stays in system");
+			assert.doesNotMatch(system, /^<log>/m, "<log> stays in user");
 		});
 
-		it("user message sandwich: persona → prompt → budget → instructions", async () => {
-			const rows = [
-				{
-					ordinal: 1,
-					path: "prompt://1",
-					scheme: "prompt",
-					visibility: "indexed",
-					body: "The question",
-					tokens: 3,
-					attributes: JSON.stringify({ mode: "ask" }),
-					category: "prompt",
-					source_turn: 1,
-				},
-			];
+		it("user message order: persona → log → turn → system_requirements", async () => {
 			const messages = await ContextAssembler.assembleFromTurnContext(
-				rows,
+				[
+					logRow({
+						path: "log://turn_1/prompt/1",
+						body: "ask",
+						tokens: 1,
+						attributes: { path: "prompt://1", mode: "act" },
+					}),
+				],
 				{
 					systemPrompt: "sys",
 					contextSize: 32768,
@@ -104,283 +135,43 @@ describe("ContextAssembler", () => {
 				},
 				hooks,
 			);
-
 			const user = messages[1].content;
 			const personaPos = user.indexOf("<system_instructions>");
-			const promptPos = user.indexOf("<prompt");
-			const budgetPos = user.indexOf("<budget");
-			const requirementsPos = user.indexOf("<system_requirements>");
+			const logPos = user.indexOf("<log>");
+			const turnPos = user.indexOf("<turn");
+			const reqPos = user.indexOf("<system_requirements>");
+			assert.ok(personaPos >= 0, "<system_instructions> present");
+			assert.ok(logPos > personaPos, "<log> after persona");
+			assert.ok(turnPos > logPos, "<turn> after <log>");
 			assert.ok(
-				personaPos >= 0,
-				"<system_instructions> (persona) present at user-top",
-			);
-			assert.ok(promptPos > personaPos, "<prompt> after persona");
-			assert.ok(budgetPos > promptPos, "<budget> after <prompt>");
-			assert.ok(
-				requirementsPos > budgetPos,
-				"<system_requirements> at action site (last in user) — recency for protocol discipline",
+				reqPos > turnPos,
+				"<system_requirements> last (recency for protocol discipline)",
 			);
 		});
 
-		it("unifies all logging entries across loops into a single <log> block", async () => {
+		it("logging entries from prior loops appear in the <log> block", async () => {
 			const rows = [
-				{
-					ordinal: 1,
+				logRow({
 					path: "log://turn_1/get/old.js",
-					scheme: "log",
-					visibility: "indexed",
-					state: "resolved",
 					body: "old result",
 					tokens: 5,
-					attributes: JSON.stringify({ path: "old.js" }),
-					category: "logging",
-					source_turn: 1,
-				},
-				{
-					ordinal: 2,
-					path: "prompt://3",
-					scheme: "prompt",
-					visibility: "indexed",
-					body: "New question",
-					tokens: 3,
-					attributes: JSON.stringify({ mode: "ask" }),
-					category: "prompt",
-					source_turn: 3,
-				},
-				{
-					ordinal: 3,
+					attributes: { path: "old.js" },
+					turn: 1,
+				}),
+				logRow({
+					path: "log://turn_3/prompt/3",
+					body: "new question",
+					tokens: 4,
+					attributes: { path: "prompt://3", mode: "ask" },
+					turn: 3,
+				}),
+				logRow({
 					path: "log://turn_3/get/new.js",
-					scheme: "log",
-					visibility: "indexed",
-					state: "resolved",
 					body: "new result",
 					tokens: 5,
-					attributes: JSON.stringify({ path: "new.js" }),
-					category: "logging",
-					source_turn: 3,
-				},
-			];
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				rows,
-				{ systemPrompt: "sys" },
-				hooks,
-			);
-
-			const system = messages[0].content;
-			assert.ok(!system.includes("<previous>"), "no <previous> block");
-			assert.ok(system.includes("<log>"), "log is in system");
-			assert.ok(system.includes("old.js"), "old get in log");
-			assert.ok(system.includes("new.js"), "new get in log");
-		});
-
-		it("renders results with status symbols in log", async () => {
-			const rows = [
-				{
-					ordinal: 1,
-					path: "prompt://1",
-					scheme: "prompt",
-					visibility: "indexed",
-					body: "Fix it",
-					tokens: 2,
-					attributes: JSON.stringify({ mode: "act" }),
-					category: "prompt",
-					source_turn: 1,
-				},
-				{
-					ordinal: 2,
-					path: "log://turn_1/set/app.js",
-					scheme: "log",
-					visibility: "indexed",
-					state: "resolved",
-					body: "",
-					tokens: 0,
-					attributes: JSON.stringify({ path: "app.js" }),
-					category: "logging",
-					source_turn: 1,
-				},
-				{
-					ordinal: 3,
-					path: "log://turn_1/update/done",
-					scheme: "log",
-					visibility: "indexed",
-					state: "resolved",
-					body: "Fixed it",
-					tokens: 2,
-					attributes: null,
-					category: "logging",
-					source_turn: 1,
-				},
-			];
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				rows,
-				{ systemPrompt: "sys" },
-				hooks,
-			);
-			const system = messages[0].content;
-
-			assert.ok(system.includes('status="200"'), "pass result has status");
-			assert.ok(system.includes("Fixed it"), "summary renders");
-			assert.ok(system.includes("<log>"), "results in log block");
-			assert.ok(
-				system.includes("<set path="),
-				"tool tags in log use tool name",
-			);
-		});
-
-		it("renders empty context when no entries", async () => {
-			const rows = [];
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				rows,
-				{ systemPrompt: "sys" },
-				hooks,
-			);
-
-			assert.strictEqual(messages.length, 2);
-			assert.ok(
-				messages[0].content.startsWith("sys"),
-				"assembly.system seeds with supplied systemPrompt",
-			);
-			assert.strictEqual(messages[1].role, "user");
-			assert.ok(messages[1].content.includes("<prompt"));
-		});
-
-		it("renders <system_instructions> at the top of the user message when ctx.persona is set", async () => {
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				[],
-				{ systemPrompt: "", persona: "You are a careful auditor." },
-				hooks,
-			);
-			assert.ok(
-				messages[1].content.includes("<system_instructions>"),
-				"<system_instructions> open tag in user message",
-			);
-			assert.ok(
-				messages[1].content.includes("You are a careful auditor."),
-				"persona body rendered in user message",
-			);
-			assert.ok(
-				!messages[0].content.includes("<system_instructions>"),
-				"persona is not in system any more",
-			);
-		});
-
-		it("omits the persona block when ctx.persona is empty", async () => {
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				[],
-				{ systemPrompt: "" },
-				hooks,
-			);
-			assert.ok(
-				!messages[1].content.includes("<system_instructions>"),
-				"no <system_instructions> block when ctx.persona is unset",
-			);
-		});
-
-		it("renders data entries in row order in system message", async () => {
-			const rows = [
-				{
-					ordinal: 1,
-					path: "src/app.js",
-					scheme: null,
-					visibility: "indexed",
-					body: "const x = 1;",
-					tokens: 5,
-					attributes: null,
-					category: "data",
-					source_turn: 3,
-				},
-				{
-					ordinal: 2,
-					path: "src/old.js",
-					scheme: null,
-					visibility: "indexed",
-					body: "const y = 2;",
-					tokens: 5,
-					attributes: null,
-					category: "data",
-					source_turn: 1,
-				},
-				{
-					ordinal: 3,
-					path: "known://auth",
-					scheme: "known",
-					visibility: "indexed",
-					body: "JWT",
-					tokens: 1,
-					attributes: null,
-					category: "data",
-					source_turn: 2,
-				},
-			];
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				rows,
-				{ systemPrompt: "sys" },
-				hooks,
-			);
-			const system = messages[0].content;
-
-			assert.ok(system.includes("<<:::known://auth"), "known fence in system");
-			assert.ok(system.includes("const y = 2;"), "old file body in <index>");
-			assert.ok(system.includes("JWT"), "known body in <index>");
-			assert.ok(system.includes("const x = 1;"), "new file body in <index>");
-		});
-
-		it("renders unknowns in their own <unknowns> block in the system message", async () => {
-			const rows = [
-				{
-					ordinal: 1,
-					path: "unknown://config",
-					scheme: "unknown",
-					visibility: "indexed",
-					body: "which database adapter",
-					tokens: 3,
-					attributes: null,
-					category: "unknown",
-					source_turn: 1,
-				},
-				{
-					ordinal: 2,
-					path: "prompt://1",
-					scheme: "prompt",
-					visibility: "indexed",
-					body: "Do it",
-					tokens: 2,
-					attributes: JSON.stringify({ mode: "act" }),
-					category: "prompt",
-					source_turn: 1,
-				},
-			];
-			const messages = await ContextAssembler.assembleFromTurnContext(
-				rows,
-				{ systemPrompt: "sys" },
-				hooks,
-			);
-			const user = messages[1].content;
-			const system = messages[0].content;
-
-			assert.ok(system.includes("<unknowns>"), "unknowns block rendered");
-			assert.ok(
-				system.includes("<<:::unknown://config"),
-				"unknown fenced inside its own block",
-			);
-			assert.ok(system.includes("which database adapter"));
-			assert.ok(!user.includes("<unknowns>"), "no <unknowns> in user");
-			assert.ok(!user.includes("<<:::unknown://"), "no unknowns in user");
-		});
-
-		it("prompt element carries tokenUsage and tokensFree attrs", async () => {
-			const rows = [
-				{
-					ordinal: 1,
-					path: "prompt://1",
-					scheme: "prompt",
-					visibility: "indexed",
-					body: "Build it",
-					tokens: 2,
-					attributes: JSON.stringify({ mode: "act" }),
-					category: "prompt",
-					source_turn: 1,
-				},
+					attributes: { path: "new.js" },
+					turn: 3,
+				}),
 			];
 			const messages = await ContextAssembler.assembleFromTurnContext(
 				rows,
@@ -388,59 +179,114 @@ describe("ContextAssembler", () => {
 				hooks,
 			);
 			const user = messages[1].content;
-
-			assert.ok(
-				/tokenUsage="\d+"/.test(user),
-				"prompt element carries tokenUsage",
-			);
-			assert.ok(
-				/tokensFree="\d+"/.test(user),
-				"prompt element carries tokensFree",
-			);
+			assert.ok(user.includes("<log>"));
+			assert.ok(user.includes("old.js"));
+			assert.ok(user.includes("new.js"));
+			assert.ok(user.includes("new question"));
 		});
 
-		it("catalog projection renders as the tag body inside <index>", async () => {
+		it("renders empty user content with no rows", async () => {
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				[],
+				{ systemPrompt: "sys", contextSize: 32768 },
+				hooks,
+			);
+			assert.strictEqual(messages.length, 2);
+			assert.ok(messages[0].content.startsWith("sys"));
+			assert.strictEqual(messages[1].role, "user");
+			// User has the <turn> tag (always rendered when contextSize > 0)
+			assert.ok(messages[1].content.includes("<turn"));
+		});
+
+		it("<system_instructions> at top of user when ctx.persona is set", async () => {
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				[],
+				{
+					systemPrompt: "",
+					contextSize: 32768,
+					persona: "You are a careful auditor.",
+				},
+				hooks,
+			);
+			assert.ok(messages[1].content.includes("<system_instructions>"));
+			assert.ok(messages[1].content.includes("You are a careful auditor."));
+			assert.ok(!messages[0].content.includes("<system_instructions>"));
+		});
+
+		it("omits <system_instructions> when ctx.persona is empty", async () => {
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				[],
+				{ systemPrompt: "", contextSize: 32768 },
+				hooks,
+			);
+			assert.ok(!messages[1].content.includes("<system_instructions>"));
+		});
+
+		it("data entries (knowns + files + unknowns) all land in <index>", async () => {
 			const rows = [
-				{
-					ordinal: 1,
-					path: "src/agent/AgentLoop.js",
+				dataRow({
+					path: "src/app.js",
 					scheme: null,
-					visibility: "indexed",
-					body: "class AgentLoop { #foo; async start(); }",
-					vBody: "\tclass AgentLoop { #foo; async start(); }",
-					tokens: 12,
-					attributes: null,
-					category: "data",
-					source_turn: 1,
-				},
-				{
-					ordinal: 2,
-					path: "prompt://1",
-					scheme: "prompt",
-					visibility: "indexed",
-					body: "Refactor",
+					body: "const x = 1;",
+					tokens: 5,
+				}),
+				dataRow({
+					path: "known://auth",
+					scheme: "known",
+					body: "JWT",
 					tokens: 1,
-					attributes: JSON.stringify({ mode: "ask" }),
-					category: "prompt",
-					source_turn: 1,
-				},
+				}),
+				dataRow({
+					path: "unknown://config",
+					scheme: "unknown",
+					body: "which database adapter",
+					tokens: 3,
+				}),
 			];
 			const messages = await ContextAssembler.assembleFromTurnContext(
 				rows,
-				{ systemPrompt: "sys" },
+				{ systemPrompt: "sys", contextSize: 32768 },
 				hooks,
 			);
 			const system = messages[0].content;
 			const indexBlock = system.match(/<index>([\s\S]*?)<\/index>/)?.[1];
-			assert.ok(indexBlock, "<index> block exists in system");
-			assert.ok(
-				indexBlock.includes("class AgentLoop"),
-				"catalog projection renders inside heredoc",
+			assert.ok(indexBlock);
+			assert.match(indexBlock, /<<:::known:\/\/auth/);
+			assert.match(indexBlock, /<<:::unknown:\/\/config/);
+			assert.match(indexBlock, /<<:::src\/app\.js/);
+			assert.ok(!system.includes("<unknowns>"), "no <unknowns> section");
+		});
+
+		it("<turn> carries tokenUsage and tokensFree attrs", async () => {
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				[],
+				{ systemPrompt: "sys", contextSize: 32768 },
+				hooks,
 			);
-			assert.ok(
-				indexBlock.includes("<<:::src/agent/AgentLoop.js"),
-				"entry uses heredoc fence with path-as-marker",
+			const user = messages[1].content;
+			assert.match(user, /<turn[^>]*tokenUsage="\d+"/);
+			assert.match(user, /<turn[^>]*tokensFree="\d+"/);
+		});
+
+		it("catalog projection renders as the tag body inside <index>", async () => {
+			const rows = [
+				dataRow({
+					path: "known://plan",
+					scheme: "known",
+					body: "step 1\nstep 2",
+					tokens: 4,
+				}),
+			];
+			const messages = await ContextAssembler.assembleFromTurnContext(
+				rows,
+				{ systemPrompt: "sys", contextSize: 32768 },
+				hooks,
 			);
+			const system = messages[0].content;
+			const indexBlock = system.match(/<index>([\s\S]*?)<\/index>/)?.[1];
+			assert.ok(indexBlock);
+			assert.match(indexBlock, /step 1/);
+			assert.match(indexBlock, /<<:::known:\/\/plan/);
 		});
 	});
 });

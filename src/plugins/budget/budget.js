@@ -43,19 +43,16 @@ export function substituteBudgetPlaceholders(text, { tokenUsage, tokensFree }) {
 		.replaceAll(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
 }
 
-export function overflowBody(overflow, contextSize, archived) {
+// Manifest format (S8): `* path - tokens` per line.
+export function overflowBody(overflow, contextSize, reclaimed) {
 	const cap = ceiling(contextSize);
 	const size = cap + overflow;
-	const count = archived.length;
-	const totalTokens = archived.reduce((s, r) => s + r.tokens, 0);
-	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${count} entr${count === 1 ? "y" : "ies"} (${totalTokens} tokens) archived from t-1.`;
+	const count = reclaimed.length;
+	const totalTokens = reclaimed.reduce((s, r) => s + r.tokens, 0);
+	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${count} fat replay${count === 1 ? "" : "s"} (${totalTokens} tokens) reclaimed.`;
 	if (count === 0) return head;
-	const lines = archived.map((d) =>
-		d.turn != null
-			? `- ${d.path} (turn ${d.turn}, ${d.tokens} tokens)`
-			: `- ${d.path} (${d.tokens} tokens)`,
-	);
-	return `${head}\nArchived:\n${lines.join("\n")}`;
+	const lines = reclaimed.map((d) => `* ${d.path} - ${d.tokens} tokens`);
+	return `${head}\n${lines.join("\n")}`;
 }
 
 export default class Budget {
@@ -64,7 +61,7 @@ export default class Budget {
 	constructor(core) {
 		this.#core = core;
 		core.filter("turn.beforeDispatch", this.#onBeforeDispatch.bind(this));
-		core.filter("assembly.user", this.assembleBudget.bind(this), 90);
+		core.filter("assembly.user", this.assembleTurn.bind(this), 90);
 	}
 
 	async #onBeforeDispatch(packet, ctxBag) {
@@ -78,10 +75,13 @@ export default class Budget {
 		});
 	}
 
-	// Renders <budget> with placeholder headline numbers; ContextAssembler
-	// post-substitutes them after measuring the assembled packet.
-	assembleBudget(content, ctx) {
-		const { rows, contextSize } = ctx;
+	// Renders <turn> with placeholder headline numbers + per-scheme
+	// breakdown table + total prose. ContextAssembler post-substitutes
+	// {{tokenUsage}} / {{tokensFree}} after measuring the assembled packet.
+	// `<turn>` swallows the per-turn meta that used to live on `<prompt>`
+	// (commands, mode warn, archived count) since `<prompt>` is gone.
+	assembleTurn(content, ctx) {
+		const { rows, contextSize, toolSet } = ctx;
 		if (!contextSize) return content;
 
 		const cap = ceiling(contextSize);
@@ -127,7 +127,40 @@ export default class Budget {
 
 		const totalLine = `Total: ${indexedCount} indexed + ${archivedCount} archived entries; tokenUsage ${TOKEN_USAGE_PLACEHOLDER} / ceiling ${cap}. ${TOKENS_FREE_PLACEHOLDER} tokens free.`;
 
-		return `${content}<budget tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">\n${table}\n${totalLine}\n</budget>\n`;
+		// Per-turn meta attrs (formerly on <prompt>): commands, mode warn,
+		// archived count from prior turn's grinder fire.
+		const activeTools = toolSet
+			? new Set(toolSet)
+			: new Set(this.#core.hooks.tools.names);
+		const commands = this.#core.hooks.tools.advertisedNames
+			.filter((n) => activeTools.has(n))
+			.join(",");
+		const mode = ctx.type;
+		let warn = "";
+		if (mode === "ask") warn = ' warn="File editing disallowed."';
+
+		let archivedAttr = "";
+		const priorTurn = ctx.turn - 1;
+		if (priorTurn >= 1) {
+			const prior = rows.find((r) => {
+				if (!r.path?.startsWith(`log://turn_${priorTurn}/error/`)) return false;
+				const a =
+					typeof r.attributes === "string"
+						? JSON.parse(r.attributes)
+						: r.attributes;
+				return a?.status === 413 && a?.archivedCount > 0;
+			});
+			if (prior) {
+				const a =
+					typeof prior.attributes === "string"
+						? JSON.parse(prior.attributes)
+						: prior.attributes;
+				archivedAttr = ` archived="${a.archivedCount}"`;
+			}
+		}
+
+		const opening = `<turn commands="${commands}"${warn}${archivedAttr} tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">`;
+		return `${content}${opening}\n${table}\n${totalLine}\n</turn>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
@@ -141,22 +174,6 @@ export default class Budget {
 			overflow: b.overflow,
 			ok: b.ok,
 		};
-	}
-
-	async #emit({ message, ctx, rummy, demoted }) {
-		const totalTokens = demoted.reduce((s, r) => s + r.tokens, 0);
-		await rummy.hooks.error.log.emit({
-			store: rummy.entries,
-			runId: ctx.runId,
-			turn: ctx.turn,
-			loopId: ctx.loopId,
-			message,
-			status: 413,
-			attributes: {
-				demotedCount: demoted.length,
-				demotedTokens: totalTokens,
-			},
-		});
 	}
 
 	async #reassemble({ rows, ctx, rummy, contextSize, lastPromptTokens }) {
@@ -174,14 +191,12 @@ export default class Budget {
 		);
 	}
 
-	// Single-step rescue: budget overflows → archive all of t-1's actions
-	// AND synthesize a `<get path="log://turn_{t-1}/**" manifest/>` log
-	// entry whose body lists what was archived. Model sees the manifest
-	// in next turn's recap, can re-issue `<get>` on specific paths to
-	// recover. No cascade — older turns are load-bearing context the
-	// model has integrated; auto-hiding them is the compaction/amnesia
-	// pattern rummy rejects. If t-1 archival doesn't free enough budget,
-	// hard 413 strike — the model archives catalog entries to make room.
+	// Walk fat replays (get/set log entries from turns < current) by
+	// (turn DESC, body_tokens DESC). For each: clear body, status=413.
+	// Stop when under budget. Catalog entries are NEVER touched —
+	// model owns visibility there. Walking back across turns is fine
+	// because fat log bodies are replays of catalog content; 413'ing
+	// loses no information (model can re-<get>).
 	async enforce({
 		contextSize,
 		messages,
@@ -202,27 +217,54 @@ export default class Budget {
 		});
 		if (first.ok) return first;
 
-		const store = rummy.entries;
-		const prevTurn = ctx.turn - 1;
-		if (prevTurn < 0) {
-			await this.#emitOverflow(first.overflow, contextSize, [], ctx, rummy);
-			return this.#failed(messages, rows, contextSize, first.overflow);
-		}
-
-		const archived = await store.archiveTurnEntries(ctx.runId, prevTurn);
-		const archivedWithTurn = archived.map((a) => ({ ...a, turn: prevTurn }));
-		if (archived.length === 0) {
-			await this.#emitOverflow(first.overflow, contextSize, [], ctx, rummy);
-			return this.#failed(messages, rows, contextSize, first.overflow);
-		}
-
-		await this.#injectArchiveManifest(prevTurn, archived, ctx, rummy);
-
+		// Collect fat replay candidates: get/set log entries from turns
+		// strictly less than the current turn, with non-empty bodies.
+		const candidates = [];
+		const logActionRe = /^log:\/\/turn_(\d+)\/([^/]+)\//;
 		for (const r of rows) {
-			if (r.source_turn === prevTurn && r.visibility === "indexed") {
-				r.visibility = "archived";
-			}
+			if (r.scheme !== "log") continue;
+			const m = logActionRe.exec(r.path);
+			if (!m) continue;
+			const turn = Number(m[1]);
+			const action = m[2];
+			if (turn >= ctx.turn) continue;
+			if (action !== "get" && action !== "set") continue;
+			if (!r.body) continue;
+			const tokens = r.aTokens ?? countTokens(r.body);
+			if (!tokens) continue;
+			candidates.push({ row: r, turn, tokens });
 		}
+		candidates.sort((a, b) => {
+			if (a.turn !== b.turn) return b.turn - a.turn; // turn DESC
+			return b.tokens - a.tokens; // size DESC
+		});
+
+		const reclaimed = [];
+		let remaining = first.overflow;
+		for (const c of candidates) {
+			if (remaining <= 0) break;
+			await rummy.entries.set({
+				runId: ctx.runId,
+				path: c.row.path,
+				body: "",
+				state: "failed",
+				outcome: "budget",
+			});
+			c.row.body = "";
+			c.row.state = "failed";
+			c.row.outcome = "budget";
+			c.row.aTokens = 0;
+			c.row.vTokens = 0;
+			c.row.vBody = "";
+			reclaimed.push({ path: c.row.path, tokens: c.tokens, turn: c.turn });
+			remaining = Math.max(0, remaining - c.tokens);
+		}
+
+		if (reclaimed.length === 0) {
+			await this.#emitOverflow(first.overflow, contextSize, [], ctx, rummy);
+			return this.#failed(messages, rows, contextSize, first.overflow);
+		}
+
 		const reMessages = await this.#reassemble({
 			rows,
 			ctx,
@@ -236,61 +278,28 @@ export default class Budget {
 			rows,
 			lastPromptTokens: 0,
 		});
-		if (rechecked.ok) {
-			await this.#emitOverflow(
-				first.overflow,
-				contextSize,
-				archivedWithTurn,
-				ctx,
-				rummy,
-			);
-			return rechecked;
-		}
-
 		await this.#emitOverflow(
-			rechecked.overflow,
+			rechecked.ok ? first.overflow : rechecked.overflow,
 			contextSize,
-			archivedWithTurn,
+			reclaimed,
 			ctx,
 			rummy,
 		);
+		if (rechecked.ok) return rechecked;
 		return this.#failed(messages, rows, contextSize, rechecked.overflow);
 	}
 
-	// Synthesize a `<get path="log://turn_{prevTurn}/**" manifest/>` log
-	// entry naming what the engine just archived. The model reads the
-	// archival in its own command grammar — same idiom it would use to
-	// list paths itself.
-	async #injectArchiveManifest(prevTurn, archived, ctx, rummy) {
-		const target = `log://turn_${prevTurn}/**`;
-		const lines = archived.map((a) => `${a.path} (${a.tokens})`);
-		const body = `MANIFEST get path="${target}": ${archived.length} archived\n${lines.join("\n")}`;
-		const path = `log://turn_${ctx.turn}/get/archive_manifest_turn_${prevTurn}`;
-		await rummy.entries.set({
-			runId: ctx.runId,
-			turn: ctx.turn,
-			loopId: ctx.loopId,
-			path,
-			body,
-			state: "resolved",
-			attributes: {
-				path: target,
-				manifest: true,
-			},
-		});
-	}
-
-	async #emitOverflow(overflow, contextSize, archived, ctx, rummy) {
+	async #emitOverflow(overflow, contextSize, reclaimed, ctx, rummy) {
 		await rummy.hooks.error.log.emit({
 			store: rummy.entries,
 			runId: ctx.runId,
 			turn: ctx.turn,
 			loopId: ctx.loopId,
-			message: overflowBody(overflow, contextSize, archived),
+			message: overflowBody(overflow, contextSize, reclaimed),
 			status: 413,
 			attributes: {
-				archivedCount: archived.length,
-				archivedTokens: archived.reduce((s, r) => s + r.tokens, 0),
+				archivedCount: reclaimed.length,
+				archivedTokens: reclaimed.reduce((s, r) => s + r.tokens, 0),
 			},
 		});
 	}

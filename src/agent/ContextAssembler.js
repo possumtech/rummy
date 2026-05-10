@@ -18,15 +18,8 @@ export default class ContextAssembler {
 		} = {},
 		hooks,
 	) {
-		const promptEntry = rows.findLast(
-			(r) => r.category === "prompt" && r.scheme === "prompt",
-		);
-		let loopStartTurn = 0;
-		if (promptEntry) loopStartTurn = promptEntry.source_turn;
-
 		const ctx = {
 			rows,
-			loopStartTurn,
 			type,
 			contextSize,
 			lastContextTokens,
