@@ -116,8 +116,7 @@ export default class Budget {
 		const schemeRows = [...byScheme.entries()]
 			.toSorted(([, a], [, b]) => b.idxTokens - a.idxTokens)
 			.map(
-				([scheme, e]) =>
-					`| ${scheme} | ${e.idx} | ${e.arc} | ${e.idxTokens} |`,
+				([scheme, e]) => `| ${scheme} | ${e.idx} | ${e.arc} | ${e.idxTokens} |`,
 			);
 
 		const table = [

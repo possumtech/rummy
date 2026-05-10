@@ -14,7 +14,7 @@ Example:
 
 ## Core XML Command Grammar
 
-<{set|get|mv|cp|rm} path="{path}" visibility="{visible|summarized|archived}" tags="{tags}" {manifest}>{body}</{set|get|mv|cp|rm}>
+<{set|get|mv|cp|rm} path="{path}" {archive|index} tags="{tags}" {manifest}>{body}</{set|get|mv|cp|rm}>
 
 ### path: Unified address scheme for memory entries, log entries, prompts, and project files
 
@@ -22,14 +22,15 @@ Example:
 * Accessing and modifying entries is unified for memory entries, logs entries, prompts, and project files
 * Accepts patterns (glob, regex, jsonpath, xpath) for search and bulk operations
 
-### visibility: Promote and Demote Visibility State to Control Context Relevance
+### archive / index: Two-state catalog visibility
 
-* visible: Full entry body in context, uses `"tokens":N` context budget
-* summarized: Short tag-line in context, very small context budget penalty
-* archived: Hidden from context, recallable later by path reference or pattern search
+* indexed (default): Entry appears in `<index>` as a ≤500-char tile (path, meta, body excerpt). Full body via `<get>`.
+* archived: Entry hidden from `<index>`, recallable later by path or pattern.
 
-* The visibility state is analogous to having onboard cache (visible), RAM (summarized), and drive (archived) memory.
-* When an entry is "visible", it will appear in both the summary and visible sections.
+* `<set path="..." archive/>` — archive a known/file/unknown entry (no body required).
+* `<set path="..." index/>` — restore an archived entry to the index.
+* `<get path="..." index/>` — read the entry into the log AND restore it to the index.
+* The full body of any indexed entry materializes in `<log>` only via `<get>`. The index tile is a peek, not the full content.
 
 ### tags: Enhance your memory with folksonomic tagging of entries
 

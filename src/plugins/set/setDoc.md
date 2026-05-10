@@ -1,6 +1,10 @@
-## <set path="{path}" tags="{topical,searchable,folksonomic,internal,tags}">[content or edit]</set> - Create, edit, or update an entry or file
+## <set path="{path}" tags="{topical,searchable,folksonomic,internal,tags}" {archive|index}>[content or edit]</set> - Create, edit, or update an entry or file
 
 YOU SHOULD prefer minimal and multiple atomic edits to reduce the frequency and severity of conflicts and errors
+
+* `archive` (boolean): drop the entry from `<index>`. Body unchanged; recallable via path or pattern.
+* `index` (boolean): restore an archived entry to `<index>`.
+* archive/index are mutually exclusive on the same `<set>`.
 
 * The <set/> command requires matching HEREDOC label string literal syntax
 
@@ -50,3 +54,8 @@ Example:
 	<set path="docs/guide.md" tags="docs"><<GUIDE
 	The pair is <<SEARCH ... SEARCH<<REPLACE ... REPLACE.
 	GUIDE</set>
+
+Example:
+	<set path="trivia/capitals.csv" archive/>
+	<set path="known://stale_plan" archive/>
+	<set path="known://stale_plan" index/>
