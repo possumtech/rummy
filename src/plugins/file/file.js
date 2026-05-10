@@ -1,22 +1,14 @@
 import { isAbsolute, relative } from "node:path";
 
 // Owns NULL scheme (bare paths) via the "file" registry entry; see plugin README.
+// No view registered: default summarizeEmission (≤500-char tile).
+// rummy.repo overrides with symbols projection when loaded.
 export default class File {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({ category: "data" });
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
-	}
-
-	full(entry) {
-		return entry.body;
-	}
-
-	summary() {
-		return "";
 	}
 
 	static async setConstraint(db, projectId, pattern, visibility = "add") {

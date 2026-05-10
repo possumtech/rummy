@@ -1,4 +1,4 @@
-import { renderEntry, SUMMARY_MAX_CHARS } from "../helpers.js";
+import { renderEntry } from "../helpers.js";
 
 export default class Unknown {
 	constructor(core) {
@@ -7,8 +7,7 @@ export default class Unknown {
 			category: "unknown",
 		});
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		// No view registered: default summarizeEmission (≤500-char tile).
 		core.filter("assembly.system", this.assembleUnknowns.bind(this), 350);
 		// Written via <set path="unknown://...">; lifecycle in instructions-user.md.
 		core.markHidden();
@@ -47,17 +46,10 @@ export default class Unknown {
 		});
 	}
 
-	full(entry) {
-		return entry.body;
-	}
-
-	summary(entry) {
-		if (!entry.body) return "";
-		return entry.body.slice(0, SUMMARY_MAX_CHARS);
-	}
-
 	async assembleUnknowns(content, ctx) {
-		const entries = ctx.rows.filter((r) => r.category === "unknown");
+		const entries = ctx.rows.filter(
+			(r) => r.category === "unknown" && r.visibility === "indexed",
+		);
 		if (entries.length === 0) return content;
 		const lines = entries.map((e) => renderUnknownTag(e));
 		return `${content}<unknowns>\n${lines.join("\n")}\n</unknowns>\n`;
@@ -74,7 +66,6 @@ function renderUnknownTag(entry) {
 	if (typeof attrs?.tags === "string") {
 		meta.tags = attrs.tags.slice(0, 80);
 	}
-	if (entry.visibility) meta.visibility = entry.visibility;
 	if (entry.aTokens != null) meta.tokens = entry.aTokens;
 	return renderEntry(entry.path, meta, entry.body);
 }

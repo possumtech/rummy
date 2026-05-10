@@ -161,7 +161,7 @@ export default class Telemetry {
 			}
 		}
 
-		// content://N — visible-rejected unparsed text so the model can correct next turn.
+		// content://N — indexed-rejected unparsed text so the model can correct next turn.
 		if (unparsed) {
 			await store.set({
 				runId,
@@ -171,7 +171,7 @@ export default class Telemetry {
 				state: "failed",
 				outcome: "unparsed",
 				loopId,
-				visibility: "visible",
+				visibility: "indexed",
 				writer: "system",
 			});
 		}

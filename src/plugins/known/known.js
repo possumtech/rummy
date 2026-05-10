@@ -1,6 +1,6 @@
 import { stateToStatus } from "../../agent/httpStatus.js";
 import { countTokens } from "../../agent/tokens.js";
-import { renderEntry, SUMMARY_MAX_CHARS } from "../helpers.js";
+import { renderEntry } from "../helpers.js";
 
 const MAX_ENTRY_TOKENS = Number(process.env.RUMMY_MAX_ENTRY_TOKENS);
 
@@ -12,10 +12,8 @@ export default class Known {
 		core.ensureTool();
 		core.registerScheme({ category: "data" });
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
-		core.filter("assembly.system", this.assembleSummarized.bind(this), 200);
-		core.filter("assembly.system", this.assembleVisible.bind(this), 250);
+		// No view registered: default summarizeEmission (≤500-char tile).
+		core.filter("assembly.system", this.assembleIndex.bind(this), 200);
 		// Written via <set path="known://...">; lifecycle in instructions-user.md.
 		core.markHidden();
 	}
@@ -78,37 +76,18 @@ export default class Known {
 		});
 	}
 
-	full(entry) {
-		return entry.body;
-	}
-
-	summary(entry) {
-		if (!entry.body) return "";
-		return entry.body.slice(0, SUMMARY_MAX_CHARS);
-	}
-
-	async assembleSummarized(content, ctx) {
+	// Single section: catalog of indexed data entries. Body is the
+	// projection (the model's authored content). Archived entries skip
+	// rendering. Model brings full body into context via <get>.
+	async assembleIndex(content, ctx) {
 		const entries = ctx.rows.filter(
-			(r) =>
-				r.category === "data" &&
-				(r.visibility === "visible" || r.visibility === "summarized"),
-		);
-		if (entries.length === 0) return content;
-		const lines = entries.map((e) =>
-			renderContextTag(e, e.sBody != null ? e.sBody : e.body),
-		);
-		return `${content}<summary>\n${lines.join("\n")}\n</summary>\n`;
-	}
-
-	async assembleVisible(content, ctx) {
-		const entries = ctx.rows.filter(
-			(r) => r.category === "data" && r.visibility === "visible",
+			(r) => r.category === "data" && r.visibility === "indexed",
 		);
 		if (entries.length === 0) return content;
 		const lines = entries.map((e) =>
 			renderContextTag(e, e.vBody != null ? e.vBody : e.body),
 		);
-		return `${content}<visible>\n${lines.join("\n")}\n</visible>\n`;
+		return `${content}<index>\n${lines.join("\n")}\n</index>\n`;
 	}
 }
 
@@ -131,7 +110,6 @@ function renderContextTag(entry, projectedBody) {
 	if (typeof attrs?.tags === "string") {
 		meta.tags = attrs.tags.slice(0, 80);
 	}
-	if (entry.visibility === "archived") meta.visibility = "archived";
 	if (entry.aTokens != null) meta.tokens = entry.aTokens;
 	if (entry.vLines != null) meta.lines = entry.vLines;
 	return renderEntry(entry.path, meta, projectedBody);

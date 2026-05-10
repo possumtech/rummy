@@ -1,5 +1,5 @@
 import { SOFT_FAILURE_OUTCOMES } from "../../agent/errors.js";
-import { projectEmission, summarizeEmission } from "../helpers.js";
+import { projectEmission } from "../helpers.js";
 
 const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
@@ -40,8 +40,7 @@ export default class ErrorPlugin {
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({ category: "logging" });
-		core.on("visible", (entry) => projectEmission(entry.body));
-		core.on("summarized", (entry) => summarizeEmission(entry.body));
+		core.on("view", (entry) => projectEmission(entry.body));
 
 		core.hooks.error.log.on(this.#onErrorLog.bind(this));
 		core.hooks.loop.started.on(this.#onLoopStarted.bind(this));

@@ -194,7 +194,7 @@ WHERE rv.run_id = :run_id AND e.path = :path;
 -- PREP: promote_by_pattern
 UPDATE run_views
 SET
-	visibility = 'visible'
+	visibility = 'indexed'
 	, state = 'resolved'
 	, outcome = NULL
 	, turn = :turn
@@ -287,31 +287,28 @@ WHERE run_id = :run_id AND entry_id IN (
 		AND (:body IS NULL OR hedsearch(:body, e.body))
 );
 
--- PREP: get_turn_demotion_targets
--- Rows that demote_turn_entries is about to flip. Return shape
--- matches the old RETURNING (path, tokens) for caller compatibility.
--- State filter: skip failed/cancelled entries (they're already not
--- contributing visible context — demoting them would be misleading).
--- All schemes participate uniformly per SPEC §budget_enforcement.
+-- PREP: get_turn_archive_targets
+-- Rows that archive_turn_entries is about to flip to archived.
+-- Skip failed/cancelled entries (already not contributing).
 SELECT e.path, countTokens(e.body) AS tokens
 FROM run_views AS rv
 JOIN entries AS e ON e.id = rv.entry_id
 WHERE
 	rv.run_id = :run_id
 	AND rv.turn = :turn
-	AND rv.visibility = 'visible'
+	AND rv.visibility = 'indexed'
 	AND rv.state NOT IN ('failed', 'cancelled');
 
--- PREP: demote_turn_entries
+-- PREP: archive_turn_entries
 -- View-layer only — visibility lives on run_views. State untouched.
--- Call get_turn_demotion_targets first if you need the list of what
--- was demoted (used by budget plugin for the overflow error body).
+-- Call get_turn_archive_targets first to capture the list of paths
+-- archived (used by budget rescue for the synthesized manifest body).
 UPDATE run_views
 SET
-	visibility = 'summarized'
+	visibility = 'archived'
 	, updated_at = CURRENT_TIMESTAMP
 WHERE
 	run_id = :run_id
 	AND turn = :turn
-	AND visibility = 'visible'
+	AND visibility = 'indexed'
 	AND state NOT IN ('failed', 'cancelled');

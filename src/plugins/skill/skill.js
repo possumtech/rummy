@@ -17,9 +17,7 @@ export default class Skill {
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({ name: "skill", category: "data" });
-		core.hooks.tools.onView("skill", (entry) => entry.body, "visible");
-		core.hooks.tools.onView("skill", () => "", "summarized");
-
+		// No view registered: default summarizeEmission (≤500-char tile).
 		core.on("handler", this.handler.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.skill = docs;
@@ -82,7 +80,7 @@ export default class Skill {
 					path: skillPath,
 					body,
 					state: "resolved",
-					visibility: isRoot ? "summarized" : "archived",
+					visibility: isRoot ? "indexed" : "archived",
 					attributes: { source: path },
 					loopId,
 				});

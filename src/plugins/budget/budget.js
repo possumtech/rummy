@@ -43,19 +43,19 @@ export function substituteBudgetPlaceholders(text, { tokenUsage, tokensFree }) {
 		.replaceAll(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
 }
 
-export function overflowBody(overflow, contextSize, demoted) {
+export function overflowBody(overflow, contextSize, archived) {
 	const cap = ceiling(contextSize);
 	const size = cap + overflow;
-	const count = demoted.length;
-	const totalTokens = demoted.reduce((s, r) => s + r.tokens, 0);
-	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${count} promotion${count === 1 ? "" : "s"} (${totalTokens} tokens) demoted.`;
+	const count = archived.length;
+	const totalTokens = archived.reduce((s, r) => s + r.tokens, 0);
+	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${count} entr${count === 1 ? "y" : "ies"} (${totalTokens} tokens) archived from t-1.`;
 	if (count === 0) return head;
-	const lines = demoted.map((d) =>
+	const lines = archived.map((d) =>
 		d.turn != null
 			? `- ${d.path} (turn ${d.turn}, ${d.tokens} tokens)`
 			: `- ${d.path} (${d.tokens} tokens)`,
 	);
-	return `${head}\nDemoted:\n${lines.join("\n")}`;
+	return `${head}\nArchived:\n${lines.join("\n")}`;
 }
 
 export default class Budget {
@@ -87,20 +87,13 @@ export default class Budget {
 		const cap = ceiling(contextSize);
 
 		const byScheme = new Map();
-		let visibleCount = 0;
-		let summarizedCount = 0;
+		let indexedCount = 0;
+		let archivedCount = 0;
 
 		const schemeEntry = (s) => {
 			let e = byScheme.get(s);
 			if (!e) {
-				e = {
-					vis: 0,
-					sum: 0,
-					visTokens: 0, // current cost of visible entries
-					visIfSumTokens: 0, // sTokens of visible (what they'd cost demoted)
-					sumTokens: 0, // current cost of summarized entries
-					premium: 0, // savings from demoting visible → summarized
-				};
+				e = { idx: 0, arc: 0, idxTokens: 0 };
 				byScheme.set(s, e);
 			}
 			return e;
@@ -110,45 +103,32 @@ export default class Budget {
 			if (r.aTokens == null) continue;
 			const s = r.scheme || "file";
 			const entry = schemeEntry(s);
-			if (r.visibility === "visible") {
-				entry.vis += 1;
-				entry.visTokens += r.vTokens;
-				entry.visIfSumTokens += r.sTokens;
-				entry.premium += r.aTokens;
-				visibleCount += 1;
-			} else if (r.visibility === "summarized") {
-				entry.sum += 1;
-				entry.sumTokens += r.sTokens;
-				summarizedCount += 1;
+			if (r.visibility === "indexed") {
+				entry.idx += 1;
+				entry.idxTokens += r.vTokens;
+				indexedCount += 1;
+			} else if (r.visibility === "archived") {
+				entry.arc += 1;
+				archivedCount += 1;
 			}
 		}
 
 		const schemeRows = [...byScheme.entries()]
-			.toSorted(
-				([, a], [, b]) =>
-					b.visTokens + b.sumTokens - (a.visTokens + a.sumTokens),
-			)
-			.map(([scheme, e]) => {
-				const cost = e.visTokens + e.sumTokens;
-				const ifAllSum = e.visIfSumTokens + e.sumTokens;
-				return `| ${scheme} | ${e.vis} | ${e.sum} | ${cost} | ${ifAllSum} | ${e.premium} |`;
-			});
+			.toSorted(([, a], [, b]) => b.idxTokens - a.idxTokens)
+			.map(
+				([scheme, e]) =>
+					`| ${scheme} | ${e.idx} | ${e.arc} | ${e.idxTokens} |`,
+			);
 
 		const table = [
-			"| scheme | vis | sum | cost | if-all-sum | premium |",
-			"|---|---|---|---|---|---|",
+			"| scheme | indexed | archived | tokens |",
+			"|---|---|---|---|",
 			...schemeRows,
 		].join("\n");
 
-		const totalLine = `Total: ${visibleCount} visible + ${summarizedCount} summarized entries; tokenUsage ${TOKEN_USAGE_PLACEHOLDER} / ceiling ${cap}. ${TOKENS_FREE_PLACEHOLDER} tokens free.`;
-		const legend = [
-			"Columns:",
-			"- cost: current cost of this scheme (vTokens for visible + sTokens for summarized)",
-			"- if-all-sum: cost if every entry of this scheme were demoted to summarized",
-			"- premium: savings from demoting visible → summarized (cost − if-all-sum)",
-		].join("\n");
+		const totalLine = `Total: ${indexedCount} indexed + ${archivedCount} archived entries; tokenUsage ${TOKEN_USAGE_PLACEHOLDER} / ceiling ${cap}. ${TOKENS_FREE_PLACEHOLDER} tokens free.`;
 
-		return `${content}<budget tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">\n${table}\n\n${legend}\n${totalLine}\n</budget>\n`;
+		return `${content}<budget tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">\n${table}\n${totalLine}\n</budget>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
@@ -195,7 +175,14 @@ export default class Budget {
 		);
 	}
 
-	// Pre-LLM grinder ladder; SPEC §budget_enforcement.
+	// Single-step rescue: budget overflows → archive all of t-1's actions
+	// AND synthesize a `<get path="log://turn_{t-1}/**" manifest/>` log
+	// entry whose body lists what was archived. Model sees the manifest
+	// in next turn's recap, can re-issue `<get>` on specific paths to
+	// recover. No cascade — older turns are load-bearing context the
+	// model has integrated; auto-hiding them is the compaction/amnesia
+	// pattern rummy rejects. If t-1 archival doesn't free enough budget,
+	// hard 413 strike — the model archives catalog entries to make room.
 	async enforce({
 		contextSize,
 		messages,
@@ -217,103 +204,104 @@ export default class Budget {
 		if (first.ok) return first;
 
 		const store = rummy.entries;
-
-		// Step 1: previous-turn demotion.
 		const prevTurn = ctx.turn - 1;
-		const rawTurnDemoted =
-			prevTurn >= 0 ? await store.demoteTurnEntries(ctx.runId, prevTurn) : [];
-		const turnDemoted = rawTurnDemoted.map((d) => ({ ...d, turn: prevTurn }));
-		if (turnDemoted.length > 0) {
-			for (const r of rows) {
-				if (r.source_turn === prevTurn && r.visibility === "visible") {
-					r.body = r.sBody;
-					r.visibility = "summarized";
-				}
-			}
-			const reMessages = await this.#reassemble({
-				rows,
-				ctx,
-				rummy,
-				contextSize,
-				lastPromptTokens: 0,
-			});
-			const rechecked = this.#check({
-				contextSize,
-				messages: reMessages,
-				rows,
-				lastPromptTokens: 0,
-			});
-			if (rechecked.ok) {
-				await this.#emit({
-					message: overflowBody(first.overflow, contextSize, turnDemoted),
-					ctx,
-					rummy,
-					demoted: turnDemoted,
-				});
-				return rechecked;
-			}
-			first.overflow = rechecked.overflow;
+		if (prevTurn < 0) {
+			await this.#emitOverflow(first.overflow, contextSize, [], ctx, rummy);
+			return this.#failed(messages, rows, contextSize, first.overflow);
 		}
 
-		// Step 2: current-prompt demotion.
-		const promptRow = rows.findLast(
-			(r) => r.category === "prompt" && r.scheme === "prompt",
-		);
-		const promptDemoted = [];
-		if (promptRow && promptRow.visibility === "visible") {
-			await store.set({
-				runId: ctx.runId,
-				path: promptRow.path,
-				visibility: "summarized",
-			});
-			promptDemoted.push({
-				path: promptRow.path,
-				turn: promptRow.source_turn,
-				tokens: countTokens(promptRow.body) - countTokens(promptRow.sBody),
-			});
-			promptRow.body = promptRow.sBody;
-			promptRow.visibility = "summarized";
-			const reMessages = await this.#reassemble({
-				rows,
-				ctx,
-				rummy,
-				contextSize,
-				lastPromptTokens: 0,
-			});
-			const rechecked = this.#check({
-				contextSize,
-				messages: reMessages,
-				rows,
-				lastPromptTokens: 0,
-			});
-			if (rechecked.ok) {
-				await this.#emit({
-					message: overflowBody(first.overflow, contextSize, [
-						...turnDemoted,
-						...promptDemoted,
-					]),
-					ctx,
-					rummy,
-					demoted: [...turnDemoted, ...promptDemoted],
-				});
-				return rechecked;
-			}
-			first.overflow = rechecked.overflow;
+		const archived = await store.archiveTurnEntries(ctx.runId, prevTurn);
+		const archivedWithTurn = archived.map((a) => ({ ...a, turn: prevTurn }));
+		if (archived.length === 0) {
+			await this.#emitOverflow(first.overflow, contextSize, [], ctx, rummy);
+			return this.#failed(messages, rows, contextSize, first.overflow);
 		}
 
-		// Hard 413.
-		const allDemoted = [...turnDemoted, ...promptDemoted];
-		await this.#emit({
-			message: overflowBody(first.overflow, contextSize, allDemoted),
+		await this.#injectArchiveManifest(prevTurn, archived, ctx, rummy);
+
+		for (const r of rows) {
+			if (r.source_turn === prevTurn && r.visibility === "indexed") {
+				r.visibility = "archived";
+			}
+		}
+		const reMessages = await this.#reassemble({
+			rows,
 			ctx,
 			rummy,
-			demoted: allDemoted,
+			contextSize,
+			lastPromptTokens: 0,
 		});
+		const rechecked = this.#check({
+			contextSize,
+			messages: reMessages,
+			rows,
+			lastPromptTokens: 0,
+		});
+		if (rechecked.ok) {
+			await this.#emitOverflow(
+				first.overflow,
+				contextSize,
+				archivedWithTurn,
+				ctx,
+				rummy,
+			);
+			return rechecked;
+		}
+
+		await this.#emitOverflow(
+			rechecked.overflow,
+			contextSize,
+			archivedWithTurn,
+			ctx,
+			rummy,
+		);
+		return this.#failed(messages, rows, contextSize, rechecked.overflow);
+	}
+
+	// Synthesize a `<get path="log://turn_{prevTurn}/**" manifest/>` log
+	// entry naming what the engine just archived. The model reads the
+	// archival in its own command grammar — same idiom it would use to
+	// list paths itself.
+	async #injectArchiveManifest(prevTurn, archived, ctx, rummy) {
+		const target = `log://turn_${prevTurn}/**`;
+		const lines = archived.map((a) => `${a.path} (${a.tokens})`);
+		const body = `MANIFEST get path="${target}": ${archived.length} archived\n${lines.join("\n")}`;
+		const path = `log://turn_${ctx.turn}/get/archive_manifest_turn_${prevTurn}`;
+		await rummy.entries.set({
+			runId: ctx.runId,
+			turn: ctx.turn,
+			loopId: ctx.loopId,
+			path,
+			body,
+			state: "resolved",
+			attributes: {
+				path: target,
+				manifest: true,
+			},
+		});
+	}
+
+	async #emitOverflow(overflow, contextSize, archived, ctx, rummy) {
+		await rummy.hooks.error.log.emit({
+			store: rummy.entries,
+			runId: ctx.runId,
+			turn: ctx.turn,
+			loopId: ctx.loopId,
+			message: overflowBody(overflow, contextSize, archived),
+			status: 413,
+			attributes: {
+				archivedCount: archived.length,
+				archivedTokens: archived.reduce((s, r) => s + r.tokens, 0),
+			},
+		});
+	}
+
+	#failed(messages, rows, contextSize, overflow) {
 		return {
 			messages,
 			rows,
-			assembledTokens: ceiling(contextSize) + first.overflow,
-			overflow: first.overflow,
+			assembledTokens: ceiling(contextSize) + overflow,
+			overflow,
 			ok: false,
 		};
 	}

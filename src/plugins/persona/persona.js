@@ -1,10 +1,8 @@
 export default class Persona {
 	constructor(core) {
 		core.registerScheme({ name: "persona", category: "data" });
-		core.hooks.tools.onView("persona", (entry) => entry.body, "visible");
-		core.hooks.tools.onView("persona", () => "", "summarized");
-		// assembly.user @ 10 — top of the user message. Sets voice/role
-		// freshly per turn, ahead of the prompt. Body from ctx.persona.
+		// No view registered: default summarizeEmission (≤500-char tile).
+		// Section content comes from ctx.persona, not the entry body.
 		core.filter("assembly.user", this.assembleSystemPersona.bind(this), 10);
 	}
 

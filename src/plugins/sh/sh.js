@@ -2,7 +2,6 @@ import {
 	logPathToDataBase,
 	projectEmission,
 	streamSummary,
-	summarizeEmission,
 } from "../helpers.js";
 import docs from "./shDoc.js";
 
@@ -15,8 +14,7 @@ export default class Sh {
 		this.#core = core;
 		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.sh = docs;
 			return docsMap;
@@ -39,7 +37,7 @@ export default class Sh {
 				path: `${dataBase}_${ch}`,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 				attributes: { command, tags: command, channel: ch },
 			});
 		}
@@ -63,14 +61,11 @@ export default class Sh {
 		});
 	}
 
-	// log:// entries: emission, tab-indented. sh:// entries: stream bytes verbatim.
+	// log:// entries: emission, tab-indented. sh:// entries: tail stream
+	// (last 20 lines, capped at SUMMARY_MAX_CHARS) so giants don't blow
+	// the budget — full bytes available in the row's stored body.
 	full(entry) {
 		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
-		return entry.body;
-	}
-
-	summary(entry) {
-		if (entry.path.startsWith("log://")) return summarizeEmission(entry.body);
 		return streamSummary("sh", entry);
 	}
 }

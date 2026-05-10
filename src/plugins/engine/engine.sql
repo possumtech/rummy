@@ -6,7 +6,7 @@ FROM known_entries AS ke
 JOIN schemes AS s ON s.name = COALESCE(ke.scheme, 'file')
 WHERE
 	ke.run_id = :run_id
-	AND ke.visibility IN ('visible', 'summarized')
+	AND ke.visibility = 'indexed'
 	AND s.model_visible = 1
 ORDER BY ke.turn, ke.refs, countTokens(ke.body) DESC;
 

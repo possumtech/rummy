@@ -1,10 +1,9 @@
-import { SUMMARY_MAX_CHARS } from "../plugins/helpers.js";
 import ContextAssembler from "./ContextAssembler.js";
 import { countLines, countTokens } from "./tokens.js";
 
 // Rebuild turn_context from v_model_context and assemble messages.
-// File-scheme is exempt from SUMMARY_MAX_CHARS (its summary is a structural
-// symbol map, not writer-bounded prose).
+// Single projection per row — no full/summary split. Archived rows
+// are not projected at all.
 export default async function materializeContext({
 	db,
 	hooks,
@@ -37,42 +36,18 @@ export default async function materializeContext({
 			attributes: attrs,
 			category: row.category,
 		};
-		const visibleProjection = await hooks.tools.view(projectionKey, {
-			...baseEntry,
-			visibility: "visible",
-		});
-		const rawSummarizedProjection = await hooks.tools.view(projectionKey, {
-			...baseEntry,
-			visibility: "summarized",
-		});
-		let summarizedProjection = rawSummarizedProjection;
-		if (
-			scheme !== "file" &&
-			typeof summarizedProjection === "string" &&
-			summarizedProjection.length > SUMMARY_MAX_CHARS
-		) {
-			summarizedProjection = summarizedProjection.slice(0, SUMMARY_MAX_CHARS);
-			await hooks.error.log.emit({
-				store: entries,
-				runId,
-				turn,
-				loopId,
-				message: `${row.path} summarized projection overflow`,
-				soft: true,
-			});
-		}
-		const vTokens = countTokens(visibleProjection);
-		const sTokens = countTokens(summarizedProjection);
-		const vLines = countLines(visibleProjection);
+		// Archived rows skip projection — they don't appear in any section.
+		const projection =
+			row.visibility === "archived"
+				? ""
+				: await hooks.tools.view(projectionKey, baseEntry);
+		const tokens = countTokens(projection);
+		const lines = countLines(projection);
 		tokenAccounting.set(row.path, {
-			vTokens,
-			sTokens,
-			vLines,
-			vBody: visibleProjection,
-			sBody: summarizedProjection,
+			tokens,
+			lines,
+			body: projection,
 		});
-		const projectedBody =
-			row.visibility === "visible" ? visibleProjection : summarizedProjection;
 		await db.insert_turn_context.run({
 			run_id: runId,
 			loop_id: loopId,
@@ -82,7 +57,7 @@ export default async function materializeContext({
 			visibility: row.visibility,
 			state: row.state,
 			outcome: row.outcome,
-			body: projectedBody,
+			body: projection,
 			attributes: row.attributes,
 			category: row.category,
 			source_turn: row.turn,
@@ -92,12 +67,10 @@ export default async function materializeContext({
 	for (const row of rows) {
 		const t = tokenAccounting.get(row.path);
 		if (!t) continue;
-		row.vTokens = t.vTokens;
-		row.sTokens = t.sTokens;
-		row.aTokens = t.vTokens - t.sTokens;
-		row.vLines = t.vLines;
-		row.vBody = t.vBody;
-		row.sBody = t.sBody;
+		row.vTokens = t.tokens;
+		row.aTokens = t.tokens;
+		row.vLines = t.lines;
+		row.vBody = t.body;
 	}
 	const lastCtx = await db.get_last_context_tokens.get({ run_id: runId });
 	let lastContextTokens = 0;

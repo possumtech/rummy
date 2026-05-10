@@ -1,13 +1,5 @@
-import {
-	projectEmission,
-	SUMMARY_MAX_CHARS,
-	summarizeEmission,
-} from "../helpers.js";
+import { projectEmission } from "../helpers.js";
 import docs from "./ask_userDoc.js";
-
-// Per-side cap so summary preserves the arrow separator on long Q/A.
-const ARROW = " → ";
-const HALF = Math.floor((SUMMARY_MAX_CHARS - ARROW.length) / 2);
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
 
@@ -18,8 +10,7 @@ export default class AskUser {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.ask_user = docs;
 			return docsMap;
@@ -67,13 +58,5 @@ export default class AskUser {
 
 	full(entry) {
 		return projectEmission(entry.body);
-	}
-
-	summary(entry) {
-		const { question, answer } = entry.attributes;
-		const text = answer
-			? `${question.slice(0, HALF)}${ARROW}${answer.slice(0, HALF)}`
-			: question.slice(0, SUMMARY_MAX_CHARS);
-		return summarizeEmission(text);
 	}
 }

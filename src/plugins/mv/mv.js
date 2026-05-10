@@ -1,13 +1,18 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import {
-	projectEmission,
-	storePatternResult,
-	summarizeEmission,
-} from "../helpers.js";
+import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./mvDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+
+function visibilityFromAttrs(attrs) {
+	const wantArchive = attrs.archive !== undefined;
+	const wantIndex = attrs.index !== undefined;
+	if (wantArchive && wantIndex) return "conflict";
+	if (wantArchive) return "archived";
+	if (wantIndex) return "indexed";
+	return undefined;
+}
 
 export default class Mv {
 	#core;
@@ -16,8 +21,7 @@ export default class Mv {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.mv = docs;
 			return docsMap;
@@ -35,10 +39,21 @@ export default class Mv {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const { path, to } = entry.attributes;
-		const VALID = { visible: 1, summarized: 1, archived: 1 };
-		const visibility = VALID[entry.attributes.visibility]
-			? entry.attributes.visibility
-			: undefined;
+		const visibilityAttr = visibilityFromAttrs(entry.attributes);
+		if (visibilityAttr === "conflict") {
+			await store.set({
+				runId,
+				turn,
+				loopId,
+				path: entry.resultPath,
+				body: "Cannot specify both archive and index on the same <mv>.",
+				state: "failed",
+				outcome: "validation",
+				attributes: { path, to },
+			});
+			return;
+		}
+		const visibility = visibilityAttr;
 
 		if (entry.attributes.manifest !== undefined) {
 			const matches = await store.getEntriesByPattern(runId, path);
@@ -151,9 +166,5 @@ export default class Mv {
 
 	full(entry) {
 		return projectEmission(entry.body);
-	}
-
-	summary(entry) {
-		return summarizeEmission(entry.body);
 	}
 }

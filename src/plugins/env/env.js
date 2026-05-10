@@ -2,7 +2,6 @@ import {
 	logPathToDataBase,
 	projectEmission,
 	streamSummary,
-	summarizeEmission,
 } from "../helpers.js";
 import docs from "./envDoc.js";
 
@@ -16,8 +15,7 @@ export default class Env {
 		// env is read-only (allowed in ask-mode); see plugin README.
 		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.env = docs;
 			return docsMap;
@@ -40,7 +38,7 @@ export default class Env {
 				path: `${dataBase}_${ch}`,
 				body: "",
 				state: "streaming",
-				visibility: "summarized",
+				visibility: "indexed",
 				attributes: { command, tags: command, channel: ch },
 			});
 		}
@@ -64,14 +62,11 @@ export default class Env {
 		});
 	}
 
-	// log:// entries: emission, tab-indented. env:// entries: stream bytes verbatim.
+	// log:// entries: emission, tab-indented. env:// entries: tail stream
+	// (last 20 lines, capped at SUMMARY_MAX_CHARS) so giants don't blow
+	// the budget — full bytes available in the row's stored body.
 	full(entry) {
 		if (entry.path.startsWith("log://")) return projectEmission(entry.body);
-		return entry.body;
-	}
-
-	summary(entry) {
-		if (entry.path.startsWith("log://")) return summarizeEmission(entry.body);
 		return streamSummary("env", entry);
 	}
 }

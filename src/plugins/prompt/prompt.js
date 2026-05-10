@@ -1,16 +1,11 @@
-import { renderEntry, SUMMARY_MAX_CHARS } from "../helpers.js";
+import { renderEntry } from "../helpers.js";
 
 export default class Prompt {
 	#core;
 
 	constructor(core) {
 		this.#core = core;
-		core.hooks.tools.onView("prompt", (entry) => entry.body, "visible");
-		core.hooks.tools.onView(
-			"prompt",
-			(entry) => entry.body.slice(0, SUMMARY_MAX_CHARS),
-			"summarized",
-		);
+		core.hooks.tools.onView("prompt", (entry) => entry.body);
 		core.on("turn.started", this.onTurnStarted.bind(this));
 		core.filter("assembly.user", this.assemblePrompt.bind(this), 30);
 	}
@@ -79,7 +74,6 @@ export default class Prompt {
 		// task description containing tag-shaped text won't be parsed as
 		// a tool call when the model echoes attention through the packet.
 		const meta = {};
-		if (promptEntry?.visibility) meta.visibility = promptEntry.visibility;
 		if (promptEntry?.aTokens != null) meta.tokens = promptEntry.aTokens;
 		if (promptEntry?.vLines != null) meta.lines = promptEntry.vLines;
 		const fenced = promptEntry ? renderEntry(promptEntry.path, meta, body) : "";

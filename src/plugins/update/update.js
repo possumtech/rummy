@@ -13,8 +13,7 @@ export default class Update {
 		core.ensureTool();
 		core.registerScheme({ category: "logging" });
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.update = docs;
 			return docsMap;

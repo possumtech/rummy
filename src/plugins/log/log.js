@@ -17,12 +17,10 @@ export default class Log {
 		const latestPrompt = ctx.rows.findLast(
 			(r) => r.category === "prompt" && r.scheme === "prompt",
 		);
-		// All time-indexed activity belongs here: log entries (actions,
-		// errors, updates) AND streaming data channels from env/sh which
-		// are also time-indexed. Visibility controls the body projection
-		// (vBody for visible, sBody for summarized) — not which section
-		// the entry lives in.
+		// Time-indexed activity: action logs, errors, updates, sh/env
+		// streams, prior prompts. Archived rows skip rendering entirely.
 		const entries = ctx.rows.filter((r) => {
+			if (r.visibility === "archived") return false;
 			if (r.category === "logging") return true;
 			if (r.category === "prompt" && r.scheme === "prompt") {
 				return r !== latestPrompt;
@@ -48,16 +46,8 @@ function actionFromPath(path) {
 	return match ? match[1] : "log";
 }
 
-// Visibility controls projection within <log>: summarized entries render
-// the compact sBody; visible entries render the full vBody (or fall back
-// to the raw body when no projection exists).
 function projectedBody(entry) {
-	if (entry.visibility === "summarized" && entry.sBody != null) {
-		return entry.sBody;
-	}
-	if (entry.visibility === "visible" && entry.vBody != null) {
-		return entry.vBody;
-	}
+	if (entry.vBody != null) return entry.vBody;
 	return entry.body;
 }
 

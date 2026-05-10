@@ -1,10 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import {
-	projectEmission,
-	storePatternResult,
-	summarizeEmission,
-} from "../helpers.js";
+import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./getDoc.js";
 
 export default class Get {
@@ -14,8 +10,7 @@ export default class Get {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.get = docs;
 			return docsMap;
@@ -140,14 +135,25 @@ export default class Get {
 			return;
 		}
 
-		const VALID_VISIBILITY = {
-			summarized: 1,
-			visible: 1,
-			archived: 1,
-		};
-		const visibilityAttr = VALID_VISIBILITY[entry.attributes.visibility]
-			? entry.attributes.visibility
-			: null;
+		// <get index>/<get archive> = read + visibility flip on the same op.
+		const wantArchive = entry.attributes.archive !== undefined;
+		const wantIndex = entry.attributes.index !== undefined;
+		let visibilityAttr = null;
+		if (wantArchive && wantIndex) {
+			await store.set({
+				runId,
+				turn,
+				loopId,
+				path: entry.resultPath,
+				body: "Cannot specify both archive and index on the same <get>.",
+				state: "failed",
+				outcome: "validation",
+				attributes: { path: target },
+			});
+			return;
+		}
+		if (wantArchive) visibilityAttr = "archived";
+		else if (wantIndex) visibilityAttr = "indexed";
 
 		await store.get({
 			runId: runId,
@@ -209,10 +215,6 @@ export default class Get {
 
 	full(entry) {
 		return projectEmission(entry.body);
-	}
-
-	summary(entry) {
-		return summarizeEmission(entry.body);
 	}
 }
 

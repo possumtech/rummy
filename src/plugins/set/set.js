@@ -2,15 +2,21 @@ import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
 import File from "../file/file.js";
-import {
-	projectEmission,
-	storePatternResult,
-	summarizeEmission,
-} from "../helpers.js";
+import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
 
-const VALID_VISIBILITY = { archived: 1, summarized: 1, visible: 1 };
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
+
+// <set archive>/<set index> are boolean attrs. Both → conflict.
+// Returns "archived" | "indexed" | null (no flip), or "conflict".
+function visibilityFromAttrs(attrs) {
+	const wantArchive = attrs.archive !== undefined;
+	const wantIndex = attrs.index !== undefined;
+	if (wantArchive && wantIndex) return "conflict";
+	if (wantArchive) return "archived";
+	if (wantIndex) return "indexed";
+	return null;
+}
 
 function isSetProposal(path) {
 	const m = LOG_ACTION_RE.exec(path);
@@ -33,8 +39,7 @@ export default class Set {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.set = docs;
 			return docsMap;
@@ -78,10 +83,12 @@ export default class Set {
 		const patched = attrs.patched;
 		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
 		// Visibility precedence: explicit attr > existing state > scheme default.
+		const explicit = visibilityFromAttrs(attrs);
 		const existingState = await entries.getState(runId, attrs.path);
-		const visibility = attrs.visibility
-			? attrs.visibility
-			: existingState?.visibility;
+		const visibility =
+			explicit && explicit !== "conflict"
+				? explicit
+				: existingState?.visibility;
 		await entries.set({
 			runId,
 			turn,
@@ -106,9 +113,7 @@ export default class Set {
 	async handler(entry, rummy) {
 		const { entries: store, sequence: turn, runId, loopId } = rummy;
 		const attrs = entry.attributes;
-		const visibilityAttr = VALID_VISIBILITY[attrs.visibility]
-			? attrs.visibility
-			: null;
+		const visibilityAttr = visibilityFromAttrs(attrs);
 		const rawTags = typeof attrs.tags === "string" ? attrs.tags : null;
 		const tagsText = rawTags ? rawTags.slice(0, 80) : null;
 
@@ -119,7 +124,7 @@ export default class Set {
 				turn,
 				loopId,
 				path: entry.resultPath,
-				body: `log:// is immutable. To demote: <set path="${attrs.path}" visibility="summarized"/> (no body).`,
+				body: `log:// is immutable. To archive: <set path="${attrs.path}" archive/> (no body).`,
 				state: "failed",
 				outcome: "method_not_allowed",
 				attributes: { path: attrs.path },
@@ -127,19 +132,14 @@ export default class Set {
 			return;
 		}
 
-		// Reject invalid visibility on body-less set; otherwise a typo silently wipes the body.
-		if (
-			!entry.body &&
-			attrs.path &&
-			attrs.visibility !== undefined &&
-			!visibilityAttr
-		) {
+		// Both archive + index → conflict; surface as validation failure.
+		if (visibilityAttr === "conflict") {
 			await store.set({
 				runId,
 				turn,
 				loopId,
 				path: entry.resultPath,
-				body: `Invalid visibility "${attrs.visibility}"`,
+				body: "Cannot specify both archive and index on the same <set>.",
 				state: "failed",
 				outcome: "validation",
 				attributes: { path: attrs.path },
@@ -338,7 +338,7 @@ export default class Set {
 					path: target,
 					body: newContent,
 					state: "resolved",
-					visibility: visibilityAttr ? visibilityAttr : "visible",
+					visibility: visibilityAttr ? visibilityAttr : "indexed",
 					attributes: tagsText ? { tags: tagsText } : null,
 					loopId,
 				});
@@ -394,10 +394,6 @@ export default class Set {
 			return projectEmission(lines.join("\n"));
 		}
 		return projectEmission(entry.body);
-	}
-
-	summary(entry) {
-		return summarizeEmission(entry.body);
 	}
 
 	static #applyOperations(currentBody, operations) {

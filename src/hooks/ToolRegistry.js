@@ -1,3 +1,5 @@
+import { summarizeEmission } from "../plugins/helpers.js";
+
 // gather → reason → act → communicate; update pinned last (turn-closer).
 const TOOL_ORDER = [
 	"think",
@@ -58,33 +60,22 @@ export default class ToolRegistry {
 		list.sort((a, b) => a.priority - b.priority);
 	}
 
-	onView(scheme, fn, visibility = "visible") {
-		if (!this.#views.has(scheme)) this.#views.set(scheme, new Map());
-		this.#views.get(scheme).set(visibility, fn);
+	onView(scheme, fn) {
+		this.#views.set(scheme, fn);
 	}
 
 	async view(scheme, entry) {
-		const visibilityMap = this.#views.get(scheme);
-		if (!visibilityMap) {
-			throw new Error(
-				`No view registered for scheme '${scheme}'. ` +
-					`Every tool must define how its entries appear in the model view.`,
-			);
-		}
-
-		const visibility =
-			entry.visibility === undefined ? "visible" : entry.visibility;
-		const fn = visibilityMap.get(visibility);
-		if (!fn) return "";
-
-		const body = await fn(entry);
-		// undefined/null = "no projected body at this visibility"; normalize to "".
+		const fn = this.#views.get(scheme);
+		// Default fallback: summarizeEmission (tab-indent + ≤500 chars).
+		// Plugins override via core.on("view", fn) when their projection
+		// needs a different shape — log entries (full projectEmission),
+		// stream tails, or rummy.repo's full-file / symbols.
+		const body = fn ? await fn(entry) : summarizeEmission(entry.body);
 		return body == null ? "" : body;
 	}
 
 	hasView(scheme) {
-		const visibilityMap = this.#views.get(scheme);
-		return visibilityMap?.size > 0;
+		return this.#views.has(scheme);
 	}
 
 	async dispatch(scheme, entry, rummy) {

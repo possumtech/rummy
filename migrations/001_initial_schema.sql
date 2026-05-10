@@ -157,8 +157,8 @@ CREATE TABLE IF NOT EXISTS run_views (
 		state IN ('proposed', 'streaming', 'resolved', 'failed', 'cancelled')
 	)
 	, outcome TEXT
-	, visibility TEXT NOT NULL DEFAULT 'visible' CHECK (
-		visibility IN ('visible', 'summarized', 'archived')
+	, visibility TEXT NOT NULL DEFAULT 'indexed' CHECK (
+		visibility IN ('indexed', 'archived')
 	)
 	, write_count INTEGER NOT NULL DEFAULT 1 CHECK (write_count >= 1)
 	, refs INTEGER NOT NULL DEFAULT 0 CHECK (refs >= 0)
@@ -225,8 +225,7 @@ CREATE TABLE IF NOT EXISTS turn_context (
 		state IN ('proposed', 'streaming', 'resolved', 'failed', 'cancelled')
 	)
 	, outcome TEXT
-	-- 'archived' permitted; see prompt plugin README for the exception.
-	, visibility TEXT NOT NULL CHECK (visibility IN ('visible', 'summarized', 'archived'))
+	, visibility TEXT NOT NULL CHECK (visibility IN ('indexed', 'archived'))
 	, body TEXT NOT NULL DEFAULT ''
 	, attributes JSON NOT NULL DEFAULT '{}' CHECK (json_valid(attributes))
 	, category TEXT NOT NULL DEFAULT 'logging'

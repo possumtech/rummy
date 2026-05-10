@@ -1,10 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import {
-	projectEmission,
-	storePatternResult,
-	summarizeEmission,
-} from "../helpers.js";
+import { projectEmission, storePatternResult } from "../helpers.js";
 import docs from "./rmDoc.js";
 
 const LOG_ACTION_RE = /^log:\/\/turn_\d+\/(\w+)\//;
@@ -16,8 +12,7 @@ export default class Rm {
 		this.#core = core;
 		core.registerScheme();
 		core.on("handler", this.handler.bind(this));
-		core.on("visible", this.full.bind(this));
-		core.on("summarized", this.summary.bind(this));
+		core.on("view", this.full.bind(this));
 		core.filter("instructions.toolDocs", async (docsMap) => {
 			docsMap.rm = docs;
 			return docsMap;
@@ -148,9 +143,5 @@ export default class Rm {
 
 	full(entry) {
 		return projectEmission(entry.body);
-	}
-
-	summary(entry) {
-		return summarizeEmission(entry.body);
 	}
 }

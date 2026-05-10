@@ -165,12 +165,8 @@ export default class Entries {
 		return { kind, writers, category };
 	}
 
-	#defaultVisibility(scheme, category) {
-		if (scheme === "skill") return "visible";
-		if (category === "prompt") return "visible";
-		if (category === "unknown") return "visible";
-		if (category === "logging") return "visible";
-		return "summarized";
+	#defaultVisibility() {
+		return "indexed";
 	}
 
 	#resolveScope(kind, runId, projectId) {
@@ -245,7 +241,7 @@ export default class Entries {
 				});
 				this.#emitChanged(runId, path, "body");
 			}
-			if (visibility === "visible") {
+			if (visibility === "indexed") {
 				await this.#db.promote_by_pattern.run({
 					run_id: runId,
 					path,
@@ -253,7 +249,7 @@ export default class Entries {
 					turn,
 				});
 				this.#emitChanged(runId, path, "promote");
-			} else if (visibility === "summarized" || visibility === "archived") {
+			} else if (visibility === "archived") {
 				await this.#db.demote_by_pattern.run({
 					run_id: runId,
 					path,
@@ -407,11 +403,11 @@ export default class Entries {
 		turn = 0,
 		path,
 		bodyFilter = null,
-		visibility = "visible",
+		visibility = "indexed",
 	}) {
 		if (!runId) throw new Error("get: runId is required");
 		if (!path) throw new Error("get: path is required");
-		if (visibility === "visible") {
+		if (visibility === "indexed") {
 			await this.#db.promote_by_pattern.run({
 				run_id: runId,
 				path,
@@ -651,12 +647,14 @@ export default class Entries {
 	}
 
 	// SELECT-then-UPDATE: RETURNING can't cross to the view layer in SQLite.
-	async demoteTurnEntries(runId, turn) {
-		const targets = await this.#db.get_turn_demotion_targets.all({
+	// Returns paths archived so the budget rescue can synthesize a
+	// `<get manifest/>` log entry naming what was hidden.
+	async archiveTurnEntries(runId, turn) {
+		const targets = await this.#db.get_turn_archive_targets.all({
 			run_id: runId,
 			turn,
 		});
-		await this.#db.demote_turn_entries.run({ run_id: runId, turn });
+		await this.#db.archive_turn_entries.run({ run_id: runId, turn });
 		return targets;
 	}
 

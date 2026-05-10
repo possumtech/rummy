@@ -1,12 +1,11 @@
-import { projectEmission, summarizeEmission } from "../plugins/helpers.js";
+import { projectEmission } from "../plugins/helpers.js";
 
-// Shared projection helpers for plugins (including external ones).
-// Action log entries tab-indent body via emission; summaries cap at
-// SUMMARY_MAX_CHARS via summarize. External plugins use these via
-// `core.projection` to avoid drift across the action-log paradigm.
+// Shared projection helper for plugins (including external ones).
+// Log entries tab-indent body via emission. External plugins use
+// this via `core.projection.emission`. Single projection per scheme
+// — there is no separate "summarized" view in the paradigm.
 const PROJECTION = Object.freeze({
 	emission: projectEmission,
-	summarize: summarizeEmission,
 });
 
 // Plugin-only registration interface; tool verbs live on RummyContext. PLUGINS.md.
@@ -89,15 +88,15 @@ export default class PluginContext {
 		this.#hooks.tools.markHidden(this.#name);
 	}
 
-	// "handler" / "visible" / "summarized" are special; everything else is a hook event name.
+	// "handler" / "view" are special; everything else is a hook event name.
 	on(event, callback, priority = 10) {
 		if (event === "handler") {
 			this.#hooks.tools.ensureTool(this.#name);
 			this.#hooks.tools.onHandle(this.#name, callback, priority);
 			return;
 		}
-		if (event === "visible" || event === "summarized") {
-			this.#hooks.tools.onView(this.#name, callback, event);
+		if (event === "view") {
+			this.#hooks.tools.onView(this.#name, callback);
 			return;
 		}
 		const hook = this.#resolveEvent(event);
