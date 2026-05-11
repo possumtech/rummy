@@ -45,13 +45,17 @@ export default class Get {
 			: null;
 		const isPattern = bodyFilter || normalized.includes("*") || !!wantedTags;
 
-		// Negative line = tail-from-end (line=-50 starts 50 from end).
-		const lineRaw = entry.attributes.line;
-		const line = lineRaw != null ? parseInt(lineRaw, 10) : null;
-		const limit =
-			entry.attributes.limit != null
-				? Math.max(1, parseInt(entry.attributes.limit, 10))
-				: null;
+		// Range bounds vocabulary aligned with SEARCH/REPLACE's scoped form
+		// (`<<SEARCH[lineFirst]SEARCH[lineFinal]…`) and the numbered-lines
+		// projection. Negative `lineFirst` = tail-from-end
+		// (lineFirst=-50 starts 50 from end). Omitted `lineFinal` reads
+		// from `lineFirst` to end of body. XmlParser lowercases attribute
+		// keys, so the model writes `lineFirst`/`lineFinal` for readability;
+		// the engine reads `linefirst`/`linefinal`.
+		const firstRaw = entry.attributes.linefirst;
+		const finalRaw = entry.attributes.linefinal;
+		const lineFirst = firstRaw != null ? parseInt(firstRaw, 10) : null;
+		const lineFinal = finalRaw != null ? parseInt(finalRaw, 10) : null;
 
 		let matches = await store.getEntriesByPattern(
 			runId,
@@ -87,7 +91,7 @@ export default class Get {
 
 		// Partial read: slice into attrs.slice, no promotion. Multi-match
 		// emits one section per match.
-		if (line !== null || limit !== null) {
+		if (lineFirst !== null || lineFinal !== null) {
 			if (matches.length === 0) {
 				await store.set({
 					runId,
@@ -99,26 +103,28 @@ export default class Get {
 					loopId,
 					attributes: {
 						path: target,
-						line,
-						limit,
+						lineFirst,
+						lineFinal,
 						error: `${target} not found`,
 					},
 				});
 				return;
 			}
-			const sections = matches.map((match) => sliceSection(match, line, limit));
+			const sections = matches.map((match) =>
+				sliceSection(match, lineFirst, lineFinal),
+			);
 			const sliceBody = sections.map((s) => s.text).join("\n\n");
 			const attributes = {
 				path: target,
-				line,
-				limit,
+				lineFirst,
+				lineFinal,
 				beforeActionTokens: 0,
 				afterActionTokens: countTokens(sliceBody),
 			};
 			if (sections.length === 1) {
 				const only = sections[0];
-				attributes.lineStart = only.startLine;
-				attributes.lineEnd = only.endLine;
+				attributes.firstLine = only.firstLine;
+				attributes.finalLine = only.finalLine;
 				attributes.totalLines = only.total;
 			} else {
 				attributes.matchCount = sections.length;
@@ -197,19 +203,25 @@ export default class Get {
 	}
 }
 
-function sliceSection(match, line, limit) {
+function sliceSection(match, lineFirst, lineFinal) {
 	const allLines = match.body.split("\n");
 	const total = allLines.length;
-	const startLine =
-		line == null
+	const firstLine =
+		lineFirst == null
 			? 1
-			: line < 0
-				? Math.max(1, total + line + 1)
-				: Math.max(1, line);
-	const startIdx = startLine - 1;
-	const endIdx = limit !== null ? Math.min(startIdx + limit, total) : total;
+			: lineFirst < 0
+				? Math.max(1, total + lineFirst + 1)
+				: Math.max(1, lineFirst);
+	const finalLine =
+		lineFinal == null
+			? total
+			: lineFinal < 0
+				? Math.max(firstLine, total + lineFinal + 1)
+				: Math.min(total, Math.max(firstLine, lineFinal));
+	const startIdx = firstLine - 1;
+	const endIdx = finalLine;
 	// Body is the slice content only. Range info lives in the JSON
-	// envelope (lineStart/lineEnd/totalLines attrs). No header in body.
+	// envelope (firstLine/finalLine/totalLines attrs). No header in body.
 	const text = allLines.slice(startIdx, endIdx).join("\n");
-	return { text, startLine, endLine: endIdx, total };
+	return { text, firstLine, finalLine: endIdx, total };
 }

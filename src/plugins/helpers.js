@@ -28,7 +28,7 @@ export function streamSummary(_label, entry, MAX_LINES = 20) {
 
 // Apply `1:\t<line>` numbering to a projected body. Display-only.
 // The leading digit prevents column-zero `:::path` collisions and
-// gives the model line refs for free (`<get path="X" line="42" limit="5"/>`).
+// gives the model line refs for free (`<get path="X" lineFirst="42" lineFinal="46"/>`).
 export function numberLines(body) {
 	if (!body) return "";
 	const trailingNewline = body.endsWith("\n");

@@ -38,7 +38,7 @@ other action record. See [scheme_category_split](SPEC.md#scheme_category_split).
 
 - Log entry view: slim recap (`<sh>` envelope with command + exit code).
 - Data channel view: tail preview via `streamSummary` (last N lines).
-  Full body retrievable with `<get path="sh://..." line="-50" limit="50"/>`.
+  Full body retrievable with `<get path="sh://..." lineFirst="-50"/>`.
 
 ## Behavior
 

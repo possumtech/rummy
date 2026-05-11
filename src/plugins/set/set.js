@@ -300,6 +300,19 @@ export default class Set {
 			newContent = entry.body;
 		}
 
+		// `op` envelope attribute: comma-separated list of operative
+		// label kinds from the model's emission. Surfaces the operative
+		// intent at zero body cost — the body projection strips SEARCH
+		// halves (and the operative labels themselves) for budget
+		// reasons; the envelope JSON carries the intent forward so the
+		// model's future-self reading the log knows what kind of edit
+		// happened without inferring from numbered-line shape alone.
+		// Derived from `attrs.operations` (parser output) so DELETE ops
+		// — which contribute no renderable body — are still surfaced.
+		const opField = attrs.operations
+			? attrs.operations.map((o) => o.op).join(",")
+			: null;
+
 		if (newContent !== undefined) {
 			const scheme = Entries.scheme(target);
 			if (scheme === null) {
@@ -324,6 +337,7 @@ export default class Set {
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,
+						...(opField ? { op: opField } : {}),
 						...(opPositions ? { opPositions } : {}),
 						...(visibilityAttr && visibilityAttr !== "conflict"
 							? { [visibilityAttr === "indexed" ? "index" : "archive"]: true }
@@ -387,6 +401,7 @@ export default class Set {
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,
+						...(opField ? { op: opField } : {}),
 						...(opPositions ? { opPositions } : {}),
 					},
 				});

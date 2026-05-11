@@ -43,13 +43,15 @@ export function substituteBudgetPlaceholders(text, { tokenUsage, tokensFree }) {
 		.replaceAll(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
 }
 
-// Manifest format (S8): `* path - tokens` per line.
+// Manifest format (S8): `* path - tokens` per line. Surface `tokensFree`
+// in the header so the model pattern-links the overflow to the gate
+// it should have consulted on `<turn tokensFree=N>`.
 export function overflowBody(overflow, contextSize, reclaimed) {
 	const cap = ceiling(contextSize);
 	const size = cap + overflow;
 	const count = reclaimed.length;
 	const totalTokens = reclaimed.reduce((s, r) => s + r.tokens, 0);
-	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}. ${count} fat replay${count === 1 ? "" : "s"} (${totalTokens} tokens) reclaimed.`;
+	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}, tokensFree=0. ${count} fat replay${count === 1 ? "" : "s"} (${totalTokens} tokens) reclaimed.`;
 	if (count === 0) return head;
 	const lines = reclaimed.map((d) => `* ${d.path} - ${d.tokens} tokens`);
 	return `${head}\n${lines.join("\n")}`;

@@ -58,7 +58,7 @@ const plugin = new Get({
 	filter: () => {},
 });
 
-describe("Get partial read (line/limit)", () => {
+describe("Get partial read (lineFirst/lineFinal)", () => {
 	it("returns a line slice without promoting", async () => {
 		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
 			"\n",
@@ -67,7 +67,7 @@ describe("Get partial read (line/limit)", () => {
 			{ path: "src/agent/AgentLoop.js", body, tokens: 500 },
 		]);
 		const rummy = makeRummy(store);
-		const entry = makeEntry({ line: "10", limit: "5" });
+		const entry = makeEntry({ linefirst: "10", linefinal: "14" });
 
 		await plugin.handler(entry, rummy);
 
@@ -75,7 +75,7 @@ describe("Get partial read (line/limit)", () => {
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
 		// Body is the slice content only — no header. Range info lives
-		// in attrs (lineStart/lineEnd/totalLines).
+		// in attrs (firstLine/finalLine/totalLines).
 		const slice = result.body;
 		assert.ok(slice.startsWith("line 10"));
 		assert.ok(slice.includes("line 10"));
@@ -83,7 +83,7 @@ describe("Get partial read (line/limit)", () => {
 		assert.ok(!slice.includes("line 15"));
 	});
 
-	it("tags the slice log with lineStart/lineEnd/totalLines for renderLogTag", async () => {
+	it("tags the slice log with firstLine/finalLine/totalLines for renderLogTag", async () => {
 		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
 			"\n",
 		);
@@ -91,24 +91,24 @@ describe("Get partial read (line/limit)", () => {
 			{ path: "src/agent/AgentLoop.js", body, tokens: 500 },
 		]);
 		const rummy = makeRummy(store);
-		const entry = makeEntry({ line: "10", limit: "5" });
+		const entry = makeEntry({ linefirst: "10", linefinal: "14" });
 
 		await plugin.handler(entry, rummy);
 
 		const { attributes } = store.upserted[0];
 		assert.strictEqual(attributes.path, "src/agent/AgentLoop.js");
-		assert.strictEqual(attributes.lineStart, 10);
-		assert.strictEqual(attributes.lineEnd, 14);
+		assert.strictEqual(attributes.firstLine, 10);
+		assert.strictEqual(attributes.finalLine, 14);
 		assert.strictEqual(attributes.totalLines, 100);
 	});
 
-	it("limit only defaults start to line 1", async () => {
+	it("lineFinal only defaults start to line 1", async () => {
 		const body = "a\nb\nc\nd\ne";
 		const store = makeStore([
 			{ path: "src/agent/AgentLoop.js", body, tokens: 10 },
 		]);
 		const rummy = makeRummy(store);
-		const entry = makeEntry({ limit: "3" });
+		const entry = makeEntry({ linefinal: "3" });
 
 		await plugin.handler(entry, rummy);
 
@@ -116,18 +116,16 @@ describe("Get partial read (line/limit)", () => {
 		assert.equal(slice, "a\nb\nc");
 	});
 
-	it("negative line reads tail from end", async () => {
+	it("negative lineFirst reads tail from end", async () => {
 		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
 			"\n",
 		);
-		const store = makeStore([
-			{ path: "sh://turn_3/npm_test_1", body, tokens: 500 },
-		]);
+		const store = makeStore([{ path: "sh://1/3/1_1", body, tokens: 500 }]);
 		const rummy = makeRummy(store);
-		// line=-10 means "start 10 from the end" → lines 91..100
+		// lineFirst=-10 means "start 10 from the end" → lines 91..100
 		const entry = makeEntry({
-			path: "sh://turn_3/npm_test_1",
-			line: "-10",
+			path: "sh://1/3/1_1",
+			linefirst: "-10",
 		});
 
 		await plugin.handler(entry, rummy);
@@ -138,19 +136,17 @@ describe("Get partial read (line/limit)", () => {
 		assert.ok(!slice.includes("line 90\n"));
 	});
 
-	it("negative line with limit reads a window from the end", async () => {
+	it("negative lineFirst with lineFinal reads a window from the end", async () => {
 		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
 			"\n",
 		);
-		const store = makeStore([
-			{ path: "sh://turn_3/npm_test_1", body, tokens: 500 },
-		]);
+		const store = makeStore([{ path: "sh://1/3/1_1", body, tokens: 500 }]);
 		const rummy = makeRummy(store);
-		// line=-20, limit=5 → start at line 81, show 5 lines (81..85)
+		// lineFirst=-20, lineFinal=85 → start at line 81, end at line 85
 		const entry = makeEntry({
-			path: "sh://turn_3/npm_test_1",
-			line: "-20",
-			limit: "5",
+			path: "sh://1/3/1_1",
+			linefirst: "-20",
+			linefinal: "85",
 		});
 
 		await plugin.handler(entry, rummy);
@@ -161,12 +157,12 @@ describe("Get partial read (line/limit)", () => {
 		assert.ok(!slice.includes("line 86"));
 	});
 
-	it("negative line clamps to line 1 when offset exceeds total", async () => {
+	it("negative lineFirst clamps to line 1 when offset exceeds total", async () => {
 		const body = "a\nb\nc";
 		const store = makeStore([{ path: "x", body, tokens: 10 }]);
 		const rummy = makeRummy(store);
-		// line=-500 with only 3 lines clamps to line 1
-		const entry = makeEntry({ path: "x", line: "-500" });
+		// lineFirst=-500 with only 3 lines clamps to line 1
+		const entry = makeEntry({ path: "x", linefirst: "-500" });
 
 		await plugin.handler(entry, rummy);
 
@@ -174,13 +170,13 @@ describe("Get partial read (line/limit)", () => {
 		assert.equal(slice, "a\nb\nc");
 	});
 
-	it("clamps end to total lines when limit exceeds file length", async () => {
+	it("clamps lineFinal to total lines when bound exceeds file length", async () => {
 		const body = "x\ny\nz";
 		const store = makeStore([
 			{ path: "src/agent/AgentLoop.js", body, tokens: 10 },
 		]);
 		const rummy = makeRummy(store);
-		const entry = makeEntry({ line: "2", limit: "999" });
+		const entry = makeEntry({ linefirst: "2", linefinal: "999" });
 
 		await plugin.handler(entry, rummy);
 
@@ -188,11 +184,11 @@ describe("Get partial read (line/limit)", () => {
 		assert.equal(slice, "y\nz");
 	});
 
-	// Regression: body content alongside line/limit on a single path
-	// used to be rejected as a "body filter" pattern. Models often
+	// Regression: body content alongside lineFirst/lineFinal on a single
+	// path used to be rejected as a "body filter" pattern. Models often
 	// pack explanatory text into the body tag — that's not a filter
 	// signal for slicing, just XML noise on a single path.
-	it("body content with line/limit on single path slices normally", async () => {
+	it("body content with lineFirst/lineFinal on single path slices normally", async () => {
 		const body = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join(
 			"\n",
 		);
@@ -201,8 +197,8 @@ describe("Get partial read (line/limit)", () => {
 		]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({
-			line: "1",
-			limit: "5",
+			linefirst: "1",
+			linefinal: "5",
 			body: "looking for the imports",
 		});
 
@@ -211,17 +207,17 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
-		assert.equal(result.attributes.lineStart, 1);
-		assert.equal(result.attributes.lineEnd, 5);
+		assert.equal(result.attributes.firstLine, 1);
+		assert.equal(result.attributes.finalLine, 5);
 		assert.equal(result.attributes.totalLines, 50);
 		assert.ok(result.body.startsWith("line 1"));
 	});
 
-	// Multi-match line/limit: emit one sliced section per match. Per
-	// getDoc, "line/limit works on any scheme" — the doc doesn't
-	// restrict to single targets. Glob + line/limit gives the model a
-	// way to scan the head of every match in one query.
-	it("glob with line/limit emits one slice section per match", async () => {
+	// Multi-match lineFirst/lineFinal: emit one sliced section per match.
+	// Per getDoc, "lineFirst/lineFinal works on any scheme" — the doc
+	// doesn't restrict to single targets. Glob + bounds gives the model
+	// a way to scan the head of every match in one query.
+	it("glob with lineFirst/lineFinal emits one slice section per match", async () => {
 		const body1 = Array.from({ length: 30 }, (_, i) => `a${i + 1}`).join("\n");
 		const body2 = Array.from({ length: 30 }, (_, i) => `b${i + 1}`).join("\n");
 		const store = makeStore([
@@ -229,7 +225,11 @@ describe("Get partial read (line/limit)", () => {
 			{ path: "src/b.js", body: body2, tokens: 100 },
 		]);
 		const rummy = makeRummy(store);
-		const entry = makeEntry({ path: "src/*.js", line: "1", limit: "3" });
+		const entry = makeEntry({
+			path: "src/*.js",
+			linefirst: "1",
+			linefinal: "3",
+		});
 
 		await plugin.handler(entry, rummy);
 
@@ -244,10 +244,10 @@ describe("Get partial read (line/limit)", () => {
 		assert.strictEqual(result.attributes.matchCount, 2);
 	});
 
-	it("not found with line/limit resolves with not-found message", async () => {
+	it("not found with lineFirst/lineFinal resolves with not-found message", async () => {
 		const store = makeStore([]);
 		const rummy = makeRummy(store);
-		const entry = makeEntry({ line: "1", limit: "10" });
+		const entry = makeEntry({ linefirst: "1", linefinal: "10" });
 
 		await plugin.handler(entry, rummy);
 
@@ -305,7 +305,7 @@ describe("Get partial read (line/limit)", () => {
 			},
 		};
 		const rummy = makeRummy(store);
-		const entry = makeEntry({ line: "1", limit: "2" });
+		const entry = makeEntry({ linefirst: "1", linefinal: "2" });
 
 		await plugin.handler(entry, rummy);
 

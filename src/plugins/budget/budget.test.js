@@ -401,4 +401,12 @@ describe("overflowBody — 413 error body shape", () => {
 		assert.match(body, new RegExp(`packet was ${cap + overflow} tokens`));
 		assert.match(body, new RegExp(`ceiling is ${cap}`));
 	});
+
+	// tokensFree is the gate name the model sees on `<turn tokensFree=N>`.
+	// Surfacing it in the overflow header gives the model a verbatim
+	// pattern-link from the breach to the gate it should have consulted.
+	it("includes tokensFree=0 so the model pattern-links to its gate", () => {
+		const body = overflowBody(2753, contextSize, []);
+		assert.match(body, /tokensFree=0/);
+	});
 });

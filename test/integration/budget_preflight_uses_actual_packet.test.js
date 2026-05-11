@@ -100,8 +100,8 @@ describe("Budget pre-flight measures the assembled packet (@budget_enforcement)"
 			{ role: "system", content: "test" },
 			{ role: "user", content: fatBody },
 		];
-		const actualPacketTokens = countTokens(messages[0].content) +
-			countTokens(messages[1].content);
+		const actualPacketTokens =
+			countTokens(messages[0].content) + countTokens(messages[1].content);
 
 		// The bug-trigger: pass a SMALL `lastPromptTokens` value (as
 		// happens when the prior turn's input was small but its OUTPUT
@@ -133,8 +133,7 @@ describe("Budget pre-flight measures the assembled packet (@budget_enforcement)"
 		// misleading lastPromptTokens=100) and reclaimed the fat replay.
 		const stored = await tdb.db.get_known_entries.all({ run_id: runId });
 		const err = stored.find(
-			(r) =>
-				/^log:\/\/\d+\/2\/\d+\/error$/.test(r.path) && r.scheme === "log",
+			(r) => /^log:\/\/\d+\/2\/\d+\/error$/.test(r.path) && r.scheme === "log",
 		);
 		assert.ok(
 			err,

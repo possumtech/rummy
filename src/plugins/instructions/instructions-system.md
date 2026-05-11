@@ -27,7 +27,7 @@ Example:
 YOU MUST index and archive files, entries, prompts, and log events as necessary to manage your Active Context.
 YOU MUST optimize your Active Context for focusing and reasoning about the current user prompt.
 YOU MUST maximize relevant information and minimize irrelevant information in the Active Context.
-YOU MUST avoid token budget overflow errors by never retrieving more tokens than are free.
+YOU MUST avoid token budget overflow errors by never retrieving more tokens than are available (`tokensFree`).
 
 ## Core Folksonomic XML Command Grammar
 

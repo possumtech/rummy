@@ -675,6 +675,30 @@ describe("Set plugin", () => {
 						content: "new A\nnew B\nnew C",
 					},
 				]);
+				assert.equal(
+					log.attributes.op,
+					"search_replace",
+					"op envelope attr surfaces the operative intent",
+				);
+			});
+
+			it("multi-op set: op attr is comma-separated kind list (incl. delete)", async () => {
+				const store = await run([
+					{
+						op: "search_replace",
+						scope: { start: 3, end: 3 },
+						search: "old A",
+						replace: "new A",
+					},
+					{ op: "append", content: "appended line" },
+					{ op: "delete", content: "line2" },
+				]);
+				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
+				assert.equal(
+					log.attributes.op,
+					"search_replace,append,delete",
+					"every op kind surfaces in order, including delete (which has no opPositions entry)",
+				);
 			});
 
 			it("scoped single-line replace (start == end)", async () => {
