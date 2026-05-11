@@ -1,6 +1,7 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
+import { parseMarkerBody } from "../../lib/hedberg/marker.js";
 import File from "../file/file.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
@@ -202,6 +203,7 @@ export default class Set {
 					outcome: "not_found",
 					visibility: "archived",
 					loopId,
+					attributes: { path: target },
 				});
 				return;
 			}
@@ -230,6 +232,10 @@ export default class Set {
 				state: "resolved",
 				visibility: "archived",
 				loopId,
+				// Target identity on the log envelope so downstream
+				// readers (digest, materialization) can attribute the
+				// recap without parsing the body prose.
+				attributes: { path: target },
 			});
 			return;
 		}
@@ -401,7 +407,30 @@ export default class Set {
 			}
 			return lines.join("\n");
 		}
-		return entry.body;
+		return Set.#projectBody(entry.body);
+	}
+
+	// `<set>` log bodies are stored verbatim (the model's emission, or
+	// the engine-injected external-edit synthesis). For projection back
+	// to the model, strip each SEARCH/REPLACE pair down to its REPLACE
+	// block — the model only needs to see what the lines have been
+	// changed TO; showing the SEARCH half doubles the diff cost and
+	// pins the model's working state on the stale content. Non-S/R ops
+	// (NEW / PREPEND / APPEND / REPLACE / DELETE) project verbatim.
+	static #projectBody(body) {
+		if (!body) return body;
+		const { ops, error } = parseMarkerBody(body);
+		if (error || !ops || ops.length === 0) return body;
+		const out = [];
+		for (const op of ops) {
+			if (op.op === "search_replace") {
+				out.push(`<<REPLACE\n${op.replace}\nREPLACE`);
+			} else {
+				const kw = op.op.toUpperCase();
+				out.push(`<<${kw}\n${op.content}\n${kw}`);
+			}
+		}
+		return out.join("");
 	}
 
 	static #applyOperations(currentBody, operations) {

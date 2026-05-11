@@ -61,19 +61,26 @@ describe("Set plugin", () => {
 	describe("full (visible projection)", () => {
 		const plugin = new Set(stubCore());
 
-		it("returns the model's verbatim emission (line numbering in materializeContext)", () => {
-			const out = plugin.full({
-				attributes: { path: "x.js" },
-				body: '<set path="x.js"><<NEW\nfoo\nNEW</set>',
-			});
-			assert.equal(out, '<set path="x.js"><<NEW\nfoo\nNEW</set>');
+		it("NEW emissions project verbatim (no SEARCH half to strip)", () => {
+			const body = "<<NEW\nfoo\nNEW";
+			const out = plugin.full({ attributes: { path: "x.js" }, body });
+			assert.equal(out, "<<NEW\nfoo\nNEW");
 		});
 
-		it("multi-line emissions pass through verbatim", () => {
-			const body =
-				'<set path="x"><<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE</set>';
+		it("SEARCH/REPLACE projects as REPLACE-only — model sees forward state, not the diff cost", () => {
+			const body = "<<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE";
 			const out = plugin.full({ attributes: { path: "x" }, body });
-			assert.equal(out, body);
+			assert.equal(out, "<<REPLACE\nnew\nREPLACE");
+		});
+
+		it("multi-hunk SEARCH/REPLACE projects as ordered REPLACE blocks", () => {
+			const body =
+				"<<SEARCH\nold1\nSEARCH<<REPLACE\nnew1\nREPLACE<<SEARCH\nold2\nSEARCH<<REPLACE\nnew2\nREPLACE";
+			const out = plugin.full({ attributes: { path: "x" }, body });
+			assert.equal(
+				out,
+				"<<REPLACE\nnew1\nREPLACE<<REPLACE\nnew2\nREPLACE",
+			);
 		});
 
 		it("conflict synthesizes an error projection with attempted + current body", () => {
