@@ -10,6 +10,7 @@ YOU SHOULD prefer minimal and multiple atomic edits to reduce the frequency and 
 
 * Special Operative Labels: ({SEARCH|REPLACE|NEW|PREPEND|APPEND|DELETE}) dictate the type of edit
 	SEARCH/REPLACE - SEARCH/REPLACE string literal syntax uses HEREDOC in place of git conflict markers
+	SEARCH[LineFirst-LineFinal]/REPLACE - Replace lines by number instead of matching
 	NEW - Create (or clobber) entry content
 	PREPEND - Prepend content at beginning of existing entry
 	APPEND - Append content to end of existing entry
@@ -25,6 +26,14 @@ Example:
 	new
 	replacement
 	text
+	REPLACE</set>
+
+Example:
+	<set path="src/main.go"><<SEARCH[12-14]SEARCH[12-14]<<REPLACE
+	Match and
+	replace lines
+	12 through 14
+	with literal text
 	REPLACE</set>
 
 Example:

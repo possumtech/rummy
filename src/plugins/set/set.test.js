@@ -365,7 +365,9 @@ describe("Set plugin", () => {
 	});
 
 	describe("bare-file SEARCH/REPLACE emits a proposal (not a resolved entry)", () => {
-		const editOps = [{ op: "search_replace", search: "old", replace: "new" }];
+		const editOps = [
+			{ op: "search_replace", search: "old line", replace: "new line" },
+		];
 
 		it("successful edit on bare file yields state=proposed with attrs.path + attrs.patched", async () => {
 			const plugin = new Set(stubCore());
@@ -563,6 +565,139 @@ describe("Set plugin", () => {
 			);
 			assert.equal(log.state, "failed");
 			assert.equal(log.outcome, "conflict");
+		});
+
+		// Scoped SEARCH/REPLACE: model authors `<<SEARCH[N-M]…SEARCH[N-M]<<REPLACE…REPLACE`
+		// against the line numbers it sees in projection. The scope makes the
+		// match positional (uniqueness no longer depends on the SEARCH content
+		// being unique in the file), and the content stays as a verification
+		// check on top of the position.
+		describe("scoped SEARCH/REPLACE (line-targeted)", () => {
+			const fileBody = "line1\nline2\nold A\nold B\nold C\nline6\n";
+			async function run(operations) {
+				const plugin = new Set(stubCore());
+				const store = makeStore();
+				store.setEntry("src/app.js", {
+					body: fileBody,
+					scheme: null,
+					tokens: 2,
+				});
+				await plugin.handler(
+					{
+						body: "",
+						path: "log://1/1/1/set",
+						resultPath: "log://1/1/1/set",
+						attributes: { path: "src/app.js", operations },
+					},
+					{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+				);
+				return store;
+			}
+
+			it("scoped replace with content verification applies cleanly", async () => {
+				const store = await run([
+					{
+						op: "search_replace",
+						scope: { start: 3, end: 5 },
+						search: "old A\nold B\nold C",
+						replace: "new A\nnew B\nnew C",
+					},
+				]);
+				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
+				assert.equal(log.state, "proposed");
+				assert.equal(
+					log.attributes.patched,
+					"line1\nline2\nnew A\nnew B\nnew C\nline6\n",
+				);
+			});
+
+			it("scoped single-line replace (start == end)", async () => {
+				const store = await run([
+					{
+						op: "search_replace",
+						scope: { start: 4, end: 4 },
+						search: "old B",
+						replace: "REPLACED B",
+					},
+				]);
+				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
+				assert.equal(log.state, "proposed");
+				assert.equal(
+					log.attributes.patched,
+					"line1\nline2\nold A\nREPLACED B\nold C\nline6\n",
+				);
+			});
+
+			it("empty SEARCH body is the trust-the-numbers form (undocumented)", async () => {
+				const store = await run([
+					{
+						op: "search_replace",
+						scope: { start: 3, end: 5 },
+						search: "",
+						replace: "X\nY\nZ",
+					},
+				]);
+				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
+				assert.equal(log.state, "proposed");
+				assert.equal(
+					log.attributes.patched,
+					"line1\nline2\nX\nY\nZ\nline6\n",
+				);
+			});
+
+			it("content mismatch at the scoped range fails with conflict + actual lines feedback", async () => {
+				const store = await run([
+					{
+						op: "search_replace",
+						scope: { start: 3, end: 5 },
+						search: "WRONG\nWRONG\nWRONG",
+						replace: "x",
+					},
+				]);
+				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
+				assert.equal(log.state, "failed");
+				assert.equal(log.outcome, "conflict");
+				assert.match(
+					log.attributes.error,
+					/SEARCH\[3-5\] content does not match/,
+				);
+				// Conflict body carries the actual lines at that range so the
+				// model can author a correct delta on the next turn.
+				assert.equal(log.attributes.currentBody, "old A\nold B\nold C");
+			});
+
+			it("out-of-range scope fails with the current line count in the error", async () => {
+				const store = await run([
+					{
+						op: "search_replace",
+						scope: { start: 50, end: 60 },
+						search: "",
+						replace: "x",
+					},
+				]);
+				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
+				assert.equal(log.state, "failed");
+				assert.equal(log.outcome, "conflict");
+				assert.match(log.attributes.error, /out of range/);
+			});
+
+			it("REPLACE may shrink or grow the line range (insert-extra / delete-some)", async () => {
+				const store = await run([
+					{
+						op: "search_replace",
+						scope: { start: 3, end: 5 },
+						search: "",
+						replace: "only one line",
+					},
+				]);
+				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
+				assert.equal(log.state, "proposed");
+				// 3 lines replaced by 1 → body shortens.
+				assert.equal(
+					log.attributes.patched,
+					"line1\nline2\nonly one line\nline6\n",
+				);
+			});
 		});
 	});
 });

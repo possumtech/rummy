@@ -16,10 +16,51 @@ describe("Hedberg plugin", () => {
 	});
 
 	describe("Hedberg.replace", () => {
-		it("literal substring replacement returns patch with all matches replaced", () => {
+		it("line-anchored: SEARCH must match complete lines, not substrings within a line", () => {
+			// The body is `foo bar foo` — `foo` appears twice but never
+			// at line boundaries (always with non-newline neighbors).
+			// Strict semantics: no match. The heuristic fallback also
+			// can't synthesize a result (single short token).
 			const result = Hedberg.replace("foo bar foo", "foo", "baz");
-			assert.equal(result.patch, "baz bar baz");
-			assert.equal(result.error, null);
+			assert.ok(!result.patch);
+		});
+
+		it("line-anchored: SEARCH matches when boundaries land at start/end of body", () => {
+			// `foo` alone in the body — start-of-body + end-of-body
+			// boundaries both satisfied.
+			const result = Hedberg.replace("foo", "foo", "baz");
+			assert.equal(result.patch, "baz");
+		});
+
+		it("line-anchored: SEARCH matches a whole line in a multi-line body", () => {
+			const result = Hedberg.replace("alpha\nfoo\nbeta\n", "foo", "baz");
+			assert.equal(result.patch, "alpha\nbaz\nbeta\n");
+		});
+
+		it("line-anchored: SEARCH is a prefix of an existing line → no match (regression: T4 plan corruption)", () => {
+			// Bug we're locking against: SEARCH `- [ ] Discover` would
+			// previously splice into `- [ ] Discover (rivers...)` mid-
+			// line, drag the trailing parenthetical onto the REPLACE
+			// body, and leave the rest of the file out of place. With
+			// line-anchoring, the partial-prefix match is rejected and
+			// the model gets accurate conflict feedback.
+			const body =
+				"- [ ] Draft\n- [ ] Discover (rivers, streams)\n- [ ] Distill\n";
+			const result = Hedberg.replace(
+				body,
+				"- [ ] Discover",
+				"- [x] Discover\n   - [x] sub-item",
+			);
+			assert.ok(
+				!result.patch,
+				"prefix substring of a longer line must NOT match",
+			);
+		});
+
+		it("line-anchored: multi-line SEARCH spans complete lines and replaces them", () => {
+			const body = "a\nb\nc\nd\n";
+			const result = Hedberg.replace(body, "b\nc", "X\nY\nZ");
+			assert.equal(result.patch, "a\nX\nY\nZ\nd\n");
 		});
 
 		it("returns no patch (via heuristic) when literal search not found and heuristic also fails", () => {
@@ -27,35 +68,24 @@ describe("Hedberg plugin", () => {
 			assert.ok(!result.patch);
 		});
 
-		it("sed=true is literal substring substitution (no regex)", () => {
-			// sed semantics in our context: literal substring substitution
-			// via String.replaceAll, not regex compilation. `\d` does not
-			// match digits — it's a literal "\d" string. Real regex needs
-			// are out of scope.
-			const result = Hedberg.replace("a1 b2 c3", "\\d", "X", {
-				sed: true,
-			});
-			assert.ok(
-				!result.patch,
-				"no match → no patch (heuristic fuzzy also doesn't match)",
-			);
+		it("sed=true literal semantics: `\\d` matches the literal string, not digits", () => {
+			// sed semantics in our context: literal substitution under
+			// line-anchored matching. `\d` is the literal two-char string
+			// "\d" — not a digit class. The body has no "\d", so no match.
+			const result = Hedberg.replace("a1 b2 c3", "\\d", "X", { sed: true });
+			assert.ok(!result.patch);
 		});
 
-		it("sed=true unescapes regex-meta backslashes in replacement", () => {
-			const result = Hedberg.replace("abc", "a", "\\.A", {
-				sed: true,
-				flags: "g",
-			});
-			assert.equal(result.patch, ".Abc");
-		});
-
-		it("sed=true with malformed-regex-shaped input still substitutes literally", () => {
-			// In the old regex-mode code, `[bad` would throw on RegExp
-			// compile; under literal mode it's just a literal replacement.
-			const result = Hedberg.replace("abc", "a", "X", {
+		it("sed=true unescapes regex-meta backslashes (literal char appears in search/replace)", () => {
+			// Model muscle-memory writes `\[` to mean a literal `[`.
+			// With sed=true the backslash is stripped from search/replace
+			// so the body's literal char is what's matched/written.
+			// Body has the literal `[bar]`; search is `\[bar\]` which
+			// strips to `[bar]` and matches the whole line.
+			const result = Hedberg.replace("[bar]", "\\[bar\\]", "[y]", {
 				sed: true,
 			});
-			assert.equal(result.patch, "Xbc");
+			assert.equal(result.patch, "[y]");
 		});
 
 		it("preserves searchText / replaceText in the result", () => {
@@ -66,15 +96,16 @@ describe("Hedberg plugin", () => {
 
 		// Lock in the literal-substitution contract: sed=true does NOT
 		// compile a regex. The model's regex-shaped patterns either match
-		// as literal substrings or don't match at all.
+		// as literal whole-line strings or don't match at all.
 		describe("regex semantics are NOT honored under sed=true", () => {
 			it("anchors `^` and `$` are literal characters", () => {
 				const r1 = Hedberg.replace("foo bar", "^foo", "X", { sed: true });
 				assert.ok(!r1.patch, "^foo doesn't match because ^ is literal");
-				const r2 = Hedberg.replace("price$10", "price$", "cost$", {
+				// Whole-line match for `price$10` — the $ is literal dollar.
+				const r2 = Hedberg.replace("price$10", "price$10", "cost$10", {
 					sed: true,
 				});
-				assert.equal(r2.patch, "cost$10", "$ is literal dollar sign");
+				assert.equal(r2.patch, "cost$10");
 			});
 
 			it("character classes `[...]` are literal", () => {
@@ -95,10 +126,11 @@ describe("Hedberg plugin", () => {
 			});
 
 			it("`$1` in replacement is literal text, not a capture reference", () => {
-				const r = Hedberg.replace("hello world", "hello", "$1 there", {
+				// Whole-line match; replacement contains literal `$1`.
+				const r = Hedberg.replace("hello world", "hello world", "$1 there", {
 					sed: true,
 				});
-				assert.equal(r.patch, "$1 there world");
+				assert.equal(r.patch, "$1 there");
 			});
 
 			it("case-insensitive flag `i` is silently ignored", () => {
@@ -110,31 +142,26 @@ describe("Hedberg plugin", () => {
 			});
 
 			it("regex-style escapes ARE stripped to literal characters", () => {
-				// Model muscle-memory: \[, \., \| etc. are escapes for regex
-				// meta. With sed=true we strip those backslashes so the
-				// literal char appears in search/replace.
-				const r1 = Hedberg.replace("a [x] b", "\\[x\\]", "[y]", {
-					sed: true,
-				});
-				assert.equal(r1.patch, "a [y] b");
+				// Whole-line bodies so line anchors are satisfied.
+				const r1 = Hedberg.replace("[x]", "\\[x\\]", "[y]", { sed: true });
+				assert.equal(r1.patch, "[y]");
 				const r2 = Hedberg.replace("v1.0", "v1\\.0", "v2.0", { sed: true });
 				assert.equal(r2.patch, "v2.0");
 			});
 
-			it("global replacement is the default (no `g` flag needed)", () => {
-				// Native String.replaceAll always replaces all occurrences;
-				// the `g` flag has no effect on behavior here.
-				const r = Hedberg.replace("a a a", "a", "b", { sed: true });
-				assert.equal(r.patch, "b b b");
+			it("multiple line-anchored matches all replaced; warning lists count", () => {
+				const r = Hedberg.replace("a\na\na", "a", "b", { sed: true });
+				assert.equal(r.patch, "b\nb\nb");
+				assert.match(r.warning, /3 locations/);
 			});
 		});
 
 		// sed=false stays the same: literal-only, no escape stripping (the
 		// caller is passing exact bytes, e.g. from a SEARCH/REPLACE block).
 		describe("sed=false (default) does not strip backslash escapes", () => {
-			it("backslashes in search are preserved verbatim", () => {
-				const r = Hedberg.replace("foo \\[bar\\]", "\\[bar\\]", "X");
-				assert.equal(r.patch, "foo X");
+			it("backslashes in search are preserved verbatim (whole-line match)", () => {
+				const r = Hedberg.replace("\\[bar\\]", "\\[bar\\]", "X");
+				assert.equal(r.patch, "X");
 			});
 		});
 	});

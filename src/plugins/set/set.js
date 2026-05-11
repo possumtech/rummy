@@ -276,7 +276,13 @@ export default class Set {
 						path: target,
 						error: result.error,
 						attempted: result.attempted,
-						currentBody: truncateForFeedback(existing),
+						// Scoped ops carry just the lines at the failed range
+						// (already small, targeted feedback). Unscoped ops
+						// fall back to the truncated whole body.
+						currentBody:
+							result.currentBody != null
+								? result.currentBody
+								: truncateForFeedback(existing),
 					},
 				});
 				return;
@@ -449,13 +455,60 @@ export default class Set {
 				}
 				body = result.patch;
 			} else if (op.op === "search_replace") {
-				const result = Hedberg.replace(body, op.search, op.replace);
-				if (result.error) {
-					return { body, error: result.error, attempted: op.search };
+				if (op.scope) {
+					const result = Set.#applyScopedReplace(body, op);
+					if (result.error) {
+						return {
+							body,
+							error: result.error,
+							attempted: result.attempted,
+							currentBody: result.currentBody,
+						};
+					}
+					body = result.body;
+				} else {
+					const result = Hedberg.replace(body, op.search, op.replace);
+					if (result.error) {
+						return { body, error: result.error, attempted: op.search };
+					}
+					body = result.patch;
 				}
-				body = result.patch;
 			}
 		}
 		return { body, error: null, attempted: null };
+	}
+
+	// Scoped SEARCH/REPLACE: `<<SEARCH[N-M]…SEARCH[N-M]<<REPLACE…REPLACE`.
+	// Lines N..M (1-indexed, inclusive) of `body` are replaced by `op.replace`.
+	// If `op.search` is non-empty, it must exactly match the current text at
+	// that range (content verification on top of the positional scope). An
+	// empty `op.search` is the trust-the-numbers form — undocumented but
+	// supported. Out-of-range or content-mismatch produces a `conflict` so
+	// the model gets the actual range body back as feedback.
+	static #applyScopedReplace(body, op) {
+		const { start, end } = op.scope;
+		const lines = body.split("\n");
+		if (start < 1 || end < start || end > lines.length) {
+			return {
+				error: `SEARCH[${start}${start === end ? "" : `-${end}`}] is out of range; current body has ${lines.length} line${lines.length === 1 ? "" : "s"}.`,
+				attempted: op.replace,
+				currentBody: body,
+			};
+		}
+		const actual = lines.slice(start - 1, end).join("\n");
+		if (op.search !== "" && op.search !== actual) {
+			return {
+				error: `SEARCH[${start}${start === end ? "" : `-${end}`}] content does not match the current lines at that range.`,
+				attempted: op.search,
+				currentBody: actual,
+			};
+		}
+		const replaceLines = op.replace === "" ? [] : op.replace.split("\n");
+		const next = [
+			...lines.slice(0, start - 1),
+			...replaceLines,
+			...lines.slice(end),
+		];
+		return { body: next.join("\n") };
 	}
 }

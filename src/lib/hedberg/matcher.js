@@ -61,13 +61,21 @@ export default class HeuristicMatcher {
 		const searchLines = searchBlock.split(/\r?\n/);
 		const fileLines = entryBody.split(/\r?\n/);
 
-		// 1. Exact Match Attempt (line-boundary substring search)
+		// 1. Exact Match Attempt (line-boundary substring search).
+		// Requires BOTH start and end of the match to land on line
+		// boundaries — prefix-only matches (e.g. SEARCH `Foo` against
+		// body line `Foo (extra)`) used to splice mid-line and corrupt
+		// the surrounding content.
 		let exactIdx = entryBody.indexOf(searchBlock);
 		let lastExactIdx = -1;
 		let exactCount = 0;
 		while (exactIdx !== -1) {
-			const atLineBoundary = exactIdx === 0 || entryBody[exactIdx - 1] === "\n";
-			if (atLineBoundary) {
+			const startAtBoundary =
+				exactIdx === 0 || entryBody[exactIdx - 1] === "\n";
+			const endPos = exactIdx + searchBlock.length;
+			const endAtBoundary =
+				endPos === entryBody.length || entryBody[endPos] === "\n";
+			if (startAtBoundary && endAtBoundary) {
 				exactCount++;
 				lastExactIdx = exactIdx;
 			}

@@ -339,3 +339,74 @@ describe("extractSingleHeredoc — generic plugin body wrapper", () => {
 		});
 	});
 });
+
+describe("parseMarkerBody — scoped SEARCH/REPLACE", () => {
+	it("single-line scope: SEARCH[5] parses as search_replace with scope.start=end=5", () => {
+		const r = parseMarkerBody(
+			"<<SEARCH[5]\nold line\nSEARCH[5]<<REPLACE\nnew line\nREPLACE",
+		);
+		assert.deepEqual(r.ops, [
+			{
+				op: "search_replace",
+				search: "old line",
+				replace: "new line",
+				scope: { start: 5, end: 5 },
+			},
+		]);
+	});
+
+	it("range scope: SEARCH[5-10] parses as search_replace with scope.start=5 end=10", () => {
+		const r = parseMarkerBody(
+			"<<SEARCH[5-10]\nold block\nSEARCH[5-10]<<REPLACE\nnew block\nREPLACE",
+		);
+		assert.deepEqual(r.ops, [
+			{
+				op: "search_replace",
+				search: "old block",
+				replace: "new block",
+				scope: { start: 5, end: 10 },
+			},
+		]);
+	});
+
+	it("close marker must repeat the scope verbatim", () => {
+		// SEARCH[5] opener cannot pair with SEARCH closer.
+		const r = parseMarkerBody(
+			"<<SEARCH[5]\nold\nSEARCH<<REPLACE\nnew\nREPLACE",
+		);
+		assert.equal(r.ops, null);
+		assert.match(r.error, /unclosed/);
+	});
+
+	it("empty SEARCH body (trust-the-numbers form, undocumented)", () => {
+		const r = parseMarkerBody(
+			"<<SEARCH[5-7]\nSEARCH[5-7]<<REPLACE\nnew block\nREPLACE",
+		);
+		assert.deepEqual(r.ops, [
+			{
+				op: "search_replace",
+				search: "",
+				replace: "new block",
+				scope: { start: 5, end: 7 },
+			},
+		]);
+	});
+
+	it("unscoped SEARCH/REPLACE still parses with no scope on the op", () => {
+		const r = parseMarkerBody(
+			"<<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE",
+		);
+		assert.deepEqual(r.ops, [
+			{ op: "search_replace", search: "old", replace: "new" },
+		]);
+	});
+
+	it("multi-hunk scoped + unscoped in the same body", () => {
+		const body =
+			"<<SEARCH[3-3]\nA\nSEARCH[3-3]<<REPLACE\na\nREPLACE<<SEARCH\nB\nSEARCH<<REPLACE\nb\nREPLACE";
+		const r = parseMarkerBody(body);
+		assert.equal(r.ops.length, 2);
+		assert.deepEqual(r.ops[0].scope, { start: 3, end: 3 });
+		assert.equal(r.ops[1].scope, undefined);
+	});
+});

@@ -327,18 +327,33 @@ describe("file freshness (@filesystem_freshness)", () => {
 		}
 
 		it("NEW file synthesizes log://*/<turn>/*/set with empty-SEARCH body + attrs.external", async () => {
+			// A genuine "new file" event is a file that appeared
+			// BETWEEN scans. The bootstrap scan establishes the baseline
+			// (no log injection); a subsequent scan picks up files that
+			// weren't there before.
 			const root = await makeGitProject("new");
-			writeFileSync(join(root, "fresh.md"), "hello world\n");
+			writeFileSync(join(root, "baseline.md"), "preexisting\n");
 			await commit(root);
 
 			const { runId, projectId } = await seedActiveRun(
 				"phase3_new",
 				root,
 			);
-			const e = await fireScan(runId, projectId, root, 1);
+			// Bootstrap scan (turn 1): baseline.md lands as a file entry,
+			// no log injection.
+			await fireScan(runId, projectId, root, 1);
 
-			const log = await findLogEntry(e, runId, "set", 1);
-			assert.ok(log, "log://*/1/*/set entry synthesized");
+			// Between turns: a new file appears on disk and gets git-
+			// tracked so getMappableFiles picks it up on the next scan.
+			writeFileSync(join(root, "fresh.md"), "hello world\n");
+			await commit(root);
+
+			// Subsequent scan (turn 2): scanner sees the appearance and
+			// synthesizes the log entry.
+			const e = await fireScan(runId, projectId, root, 2);
+
+			const log = await findLogEntry(e, runId, "set", 2);
+			assert.ok(log, "log://*/2/*/set entry synthesized");
 			const attrs =
 				typeof log.attributes === "string"
 					? JSON.parse(log.attributes)
@@ -347,6 +362,30 @@ describe("file freshness (@filesystem_freshness)", () => {
 			assert.strictEqual(attrs.external, true);
 			assert.match(log.body, /^<<SEARCH\nSEARCH<<REPLACE/);
 			assert.match(log.body, /hello world/);
+		});
+
+		it("bootstrap scan (no prior file entries): no log entries injected, files land as baseline", async () => {
+			const root = await makeGitProject("bootstrap");
+			writeFileSync(join(root, "a.md"), "alpha\n");
+			writeFileSync(join(root, "b.md"), "beta\n");
+			await commit(root);
+
+			const { runId, projectId } = await seedActiveRun(
+				"phase3_bootstrap",
+				root,
+			);
+			const e = await fireScan(runId, projectId, root, 1);
+
+			// No log://*/1/*/set entries — every file is baseline, not delta.
+			const rows = await e.getEntriesByPattern(runId, "log://*", null);
+			const setLogs = rows.filter((r) =>
+				/^log:\/\/\d+\/1\/\d+\/set$/.test(r.path),
+			);
+			assert.equal(setLogs.length, 0, "no NEW-file injections at bootstrap");
+
+			// Both files still landed as bare file entries.
+			assert.ok(await e.getBody(runId, "a.md"));
+			assert.ok(await e.getBody(runId, "b.md"));
 		});
 
 		it("modified file synthesizes log://*/<turn>/*/set with SEARCH/REPLACE pair + attrs.patch (udiff)", async () => {

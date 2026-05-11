@@ -434,7 +434,11 @@ describe("Handler dispatch", () => {
 					path: "known://config",
 					inner: "",
 					operations: [
-						{ op: "search_replace", search: "3000", replace: "8080" },
+						{
+							op: "search_replace",
+							search: "port=3000",
+							replace: "port=8080",
+						},
 					],
 				},
 				state: "resolved",
