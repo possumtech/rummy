@@ -18,11 +18,13 @@ Example:
 	NEW</set>
 
 	<set path="known://plan"><<SEARCH
-	- [ ] Discover key, relevant information
+	- [ ] Distill key, relevant information into topical, taxonomized, tagged, and referenced known entries
+	- [ ] Define the answer or solution
 	SEARCH<<REPLACE
-	- [ ] Discover key, relevant information about French capital
-	   - [ ] Locate authoritative capital source
-	   - [ ] Cross-check with secondary source
+	- [ ] Distill key, relevant information about France into topical, taxonomized, tagged, and referenced known entries
+	  - [ ] Disambiguate the term "capital"
+	- [ ] Define the answer or solution
+	  - [ ] Confirm and reference credible sources
 	REPLACE</set>
 
 	<set path="unknown://countries/france/capital" tags="RESOLVED" archive/>

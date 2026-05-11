@@ -13,7 +13,7 @@ YOU SHOULD ensure that you have enough `tokensFree` space available before writi
 
 * Operative Labels: ({SEARCH/REPLACE}|NEW|PREPEND|APPEND|DELETE) dictate the type of edit.
 	<<SEARCH[LineFirst]SEARCH[LineFinal]<<REPLACE{replacement literal text}REPLACE — Replace line number range with literal text
-	<<SEARCH{match entire, exact, literal line(s) of text}SEARCH<<REPLACE{replacement literal text}REPLACE — Replace matching literal text
+	<<SEARCH{match exact, literal line(s) of text to entirely replace}SEARCH<<REPLACE{replacement text}REPLACE — Replace matching text
 	<<NEW{new literal text}NEW — Create (or clobber) entry content
 	<<PREPEND{new literal text}PREPEND — Prepend content at beginning of existing entry
 	<<APPEND{new literal text}APPEND — Append content to end of existing entry
