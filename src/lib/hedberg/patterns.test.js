@@ -178,6 +178,75 @@ describe("hedberg", () => {
 		});
 	});
 
+	// Scheme paths are keyed identifiers, not hierarchical filesystems.
+	// Every standalone `*` in a scheme path is recursive — matches
+	// across `/`. Lets the model use natural-looking patterns like
+	// `log://1/*` and `log://1/3/*` for bulk operations without
+	// learning a `**` rule.
+	describe("scheme-path globs match across `/`", () => {
+		it("log://* matches deep log paths", () => {
+			assert.equal(
+				hedmatch("log://*", "log://1/3/2/get"),
+				true,
+				"top-level * in scheme path is recursive",
+			);
+		});
+
+		it("log://1/* matches all under loop 1 (mid-path *)", () => {
+			assert.equal(
+				hedmatch("log://1/*", "log://1/3/2/get"),
+				true,
+				"mid-path * in scheme path is recursive",
+			);
+			assert.equal(
+				hedmatch("log://1/*", "log://2/3/2/get"),
+				false,
+				"different prefix doesn't match",
+			);
+		});
+
+		it("log://1/3/* matches all of loop 1 turn 3", () => {
+			assert.equal(hedmatch("log://1/3/*", "log://1/3/2/get"), true);
+			assert.equal(hedmatch("log://1/3/*", "log://1/3/5/set"), true);
+			assert.equal(hedmatch("log://1/3/*", "log://1/4/2/get"), false);
+		});
+
+		it("log://1/** also works (explicit recursive)", () => {
+			assert.equal(hedmatch("log://1/**", "log://1/3/2/get"), true);
+		});
+
+		it("known://countries/france/* matches deep known paths", () => {
+			assert.equal(
+				hedmatch(
+					"known://countries/france/*",
+					"known://countries/france/capital",
+				),
+				true,
+			);
+			assert.equal(
+				hedmatch(
+					"known://countries/france/*",
+					"known://countries/france/cities/paris",
+				),
+				true,
+				"recursive — matches deeper paths too",
+			);
+		});
+
+		it("bare-path globs are still single-segment (no scheme = filesystem semantics)", () => {
+			assert.equal(
+				hedmatch("src/*.js", "src/app.js"),
+				true,
+				"single * matches one segment",
+			);
+			assert.equal(
+				hedmatch("src/*.js", "src/foo/app.js"),
+				false,
+				"single * does NOT cross / in filesystem paths",
+			);
+		});
+	});
+
 	describe("literal detection (default)", () => {
 		it("plain text without pattern chars is literal", () => {
 			assert.equal(hedmatch(":AI[]", ":AI[]"), true);

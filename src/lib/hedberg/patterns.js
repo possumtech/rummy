@@ -198,7 +198,7 @@ function compile(pattern) {
 			return { type, pattern };
 		case "glob": {
 			const escaped = pattern.replace(/([()])/g, "\\$1");
-			// Scheme paths have no directory structure — * matches everything
+			// Scheme paths have no directory structure — * matches everything.
 			const opts = escaped.includes("://")
 				? {
 						dot: true,
@@ -209,9 +209,12 @@ function compile(pattern) {
 					}
 				: { dot: true, nobrace: true, noextglob: true };
 
-			// For scheme paths, convert single * after :// to ** so it crosses "/"
+			// For scheme paths, every standalone single `*` is recursive:
+			// scheme paths are keyed identifiers, not hierarchical filesystems,
+			// so `log://1/*` and `log://1/3/*` should match across `/` the
+			// same way `log://*` does. Lookbehind/lookahead skip `**` itself.
 			const prepared = escaped.includes("://")
-				? escaped.replace(/:\/\/\*(?!\*)/, "://**")
+				? escaped.replace(/(?<!\*)\*(?!\*)/g, "**")
 				: escaped;
 
 			const isMatch = picomatch(prepared, opts);

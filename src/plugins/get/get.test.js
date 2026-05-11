@@ -75,7 +75,7 @@ describe("Get partial read (lineFirst/lineFinal)", () => {
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
 		// Body is the slice content only — no header. Range info lives
-		// in attrs (firstLine/finalLine/totalLines).
+		// in attrs (lineFirst/lineFinal/lineTotal).
 		const slice = result.body;
 		assert.ok(slice.startsWith("line 10"));
 		assert.ok(slice.includes("line 10"));
@@ -83,7 +83,7 @@ describe("Get partial read (lineFirst/lineFinal)", () => {
 		assert.ok(!slice.includes("line 15"));
 	});
 
-	it("tags the slice log with firstLine/finalLine/totalLines for renderLogTag", async () => {
+	it("tags the slice log with lineFirst/lineFinal/lineTotal for renderLogTag", async () => {
 		const body = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join(
 			"\n",
 		);
@@ -97,9 +97,9 @@ describe("Get partial read (lineFirst/lineFinal)", () => {
 
 		const { attributes } = store.upserted[0];
 		assert.strictEqual(attributes.path, "src/agent/AgentLoop.js");
-		assert.strictEqual(attributes.firstLine, 10);
-		assert.strictEqual(attributes.finalLine, 14);
-		assert.strictEqual(attributes.totalLines, 100);
+		assert.strictEqual(attributes.lineFirst, 10);
+		assert.strictEqual(attributes.lineFinal, 14);
+		assert.strictEqual(attributes.lineTotal, 100);
 	});
 
 	it("lineFinal only defaults start to line 1", async () => {
@@ -207,9 +207,9 @@ describe("Get partial read (lineFirst/lineFinal)", () => {
 		assert.strictEqual(store.upserted.length, 1);
 		const result = store.upserted[0];
 		assert.strictEqual(result.state, "resolved");
-		assert.equal(result.attributes.firstLine, 1);
-		assert.equal(result.attributes.finalLine, 5);
-		assert.equal(result.attributes.totalLines, 50);
+		assert.equal(result.attributes.lineFirst, 1);
+		assert.equal(result.attributes.lineFinal, 5);
+		assert.equal(result.attributes.lineTotal, 50);
 		assert.ok(result.body.startsWith("line 1"));
 	});
 

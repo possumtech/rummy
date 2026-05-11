@@ -21,9 +21,7 @@ export default class Log {
 		if (entries.length === 0) return content;
 		const rowsByPath = new Map();
 		for (const r of ctx.rows) rowsByPath.set(r.path, r);
-		const lines = entries.map((e) =>
-			renderLogTag(e, rowsByPath, ctx.expectedTokensFree),
-		);
+		const lines = entries.map((e) => renderLogTag(e, rowsByPath));
 		return `${content}<log>\n${lines.join("\n")}\n</log>\n`;
 	}
 }
@@ -44,7 +42,7 @@ function projectedBody(entry) {
 	return entry.body;
 }
 
-function renderLogTag(entry, _rowsByPath, expectedTokensFree = null) {
+function renderLogTag(entry, _rowsByPath) {
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -57,7 +55,7 @@ function renderLogTag(entry, _rowsByPath, expectedTokensFree = null) {
 			: entry.state
 				? stateToStatus(entry.state, entry.outcome)
 				: null;
-	const isSlice = attrs?.firstLine != null;
+	const isSlice = attrs?.lineFirst != null && attrs?.lineFinal != null;
 
 	// Tokens/lines come from the entry itself — its body is what costs
 	// budget in <log>. Slim recaps (sh/mv/cp/rm/ask_user) have empty body
@@ -77,14 +75,17 @@ function renderLogTag(entry, _rowsByPath, expectedTokensFree = null) {
 	if (typeof attrs?.to === "string") meta.to = attrs.to;
 	if (typeof attrs?.question === "string") meta.question = attrs.question;
 	if (typeof attrs?.answer === "string") meta.answer = attrs.answer;
-	if (attrs?.lineFirst != null) meta.lineFirst = attrs.lineFirst;
-	if (attrs?.lineFinal != null) meta.lineFinal = attrs.lineFinal;
 	if (attrs?.manifest !== undefined) meta.manifest = true;
 	if (attrs?.channel === 1) meta.channel = "stdout";
 	else if (attrs?.channel === 2) meta.channel = "stderr";
 	if (typeof attrs?.tags === "string") meta.tags = attrs.tags.slice(0, 80);
 	if (isSlice) {
-		meta.lines = `${attrs.firstLine}-${attrs.finalLine}/${attrs.totalLines}`;
+		// Slice envelope carries resolved bounds + source total as
+		// discrete fields. Same vocabulary the model wrote in its
+		// emission (lineFirst/lineFinal/lineTotal).
+		meta.lineFirst = attrs.lineFirst;
+		meta.lineFinal = attrs.lineFinal;
+		if (attrs?.lineTotal != null) meta.lineTotal = attrs.lineTotal;
 	} else if (lineSource != null) {
 		meta.lines = lineSource;
 	}
@@ -94,17 +95,6 @@ function renderLogTag(entry, _rowsByPath, expectedTokensFree = null) {
 	}
 	if (attrs?.afterActionTokens != null) {
 		meta.afterActionTokens = attrs.afterActionTokens;
-	}
-	// `overflow: true` when this log entry's own body (typically a
-	// fat <get> result) won't fit in current `tokensFree`. Tells the
-	// model "this prior fetch is over-budget if kept around" — useful
-	// for archive discipline.
-	if (
-		expectedTokensFree != null &&
-		tokenSource != null &&
-		tokenSource > expectedTokensFree
-	) {
-		meta.overflow = true;
 	}
 
 	return renderEntry(entry.path, meta, projectedBody(entry));

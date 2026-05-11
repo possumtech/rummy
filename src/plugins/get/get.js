@@ -90,7 +90,11 @@ export default class Get {
 		}
 
 		// Partial read: slice into attrs.slice, no promotion. Multi-match
-		// emits one section per match.
+		// emits one section per match. Single vocabulary: lineFirst /
+		// lineFinal / lineTotal — same names the model wrote in its
+		// emission. Attrs carry RESOLVED bounds (after clamping /
+		// negative-offset resolution); the request itself is preserved
+		// in the model's own emission archive (`assistant://N`).
 		if (lineFirst !== null || lineFinal !== null) {
 			if (matches.length === 0) {
 				await store.set({
@@ -116,16 +120,14 @@ export default class Get {
 			const sliceBody = sections.map((s) => s.text).join("\n\n");
 			const attributes = {
 				path: target,
-				lineFirst,
-				lineFinal,
 				beforeActionTokens: 0,
 				afterActionTokens: countTokens(sliceBody),
 			};
 			if (sections.length === 1) {
 				const only = sections[0];
-				attributes.firstLine = only.firstLine;
-				attributes.finalLine = only.finalLine;
-				attributes.totalLines = only.total;
+				attributes.lineFirst = only.lineFirst;
+				attributes.lineFinal = only.lineFinal;
+				attributes.lineTotal = only.lineTotal;
 			} else {
 				attributes.matchCount = sections.length;
 			}
@@ -205,23 +207,23 @@ export default class Get {
 
 function sliceSection(match, lineFirst, lineFinal) {
 	const allLines = match.body.split("\n");
-	const total = allLines.length;
-	const firstLine =
+	const lineTotal = allLines.length;
+	const resolvedFirst =
 		lineFirst == null
 			? 1
 			: lineFirst < 0
-				? Math.max(1, total + lineFirst + 1)
+				? Math.max(1, lineTotal + lineFirst + 1)
 				: Math.max(1, lineFirst);
-	const finalLine =
+	const resolvedFinal =
 		lineFinal == null
-			? total
+			? lineTotal
 			: lineFinal < 0
-				? Math.max(firstLine, total + lineFinal + 1)
-				: Math.min(total, Math.max(firstLine, lineFinal));
-	const startIdx = firstLine - 1;
-	const endIdx = finalLine;
+				? Math.max(resolvedFirst, lineTotal + lineFinal + 1)
+				: Math.min(lineTotal, Math.max(resolvedFirst, lineFinal));
+	const startIdx = resolvedFirst - 1;
+	const endIdx = resolvedFinal;
 	// Body is the slice content only. Range info lives in the JSON
-	// envelope (firstLine/finalLine/totalLines attrs). No header in body.
+	// envelope (lineFirst/lineFinal/lineTotal attrs). No header in body.
 	const text = allLines.slice(startIdx, endIdx).join("\n");
-	return { text, firstLine, finalLine: endIdx, total };
+	return { text, lineFirst: resolvedFirst, lineFinal: endIdx, lineTotal };
 }

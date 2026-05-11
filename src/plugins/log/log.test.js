@@ -143,7 +143,7 @@ describe("log plugin tokens= invariant", () => {
 		assert.doesNotMatch(out, /"action":"env"[^}]*"tokens":/);
 	});
 
-	it("<get> slice render: lines= attr + slice tokens (the slice body)", async () => {
+	it("<get> slice render: lineFirst/lineFinal/lineTotal discrete fields + slice tokens", async () => {
 		const sliceLog = logRow({
 			action: "get",
 			seq: 1,
@@ -151,13 +151,15 @@ describe("log plugin tokens= invariant", () => {
 			tokens: 200,
 			attrs: {
 				path: "https://example.com/page",
-				firstLine: 1,
-				finalLine: 50,
-				totalLines: 262,
+				lineFirst: 1,
+				lineFinal: 50,
+				lineTotal: 262,
 			},
 		});
 		const out = await render([sliceLog]);
-		assert.match(out, /"action":"get"[^}]*"lines":"1-50\/262"/);
+		assert.match(out, /"action":"get"[^}]*"lineFirst":1/);
+		assert.match(out, /"action":"get"[^}]*"lineFinal":50/);
+		assert.match(out, /"action":"get"[^}]*"lineTotal":262/);
 		assert.match(out, /"action":"get"[^}]*"tokens":200/);
 	});
 });
