@@ -7,9 +7,10 @@ YOU SHOULD ensure that you have enough `tokensFree` space available before writi
 * `archive`: demote an entry from `<index>`.
 * `index`: promote an archived entry to `<index>`.
 * archive/index are mutually exclusive on the same `<set>`.
-* When copying from log entries, remember that the line numbers and tab are not part of the source document
+* When matching against lines, remember to search for the exact literal text of the most recent version of the entry.
+* When copying from log entries, remember that the line numbers and tab are not part of the source document.
 
-* The <set/> command's entry edit functionality requires matching HEREDOC string literal syntax.
+* The <set/> command's entry edit functionality requires paired HEREDOC string literal syntax.
 
 * Operative Labels: ({SEARCH/REPLACE}|NEW|PREPEND|APPEND|DELETE) dictate the type of edit.
 	<<SEARCH[LineFirst]SEARCH[LineFinal]<<REPLACE{replacement literal text}REPLACE — Replace line number range with literal text
