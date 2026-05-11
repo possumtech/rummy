@@ -303,7 +303,73 @@ See SPEC.md anchors `state_visibility`, `file_freshness`,
 
 ## Open Items
 
-(none — last batch all landed; see git log for what shipped this cycle)
+### Budget cascade: align implementation with documented behavior
+
+Surfaced 2026-05-11 by `test/e2e/demo_essay.test.js` (Rumsfeld
+prompt). Model fetched `en.wikipedia.org/wiki/Donald_Rumsfeld` on
+T4 (~76K tokens); T5-T7 all died with `LLM context exceeded`;
+strike-streak fired as "Loop detected" → terminal 499. Digest:
+`test/digest/digest.md`. Three engine layers compounded:
+
+1. Pre-flight gate uses prior-turn's `context_tokens` as baseline.
+   Doesn't reflect new fat content authored *during* the prior
+   turn. Today's grinder thinks the packet is fine and never fires.
+2. Pre-flight rejection is best-effort: when slim can't fit, the
+   over-budget packet is dispatched anyway. Provider returns 400.
+3. `ContextExceededError` catch logs 413 and ends the turn. The
+   fat entry is untouched. Next turn assembles identically and
+   fails identically. Three failures → cycle-detection
+   misclassifies as repetition.
+
+**Why:** Each layer was designed to handle this scenario alone;
+each is broken. Any single fix would have saved the run.
+
+**TDD plan: write the failing tests first, then the engine fix
+each one demands.** Existing budget tests at
+`test/integration/budget_math.test.js` and `:cascade` all pass
+because they pass `lastPromptTokens: 0`, dodging the broken path.
+The bug only manifests when `lastPromptTokens > 0` AND the prior
+count underestimates the current packet.
+
+### Tests-first (write, watch fail, then fix)
+
+| # | File | Test name | What it pins | Expected failure today |
+|---|---|---|---|---|
+| T1 | new `test/integration/budget_preflight_uses_actual_packet.test.js` | "grinder gates on assembled packet, not prior `context_tokens`" | Seed prior `context_tokens=5000`; build current messages totaling > ceiling; call `enforce({lastPromptTokens: 5000})`; assert grinder reclaims fat replays. | Current `#check` short-circuits on `lastPromptTokens > 0` → returns `ok: true` → no reclamation. |
+| T2 | new `test/integration/budget_hard_413_shortcircuits_dispatch.test.js` | "over-budget packet that can't be slimmed never reaches the LLM" | Seed an over-budget packet with no fat replays; invoke full `turn.beforeDispatch` chain; mock provider; assert provider was not called and a hard 413 surfaced. | Caller doesn't check `result.ok`; dispatches regardless. |
+| T3 | new `test/e2e/budget_recovery.test.js` | "context-exceeded triggers slim-and-retry, terminal 413 on second failure" | Mock provider: first call throws `ContextExceededError`, second returns normal completion → run reaches 200. Variant: both calls throw → run exits at terminal **413**, not 499 "Loop detected." | No retry path exists; three throws roll into cycle-detection. |
+| T4 | new `test/integration/budget_413_not_loop_detected.test.js` | "repeated 413 doesn't misclassify as repetition strike" | Inject three consecutive 413 errors; assert verdict resolves to terminal 413, not 499. | Strike-streak treats them as cycle. |
+
+### Engine fixes (one per failing test)
+
+| # | File | Change | Makes which test pass |
+|---|---|---|---|
+| E1 | `src/plugins/budget/budget.js:174-185` | `#check` always `measureMessages(messages)`. Drop the `lastPromptTokens > 0 ? ...` ternary for gate decisions. `lastPromptTokens` stays where it's used for `max_tokens` derivation (`src/agent/TurnExecutor.js:167`). | T1 |
+| E2 | `src/plugins/budget/budget.js:316-324` (`#failed`) + the `turn.beforeDispatch` caller in `src/agent/TurnExecutor.js` | Hard 413 must short-circuit dispatch. Caller checks `result.ok` and aborts. | T2 |
+| E3 | `src/agent/TurnExecutor.js:170-189` | On `ContextExceededError`: invoke `Budget#enforce` aggressively (reclaim ALL prior `<get>`/`<set>` log bodies, not just t-1), retry once. If second attempt also fails, exit run with terminal **413**. | T3 |
+| E4 | cycle-detection plugin (locate) | Treat 413 context-exceeded as structural overflow, not repetition. | T4 |
+
+### Doc + spec alignment (after fixes pass)
+
+| # | File | Change |
+|---|---|---|
+| D1 | `SPEC.md:1098-1101` + `SPEC.md:1141-1147` | Rewrite: "measure the assembled messages" instead of "use prior-turn `context_tokens`." Note: `lastPromptTokens` retained ONLY for `max_tokens` derivation. |
+| D2 | `SPEC.md#budget_enforcement` anchors | Add anchors so T1-T4 carry `@budget_enforcement` references. Update `npm run test:spec` coverage. |
+| D3 | `test/e2e/demo_essay.test.js` | Annotate: ingest a Wikipedia-sized page and recover. Becomes the integration witness for E1+E3. |
+
+**Order:** T1 → E1 → T2 → E2 → T3 → E3 → T4 → E4 → D1 → D2 → D3.
+Each test added → run → confirm red → apply engine fix → confirm
+green → next test. Standard red-green-refactor.
+
+**Phase 3 (model-side hardening, gated on engine green):**
+strengthen `rummy.web/main/src/search.md:11` and add a MUST in
+`src/plugins/get/getDoc.md` tying `tokens` vs `tokensFree`.
+
+**Phase 3 (model-side hardening, gated on Phase 1):** strengthen
+`rummy.web/main/src/search.md:11` and add a MUST in
+`src/plugins/get/getDoc.md` tying `tokens` vs `tokensFree`.
+Skipped for now — won't help if the engine doesn't enforce, and
+adds packet weight every turn.
 
 ## Scope Discipline
 

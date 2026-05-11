@@ -15,13 +15,13 @@ Example:
 	- [ ] Deliver
 	NEW</set>
 	
-	<set path="unknown://countries/france/capital" tags="countries,france,capital,geography"><<NEW
+	<set path="unknown://countries/france/capital" tags="france,geography,trivia"><<NEW
 	What is the capital of France?
 	NEW</set>
-	<set path="unknown://countries/france/population" tags="countries,france,population,demographics"><<NEW
+	<set path="unknown://countries/france/population" tags="countries,france,population,demographics,trivia"><<NEW
 	What is the population of France?
 	NEW</set>
-	<set path="unknown://countries/france/area" tags="countries,france,area,geography"><<NEW
+	<set path="unknown://countries/france/area" tags="countries,france,area,geography,trivia"><<NEW
 	What is the area of France?
 	NEW</set>
 	

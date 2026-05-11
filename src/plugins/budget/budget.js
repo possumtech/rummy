@@ -69,7 +69,6 @@ export default class Budget {
 			contextSize: packet.contextSize,
 			messages: packet.messages,
 			rows: packet.rows,
-			lastPromptTokens: packet.lastPromptTokens,
 			ctx: ctxBag.ctx,
 			rummy: ctxBag.rummy,
 		});
@@ -171,9 +170,16 @@ export default class Budget {
 		return `${content}${opening}\n${table}\n</turn>\n`;
 	}
 
-	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {
-		const totalTokens =
-			lastPromptTokens > 0 ? lastPromptTokens : measureMessages(messages);
+	// Gate decision MUST measure the assembled packet about to go out.
+	// `lastPromptTokens` (prior turn's API-reported `prompt_tokens`)
+	// reflects what came INTO the prior turn — it does NOT account for
+	// the prior turn's emission landing as new entries on this turn's
+	// packet. Using it as a gate baseline silently lies when the prior
+	// turn produced fat content (e.g. a `<get>` of a large page).
+	// `lastPromptTokens` is retained where the value is genuine — see
+	// `src/agent/TurnExecutor.js` for `max_tokens` derivation.
+	#check({ contextSize, messages, rows }) {
+		const totalTokens = measureMessages(messages);
 		const b = computeBudget({ rows, contextSize, totalTokens });
 		return {
 			messages,
@@ -184,7 +190,7 @@ export default class Budget {
 		};
 	}
 
-	async #reassemble({ rows, ctx, rummy, contextSize, lastPromptTokens }) {
+	async #reassemble({ rows, ctx, rummy, contextSize }) {
 		return ContextAssembler.assembleFromTurnContext(
 			rows,
 			{
@@ -192,7 +198,7 @@ export default class Budget {
 				systemPrompt: ctx.systemPrompt,
 				contextSize,
 				toolSet: ctx.toolSet,
-				lastContextTokens: lastPromptTokens,
+				lastContextTokens: 0,
 				turn: ctx.turn,
 			},
 			rummy.hooks,
@@ -205,24 +211,12 @@ export default class Budget {
 	// model owns visibility there. Walking back across turns is fine
 	// because fat log bodies are replays of catalog content; 413'ing
 	// loses no information (model can re-<get>).
-	async enforce({
-		contextSize,
-		messages,
-		rows,
-		lastPromptTokens = 0,
-		ctx,
-		rummy,
-	}) {
+	async enforce({ contextSize, messages, rows, ctx, rummy }) {
 		if (!contextSize) {
 			return { messages, rows, assembledTokens: 0, ok: true };
 		}
 
-		const first = this.#check({
-			contextSize,
-			messages,
-			rows,
-			lastPromptTokens,
-		});
+		const first = this.#check({ contextSize, messages, rows });
 		if (first.ok) return first;
 
 		// Collect fat replay candidates: get/set log entries from turns
@@ -252,8 +246,14 @@ export default class Budget {
 		let remaining = first.overflow;
 		for (const c of candidates) {
 			if (remaining <= 0) break;
+			// loopId propagates so the entry's downstream onFailed
+			// cascade (Entries#fireFailed → hooks.error.log.emit →
+			// store.logPath) can mint a log path; turns.loop_id is
+			// NOT NULL.
 			await rummy.entries.set({
 				runId: ctx.runId,
+				loopId: ctx.loopId,
+				turn: ctx.turn,
 				path: c.row.path,
 				body: "",
 				state: "failed",
@@ -279,13 +279,11 @@ export default class Budget {
 			ctx,
 			rummy,
 			contextSize,
-			lastPromptTokens: 0,
 		});
 		const rechecked = this.#check({
 			contextSize,
 			messages: reMessages,
 			rows,
-			lastPromptTokens: 0,
 		});
 		await this.#emitOverflow(
 			rechecked.ok ? first.overflow : rechecked.overflow,

@@ -13,12 +13,12 @@ Example:
 
 ## Core Folksonomic System Architecture
 
-* index - Partial (indexed) list of entries in the Extended Context
-* archive - Entries in the Extended Context that aren't currently indexed (recallable by path or pattern)
+* index — Partial (indexed) list of entries in the Extended Context
+* archive — Entries in the Extended Context that aren't currently indexed (recallable by path or pattern)
 
-* log - Chronicle of commands and events in the current run
-* prompt - Current user prompt
-* turn - System information about the current turn
+* log — Chronicle of commands and events in the current run
+* prompt — Current user prompt
+* turn — System information about the current turn
 
 * `<set path="..." archive/>` — archive an entry
 * `<set path="..." index/>` — restore an archived entry to the index
@@ -31,12 +31,12 @@ YOU MUST avoid token budget overflow errors by never retrieving more tokens than
 
 ## Core Folksonomic XML Command Grammar
 
-<{set|get|mv|cp|rm} path="{path}" tags="{tags}" {archive|index} {manifest}>{body}</{set|get|mv|cp|rm}>
+<{set|get|mv|cp|rm} path="{path}" tags="{tags}" {manifest}>{body}</{set|get|mv|cp|rm}>
 
 ### path: Unified address scheme for memory entries, log entries, prompts, and project files
 
-* Accessing and modifying entries is unified for memory entries, log entries, prompts, and project files
-* Accepts patterns (glob, regex, jsonpath, xpath) for search and bulk operations
+* Accessing and modifying entries is unified for memory entries, log entries, prompts, and project files.
+* Accepts patterns (glob, regex, jsonpath, xpath) for search and bulk operations.
 
 ### tags: Enhance your memory with folksonomic tagging of entries
 

@@ -7,5 +7,5 @@ Example:
 	git log --oneline -3
 	EOF</env>
 
-YOU MUST NOT use <env></env> to read or list files — use <get path="*"/> instead
-YOU MUST NOT use <env></env> for commands with side effects
+YOU MUST NOT use <env></env> to read or list files — use <get path="*"/> instead.
+YOU MUST NOT use <env></env> for commands with side effects.

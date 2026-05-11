@@ -103,43 +103,54 @@ describe("project manifest (@project_manifest)", () => {
 		const body = await entries.getBody(runId, "repo://manifest");
 		assert.ok(body, "manifest body exists");
 
-		// Two sections joined by a markdown horizontal rule.
-		const idx = body.indexOf("\n\n---\n\n");
-		assert.ok(idx > 0, "body has the rollup/flat-list delimiter");
-		const rollup = body.slice(0, idx);
-		const flat = body.slice(idx + "\n\n---\n\n".length);
+		// Canonical JSON-per-row: rollup rows (paths ending in /) first,
+		// then per-file rows. No separator.
+		assert.ok(!body.includes("---"), "no separator line");
+		const lines = body.split("\n").filter((l) => l.length > 0);
+		const rollupLines = lines.filter((l) => {
+			try {
+				return JSON.parse(l).path.endsWith("/");
+			} catch {
+				return false;
+			}
+		});
+		const flatLines = lines.filter((l) => {
+			try {
+				return !JSON.parse(l).path.endsWith("/");
+			} catch {
+				return false;
+			}
+		});
 
-		// Rollup lines: one JSON object per row,
-		// `{"path":"<dir>/","tokens":<N>}`. Root files under "./".
-		const rollupLines = rollup.split("\n").filter((l) => l.length > 0);
 		assert.ok(rollupLines.length > 0, "rollup lists at least one directory");
 		for (const line of rollupLines) {
 			const parsed = JSON.parse(line);
-			assert.equal(
-				typeof parsed.path,
-				"string",
-				`rollup row has string path — got ${JSON.stringify(line)}`,
-			);
-			assert.ok(
-				parsed.path.endsWith("/"),
-				`rollup path ends with / — got ${JSON.stringify(line)}`,
-			);
+			assert.equal(typeof parsed.path, "string");
 			assert.equal(typeof parsed.tokens, "number");
 		}
-		assert.match(rollup, /"path":"\.\/"/, "root files roll up under ./");
-		assert.match(rollup, /"path":"src\/"/, "src/ has its own rollup line");
+		assert.ok(
+			rollupLines.some((l) => JSON.parse(l).path === "./"),
+			"root files roll up under ./",
+		);
+		assert.ok(
+			rollupLines.some((l) => JSON.parse(l).path === "src/"),
+			"src/ has its own rollup line",
+		);
 
-		// Flat list: per-file `{"path":"<file>","tokens":<N>}` per row.
-		const flatLines = flat.split("\n").filter((l) => l.length > 0);
 		assert.ok(flatLines.length > 0, "flat list has files");
 		for (const line of flatLines) {
 			const parsed = JSON.parse(line);
 			assert.equal(typeof parsed.path, "string");
-			assert.ok(!parsed.path.endsWith("/"), "flat row is a file, not a dir");
 			assert.equal(typeof parsed.tokens, "number");
 		}
-		assert.match(flat, /README\.md/, "root README.md is named");
-		assert.match(flat, /src\/a\.js/, "nested files use full relative path");
+		assert.ok(
+			flatLines.some((l) => JSON.parse(l).path === "README.md"),
+			"root README.md is named",
+		);
+		assert.ok(
+			flatLines.some((l) => JSON.parse(l).path === "src/a.js"),
+			"nested files use full relative path",
+		);
 
 		assert.ok(!body.includes("##"), "no markdown headings");
 		assert.ok(!body.includes("Navigate"), "no navigation legend");

@@ -40,4 +40,4 @@ Example:
 	REPLACE</set>
 	<update status="200">Paris</update>
 
-YOU MUST terminate every turn with <update status="{102|200}">{ direct one-line answer or one-line summary }</update> (<= 80 chars)
+YOU MUST terminate every turn with <update status="{102|200}">{ direct one-line answer or one-line summary }</update> (<= 80 chars).

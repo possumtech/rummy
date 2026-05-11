@@ -24,7 +24,7 @@ async function waitForRunStatus(db, alias, targetStatuses, timeoutMs) {
 	return null;
 }
 
-describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_machine)", {
+describe("E2E: essay demo scenario reproduction (@notifications, @run_state_machine)", {
 	concurrency: 1,
 }, () => {
 	if (!model) {
@@ -33,8 +33,8 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 	}
 	let tdb, tserver, client;
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-	const projectRoot = join(tmpdir(), `rummy-hydro-${Date.now()}`);
-	const turnsHome = join(__dirname, "turns", `hydro_${stamp}`);
+	const projectRoot = join(tmpdir(), `rummy-essay-${Date.now()}`);
+	const turnsHome = join(__dirname, "turns", `essay_${stamp}`);
 
 	before(async () => {
 		// Use the default RUMMY_MAX_LOOP_TURNS (99). Capping low denies
@@ -47,12 +47,12 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 			'git init && git config user.email "t@t" && git config user.name T && git add . && git commit --no-verify -m "init"',
 			{ cwd: projectRoot },
 		);
-		tdb = await TestDb.create("hydro", { home: turnsHome });
+		tdb = await TestDb.create("essay", { home: turnsHome });
 		tserver = await TestServer.start(tdb);
 		client = new RpcClient(tserver.url);
 		await client.connect();
 		await client.call("rummy/hello", {
-			name: "hydro-test",
+			name: "essay-test",
 			projectRoot,
 			clientVersion: "2.0.0",
 		});
@@ -75,7 +75,7 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 
 		const startRes = await client.call("set", {
 			path: "run://",
-			body: "Write a brief OC_RIVERS.md about the hydrology of Orange County, Indiana. Three sections minimum: rivers, watersheds, and one other relevant aspect you investigate. Keep each section short.",
+			body: "Provide a three page essay on the life and achievements of Donald Rumsfeld. Write the essay to RUMSFELD.md.",
 			attributes: { model, mode: "act", yolo: true },
 		});
 		const alias = startRes.alias;
@@ -92,17 +92,17 @@ describe("E2E: hydrology demo scenario reproduction (@notifications, @run_state_
 
 		console.log(`[TEST] finalStatus=${finalStatus}  pulses=${pulses.length}`);
 
-		// Outcome-based: the deliverable must exist on disk with
-		// substantive content. Whichever wire-protocol path the model
-		// chose is its own business — the test cares that the user's
-		// intent ("write OC_RIVERS.md") was carried out.
+		// Outcome-based: RUMSFELD.md exists on disk with substantive
+		// content. The prompt pins the filename, so the test asserts
+		// against the exact deliverable the model was instructed to
+		// produce.
 		const deliverable = await fs
-			.readFile(join(projectRoot, "OC_RIVERS.md"), "utf8")
+			.readFile(join(projectRoot, "RUMSFELD.md"), "utf8")
 			.catch(() => null);
-		assert.ok(deliverable, "OC_RIVERS.md exists on disk");
+		assert.ok(deliverable, "RUMSFELD.md exists on disk");
 		assert.ok(
 			deliverable.length > 200,
-			`OC_RIVERS.md has substantive content (got ${deliverable?.length ?? 0} chars)`,
+			`RUMSFELD.md has substantive content (got ${deliverable?.length ?? 0} chars)`,
 		);
 
 		// Pulses fired during the run; client could reconcile via getEntries.
