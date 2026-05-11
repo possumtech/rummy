@@ -27,7 +27,9 @@ Example:
 
 	<set path="unknown://countries/france/capital" tags="RESOLVED" archive/>
 	<set path="trivia/capitals.csv" archive/>
-	{ archiving newly distilled and/or irrelevant entries every turn }
+	<set path="log://1/1/7/set" archive/>
+	<set path="log://1/1/8/get" archive/>
+	{ archiving newly distilled and/or irrelevant log entries every turn }
 
 	<set path="known://plan"><<SEARCH - [ ] Find the capital of France SEARCH<<REPLACE - [x] Find the capital of France REPLACE</set>
 	<update status="102">distilled the capital of France into known entry; archived the source</update>
@@ -42,5 +44,5 @@ Example:
 
 
 YOU MUST abide budget constraints, optimize context, maximize relevance, and resolve the prompt with the bulk and pattern matching functionality of the Folksonomic XML Commands.
-Entries marked `overflow` exceed `tokensFree`; attempting a full `<get>` will overflow unless you use `lineFirst`/`lineFinal` or archive other entries first.
+Entries marked `overflow` exceed `tokensFree`; attempting a full `<get>` will overflow unless you use `lineFirst`/`lineFinal` or archive other log entries first.
 YOU MUST terminate every turn with <update status="{102|200}">{ direct one-line answer or one-line summary }</update> (<= 80 chars).

@@ -166,6 +166,84 @@ describe("Message assembly", () => {
 		);
 	});
 
+	// Overflow flag: when an indexed entry's tokens exceed the
+	// expectedTokensFree estimate, its tile envelope carries
+	// `"overflow":true`. Uses materializeContext (the real flow) so
+	// rows are decorated with aTokens/bodyTokens before assembly.
+	it("overflow flag stamps on catalog tile when bodyTokens > expectedTokensFree", async () => {
+		const materializeContext = (
+			await import("../../src/agent/materializeContext.js")
+		).default;
+		await store.set({
+			runId: RUN_ID,
+			turn: TURN,
+			path: "known://big_fact",
+			body: Array(2000).fill("xxx").join(" "),
+			state: "resolved",
+			visibility: "indexed",
+		});
+		// Pretend the prior turn used most of the budget so
+		// expectedTokensFree comes out tight. create_turn + update_turn_stats.
+		const created = await tdb.db.create_turn.get({
+			run_id: RUN_ID,
+			loop_id: 1,
+			sequence: TURN,
+		});
+		await tdb.db.update_turn_stats.run({
+			id: created.id,
+			context_tokens: 8500,
+			reasoning_content: null,
+			prompt_tokens: 8500,
+			cached_tokens: 0,
+			completion_tokens: 0,
+			reasoning_tokens: 0,
+			total_tokens: 8500,
+			cost: 0,
+			response_metadata: "{}",
+		});
+		const { messages } = await materializeContext({
+			db: tdb.db,
+			hooks,
+			runId: RUN_ID,
+			loopId: 1,
+			turn: TURN + 1, // current turn reads PRIOR turn's context_tokens
+			systemPrompt: "test",
+			mode: "ask",
+			toolSet: hooks.tools.resolveForLoop("ask"),
+			contextSize: 10000,
+		});
+		const system = messages.find((m) => m.role === "system");
+		// Envelope renders BEFORE the `<<:::path` marker, not after.
+		assert.match(
+			system.content,
+			/\{[^}]*"overflow":true[^}]*\} <<:::known:\/\/big_fact/,
+			"big_fact tile envelope carries overflow:true",
+		);
+	});
+
+	it("overflow flag absent when bodyTokens <= expectedTokensFree", async () => {
+		const materializeContext = (
+			await import("../../src/agent/materializeContext.js")
+		).default;
+		const { messages } = await materializeContext({
+			db: tdb.db,
+			hooks,
+			runId: RUN_ID,
+			loopId: 1,
+			turn: TURN + 2,
+			systemPrompt: "test",
+			mode: "ask",
+			toolSet: hooks.tools.resolveForLoop("ask"),
+			contextSize: 100000,
+		});
+		const system = messages.find((m) => m.role === "system");
+		assert.doesNotMatch(
+			system.content,
+			/\{[^}]*"overflow":true[^}]*\} <<:::known:\/\/big_fact/,
+			"big_fact tile should NOT carry overflow when budget is generous",
+		);
+	});
+
 	it("manifest result shows MANIFEST prefix", async () => {
 		await store.set({
 			runId: RUN_ID,

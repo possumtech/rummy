@@ -20,7 +20,7 @@ Example:
 * prompt — Current user prompt
 * turn — System information about the current turn
 
-* `<set path="..." archive/>` — archive an entry
+* `<set path="..." archive/>` — archive an entry (reversible)
 * `<set path="..." index/>` — restore an archived entry to the index
 * `<get path="...">` — fetch the full body into `<log>`
 
