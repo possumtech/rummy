@@ -78,10 +78,7 @@ describe("project manifest (@project_manifest)", () => {
 			projectRoot: root,
 		});
 
-		const matches = await entries.getEntriesByPattern(
-			runId,
-			"repo://manifest",
-		);
+		const matches = await entries.getEntriesByPattern(runId, "repo://manifest");
 		assert.strictEqual(matches.length, 1, "one manifest entry registered");
 		assert.strictEqual(
 			matches[0].visibility,
@@ -163,17 +160,11 @@ describe("project manifest (@project_manifest)", () => {
 			projectId,
 			projectRoot: root,
 		});
-		const firstBody = await entries.getBody(
-			runId,
-			"repo://manifest",
-		);
+		const firstBody = await entries.getBody(runId, "repo://manifest");
 
 		writeFileSync(join(root, "added_later.js"), "export const z = 0;\n");
 		await fireTurnStarted({ tdb, runId, projectId, projectRoot: root });
-		const secondBody = await entries.getBody(
-			runId,
-			"repo://manifest",
-		);
+		const secondBody = await entries.getBody(runId, "repo://manifest");
 
 		assert.strictEqual(
 			firstBody,

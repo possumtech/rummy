@@ -21,8 +21,7 @@ export default class Ping {
         core.ensureTool();
         core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("visible", this.full.bind(this));
-        core.on("summarized", this.summary.bind(this));
+        core.on("view", this.full.bind(this));
         core.filter("instructions.toolDocs", async (docsMap) => {
             docsMap.ping = docs;
             return docsMap;
@@ -40,7 +39,6 @@ export default class Ping {
     }
 
     full(entry) { return entry.body; }
-    summary(entry) { return ""; }
 }
 ```
 
@@ -79,8 +77,7 @@ export default class MyTool {
         core.ensureTool();
         core.registerScheme({ category: "logging" });
         core.on("handler", this.handler.bind(this));
-        core.on("visible", this.full.bind(this));
-        core.on("summarized", this.summary.bind(this));
+        core.on("view", this.full.bind(this));
         core.filter("instructions.toolDocs", async (docsMap) => {
             docsMap.mytool = docs;
             return docsMap;
@@ -92,7 +89,6 @@ export default class MyTool {
     }
 
     full(entry)    { return entry.body; }
-    summary(entry) { return entry.body; }
 }
 ```
 
@@ -182,8 +178,7 @@ is a superset of what's below.
 | Event | Payload | Purpose |
 |-------|---------|---------|
 | `"handler"` | `(entry, rummy)` | Tool handler — called when model/client invokes this tool |
-| `"visible"` | `(entry)` | Visible-visibility projection — body shown in `<visible>` (data) or `<log>` (logging) |
-| `"summarized"` | `(entry)` | Summarized-visibility projection — path + summary only (body hidden) |
+| `"view"` | `(entry)` | Projection function — render the entry's body for `<index>` / `<log>`. One view per scheme; the materializer calls it during context assembly. |
 | `"turn.started"` | `({rummy, mode, prompt, loopIteration, isContinuation})` | Turn beginning — plugins write prompt/instructions entries |
 | `"turn.response"` | `({rummy, turn, result, responseMessage, content, commands, ...})` | LLM responded — write audit entries, commit usage |
 | `"proposal.prepare"` | `({rummy, recorded})` | Tool dispatched — materialize proposals (e.g. file edit 202 revisions) |
@@ -198,8 +193,7 @@ is a superset of what's below.
 ```js
 // One-liner examples
 core.on("handler", async (entry, rummy) => { /* tool logic */ });
-core.on("visible", (entry) => entry.body);
-core.on("summarized", (entry) => entry.attributes?.summary || "");
+core.on("view", (entry) => entry.body);
 core.on("turn.started", async ({ rummy, mode }) => { /* write entries */ });
 core.on("turn.response", async ({ rummy, result }) => { /* audit */ });
 core.on("entry.changed", ({ runId, path, changeType }) => { /* react */ });
@@ -253,36 +247,34 @@ the message. Current `assembly.user` registrations:
 
 | Priority | Block | Plugin | Mutates per turn? |
 |---|---|---|---|
-| 50 | `<summary>` | `known.js` | Slow — only on new entry |
-| 75 | `<visible>` | `known.js` | Fast — on every promote/demote |
-| 100 | `<log>` | `log.js` | Always — appends per action |
-| 200 | `<unknowns>` | `unknown.js` | On unknown lifecycle |
-| 250 | `<instructions>` | `instructions.js` | On phase transition |
-| 275 | `<budget>` | `budget.js` | Every turn (live) |
-| 300 | `<prompt>` | `prompt.js` | Stable within a loop |
+| 10 | `<system_instructions>` | `persona.js` | Stable per run |
+| 50 | `<log>` | `log.js` | Always — appends per action |
+| 90 | `<turn>` | `budget.js` | Every turn (live) |
+| 165 | `<system_requirements>` | `instructions.js` | Stable per run |
+
+`assembly.system` placements:
+
+| Priority | Block | Plugin | Mutates per turn? |
+|---|---|---|---|
+| 49/101 | `<system_commands>` wrappers | `instructions.js` | Open / close brackets |
+| 50 | grammar + `[%TOOLS%]` header | `instructions.js` | Stable per run |
+| 100 | per-tool docs (joined) | `instructions.js` (via `instructions.toolDocs` filter) | Stable per run |
+| 200 | `<index>` | `known.js` | On every promote / demote |
 
 **Recommended ranges for new plugins** (for cache-friendly placement
 and predictable rendering position):
 
 | Range | Position | Use for |
 |---|---|---|
-| `0–49` | Top of user | Reserved (stable identity-tier blocks above `<summary>`) |
-| `50–99` | Codebase data surface | Don't add here — owned by `known.js` |
-| `100–149` | History tier | Action history, timeline-style content |
-| `150–199` | Open slot | Inter-history blocks (e.g. recent-decisions, tracked progress) |
-| `200–249` | State tier | Model state (open questions, work-in-progress) |
-| `250–299` | Phase + budget | Avoid; current phase / budget arithmetic owned here |
-| `300–349` | Task | Reserved for prompt-tier content |
-| `350–999` | Bottom | Append-after-prompt content (rare; usually wrong) |
+| `0–49` | Top of user | Persona / identity blocks above the activity tape |
+| `50–89` | History tier | `<log>` and adjacent timeline content |
+| `90–164` | Per-turn meta | `<turn>` and any other live-recomputed surface |
+| `165–199` | Imperative reminders | `<system_requirements>` and adjacent rules |
+| `200+` | Bottom | Rare; usually wrong placement |
 
 Within a band, lower priority = renders higher. Pick the smallest
 priority that lands you in the right band and leaves room above and
 below.
-
-`assembly.system` currently has no registrations — system message is
-the static identity surface (instructions base + tool docs). Adding
-to `assembly.system` invalidates the system-prefix cache on whatever
-provider you target; reserve for content that's truly stable per-run.
 
 ### Tool Docs {#plugins_tool_docs}
 
@@ -406,12 +398,12 @@ instead.
 
 | Method | Effect |
 |--------|--------|
-| `rummy.set({ path?, body?, state?, visibility?, outcome?, attributes? })` | Create/update entry. If `path` omitted, slugifies from body/summary. State defaults to `"resolved"`. |
-| `rummy.get(path)` | Promote entries matching a pattern (default visibility `"visible"`). |
+| `rummy.set({ path?, body?, state?, visibility?, outcome?, attributes?, writer? })` | Create/update entry. If `path` omitted, slugifies from body/tags. State defaults to `"resolved"`. `writer` defaults to the proxy's identity (`"model"` for model-mediated calls, `"plugin"` for engine-injected). Pass `writer: "plugin"` to bypass model-tier scheme permission checks. |
+| `rummy.get(path)` | Read entries matching a pattern into `<log>`. Greedily re-indexes archived matches. |
 | `rummy.rm(path)` | Remove entry's view. |
 | `rummy.mv(from, to)` | Rename entry. |
 | `rummy.cp(from, to)` | Copy entry to a new path. |
-| `rummy.update(body, { status?, attributes? })` | Write the once-per-turn lifecycle signal to `update://<slug>`. |
+| `rummy.update(body, { status?, attributes? })` | Write the once-per-turn lifecycle signal to the loop's `log://<L>/<T>/<S>/update`. |
 
 ### Query Methods {#plugins_rummy_queries}
 
@@ -424,17 +416,17 @@ instead.
 | `rummy.getEntry(path)` | First matching entry or null |
 | `rummy.getEntries(pattern, bodyFilter?)` | Array of matching entries |
 | `rummy.setAttributes(path, attrs)` | Merge attributes via json_patch |
-| `rummy.entries.logPath(runId, turn, action, target)` | Build a `log://turn_N/<action>/<slug>` path, slugified + collision-safe |
-| `rummy.entries.slugPath(runId, scheme, content, summary?)` | Build a `<scheme>://<slug>` path, slugified + collision-safe |
+| `rummy.entries.logPath(runId, loopId, turn, action)` | Build a `log://<L>/<T>/<S>/<action>` path; `L`=loop sequence, `T`=per-loop turn, `S`=per-turn sequence allocated by `nextSeq` |
+| `rummy.entries.slugPath(runId, scheme, content, tags?)` | Build a `<scheme>://<slug>` path, slugified + collision-safe |
 
 #### Path conventions {#plugins_path_conventions}
 
 Entry paths are bounded by a hard `length(path) <= 2048` DB
-CHECK constraint. In normal use, paths stay well under ~100 chars
-because plugins build them via `logPath` / `slugPath`, which run the
-target through `slugify` (80-char cap, `/` preserved as separator,
-URL-encoded per segment) and append an integer tie-breaker on
-collision (e.g. `log://turn_3/set/src/app.js_2`).
+CHECK constraint. Action log paths follow the
+`log://<L>/<T>/<S>/<action>` shape — each level resets when its
+parent advances. Catalog entries use `<scheme>://<slug>` via
+`slugPath` (80-char cap, `/` preserved as separator, URL-encoded per
+segment) and append an integer tie-breaker on collision.
 
 Plugin authors should pass any model-supplied target straight
 through these helpers instead of stitching paths from the model's
@@ -562,8 +554,8 @@ Exceptions for `call`-shaped hooks are documented under
 | 2 | `instructions.resolveSystemPrompt` | call ⚠ | System prompt assembly — single-owner exception (cache stability) |
 | 3 | `context.materialized` | event | turn_context populated from v_model_context |
 | 4 | `assembly.system` | filter | Build system message from entries (called from inside `materializeContext`) |
-| 5 | `assembly.user` | filter | Build user message (prompt plugin adds `<prompt tokensFree tokenUsage>`) |
-| 6 | `turn.beforeDispatch` | filter | Measure assembled tokens; if over and turn 1, demote prompt, re-materialize, re-check; still over → 413. Filter chain on the dispatch packet `{ messages, rows, contextSize, lastPromptTokens, assembledTokens, ok, overflow }`. Budget participates here; future plugins may trim, re-order, or annotate via the same surface. `ok=false` short-circuits dispatch. |
+| 5 | `assembly.user` | filter | Build user message (persona at 10 → `<log>` at 50 → `<turn>` at 90 → `<system_requirements>` at 165) |
+| 6 | `turn.beforeDispatch` | filter | Measure assembled tokens; on overflow, fat-replay reclamation walks prior-turn `<get>` / `<set>` log entries by `(turn DESC, body_tokens DESC)`, clears bodies until packet fits, emits one 413 `error://` with `archivedCount` / `archivedTokens`. Catalog visibility never auto-demoted. Filter chain on the dispatch packet `{ messages, rows, contextSize, lastPromptTokens, assembledTokens, ok, overflow }`. `ok=false` short-circuits dispatch (hard 413). |
 | 7 | `llm.messages` | filter | Transform messages before LLM call |
 | 8 | `llm.request.started` | event | LLM call about to fire |
 | 9 | (LLM completion call) | — | Direct provider call. Errors caught: ContextExceededError → 413; TimeoutError/AbortError → 504 strike (unless drain). |
@@ -581,7 +573,7 @@ Exceptions for `call`-shaped hooks are documented under
 |    | `run.state` | event | Incremental state push to connected clients |
 |    | `proposal.prepare` | event | This entry's dispatch may have created proposals (e.g. set → 202 revisions) |
 |    | `proposal.pending` | event | Per each materialized proposal — client is notified, dispatch awaits resolution |
-| 17 | `turn.dispatched` | event | Post-dispatch cleanup. Budget subscribes for Turn Demotion (visibility=summarized on visible rows that overflow) + 413 `error://` emission via `hooks.error.log.emit`. Future plugins may subscribe for any post-dispatch concern. |
+| 17 | `turn.dispatched` | event | Post-dispatch hook. Open for plugins that need to react to a completed turn (no current canonical subscriber — budget enforces pre-LLM via `turn.beforeDispatch`). |
 | 18 | `update.resolve` | call ⚠ | Update plugin classifies this turn's `<update>` (terminal/continuation, override-to-continuation if actions failed, heal from raw content if missing). Single-owner exception — synchronous return value (`{ summaryText, updateText }`) is load-bearing. |
 | 19 | `turn.completed` | event | Turn fully resolved with final status |
 
@@ -665,9 +657,8 @@ update, visibility change, state change, attribute update. Payload:
 
 | Hook | Type | When |
 |------|------|------|
-| `turn.beforeDispatch` filter | subscriber | Pre-LLM ceiling check on the dispatch packet. On first-turn 413 → Prompt Demotion + re-check; sets `ok=false` + `overflow` to short-circuit dispatch. |
-| `turn.dispatched` event | subscriber | Post-dispatch re-check. On 413 → Turn Demotion + 413 `error://` entry via `hooks.error.log.emit`. |
-| `assembly.user` filter | subscriber | Renders `<budget>` table into the user message. |
+| `turn.beforeDispatch` filter | subscriber | Pre-LLM ceiling check on the dispatch packet. On 413 → fat-replay reclamation walks `<get>` / `<set>` log entries from prior turns by `(turn DESC, body_tokens DESC)`, clears bodies until the packet fits, emits a single 413 `error://` entry via `hooks.error.log.emit`. |
+| `assembly.user` filter | subscriber | Renders `<turn>` (commands list, archived count, tokenCeiling / tokenUsage / tokensFree, per-scheme breakdown table) into the user message at priority 90. |
 
 The budget plugin measures tokens on the assembled messages — the
 actual content being sent to the LLM. No estimates at the ceiling,
@@ -676,30 +667,19 @@ turn 2+ information is available, the pre-LLM check prefers the
 actual API-reported token count (`turns.context_tokens` from the
 prior turn) over re-measuring the assembled string.
 
-**Use of the assembler.** Budget calls the context assembler in two
-spots — these are projections, not orchestration leaks:
-
-- **Pre-LLM Prompt Demotion (`turn.beforeDispatch`)** — when the
-  first-turn packet overflows, budget demotes the prompt entry in
-  the DB, swaps `body` from `vBody` to `sBody` on the local prompt
-  row, and re-runs `ContextAssembler.assembleFromTurnContext` on
-  the modified rows. No `materializeContext` round-trip — the row
-  already carries both projections.
-- **Post-dispatch projection (`turn.dispatched`)** — budget re-runs
-  `materializeContext` to project the *next* turn's packet
-  (entries written during dispatch need projection through
-  `hooks.tools.view`). If predicted next packet overflows, budget
-  demotes now so next turn's enforce isn't stuck with only the
-  prompt-demotion lever. Cost projection is the budget plugin's
-  job; the assembler is the measurement instrument.
+**Catalog visibility is model-owned.** The grinder never auto-
+demotes knowns / unknowns / files / streams. The model owns those
+transitions via `<set archive/>` / `<set index/>`. The grinder only
+touches fat replays — `<get>` / `<set>` log entries from prior
+turns with non-empty bodies. Catalog entries stay in `<index>`
+across budget pressure.
 
 **DB tokens vs assembled tokens:** The `tokens` column on `entries`
-is strictly for DISPLAY — showing token costs on entry tags in
-`<summary>` / `<visible>` so the model can reason about entry
-sizes. It is NEVER used for budget decisions. Budget math uses only
-assembled message token counts. These are two separate numbers that
-must never be conflated. See
-[budget_enforcement](SPEC.md#budget_enforcement) for the three-measure table.
+is strictly for DISPLAY — showing token costs on entry tags so the
+model can reason about entry sizes. It is NEVER used for budget
+decisions. Budget math uses only assembled message token counts.
+These are two separate numbers that must never be conflated. See
+[budget_enforcement](SPEC.md#budget_enforcement).
 
 ### Client Notifications {#plugins_client_notifications}
 
@@ -728,31 +708,37 @@ Every entry follows the same lifecycle regardless of origin:
 6. **Visible** — model sees the entry in its context.
 
 Entries at `visibility = 'archived'` skip steps 4–6 (invisible to
-model, discoverable via pattern search). Entries at `visibility =
-'summarized'` render with `attributes.tags` (model-authored keyword
-description) prepended above the plugin's `summarized` view output —
-the body is hidden; promoting with `<get>` brings it back.
+model, recallable via `<get>` or `<set index/>`). Indexed entries
+render through their plugin's view function — one view per scheme,
+called during materialization.
 
-**Per-plugin visibility projection reference.** Each plugin chooses
-what its `visible` / `summarized` view hooks return. Renderers trust
-the projected body — they do NOT re-check `entry.visibility`.
+**Per-plugin view projection reference.** Each plugin registers one
+view callback via `core.on("view", fn)`. The view receives the entry
+and returns either:
 
-| Plugin | Category | `visible` body | `summarized` body | Notes |
-|--------|----------|-----------------|----------------|-------|
-| `known` | data | `entry.body` | `""` | Tag's `summary` attr carries the keywords at summarized visibility |
-| `unknown` | unknown | `entry.body` | `""` | Same pattern as known |
-| `prompt` | prompt | `entry.body` | 500-char truncation with `[truncated — promote to see the complete prompt]` marker | |
-| `budget` | logging | `entry.body` | `entry.body` | Feedback signal — kept visible |
-| `update` | logging | `# update\n${entry.body}` | same as visible | Already 80-char capped by tool doc rule |
-| `get` / `set` / `rm` / `cp` / `mv` / `sh` / `env` / `search` | logging | result body | `""` | Just the self-closing tag at summarized |
-| `skill` | data | `entry.body` | `""` | Same as known |
-| `file` (bare paths) | data | `entry.body` | `""` | Same as known |
+- a **string** — the body that lands in `<index>` (data) or `<log>`
+  (logging). The assembler prefixes each line with `${N}:\t` via
+  `numberLines`, starting at 1.
+- an **object `{ body, preNumbered: true }`** — the assembler uses
+  `body` as-is, skipping its global numbering pass. Used when the
+  view emits target-anchored line refs the assembler would otherwise
+  clobber (today: `<set>` log projections show the new/changed
+  lines numbered with the *target file's* line numbers, not a
+  projection-local counter).
 
-Plugins providing only a `visible` hook fall back to
-`attributes.tags` (model-authored keyword description) at summarized;
-the renderer inserts it automatically. Plugins providing neither
-default to empty body — the tag still renders with its attributes so
-the model can pattern-match the path.
+| Plugin | Category | View body | Notes |
+|--------|----------|-----------|-------|
+| `known` | data | `entry.body` | Full body — known facts are short and worth keeping in the tile |
+| `unknown` | data | `entry.body` | Same pattern as known |
+| `prompt` | data | `entry.body` | 500-char truncation with `[truncated — promote to see the complete prompt]` marker |
+| `update` | logging | `# update\n${entry.body}` | Already 80-char capped by tool doc rule |
+| `get` / `set` / `rm` / `cp` / `mv` / `sh` / `env` / `search` | logging | result body | Slim recap inside `<log>` |
+| `skill` | data | `entry.body` | Same as known |
+| `file` (bare paths) | data | `entry.body` | Same as known |
+
+Plugins providing no `view` hook default to empty body — the tag
+still renders with its attributes so the model can pattern-match the
+path.
 
 ### Streaming Entries {#plugins_streaming_entries}
 
@@ -769,14 +755,15 @@ state: "proposed" (user decision pending)
 
 **Producer plugin contract:**
 
-1. On dispatch, create a **proposal entry** at `{scheme}://turn_N/{slug}`
-   with `state: "proposed"`, category=logging. Body empty;
-   `tags=command` attr.
+1. On dispatch, create a **proposal entry** at
+   `log://<L>/<T>/<S>/<scheme>` with `state: "proposed"`,
+   category=logging. Body empty; `tags=command` attr.
 2. On user accept (client sends `set { state: "resolved" }` on the
    proposal path), `AgentLoop.resolve()` transitions the proposal
    entry to `state: "resolved"` (it becomes the **log entry**) and
-   creates **data entries** at `{path}_1`, `{path}_2`, etc. with
-   `state: "streaming"`, category=data, visibility=summarized, empty body.
+   creates **data entries** at `{scheme}://<L>/<T>/<S>_1`,
+   `{scheme}://<L>/<T>/<S>_2`, etc. with `state: "streaming"`,
+   category=data, volatile, empty body.
 3. Producer/client calls `stream { run, path, channel, chunk }` RPC
    to append chunks to the appropriate channel.
 4. When the producer is done, `stream/completed { run, path, exit_code? }`
@@ -808,7 +795,7 @@ pure RPC plumbing shared across all streaming producers.
 |--------|------|-------------|
 | `get` | Core tool | Load file/entry into context |
 | `set` | Core tool | Edit file/entry, visibility control |
-| `known` | Core tool + Assembly | Save knowledge; renders `<summary>` (priority 50) and `<visible>` (priority 75) for all category=data entries |
+| `known` | Core tool + Assembly | Save knowledge; renders `<index>` (priority 200, system message) — one tile per data-category entry via the scheme's view function |
 | `rm` | Core tool | Delete permanently |
 | `mv` | Core tool | Move entry |
 | `cp` | Core tool | Copy entry |
@@ -818,20 +805,21 @@ pure RPC plumbing shared across all streaming producers.
 | `ask_user` | Core tool | Ask the user |
 | `search` | Core tool | Web search (via external plugin) |
 | `update` | Structural | Status report + lifecycle signal. `status="200\|204\|422"` terminates; `status="102"` continues. Exposes `hooks.update.resolve` for TurnExecutor. |
-| `unknown` | Structural + Assembly | Register unknowns, render `<unknowns>` (priority 150) |
-| `log` | Assembly | Render `<log>` (priority 100) — all logging-category entries plus pre-latest prompts |
-| `prompt` | Assembly | Render `<prompt tokensFree="N" tokenUsage="M">` (priority 30, front of user message) |
-| `hedberg` | Utility | Pattern matching, interpretation, normalization |
-| `instructions` | Internal | System prompt assembly (`instructions-system.md` + `[%TOOLS%]` + `[%TOOLDOCS%]` + persona); renders `<instructions>` (priority 165) from `instructions-user.md`; exposes `hooks.instructions.resolveSystemPrompt` |
+| `unknown` | Structural | Register unknowns (renders as data tiles in `<index>` via the known plugin's view dispatch) |
+| `log` | Assembly | Render `<log>` (priority 50, user message) — all logging-category entries in chronological order |
+| `prompt` | Assembly | Write the `prompt://N` catalog entry + a `log://<L>/<T>/<S>/prompt` log entry on `turn.started` |
+| `hedberg` | Utility | Pattern matching, interpretation, normalization, line-boundary-anchored substitution, scoped SEARCH/REPLACE |
+| `instructions` | Internal | System message assembly (`<system_commands>` wrappers + grammar + per-tool docs joined). Renders `<system_requirements>` from `instructions-user.md` at priority 165 in the user message. |
 | `file` | Internal | File entry projections and constraints (`scheme IS NULL`) |
 | `rpc` | Internal | RPC method registration + tool-fallback dispatch |
 | `telemetry` | Internal | Audit entries, usage stats, reasoning_content |
-| `budget` | Internal | Context ceiling enforcement: Prompt Demotion (pre-LLM first-turn 413) + Turn Demotion (post-dispatch). Subscribes to `turn.beforeDispatch` (filter) + `turn.dispatched` (event) + `assembly.user` (filter, priority 175 — renders `<budget>`). |
+| `budget` | Internal | Context ceiling enforcement via fat-replay reclamation. Subscribes to `turn.beforeDispatch` (filter) + `assembly.user` (filter, priority 90 — renders `<turn>`). |
 | `policy` | Internal | Ask-mode per-invocation rejections via `entry.recording` filter |
-| `error` | Internal | `error.log` hook → `error://` entries |
+| `error` | Internal | `error.log` hook → `error://` entries; per-turn strike counting + verdict |
 | `think` | Tool | Private reasoning tag; contributes to `reasoning_content` via the `llm.reasoning` filter |
 | `openai` / `ollama` / `xai` / `openrouter` | LLM provider | Register with `hooks.llm.providers`; handle `{prefix}/...` model aliases. Silently inert if their env isn't configured. |
-| `persona` | Internal | Renders the persona body inside the system prompt; default at `persona/default.md`. Run-attribute `persona` overrides per run (1:1, immutable for the run's lifetime). |
+| `persona` | Internal | Renders the persona body in the user message at priority 10 as `<system_instructions>`. Default at `persona/default.md`; run-attribute `persona` overrides per run. |
+| `skill` | Internal | RPC-callable skill ingester (`skill { run, path }` via tool fallback). Hidden from `<system_commands>` — not a model-facing tool. |
 | `skill` | Internal | `<skill path="..."/>` tag handler + `skill://` scheme. Walks file/folder/`.zip` (local or URL); registers content under `skill://<name>/...`. |
 
 ## External Plugins
@@ -885,7 +873,7 @@ scheme's `writable_by`.
 | Method | Params | Notes |
 |--------|--------|-------|
 | `set` | `{ run, path, body?, state?, visibility?, outcome?, attributes?, append?, pattern?, bodyFilter? }` | Wide semantic: write content, change visibility/state, merge attributes, append (streaming), pattern update. Writing to `run://<alias>` starts or cancels a run (see §11.4). State transitions on proposed entries route through `AgentLoop.resolve()` for scheme-specific side effects. |
-| `get` | `{ run, path, bodyFilter?, visibility? }` | Promote an entry (or pattern) to visible visibility. |
+| `get` | `{ run, path, bodyFilter? }` | Read an entry (or pattern) into `<log>`. Greedily re-indexes archived matches. |
 | `rm` | `{ run, path, bodyFilter? }` | Remove entry's view. |
 | `cp` | `{ run, from, to, visibility? }` | Copy entry to new path. |
 | `mv` | `{ run, from, to, visibility? }` | Rename entry. |
@@ -957,6 +945,6 @@ grammar. Clients migrating from 1.x need to replace the following:
 | `run/rename` | `mv { run, from: "run://<old>", to: "run://<new>" }` |
 | `run/inject` | `set { path: "run://<alias>", body: <message> }` on an existing run |
 | `run/config` | `set { path: "run://<alias>", attributes: { ... } }` |
-| `store` (demote) | `set { run, path, visibility: "summarized", pattern: true }` |
+| `store` (archive) | `set { run, path, visibility: "archived", pattern: true }` |
 | `getEntries` | Kept as §11.5 typed helper — now filter-capable (scheme/state/visibility). Pairs with the `get` write primitive. |
 | `get { persist }` / `store { persist, clear, ignore }` (file constraints) | `file/constraint { pattern, visibility }` and `file/drop { pattern }`. Project-scoped helpers in §11.5 with real server enforcement for `readonly`. |

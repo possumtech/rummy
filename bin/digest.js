@@ -989,17 +989,30 @@ if (!existsSync(entry)) {
 // most recent run's artifacts (see end of file).
 let bareDbName = null;
 if (statSync(entry).isFile() && /\.db$/.test(entry)) {
-	const { rmSync, linkSync, copyFileSync: cp } = await import("node:fs");
+	const { rmSync, linkSync, copyFileSync: cp, existsSync: ex } = await import(
+		"node:fs"
+	);
 	bareDbName = entry.split("/").pop().replace(/\.db$/, "");
 	rmSync(PILE_DIR, { recursive: true, force: true });
 	mkdirSync(join(PILE_DIR, "agent"), { recursive: true });
 	const linkedDb = join(PILE_DIR, "agent", "rummy.db");
-	// Hard-link is cheap and keeps reads off the live DB if any; fall
-	// back to copy on cross-device or filesystem-restricted setups.
-	try {
-		linkSync(entry, linkedDb);
-	} catch {
-		cp(entry, linkedDb);
+	// Hard-link the main DB plus -wal/-shm siblings if present. The DB
+	// is in WAL mode; without the -wal file the reader sees only
+	// checkpointed state and misses recent writes (turns, run.status
+	// updates, log entries). Hard-link is cheap and keeps reads off
+	// the live DB if any; fall back to copy on cross-device or
+	// filesystem-restricted setups.
+	const linkOrCopy = (src, dst) => {
+		try {
+			linkSync(src, dst);
+		} catch {
+			cp(src, dst);
+		}
+	};
+	linkOrCopy(entry, linkedDb);
+	for (const ext of ["-wal", "-shm"]) {
+		const src = `${entry}${ext}`;
+		if (ex(src)) linkOrCopy(src, `${linkedDb}${ext}`);
 	}
 	entry = PILE_DIR;
 }

@@ -252,7 +252,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 
 		const entries = await allEntries(tdb.db, r.run);
 		const searched = entries.filter((e) =>
-			/^log:\/\/turn_\d+\/search\//.test(e.path),
+			/^log:\/\/\d+\/\d+\/\d+\/search$/.test(e.path),
 		);
 		assert.ok(searched.length > 0, "should have performed a web search");
 		const known = entries.filter((e) => e.scheme === "known");
@@ -276,7 +276,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 		});
 		const writes = entries.filter(
 			(e) =>
-				/^log:\/\/turn_\d+\/set\//.test(e.path) &&
+				/^log:\/\/\d+\/\d+\/\d+\/set$/.test(e.path) &&
 				(e.state === "resolved" || e.state === "proposed"),
 		);
 		assert.ok(writes.length > 0, "should have a write result");
@@ -447,11 +447,11 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 	// Story 8: Reject a proposal, verify file survives, then accept a different one.
 	it("rejection and recovery", { timeout: TIMEOUT }, async () => {
 		// Reject rm proposals for notes.md via custom resolve handler.
-		// Proposal paths are log://turn_N/<action>/<target> (the result-path
+		// Proposal paths are log://<L>/<T>/<S>/<action> (the result-path
 		// of the emitting tool). Earlier this checked `rm://` which never
 		// matched any real proposal — so every rm got auto-accepted and the
 		// file was always deleted regardless of the resolver's intent.
-		const isRmProposal = (path) => /^log:\/\/turn_\d+\/rm\//.test(path);
+		const isRmProposal = (path) => /^log:\/\/\d+\/\d+\/\d+\/rm$/.test(path);
 		client.resolveHandler = async (c, run, proposal) => {
 			const action = isRmProposal(proposal.path) ? "reject" : "accept";
 			await c.resolveProposal(run, {
@@ -527,7 +527,7 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 		assertContains(await lastResponse(tdb.db, r.run), "2005", "search-year");
 		const entries = await allEntries(tdb.db, r.run);
 		const searchLogs = entries.filter(
-			(e) => e.scheme === "log" && /\/search\//.test(e.path),
+			(e) => e.scheme === "log" && /\/search$/.test(e.path),
 		);
 		assert.ok(searchLogs.length > 0, "search produced at least one log entry");
 		// Some attempts may emit malformed queries that fail path validation —

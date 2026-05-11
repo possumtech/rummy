@@ -393,9 +393,7 @@ describe("parseMarkerBody — scoped SEARCH/REPLACE", () => {
 	});
 
 	it("unscoped SEARCH/REPLACE still parses with no scope on the op", () => {
-		const r = parseMarkerBody(
-			"<<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE",
-		);
+		const r = parseMarkerBody("<<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE");
 		assert.deepEqual(r.ops, [
 			{ op: "search_replace", search: "old", replace: "new" },
 		]);

@@ -36,11 +36,24 @@ export default async function materializeContext({
 			attributes: attrs,
 			category: row.category,
 		};
-		const rawProjection =
+		const viewResult =
 			row.visibility === "archived"
 				? ""
 				: await hooks.tools.view(projectionKey, baseEntry);
-		const projection = numberLines(rawProjection);
+		// View contract: returns a string (default; assembler applies
+		// numberLines) or { body, preNumbered: true } (assembler trusts
+		// the body's own line refs). Used by <set> log entries whose
+		// numbers must reflect the target file, not the projection-local
+		// position.
+		const rawProjection =
+			viewResult && typeof viewResult === "object"
+				? viewResult.body
+				: viewResult;
+		const preNumbered =
+			viewResult && typeof viewResult === "object"
+				? !!viewResult.preNumbered
+				: false;
+		const projection = preNumbered ? rawProjection : numberLines(rawProjection);
 		// tileTokens = packet cost; bodyTokens = what <get> would bring.
 		const tileTokens = countTokens(projection);
 		const tileLines = countLines(projection);

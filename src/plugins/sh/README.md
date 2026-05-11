@@ -7,7 +7,8 @@ after the proposal is accepted.
 ## Registration
 
 - **Tool**: `sh`
-- **Scheme**: `sh` — `category: "logging"` (channels are time-indexed activity, not state)
+- **Scheme**: `sh` — `category: "data"`, `volatile: true` (channels sort
+  to the bottom of `<index>` for cache stability).
 - **Handler**: Upserts the proposal entry at status 202 (proposed). The
   client must approve execution.
 
@@ -16,26 +17,28 @@ after the proposal is accepted.
 A single `<sh>` emission produces entries in two namespaces — one audit
 record, one data payload:
 
-- **Log entry**: `log://turn_N/sh/{slug}` — scheme=`log`, category=`logging`.
-  This is the proposal the client sees and resolves. On accept, body is
-  rewritten to `ran '{cmd}' (in progress). Output: {dataBase}_1, {dataBase}_2`
-  and finalized by `stream/completed` with exit code + duration. Renders
-  inside the `<log>` block as `<sh>`.
-- **Data channels**: `sh://turn_N/{slug}_1` (stdout), `sh://turn_N/{slug}_2`
-  (stderr) — scheme=`sh`, category=`logging` (time-indexed activity).
+- **Log entry**: `log://<L>/<T>/<S>/sh` — scheme=`log`,
+  category=`logging`. This is the proposal the client sees and
+  resolves. On accept, body is rewritten to `ran '{cmd}' (in
+  progress). Output: {dataBase}_1, {dataBase}_2` and finalized by
+  `stream/completed` with exit code + duration. Renders as a slim
+  recap inside `<log>`.
+- **Data channels**: `sh://<L>/<T>/<S>_1` (stdout),
+  `sh://<L>/<T>/<S>_2` (stderr) — scheme=`sh`, volatile data.
   Created at status=102 on proposal acceptance, grow via the `stream`
-  RPC, transition to 200/500 via `stream/completed`. Render inside
-  `<log>` adjacent to their parent `<sh>` action entry; visibility
-  controls whether the body is full or compact, not which block.
+  RPC, transition to 200/500 via `stream/completed`. Render in
+  `<index>` at the bottom (volatile-sorted) with a tail preview;
+  full body via `<get>`.
 
 The `sh` scheme exists **only** for the data channels. The proposal/log
 entry itself is in the unified `log://` namespace along with every
-other action record. See [scheme_category_split](#scheme_category_split).
+other action record. See [scheme_category_split](SPEC.md#scheme_category_split).
 
 ## Projection
 
-- **Visible**: `# sh {command}\n{body}` (channel body is the captured stream).
-- **Summarized**: empty (the command + path are already shown via attrs).
+- Log entry view: slim recap (`<sh>` envelope with command + exit code).
+- Data channel view: tail preview via `streamSummary` (last N lines).
+  Full body retrievable with `<get path="sh://..." line="-50" limit="50"/>`.
 
 ## Behavior
 

@@ -10,8 +10,7 @@
 const KEYWORD_RE =
 	/^(NEW|PREPEND|APPEND|REPLACE|DELETE|SEARCH)(?:\[(\d+)(?:-(\d+))?\]|([A-Za-z0-9_]*))$/;
 
-const OPENER_RE =
-	/(?<=^|[\s>])<<([A-Z][A-Za-z0-9_]*(?:\[\d+(?:-\d+)?\])?)/;
+const OPENER_RE = /(?<=^|[\s>])<<([A-Z][A-Za-z0-9_]*(?:\[\d+(?:-\d+)?\])?)/;
 
 function operationFromIdent(ident) {
 	const m = ident.match(KEYWORD_RE);

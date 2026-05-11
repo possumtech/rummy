@@ -93,7 +93,20 @@ export default class HeuristicMatcher {
 				exactCount > 1
 					? `SEARCH block matched ${exactCount} locations. Edit was applied to the last occurrence. Use more surrounding context in future edits to avoid ambiguity.`
 					: null;
-			return { patch, newContent, warning, error: null };
+			const matchStartLine = entryBody.slice(0, useIdx).split("\n").length;
+			const replaceLineCount =
+				replaceBlock === "" ? 0 : replaceBlock.split("\n").length;
+			const searchLineCount =
+				searchBlock === "" ? 0 : searchBlock.split("\n").length;
+			return {
+				patch,
+				newContent,
+				warning,
+				error: null,
+				matchStartLine,
+				replaceLineCount,
+				searchLineCount,
+			};
 		}
 
 		// 2. Fuzzy Tokenized Match (Ignore leading/trailing whitespace per line)
@@ -107,7 +120,20 @@ export default class HeuristicMatcher {
 			const trailing = entryBody.endsWith("\n") ? "" : "\n";
 			const newContent = `${entryBody + trailing + replaceBlock}\n`;
 			const patch = generatePatch(entryPath, entryBody, newContent);
-			return { patch, newContent, warning: null, error: null };
+			const preLines =
+				entryBody + trailing === ""
+					? 0
+					: (entryBody + trailing).split("\n").length - 1;
+			return {
+				patch,
+				newContent,
+				warning: null,
+				error: null,
+				matchStartLine: preLines + 1,
+				replaceLineCount:
+					replaceBlock === "" ? 0 : replaceBlock.split("\n").length,
+				searchLineCount: 0,
+			};
 		}
 
 		let matchStartIndex = -1;
@@ -201,6 +227,15 @@ export default class HeuristicMatcher {
 				`SEARCH block matched ${matchCount} locations. Edit was applied to the last occurrence. Use more surrounding context in future edits to avoid ambiguity.`;
 		}
 
-		return { patch, newContent, warning, error: null };
+		return {
+			patch,
+			newContent,
+			warning,
+			error: null,
+			matchStartLine: matchStartIndex + 1,
+			replaceLineCount:
+				healedReplaceBlock === "" ? 0 : healedReplaceBlock.split("\n").length,
+			searchLineCount: matchEndIndex - matchStartIndex + 1,
+		};
 	}
 }

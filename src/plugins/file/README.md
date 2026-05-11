@@ -5,8 +5,10 @@ Owns file-related projections and file constraint management.
 ## Registration
 
 - **Schemes**: `file` (bare paths), `http`, `https` — all `category: "data"`
-- **Views**: `full` and `summary` for file scheme. Default identity views
-  for `http`/`https` (overridden by rummy.web when installed).
+- **View**: single view per scheme. File view returns symbols when
+  rummy.repo has attached them; otherwise the entry body. Default
+  identity views for `http`/`https` (overridden by rummy.web when
+  installed).
 - **No tool handler** — file operations are dispatched through `set`, `get`, `rm`, etc.
 
 ## File Constraints
@@ -16,9 +18,9 @@ file constraints in the database. Constraints are project-level config
 (backbone), not tool dispatch. See [file_constraints](../../../SPEC.md#file_constraints).
 
 Constraint type governs **membership** and **write permission**, not
-in-context visibility. Visibility (visible / summarized / archived)
-is per-entry and model-controlled — files default to `archived` on
-ingestion; the model promotes via `<get>` / `<set visibility=...>`.
+in-context visibility. Visibility (`indexed` / `archived`) is per-entry
+and model-controlled — files default to `archived` on ingestion; the
+model promotes via `<get>` or `<set path="..." index/>`.
 
 - `add` — file is part of the project; ingested as an entry; model
   may write. Default for `setConstraint`.

@@ -45,16 +45,16 @@ carries:
 | **path** | Identity. `scheme://locator` or bare filepath. |
 | **body** | Content (text). |
 | **attributes** | JSON bag of structured metadata. |
-| **visibility** | `visible \| summarized \| archived`. What the model sees of this entry next turn. |
+| **visibility** | `indexed \| archived`. Whether the entry appears in `<index>` next turn or is hidden but recallable. |
 | **state** | `proposed \| streaming \| resolved \| failed \| cancelled`. Where the entry is in its lifecycle. |
 | **outcome** | Short reason string when state ∈ {failed, cancelled}. Opaque to most callers; a few plugins parse it. |
 | **writer** | Which tier wrote it last. |
 | **scope** | `run:N \| project:N \| global`. Determines namespace and readership. |
 
 Visibility and state are independent axes. An entry can be `state=resolved,
-visibility=archived` (complete and hidden) or `state=streaming,
-visibility=summarized` (in-flight, shown as summary) or `state=proposed,
-visibility=visible` (visible, awaiting resolution).
+visibility=archived` (complete and hidden, recallable by path), `state=streaming,
+visibility=indexed` (in-flight, tile visible in `<index>`), or `state=proposed,
+visibility=indexed` (visible, awaiting resolution).
 
 ### Six Primitives {#primitives}
 
@@ -63,7 +63,7 @@ The entire grammar for changing entries:
 | Verb | Effect |
 |------|--------|
 | **set** | Create or update an entry. Writes content, state, visibility, attributes. |
-| **get** | Promote an entry to `visibility=visible`. The read-with-side-effect. |
+| **get** | Read an entry's full body into `<log>`. Greedy: also re-indexes the entry if archived. |
 | **rm** | Remove an entry from the caller's view (or delete it when scope permits). |
 | **cp** | Copy an entry to a new path. |
 | **mv** | Rename an entry to a new path. |
@@ -204,7 +204,7 @@ run_views (
 | `run_id`, `entry_id` | (run, entry) unique pair. Absent view = not in context. |
 | `loop_id`, `turn` | Freshness — when this run last touched the entry. |
 | `status` | HTTP status code — outcome of the run's last operation on this entry. |
-| `visibility` | `visible` \| `summarized` \| `archived`. The run's relationship to the entry. |
+| `visibility` | `indexed` \| `archived`. Indexed entries appear in `<index>`; archived are hidden but recallable via path/pattern. |
 | `write_count` | How many times this run has written this entry. |
 
 **Compatibility view** — `known_entries` joins the two tables so
@@ -236,14 +236,16 @@ are separate concerns.
 request), 403 (permission denied), 404 (not found), 409 (conflict),
 413 (too large), 499 (aborted), 500 (error).
 
-**Visibility** (the model's view in the run's context): `visible` (body
-shown), `summarized` (path + attrs shown, body hidden or condensed;
-promote via `<get>`), `archived` (invisible; retrievable via pattern
-search).
+**Visibility** (the model's view in the run's context): `indexed` (entry
+appears as a tile in `<index>`, with the scheme's projection rule
+deciding what the tile shows), `archived` (hidden but recallable via
+path or pattern). Two states. The model owns every transition via
+`<set path="..." archive/>` / `<set path="..." index/>`; the engine
+never auto-promotes or auto-demotes catalog entries.
 
-Lifecycle events (budget Turn Demotion, fork copy) change `visibility`
-but never `status` — status stays truthful about the last body
-operation. See `demote_turn_entries` in `known_store.sql`.
+Status and visibility are independent: a `state=failed` entry can still
+be `visibility=indexed`. Status stays truthful about the last body
+operation.
 
 Paths use URI scheme syntax. Bare paths (no `://`) are files, stored
 with `scheme IS NULL` (JOINs treat NULL as `'file'` via COALESCE).
@@ -266,7 +268,7 @@ Every entry plays one of two roles:
 | `http://`, `https://` | data | `model, plugin` | Web content. rummy.web overrides view with title+meta+description tile. |
 | `sh://`, `env://` | data (volatile) | `model, plugin` | Streaming-producer payload — stdout/stderr channel entries. Volatile: sort to bottom of `<index>`. **Channels only**; the action audit record lives in `log://`. See [scheme_category_split](#scheme_category_split). |
 | `prompt://` | data | `plugin` | User prompt. Written by prompt plugin (model can't `<set>` body). Default `visibility=archived` — model `<get>`s for full body or `<set index/>` to pin in `<index>`. |
-| `log://` | logging | `system, plugin, model` | Unified activity tape namespace for all tool actions and prompts. One entry per action at `log://turn_N/{action}/{slug}`. |
+| `log://` | logging | `system, plugin, model` | Unified activity tape namespace for all tool actions and prompts. One entry per action at `log://<L>/<T>/<S>/<action>` (`L`=loop sequence, `T`=per-loop turn, `S`=per-turn sequence). |
 | `update://` | logging | `model, plugin` | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
 | `error://` | logging | `model, plugin` | Runtime errors — policy rejection, budget overflow (status 413), dispatch crashes, protocol violations. Unified channel via `hooks.error.log.emit`. |
 | `instructions://`, `system://`, `reasoning://`, `model://`, `user://`, `assistant://`, `content://` | logging | `system` | Audit entries. `model_visible = 0`. Written only by server-level code; never reach model context. |
@@ -280,9 +282,9 @@ category. Data and logging never share a scheme.
 Streaming producers (sh, env, and future fetch/search/tail/watch) split
 across two namespaces as a direct consequence:
 
-- **Action audit record** lives in `log://turn_N/{action}/{slug}` —
+- **Action audit record** lives in `log://<L>/<T>/<S>/<action>` —
   scheme=`log`, category=`logging`. Renders as a slim recap in `<log>`.
-- **Payload channels** live in `{action}://turn_N/{slug}_N` —
+- **Payload channels** live in `{action}://<L>/<T>/<S>_<channel>` —
   scheme=`{action}` (registered as `category: "data"`, `volatile: true`).
   Render in `<index>` at the bottom (volatile-sorted) with a tail
   preview. Full bytes retrievable via `<get>`.
@@ -389,9 +391,9 @@ The `file_constraints` table is project-level configuration — it
 defines which files a project cares about. This is backbone, not tool
 dispatch. Constraint type governs **membership** and **write
 permission**, not in-context visibility. In-context visibility
-(`visible` / `summarized` / `archived`) is per-entry and model-
-controlled — files default to `archived` on ingestion; the model
-promotes via `<get>` / `<set visibility=…>`.
+(`indexed` / `archived`) is per-entry and model-controlled — files
+default to `archived` on ingestion; the model promotes via `<get>`
+(reads into log) or `<set path="..." index/>` (pins in `<index>`).
 
 - `add` — file is part of the project; ingested as an entry; model
   may write. Default for `setConstraint`.
@@ -468,7 +470,7 @@ semantics calls `hooks.tools.dispatch` directly.
 `TurnExecutor.execute` in strict order:
 
 1. **RECORD** — every parsed command is materialized as a
-   `log://turn_N/action/slug` audit entry via `#record()`. Each
+   `log://<L>/<T>/<S>/<action>` audit entry via `#record()`. Each
    tool's parser shape surfaces exactly one of `path` / `command` /
    `question` as its addressable target; absent fields are treated
    as empty so the validation gate catches bad shapes rather than
@@ -507,13 +509,17 @@ to a continuation (the model's claim of doneness is false); the update
 plugin resolves the update entry to 409 and surfaces it to the next
 turn as a continuation. Multiple `<update>` tags → last signal wins.
 
-**Post-dispatch budget check:** After all tools dispatch, TurnExecutor
-emits `turn.dispatched`; the budget plugin subscribes, re-materializes
-context, and checks the ceiling. If context exceeds the ceiling, Turn
-Demotion fires — all `visible` `run_views` rows for the current turn
-have their `visibility` flipped to `summarized`, and an `error://` entry at status 413 is
-written. Status is NOT touched (see [schemes_status_visibility](#schemes_status_visibility)). The tools already ran;
-their outcomes are settled.
+**Pre-LLM budget grinder:** Before each LLM call, the budget plugin
+runs `enforce()` via the `turn.beforeDispatch` filter chain. If the
+assembled packet exceeds the ceiling, fat-replay reclamation walks
+`<get>` / `<set>` log entries from prior turns sorted by
+`(turn DESC, body_tokens DESC)`, clears bodies one at a time until
+the packet fits, and emits one `<error>` log entry at status 413 with
+`archivedCount` / `archivedTokens` attrs naming what was reclaimed.
+Catalog visibility (knowns / unknowns / files / streams) is never
+auto-demoted — the model owns those transitions via
+`<set archive/>` / `<set index/>`. If reclamation can't free enough,
+the run hits a hard 413 strike and the turn aborts.
 
 ### Plugin Convention {#plugin_convention}
 
@@ -566,7 +572,7 @@ A plugin can be multiple types. Known is a tool AND an assembly plugin.
 ### Failure Reporting {#failure_reporting}
 
 **The action entry IS its outcome.** Every action plugin's handler
-finalizes the action's own log entry (`log://turn_N/{action}/{slug}`)
+finalizes the action's own log entry (`log://<L>/<T>/<S>/<action>`)
 with body, state, and outcome. Success and failure are two values of
 the same shape — only the field values change. The model sees both
 through the same channel, rendered under the action's scheme.
@@ -600,7 +606,7 @@ no corresponding action entry to attach to:
   stream timeout — not bound to a specific action.
 - Budget overflow — pre-dispatch rejection.
 
-`error.log.emit` writes a `log://turn_N/error/<slug>` entry and
+`error.log.emit` writes a `log://<L>/<T>/<S>/error` entry and
 increments `state.turnErrors`, which also feeds strike accumulation.
 Both channels (action-entry state=failed and `error.log.emit`)
 contribute to the strike streak; either path advances it.
@@ -667,7 +673,7 @@ off the proposal-pending event payload and engages only when set.
    `entries.waitForResolution` blocking call wakes immediately; the
    loop continues without RPC roundtrip.
 2. **Server-side sh/env execution.** For proposals on
-   `log://turn_N/sh/...` or `log://turn_N/env/...`, the yolo plugin
+   `log://<L>/<T>/<S>/sh` or `log://<L>/<T>/<S>/env`, the yolo plugin
    spawns the command in `projectRoot`, streams stdout/stderr to
    `{dataBase}_1`/`{dataBase}_2` via `entries.set append=true`, and
    transitions channels to terminal state on exit (200 / 500 mirror
@@ -690,36 +696,51 @@ on `proposal.pending`. Feature logic stays in
 
 ### Project Manifest {#project_manifest}
 
-The `rummy.repo` plugin writes a single `log://turn_0/repo/manifest` entry
-once per run — a flat snapshot of every project file with its token
-cost. It gives the model orientation at run start without burning
-prefix-cache on a turn-keyed regeneration. Files themselves default
-to `archived` so a 5000-file repo doesn't dump hundreds of thousands
-of tokens into context before any work happens.
+The `rummy.repo` plugin writes a single `repo://manifest` entry once
+per run — a flat snapshot of every project file with its token cost.
+It gives the model orientation at run start without burning prefix-
+cache on a turn-keyed regeneration. Files themselves default to
+`archived` so a 5000-file repo doesn't dump hundreds of thousands of
+tokens into context before any work happens.
 
 **Entry contract.**
 
-- Path: `log://turn_0/repo/manifest` (log scheme; turn-0 marks "before
-  any model turn"). One entry per run, written once.
-- Visibility: `indexed` at write; archivable like any log entry.
-- Body: a flat list of `* <relative-path> - <N> tokens` lines, one
-  per file, sorted by path. No headers, no directory aggregation, no
-  constraints, no navigation legend — those are the model's business
-  to derive from the list itself or from tooldocs.
+- Path: `repo://manifest` (project-scope scheme owned by rummy.repo).
+  One entry per run, written once.
+- Visibility: `indexed` at write; archivable like any data entry.
+- Body: rollup section + `---` delimiter + flat file list. Each row is
+  one JSON object per line (`{"path":"...","tokens":N}`) — same shape
+  as the meta envelope on log entries so the model parses with one
+  primitive. Rollup rows aggregate by directory (path ends in `/`);
+  flat rows are per-file. Sorted alphabetically.
 
 **Stale by design.** The manifest is a turn-0 snapshot; it does not
 update mid-run. Authoritative current state lives in the per-file
-entries (mtime/hash-driven, change-only writes). The model can
-`<get path="**" preview/>` for a fresh listing if it suspects
-staleness.
+entries (mtime/hash-driven, change-only writes) and in the Phase 3
+filesystem-mutation log injection (see [file_freshness]).
 
 **File default visibility.**
 
 `FileScanner` registers each tracked file at `archived` by default.
-Files with `constraint=active` register at `indexed`. The model uses
-the manifest to discover paths, then `<get path=...>` brings the
-full content into `<log>` and greedily re-indexes the file in
-`<index>`.
+The model uses the manifest to discover paths, then `<get path=...>`
+brings the full content into `<log>` and greedily re-indexes the file
+in `<index>`.
+
+**Phase 3 — filesystem-mutation log injection {#file_freshness}.**
+Engine-mediated state changes the model didn't author surface as
+synthetic log entries written in the model's own command grammar:
+
+- File appeared on disk between scans → `log://<L>/<T>/<S>/set` with
+  empty SEARCH and full REPLACE.
+- File modified on disk → `log://<L>/<T>/<S>/set` with one
+  SEARCH/REPLACE pair per diff hunk.
+- File removed from disk → `log://<L>/<T>/<S>/rm`, empty body,
+  followed by the actual entry removal.
+
+In every case `attrs.external = true` distinguishes engine-injected
+entries from model emissions, and `attrs.patch` carries a udiff for
+client renderers (rummy.nvim). The bootstrap scan (no prior file
+entries) does NOT inject — every file is baseline, not delta.
 
 **Disabled when noRepo.** Setting `noRepo: true` on a run skips the
 scan entirely; no manifest is created and no file entries are
@@ -744,17 +765,17 @@ invocation, one for the audit record, one for the payload (see
 [scheme_category_split](#scheme_category_split)):
 
 ```
-log://turn_N/{action}/{slug}    scheme=log       category=logging   status=202→200
+log://<L>/<T>/<S>/<action>      scheme=log       category=logging   status=202→200
                                 body: "ran 'command', exit=0, Output: {paths}"
                                 (renders in <log>)
 
-{action}://turn_N/{slug}_1      scheme={action}  category=data (volatile)  status=102 → 200/500
+{action}://<L>/<T>/<S>_1        scheme={action}  category=data (volatile)  status=102 → 200/500
                                 body: primary stream (stdout for shell)
                                 tags="{command}" visibility=indexed
                                 (tail-preview tile in <index> at the
                                  bottom; full body via <get>)
 
-{action}://turn_N/{slug}_2      scheme={action}  category=data (volatile)  status=102 → 200/500
+{action}://<L>/<T>/<S>_2        scheme={action}  category=data (volatile)  status=102 → 200/500
                                 body: alt stream (stderr for shell)
                                 (tail-preview tile in <index>;
                                  often empty)
@@ -775,10 +796,10 @@ anomalies/errors, `_3`+ for auxiliary streams.
 **Search prefetch.** The `search` producer (provided by `rummy.web`
 when wired) may prefetch its result URLs as separate `<https>` data
 entries before the model emits any `<get>`. The model sees those
-pages as already-summarized data without having explicitly loaded
-them. Auditors reading dumps should be aware: the absence of a
-corresponding `log://turn_N/get/` for a URL does **not** mean the
-URL wasn't loaded — it may have arrived via search prefetch. The
+pages as archived URL tiles without having explicitly loaded them.
+Auditors reading dumps should be aware: the absence of a
+corresponding `log://*/*/*/get` for a URL does **not** mean the URL
+wasn't loaded — it may have arrived via search prefetch. The
 prefetch policy is the search plugin's implementation detail; the
 data entries themselves obey the streaming-producer shape above.
 
@@ -791,10 +812,6 @@ for tail) to sample without promoting full body.
 N/A for non-process producers), 500 (non-zero exit), or 499 (client
 aborted via `stream/aborted`). The log entry is rewritten with final
 stats (exit code, duration, channel sizes, or abort reason).
-
-**Budget demotion preserves status.** A 102 entry demoted by Turn
-Demotion stays at 102 — status reflects operation outcome, visibility
-reflects visibility. See [schemes_status_visibility](#schemes_status_visibility) for the status-vs-visibility separation.
 
 **Stream plugin ([plugin_system](#plugin_system)) owns the append and completion RPCs.** Producer
 plugins (sh, env) create the proposal and data entries; the stream
@@ -839,11 +856,12 @@ Two messages per turn. System = stable truth. User = active task.
     </system_instructions>
     <log>
         Time-ordered activity tape — all category=logging entries
-        (log:// recaps, error://, update://, log://turn_N/prompt/...).
-        Slim by default (JSON envelope only); body present for
-        <set> (verbatim emission), <get> (retrieved content),
-        <search>, <error>, <update>, <prompt> (≤500-char preview).
-        Active task = the last entry. (log.js, assembly.user priority 50)
+        (action recaps at log://<L>/<T>/<S>/<action>, errors, updates,
+        prompts). Slim by default (JSON envelope only); body present
+        for <set> (REPLACE-only projection of the model's emission),
+        <get> (retrieved content), <search>, <error>, <update>,
+        <prompt> (≤500-char preview). Active task = the last entry.
+        (log.js, assembly.user priority 50)
     </log>
     <turn commands="…" warn="…" archived="N" tokenCeiling="C" tokenUsage="N" tokensFree="M">
         Per-turn meta: per-scheme breakdown table (anchor order:
@@ -892,11 +910,11 @@ Cross-loop continuity is carried by the entry store itself:
   whatever visibility the model left them at. They render in
   `<index>` per visibility, regardless of which loop wrote them.
 - **Log entries** (action audit, errors, updates, prompt log
-  entries) accumulate at `log://turn_N/...` for every turn of every
-  loop; `log.js` renders all logging-category entries in `<log>` in
-  chronological order. Active task = the last entry.
+  entries) accumulate at `log://<L>/<T>/<S>/<action>` for every turn
+  of every loop; `log.js` renders all logging-category entries in
+  `<log>` in chronological order. Active task = the last entry.
 - **Prompts** are catalog entries (`prompt://N`, archived by
-  default) plus a log entry (`log://turn_N/prompt/<slug>`, body =
+  default) plus a log entry (`log://<L>/<T>/<S>/prompt`, body =
   ≤500-char preview). Latest prompt's log entry is naturally last
   in `<log>` (recency).
 
@@ -978,9 +996,9 @@ The invariant has two parts:
    the new body on the next assembly's `<index>` tile (when indexed)
    or under `<get>` (when archived).
 2. **Visibility freshness** — a write that explicitly sets
-   `visibility=...` honors the requested level on the next
+   `archive` / `index` honors the requested level on the next
    assembly. Edit-path side effects (e.g., a SEARCH/REPLACE accept
-   silently downgrading visibility) violate the invariant; the
+   silently archiving the entry) violate the invariant; the
    model would answer the next turn from memory of pre-edit state
    while the new body sits invisible.
 
@@ -990,83 +1008,68 @@ write-through for both file and scheme entries.
 ### Token Accounting {#token_accounting}
 
 Tokens are a property of the materialized packet, not of stored entries.
-They are computed during assembly, exposed on the materialization records,
-and consumed by the budget plugin for the model-facing `<budget>` table.
-Nothing else in the system has its own opinion of "what an entry costs."
+They are computed during assembly, exposed on the materialization
+records, and consumed by the budget plugin for the model-facing
+`<turn>` table. Nothing else in the system has its own opinion of
+"what an entry costs."
 
-**Per-entry materialization records** carry three token measures:
+**Per-entry materialization records** carry two token measures:
 
 | Field | Meaning |
 |---|---|
-| `vTokens` | Wire cost when the entry is fully visible. The body rendered through the scheme's `visible` view, wrapped in its envelope tag, tokenized. |
-| `sTokens` | Wire cost when the entry is summarized. The body rendered through the scheme's `summarized` view (typically a projection or 500-char preview), wrapped in its envelope tag, tokenized. |
-| `aTokens` | `vTokens − sTokens`. The promotion premium — the marginal cost of the entry being visible rather than summarized. The only token measure exposed to the model on per-entry tags. |
+| `tileTokens` | Wire cost of the entry's projection in `<index>` (or `<log>`, for logging-category entries). Body rendered through the scheme's view, wrapped in its envelope, tokenized. |
+| `bodyTokens` | Wire cost of the entry's raw body — what `<get>` would bring into `<log>` if the model fetched it. |
 
-The model sees `tokens="N"` on each entry tag. That `N` is `aTokens`. It
-means: *demoting this entry frees `N` tokens; promoting this entry from
-summarized to visible costs `N` tokens.* The number is a pure lever — no
-body-vs-wire ambiguity, no envelope overhead surprise.
+The model sees `tokens="N"` on each entry tag. For data tiles in
+`<index>`, that's `tileTokens` — what the entry currently costs in
+context. For `<log>` envelopes, it's `bodyTokens` — what the entry's
+content weighs.
 
-**Headline (`tokenUsage` / `tokensFree`).** Single source of truth:
-the actual size of the packet about to be sent.
+**Headline (`tokenUsage` / `tokenCeiling` / `tokensFree`).** Single
+source of truth: the actual size of the packet about to be sent.
 
 ```
 tokenUsage = countTokens(systemMessage) + countTokens(userMessage)
-tokensFree = max(0, ceiling − tokenUsage)
+tokensFree = max(0, tokenCeiling − tokenUsage)
 ```
 
-This is what the model sees on the `<budget>` tag and what the
+This is what the model sees on the `<turn>` tag and what the
 `turn.beforeDispatch` enforce gate checks (when no prior-turn
 `prompt_tokens` is available; otherwise enforce uses that real
 API count). One number, derived from one helper
 (`computePacketTokens`), reached for in both places.
 
-**Per-scheme breakdown (the action lever).** The model's demote
-levers are still per-scheme. The breakdown table inside `<budget>`
-is computed from `aTokens` summed by scheme — independent of the
-headline math:
+**Per-scheme breakdown table.** Inside `<turn>`, a Markdown table
+lists `(scheme, indexed, archived, tokens)` per scheme. Anchor
+schemes (`repo`, `known`, `unknown`, `log`) come first in that order
+when present; remaining schemes follow sorted by indexed-token cost
+descending. The `tokens` column is the sum of `tileTokens` for the
+indexed entries of that scheme — the saving from archiving the
+scheme. Catalog visibility is model-owned: the model uses the table
+to decide what to archive via `<set archive/>`.
 
-- Visibility premium (per-scheme `aTokens` sum) — what the model
-  saves by demoting a whole scheme. Surfaced as the `tokens`
-  column in the table.
-- Summarized floor (sum of `sTokens` for non-visible entries) —
-  reported as an aggregate line below the table.
-- System overhead — reported as its own line.
-
-The headline is the wire-truth; the table is the action map.
-
-**`<budget>` rendered shape** (priority 90 in user message):
+**`<turn>` rendered shape** (priority 90 in user message):
 
 ```
-<budget tokenUsage="N" tokensFree="M">
-| scheme | visible | tokens | % |
+<turn commands="…" warn="…" archived="N" tokenCeiling="C" tokenUsage="N" tokensFree="M">
+| scheme | indexed | archived | tokens |
 |---|---|---|---|
-| <scheme> | <count> | <sum-of-aTokens> | <%-of-ceiling> |
-... rows for visible-scheme breakdown, sorted desc by tokens ...
-
-Summarized: <count> entries, <sum-of-sTokens> tokens (<%>% of budget).
-System: <token-count> tokens (<%>% of budget).
-Total: <visible-count> visible + <summarized-count> summarized entries; tokenUsage <N> / ceiling <C>. <M> tokens free.
-</budget>
+| repo  | 1 | 0 | 935 |
+| known | 2 | 0 |  60 |
+| log   | 3 | 0 | 286 |
+| …
+</turn>
 ```
 
-**Why the table only contains visible scheme rows.** The `tokens` column
-in the table is `aTokens` — the action lever. Per-entry visibility of
-summarized entries is intentionally not surfaced; surgical pruning of
-individual high-signal summaries is the wrong action shape. The
-summarized aggregate line below the table is the only signal for that
-class — actionable via glob (`<set path="known://oldsession/*"
-visibility="archived"/>`), not per-entry.
-
-**Where the math is computed.** Materialization (`materializeContext.js`
-+ `ContextAssembler.js` + per-scheme view handlers) renders each entry's
-visible and summarized projections and tokenizes both, producing
-`vTokens`/`sTokens`/`aTokens` per row. The budget plugin's
-`assembleBudget` filter renders the per-scheme table from those values
-and emits the `<budget>` tag with **placeholder** headline tokens.
+**Where the math is computed.** Materialization
+(`materializeContext.js` + `ContextAssembler.js` + per-scheme view
+handlers) renders each entry's projection and tokenizes it, producing
+`tileTokens` / `bodyTokens` per row. The budget plugin's
+`assembleTurn` filter renders the per-scheme table from those values
+and emits the `<turn>` tag with **placeholder** headline tokens.
 `ContextAssembler.assembleFromTurnContext` then measures the fully-
 assembled system + user messages and substitutes the real
-`tokenUsage`/`tokensFree` into the placeholders. This single
+`tokenUsage` / `tokensFree` into the placeholders. This single
 post-substitution step is why the model and the enforce gate see the
 same number: they both reach for `computePacketTokens` against the
 same assembled bytes.
@@ -1088,36 +1091,28 @@ helpfully or speculatively.
 decisions compare `assembledTokens` against `ceiling`, never against
 `contextSize` directly.
 
-**Pre-LLM grinder** (`hooks.turn.beforeDispatch.filter`, in
-TurnExecutor before the LLM call; budget is the canonical
-subscriber). A four-step ladder. Each step demotes a strictly smaller
-scope and rechecks. The first step that fits the ceiling proceeds to
-the LLM; if step 4 fires, AgentLoop exits the loop with 413.
+**Pre-LLM grinder — fat-replay reclamation**
+(`hooks.turn.beforeDispatch.filter`; budget is the canonical
+subscriber).
 
 1. **Check budget.** Measure `assembledTokens` (using
    `turns.context_tokens` from the prior turn when available, the
    materialized packet estimate as a first-turn fallback). If
    `assembledTokens ≤ ceiling`, proceed to the LLM.
-2. **Soft 413 — previous-turn demotion.** Flip every `run_views`
-   row where `turn = current_turn - 1 AND visibility = visible` to
-   `summarized` (status preserved — see
-   [schemes_status_visibility](#schemes_status_visibility)). All
-   schemes participate; no exemption for knowns / unknowns /
-   files. Re-materialize, re-check.
-3. **Soft 413 — current-prompt demotion.** Flip the incoming
-   `prompt://N` entry to `summarized`. Re-materialize, re-check.
-   Step 3 exists because the prompt is stamped at `current_turn`,
-   not the previous turn — step 2's filter never sees it. Without
-   step 3, an oversized first-turn prompt has no path to fit.
-4. **Hard 413.** Emit a 413 `error://` entry via
-   `hooks.error.log.emit` with the descriptive body (what was
-   demoted across steps 2-3, the ceiling, the residual overflow).
-   AgentLoop exits the loop with 413.
+2. **Reclaim fat replays.** Walk `<get>` / `<set>` log entries from
+   prior turns sorted by `(turn DESC, body_tokens DESC)`. Clear each
+   body in turn, recording the reclaimed path + tokens, until either
+   the packet fits the ceiling or the candidate list is exhausted.
+3. **Emit a single 413 `error://` entry** via `hooks.error.log.emit`
+   with `archivedCount` / `archivedTokens` attrs naming what was
+   reclaimed. If the packet now fits, proceed to the LLM (soft 413).
+   If reclamation couldn't free enough, AgentLoop exits the loop
+   with a hard 413.
 
-Steps 2 and 3 also emit 413 `error://` entries when they fire
-(distinct from step 4 in that the run keeps going). The model reads
-those next turn and learns what got auto-demoted. Status of the
-turn that proceeded after a soft 413 is unaffected.
+The grinder touches only **fat replays** — `<get>` / `<set>` log
+entries with non-empty bodies from prior turns. Catalog visibility
+(knowns / unknowns / files / streams) is never auto-demoted; the
+model owns those transitions via `<set archive/>` / `<set index/>`.
 
 **Trunks and forks are treated identically.** A forked run inherits
 the parent's `run_views` rows verbatim — each entry keeps its
@@ -1258,8 +1253,8 @@ Both attach to a run via the entry grammar.
 - **Skills** — model emits `<skill path="[path-or-url]"/>`.
   Handler walks local file/folder/`.zip` (via `yauzl-promise`) or
   fetches a URL. Single `.md` registers as `skill://<name>`
-  (summarized); folder/zip registers root `index.md` summarized,
-  rest archived; `foo/index.md` collapses to `skill://<name>/foo`.
+  (indexed); folder/zip registers root `index.md` indexed, rest
+  archived; `foo/index.md` collapses to `skill://<name>/foo`.
   Re-emit overwrites. Authors link with absolute `skill://...` URIs.
 - **Personas** — `ask` / `act` / `startRun` accept `persona` as a
   run attribute. The persona plugin renders the persona body inside
@@ -1296,7 +1291,7 @@ notification and `getRun` RPC:
       "status": 200,
       "body": "Donald Trump is the 47th president…",
       "turn": 4,
-      "attributes": "{\"summary\":\"president,current,trump\",\"visibility\":\"visible\"}"
+      "attributes": "{\"tags\":\"president,current,trump\",\"visibility\":\"indexed\"}"
     }
   ],
   "unknowns": [{ "path": "unknown://…", "body": "…" }],
@@ -1388,9 +1383,8 @@ pick up the pattern from example 3.
 docs demonstrate `<get path="known://*">keyword</get>` for pattern recall
 and `<get path="..." line="N" limit="M"/>` for partial reads that don't
 promote. The known docs reference `<get path="known://*">keyword</get>`
-for recall. The unknown docs reference `<set path="unknown://..."
-visibility="archived"/>` for retiring resolved questions, `<get/>` for
-investigation. A model reading the full tool docs encounters a coherent
+for recall. The unknown docs reference `<set path="unknown://..." archive/>` for
+retiring resolved questions, `<get/>` for investigation. A model reading the full tool docs encounters a coherent
 workflow: discover → load → reason → edit → archive → recall.
 
 **RFC 2119 semantics.** Constraint bullets use YOU MUST, YOU MUST NOT,

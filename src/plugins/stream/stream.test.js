@@ -138,9 +138,7 @@ describe("Stream plugin", () => {
 			);
 			assert.equal(channelUpdates.length, 2);
 			assert.ok(channelUpdates.every((c) => c.state === "resolved"));
-			const logUpdate = store._calls.find(
-				(c) => c.path === "log://1/1/1/sh",
-			);
+			const logUpdate = store._calls.find((c) => c.path === "log://1/1/1/sh");
 			assert.match(logUpdate.body, /ran 'ls', exit=0 \(1s\)/);
 			assert.match(logUpdate.body, /sh:\/\/1\/1\/1_1 \(1 tokens\)/);
 		});
@@ -166,9 +164,7 @@ describe("Stream plugin", () => {
 			);
 			assert.equal(channelUpdate.state, "failed");
 			assert.equal(channelUpdate.outcome, "exit:2");
-			const logUpdate = store._calls.find(
-				(c) => c.path === "log://1/1/1/sh",
-			);
+			const logUpdate = store._calls.find((c) => c.path === "log://1/1/1/sh");
 			assert.match(logUpdate.body, /exit=2/);
 		});
 

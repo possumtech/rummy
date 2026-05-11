@@ -66,7 +66,11 @@ describe("Skill plugin", () => {
 		assert.equal(typeof core._handler(), "function");
 		// Host-mediated only: RPC tool fallback dispatches the handler;
 		// the model never sees <skill> in <system_commands>.
-		assert.equal(core._hidden(), true, "skill tool is hidden from advertisement");
+		assert.equal(
+			core._hidden(),
+			true,
+			"skill tool is hidden from advertisement",
+		);
 	});
 
 	it("emits validation failure when path missing", async () => {

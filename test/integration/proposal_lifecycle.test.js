@@ -40,7 +40,10 @@ async function seedProject(tdb, alias) {
 		`proposal_lifecycle_${alias}_${Date.now()}`,
 	);
 	await fs.mkdir(projectRoot, { recursive: true });
-	const { runId, projectId, loopId } = await tdb.seedRun({ alias, projectRoot });
+	const { runId, projectId, loopId } = await tdb.seedRun({
+		alias,
+		projectRoot,
+	});
 	return { projectRoot, runId, projectId, loopId };
 }
 
@@ -62,7 +65,10 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	describe("set proposal accept", () => {
 		it("creates bare-path entry with patched content", async () => {
-			const { projectRoot, runId, loopId } = await seedProject(tdb, "set_bare_path");
+			const { projectRoot, runId, loopId } = await seedProject(
+				tdb,
+				"set_bare_path",
+			);
 			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			const newContent = "# A\nbody line";
 			await entries.set({
@@ -104,7 +110,10 @@ describe("proposal lifecycle (@resolution)", () => {
 		});
 
 		it("readonly constraint vetoes accept with outcome=readonly", async () => {
-			const { projectId, runId, loopId } = await seedProject(tdb, "set_readonly_veto");
+			const { projectId, runId, loopId } = await seedProject(
+				tdb,
+				"set_readonly_veto",
+			);
 			await tdb.db.upsert_file_constraint.run({
 				project_id: projectId,
 				pattern: "locked.md",
@@ -142,7 +151,10 @@ describe("proposal lifecycle (@resolution)", () => {
 
 	describe("rm proposal accept", () => {
 		it("removes bare-path entry and unlinks disk file", async () => {
-			const { projectRoot, runId, loopId } = await seedProject(tdb, "rm_accept");
+			const { projectRoot, runId, loopId } = await seedProject(
+				tdb,
+				"rm_accept",
+			);
 			await fs.writeFile(join(projectRoot, "doomed.md"), "bye");
 			await entries.set({
 				runId,

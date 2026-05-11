@@ -379,7 +379,8 @@ describe("Budget math", () => {
 
 			const stored = await tdb.db.get_known_entries.all({ run_id: runId });
 			const err = stored.find(
-				(r) => /^log:\/\/\d+\/1\/\d+\/error$/.test(r.path) && r.scheme === "log",
+				(r) =>
+					/^log:\/\/\d+\/1\/\d+\/error$/.test(r.path) && r.scheme === "log",
 			);
 			assert.ok(err, "413 error entry written");
 			const attrs = JSON.parse(err.attributes);

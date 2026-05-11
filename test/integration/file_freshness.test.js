@@ -335,10 +335,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			writeFileSync(join(root, "baseline.md"), "preexisting\n");
 			await commit(root);
 
-			const { runId, projectId } = await seedActiveRun(
-				"phase3_new",
-				root,
-			);
+			const { runId, projectId } = await seedActiveRun("phase3_new", root);
 			// Bootstrap scan (turn 1): baseline.md lands as a file entry,
 			// no log injection.
 			await fireScan(runId, projectId, root, 1);
@@ -396,10 +393,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			await commit(root);
 
-			const { runId, projectId } = await seedActiveRun(
-				"phase3_mod",
-				root,
-			);
+			const { runId, projectId } = await seedActiveRun("phase3_mod", root);
 
 			// Turn 1: ingest baseline. No external mutation log yet.
 			await fireScan(runId, projectId, root, 1);
@@ -439,10 +433,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			writeFileSync(join(root, "going.md"), "bye\n");
 			await commit(root);
 
-			const { runId, projectId } = await seedActiveRun(
-				"phase3_rm",
-				root,
-			);
+			const { runId, projectId } = await seedActiveRun("phase3_rm", root);
 
 			// Turn 1: ingest baseline.
 			await fireScan(runId, projectId, root, 1);

@@ -8,22 +8,21 @@ populate data entries over time.
 
 A streaming action lives in **two namespaces** by design:
 
-- **Log entry** (audit record): `log://turn_N/{action}/{slug}` —
+- **Log entry** (audit record): `log://<L>/<T>/<S>/<action>` —
   scheme=`log`, category=`logging`. Created by the producer's dispatch
   handler (via `TurnExecutor` → `logPath`). This is the proposal the
-  client resolves. Renders inside `<log>`.
-- **Data channels** (payload): `{action}://turn_N/{slug}_1`,
-  `{action}://turn_N/{slug}_2`, ... — scheme=`{action}` (sh, env, ...),
-  category=`logging` (time-indexed activity, not topic-indexed state).
-  Created at status=102 on proposal acceptance. Grow via `stream`;
-  terminal via `stream/completed` / `stream/aborted` / `stream/cancel`.
-  Render inside `<log>` adjacent to their parent action entry; visibility
-  controls body projection (full vs compact), not section assignment.
+  client resolves. Renders as a slim recap inside `<log>`.
+- **Data channels** (payload): `{action}://<L>/<T>/<S>_1`,
+  `{action}://<L>/<T>/<S>_2`, ... — scheme=`{action}` (sh, env, ...),
+  category=`data`, `volatile: true`. Created at status=102 on proposal
+  acceptance. Grow via `stream`; terminal via `stream/completed` /
+  `stream/aborted` / `stream/cancel`. Render in `<index>` at the bottom
+  (volatile-sorted) with a tail preview; full body via `<get>`.
 
 The stream RPC `path` param is always the **log-entry path** (the
 `log://...` path the client discovers via `getEntries` after a
 `run/changed` pulse). The server derives the data base path internally
-via `logPathToDataBase`. See [scheme_category_split](#scheme_category_split).
+via `logPathToDataBase`. See [scheme_category_split](SPEC.md#scheme_category_split).
 
 ## RPC Methods
 
@@ -72,14 +71,14 @@ mid-stream (`stream/completed` never arrived), any client can call
 A streaming producer plugin:
 
 1. On model dispatch, writes the **proposal/log entry** at
-   `log://turn_N/{action}/{slug}` at status=202 (this is automatic —
+   `log://<L>/<T>/<S>/<action>` at status=202 (this is automatic —
    `TurnExecutor` builds the path via `logPath`; the producer's
    `handler` just persists it).
 2. On `proposal.accepted`, derives the data base
    (`logPathToDataBase(ctx.path)`) and creates **channel entries** at
-   `{dataBase}_1`, `{dataBase}_2`, etc. at status=102, category=logging,
-   visibility=summarized, empty body. Then rewrites the log entry body
-   to reference the channel paths.
+   `{dataBase}_1`, `{dataBase}_2`, etc. at status=102, category=data,
+   volatile, empty body. Then rewrites the log entry body to reference
+   the channel paths.
 3. Client or external producer calls the `stream` RPC with chunks as
    they arrive.
 4. When the producer is done, the client/producer calls

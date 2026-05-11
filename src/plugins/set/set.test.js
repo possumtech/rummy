@@ -77,10 +77,42 @@ describe("Set plugin", () => {
 			const body =
 				"<<SEARCH\nold1\nSEARCH<<REPLACE\nnew1\nREPLACE<<SEARCH\nold2\nSEARCH<<REPLACE\nnew2\nREPLACE";
 			const out = plugin.full({ attributes: { path: "x" }, body });
-			assert.equal(
-				out,
-				"<<REPLACE\nnew1\nREPLACE<<REPLACE\nnew2\nREPLACE",
-			);
+			assert.equal(out, "<<REPLACE\nnew1\nREPLACE<<REPLACE\nnew2\nREPLACE");
+		});
+
+		it("opPositions projects target-line-numbered content with preNumbered flag", () => {
+			const out = plugin.full({
+				attributes: {
+					path: "x",
+					opPositions: [
+						{
+							kind: "search_replace",
+							startLine: 5,
+							lineCount: 2,
+							content: "alpha\nbeta",
+						},
+						{
+							kind: "append",
+							startLine: 42,
+							lineCount: 3,
+							content: "gamma\ndelta\nepsilon",
+						},
+					],
+				},
+				body: "<<SEARCH\nold\nSEARCH<<REPLACE\nalpha\nbeta\nREPLACE",
+			});
+			assert.deepEqual(out, {
+				body: "5:\talpha\n6:\tbeta\n\n42:\tgamma\n43:\tdelta\n44:\tepsilon",
+				preNumbered: true,
+			});
+		});
+
+		it("opPositions with empty content (delete-only set) projects empty body", () => {
+			const out = plugin.full({
+				attributes: { path: "x", opPositions: [] },
+				body: "<<DELETE\nfoo\nDELETE",
+			});
+			assert.deepEqual(out, { body: "", preNumbered: true });
 		});
 
 		it("conflict synthesizes an error projection with attempted + current body", () => {
@@ -137,8 +169,7 @@ describe("Set plugin", () => {
 				{ entries: store, sequence: 2, runId: "r", loopId: "l" },
 			);
 			const flip = store._calls.find(
-				(c) =>
-					c.path === "log://1/1/1/search" && c.visibility === "archived",
+				(c) => c.path === "log://1/1/1/search" && c.visibility === "archived",
 			);
 			assert.ok(flip, "archive flip on log:// goes through");
 		});
@@ -232,9 +263,7 @@ describe("Set plugin", () => {
 			);
 			assert.ok(target);
 			assert.equal(target.visibility, "indexed");
-			const log = store._calls.find(
-				(c) => c.path === "log://1/1/1/set",
-			);
+			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.ok(log);
 			assert.equal(log.attributes.beforeActionTokens, 0);
 			assert.ok(log.attributes.afterActionTokens > 0);
@@ -253,9 +282,7 @@ describe("Set plugin", () => {
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const log = store._calls.find(
-				(c) => c.path === "log://1/1/1/set",
-			);
+			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.ok(log);
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/foo.js");
@@ -384,16 +411,12 @@ describe("Set plugin", () => {
 						path: "OC_RIVERS.md",
 						index: "",
 						tags: "report,internal",
-						operations: [
-							{ op: "new", content: newBody },
-						],
+						operations: [{ op: "new", content: newBody }],
 					},
 				},
 				{ entries: store, sequence: 14, runId: "r", loopId: "l" },
 			);
-			const log = store._calls.find(
-				(c) => c.path === "log://1/14/1/set",
-			);
+			const log = store._calls.find((c) => c.path === "log://1/14/1/set");
 			assert.ok(log, "log entry written");
 			assert.notEqual(
 				log.state,
@@ -431,9 +454,7 @@ describe("Set plugin", () => {
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const log = store._calls.find(
-				(c) => c.path === "log://1/1/1/set",
-			);
+			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.ok(log);
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/app.js");
@@ -493,9 +514,7 @@ describe("Set plugin", () => {
 			const upsert = store._calls.find((c) => c.path === "known://new");
 			assert.ok(upsert, "path was created");
 			assert.equal(upsert.body, "fresh body");
-			const log = store._calls.find(
-				(c) => c.path === "log://1/1/2/set",
-			);
+			const log = store._calls.find((c) => c.path === "log://1/1/2/set");
 			assert.notEqual(log?.state, "failed", "no not_found error");
 		});
 
@@ -518,9 +537,7 @@ describe("Set plugin", () => {
 			// no failure either.
 			const upsert = store._calls.find((c) => c.path === "known://new");
 			assert.equal(upsert, undefined);
-			const log = store._calls.find(
-				(c) => c.path === "log://1/1/2/set",
-			);
+			const log = store._calls.find((c) => c.path === "log://1/1/2/set");
 			assert.notEqual(log?.state, "failed");
 		});
 
@@ -576,9 +593,7 @@ describe("Set plugin", () => {
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const log = store._calls.find(
-				(c) => c.path === "log://1/1/3/set",
-			);
+			const log = store._calls.find((c) => c.path === "log://1/1/3/set");
 			assert.equal(log.state, "failed");
 			assert.equal(log.outcome, "conflict");
 		});
@@ -605,9 +620,7 @@ describe("Set plugin", () => {
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const log = store._calls.find(
-				(c) => c.path === "log://1/1/1/set",
-			);
+			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.equal(log.state, "failed");
 			assert.equal(log.outcome, "conflict");
 		});
@@ -654,6 +667,14 @@ describe("Set plugin", () => {
 					log.attributes.patched,
 					"line1\nline2\nnew A\nnew B\nnew C\nline6\n",
 				);
+				assert.deepEqual(log.attributes.opPositions, [
+					{
+						kind: "search_replace",
+						startLine: 3,
+						lineCount: 3,
+						content: "new A\nnew B\nnew C",
+					},
+				]);
 			});
 
 			it("scoped single-line replace (start == end)", async () => {
@@ -684,10 +705,7 @@ describe("Set plugin", () => {
 				]);
 				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 				assert.equal(log.state, "proposed");
-				assert.equal(
-					log.attributes.patched,
-					"line1\nline2\nX\nY\nZ\nline6\n",
-				);
+				assert.equal(log.attributes.patched, "line1\nline2\nX\nY\nZ\nline6\n");
 			});
 
 			it("content mismatch at the scoped range fails with conflict + actual lines feedback", async () => {
@@ -764,7 +782,7 @@ describe("Set plugin: manifest is universal", () => {
 			async getState() {
 				return null;
 			},
-			async logPath(_r, t, s, p) {
+			async logPath(_r, t, s, _p) {
 				return `log://1/${t}/1/${s}`;
 			},
 		};

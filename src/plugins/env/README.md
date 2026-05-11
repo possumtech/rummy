@@ -8,23 +8,24 @@ side effects.
 ## Registration
 
 - **Tool**: `env`
-- **Scheme**: `env` — `category: "logging"` (channels are time-indexed activity, not state)
+- **Scheme**: `env` — `category: "data"`, `volatile: true` (channels sort
+  to the bottom of `<index>` for cache stability).
 - **Handler**: Upserts the proposal entry at status 202 (proposed).
 
 ## Two namespaces per invocation
 
-- **Log entry**: `log://turn_N/env/{slug}` — scheme=`log`, category=`logging`.
-  The audit record (renders inside `<log>` as `<env>`).
-- **Data channels**: `env://turn_N/{slug}_1` (stdout), `env://turn_N/{slug}_2`
-  (stderr) — scheme=`env`, category=`logging` (time-indexed activity).
-  Render inside `<log>` adjacent to their parent `<env>` action entry;
-  visibility controls whether the body is full or compact, not which
-  block they appear in.
+- **Log entry**: `log://<L>/<T>/<S>/env` — scheme=`log`,
+  category=`logging`. The audit record (renders as a slim recap in
+  `<log>`).
+- **Data channels**: `env://<L>/<T>/<S>_1` (stdout),
+  `env://<L>/<T>/<S>_2` (stderr) — scheme=`env`, volatile data.
+  Render in `<index>` at the bottom (volatile-sorted) with a tail
+  preview; full body via `<get>`.
 
 The `env` scheme exists **only** for the data channels. See
-[scheme_category_split](#scheme_category_split).
+[scheme_category_split](SPEC.md#scheme_category_split).
 
 ## Projection
 
-- **Visible**: `# env {command}\n{body}`.
-- **Summarized**: empty.
+- Log entry view: slim recap.
+- Data channel view: tail preview via `streamSummary`.

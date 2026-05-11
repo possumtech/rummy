@@ -39,7 +39,7 @@ export default class Rpc {
 				path: "string — entry path (e.g. known://fact or run://abc)",
 				body: "string? — entry body",
 				state: "string? — proposed | streaming | resolved | failed | cancelled",
-				visibility: "string? — visible | summarized | archived",
+				visibility: "string? — indexed | archived",
 				outcome: "string? — reason when state ∈ {failed, cancelled}",
 				attributes: "object? — JSON attributes",
 				append: "boolean? — append body rather than overwrite",

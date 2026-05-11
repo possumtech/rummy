@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import HeuristicMatcher, { generateSearchReplaceBody } from "./matcher.js";
 import { parseMarkerBody } from "./marker.js";
+import HeuristicMatcher, { generateSearchReplaceBody } from "./matcher.js";
 
 describe("HeuristicMatcher", () => {
 	describe("exact match", () => {
@@ -32,6 +32,19 @@ describe("HeuristicMatcher", () => {
 			assert.ok(result.warning);
 			assert.ok(result.warning.includes("matched"));
 			assert.equal(result.newContent, "a = 1;\na = 1;\na = 2;\n");
+		});
+
+		it("reports match position (1-based line + counts)", () => {
+			const file = "const x = 1;\nconst y = 2;\nconst z = 3;\n";
+			const result = HeuristicMatcher.matchAndPatch(
+				"test.js",
+				file,
+				"const y = 2;",
+				"const y = 99;\nconst yy = 100;",
+			);
+			assert.equal(result.matchStartLine, 2);
+			assert.equal(result.searchLineCount, 1);
+			assert.equal(result.replaceLineCount, 2);
 		});
 	});
 
@@ -149,10 +162,7 @@ describe("generateSearchReplaceBody", () => {
 
 	it("first-appearance: empty SEARCH + full REPLACE", () => {
 		const body = generateSearchReplaceBody("", "hello\nworld\n");
-		assert.equal(
-			body,
-			"<<SEARCH\nSEARCH<<REPLACE\nhello\nworld\n\nREPLACE",
-		);
+		assert.equal(body, "<<SEARCH\nSEARCH<<REPLACE\nhello\nworld\n\nREPLACE");
 		const { ops, error } = parseMarkerBody(body);
 		assert.equal(error, null, "parseable by marker.js");
 		assert.equal(ops.length, 1);
@@ -176,7 +186,9 @@ describe("generateSearchReplaceBody", () => {
 	});
 
 	it("multi-hunk edit: one pair per hunk, parseable as multiple search_replace ops", () => {
-		const before = Array.from({ length: 30 }, (_, i) => `line${i + 1}`).join("\n");
+		const before = Array.from({ length: 30 }, (_, i) => `line${i + 1}`).join(
+			"\n",
+		);
 		const after = before
 			.replace("line5", "FIVE")
 			.replace("line25", "TWENTY_FIVE");

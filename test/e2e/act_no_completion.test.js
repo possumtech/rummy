@@ -147,9 +147,12 @@ describe("E2E: run completion after set-only final turn (@resolution, @run_state
 		const setEntry = entries.find(
 			(e) =>
 				e.scheme === "log" &&
-				/^log:\/\/turn_\d+\/set\//.test(e.path) &&
+				/^log:\/\/\d+\/\d+\/\d+\/set$/.test(e.path) &&
 				e.state === "resolved",
 		);
-		assert.ok(setEntry, "expected at least one resolved log://*/set/ entry");
+		assert.ok(
+			setEntry,
+			"expected at least one resolved log://<L>/<T>/<S>/set entry",
+		);
 	});
 });

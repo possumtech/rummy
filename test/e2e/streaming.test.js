@@ -68,11 +68,16 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		return path;
 	}
 
-	async function seedShProposal(runAlias, slug, command) {
+	let seedSeq = 0;
+	async function seedShProposal(runAlias, _slug, command) {
 		// The proposal/log entry is in the unified log namespace; the
 		// streamed stdout/stderr payload lives under sh:// (category=data)
 		// at the derived data base path. See @scheme_category_split.
-		const path = `log://turn_1/sh/${slug}`;
+		// Path: log://<L>/<T>/<S>/<action> — S is a per-turn sequence
+		// integer (slug-in-path is gone), so we hand out fresh seqs per
+		// seeded proposal. L=1 / T=1 are fixed test scaffolding.
+		seedSeq += 1;
+		const path = `log://1/1/${seedSeq}/sh`;
 		return seedProposal(runAlias, path, { command, summary: command });
 	}
 
@@ -366,7 +371,8 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 
 	it("env scheme follows identical streaming pattern", async () => {
 		const run = await startRun();
-		const path = await seedProposal(run, "log://turn_1/env/pwd", {
+		seedSeq += 1;
+		const path = await seedProposal(run, `log://1/1/${seedSeq}/env`, {
 			command: "pwd",
 			summary: "pwd",
 		});

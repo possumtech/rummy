@@ -8,9 +8,9 @@ While traditional agents "thrash" and fail under the weight of linear chat histo
 
 Rummy provides the memory hierarchy necessary to maintain high-fidelity reasoning over unlimited-turn sessions. This is not a benchmarking "harness," but a production-grade Operating System for AI agency:
 
-*   **L1 Cache (`visible`):** High-fidelity, character-perfect context. This is the active "Working Set" the model is reasoning with right now.
-*   **RAM (`summarized`):** Folksonomic metadata and searchable indices. This allows the model to know *what* information exists and how to address it without consuming the L1 token budget.
-*   **The Disk (`archived`):** Persistent SQLite storage. A relational substrate where every historical finding, raw source document, and prior tool result is safely indexed and searchable, ready to be "paged" back into Cache on demand.
+*   **Indexed (`<index>`):** Folksonomic catalog of entries the model can see at a glance. Knowns and unknowns show their full body in the tile; files and URLs show a stable identifier; streams show a tail preview. The model's working set.
+*   **Archived:** Hidden but recallable. Pattern-addressable storage. The model archives entries it no longer needs in the index and pulls them back via `<get>` when relevant.
+*   **The Disk (SQLite):** The persistent substrate behind both — every entry, log event, prompt, and prior tool result lives in a single SQLite store, scoped per-run / per-project / global as the scheme declares.
 
 ## Key Features
 
@@ -24,7 +24,7 @@ Rummy is built for integration. Every `<tag>` the model sees is a plugin. Every 
 Every operation in Rummy reduces to one of six verbs over a single entry contract: `set` / `get` / `rm` / `mv` / `cp` / `update`. Tools (`<sh>`, `<search>`, `<known>`, `<unknown>`, …) are plugins that compose these primitives. Three actor surfaces — model XML tags, plugin RummyContext methods, JSON-RPC client calls — speak the same grammar at the store layer.
 
 ### The Model Owns Its Context
-Visibility (`visible` / `summarized` / `archived`) is the model's exclusive lever. The engine never silently mutates an entry's visibility behind the model's back; the only enforcements that touch visibility (Turn Demotion at budget overflow, Prompt Demotion at context-exceeded) surface through `error://` so the model sees the trigger. No chat-waterfall horizon, no auto-prune — the model controls what it sees and what it doesn't.
+Visibility (`indexed` / `archived`) is the model's exclusive lever. The engine never auto-promotes or auto-demotes catalog entries — knowns, unknowns, files, and streams stay where the model puts them. When the budget overflows, the engine reclaims fat replays (prior-turn `<get>` / `<set>` log bodies) and emits a 413 `error://` so the model sees what was reclaimed. No chat-waterfall horizon, no spooky compaction — the model controls what it sees and what it doesn't.
 
 ### Apophatic Reasoning (The Rumsfeld Loop)
 Rummy turns "Not Knowing" into a formal state to be processed. By mapping **Unknowns** (`unknown://`) into verified **Knowns** (`known://`), Rummy provides a transparent, auditable trail of how the agent arrived at its conclusion.

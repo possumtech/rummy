@@ -36,6 +36,9 @@ export default class Hedberg {
 		let patch = null;
 		let warning = null;
 		let error = null;
+		let matchStartLine = null;
+		let replaceLineCount = 0;
+		let searchLineCount = 0;
 		const stripRegexEscapes = (s) => s.replace(/\\([[\](){}.*+?^$|\\])/g, "$1");
 		const searchText = sed ? stripRegexEscapes(search) : search;
 		const replaceText = sed ? stripRegexEscapes(replacement) : replacement;
@@ -54,6 +57,11 @@ export default class Hedberg {
 			if (occurrences.length > 1) {
 				warning = `SEARCH matched ${occurrences.length} locations at line boundaries; all were replaced. Include more surrounding context (or a SEARCH[N-M] scope) for surgical edits.`;
 			}
+			const lastIdx = occurrences[occurrences.length - 1];
+			matchStartLine = body.slice(0, lastIdx).split("\n").length;
+			replaceLineCount =
+				replaceText === "" ? 0 : replaceText.split("\n").length;
+			searchLineCount = searchText === "" ? 0 : searchText.split("\n").length;
 		}
 
 		if (!patch) {
@@ -66,9 +74,21 @@ export default class Hedberg {
 			patch = matched.newContent;
 			warning = matched.warning;
 			error = matched.error;
+			matchStartLine = matched.matchStartLine ?? null;
+			replaceLineCount = matched.replaceLineCount ?? 0;
+			searchLineCount = matched.searchLineCount ?? 0;
 		}
 
-		return { patch, searchText, replaceText, warning, error };
+		return {
+			patch,
+			searchText,
+			replaceText,
+			warning,
+			error,
+			matchStartLine,
+			replaceLineCount,
+			searchLineCount,
+		};
 	}
 }
 

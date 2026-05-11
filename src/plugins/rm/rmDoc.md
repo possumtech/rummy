@@ -2,6 +2,6 @@
 
 Example: <rm path="src/config.js"/>
 Example: <rm path="known://countries/france/*" manifest/>
-Example: <rm path="log://turn_3/get/**"/>
+Example: <rm path="log://1/3/**"/>
 
 * Permanent. Prefer <set path="..." archive/> to preserve for later retrieval.

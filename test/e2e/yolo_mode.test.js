@@ -124,7 +124,7 @@ describe("E2E: yolo mode auto-resolves and self-executes (@yolo_mode)", {
 		});
 		const resolvedProposals = entries.filter(
 			(e) =>
-				/^log:\/\/turn_\d+\/(set|sh|env|rm|mv|cp)\//.test(e.path) &&
+				/^log:\/\/\d+\/\d+\/\d+\/(set|sh|env|rm|mv|cp)$/.test(e.path) &&
 				(e.state === "resolved" || e.state === "failed"),
 		);
 		assert.ok(

@@ -135,7 +135,7 @@ describe("E2E: terminal status + pulse cadence after proposal acceptance (@notif
 		const resolvedSets = setLogEntries.filter(
 			(e) =>
 				e.scheme === "log" &&
-				/^log:\/\/turn_\d+\/set\//.test(e.path) &&
+				/^log:\/\/\d+\/\d+\/\d+\/set$/.test(e.path) &&
 				e.state === "resolved",
 		);
 		assert.ok(

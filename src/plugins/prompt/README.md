@@ -23,7 +23,7 @@ For each new (non-continuation) prompt:
    Hidden from `<index>` by default. Recallable via
    `<get path="prompt://N">` or `<set path="prompt://N" index/>`.
 
-2. `log://turn_N/prompt/<slug>` — log entry, body = ≤500-char
+2. `log://<L>/<T>/<S>/prompt` — log entry, body = ≤500-char
    preview, `attrs.path = "prompt://N"`. The log preview is the
    active-task signal: under the slim-log paradigm, body-bearing
    log entries pop out of a wall of slim manifests, and the latest

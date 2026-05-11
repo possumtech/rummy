@@ -192,12 +192,7 @@ export default class Set {
 		// flip branch we'd silently drop the model's write. Visibility
 		// flip is what falls through to the edit branch below — apply
 		// content first, then visibility lands on the resulting entry.
-		if (
-			!entry.body &&
-			!attrs.operations &&
-			visibilityAttr &&
-			attrs.path
-		) {
+		if (!entry.body && !attrs.operations && visibilityAttr && attrs.path) {
 			const target = attrs.path;
 			const matches = await store.getEntriesByPattern(
 				runId,
@@ -254,6 +249,7 @@ export default class Set {
 		const target = attrs.path;
 		if (!target) return;
 		let newContent;
+		let opPositions = null;
 		if (attrs.operations) {
 			const existing = await store.getBody(runId, target);
 			// Missing-path recovery: search_replace → append (replace text only),
@@ -299,6 +295,7 @@ export default class Set {
 				return;
 			}
 			newContent = result.body;
+			opPositions = result.opPositions;
 		} else if (entry.body) {
 			newContent = entry.body;
 		}
@@ -327,6 +324,7 @@ export default class Set {
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,
+						...(opPositions ? { opPositions } : {}),
 						...(visibilityAttr && visibilityAttr !== "conflict"
 							? { [visibilityAttr === "indexed" ? "index" : "archive"]: true }
 							: {}),
@@ -389,6 +387,7 @@ export default class Set {
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,
+						...(opPositions ? { opPositions } : {}),
 					},
 				});
 			}
@@ -427,16 +426,38 @@ export default class Set {
 			}
 			return lines.join("\n");
 		}
+		if (Array.isArray(attrs.opPositions)) {
+			return {
+				body: Set.#projectFromPositions(attrs.opPositions),
+				preNumbered: true,
+			};
+		}
 		return Set.#projectBody(entry.body);
 	}
 
-	// `<set>` log bodies are stored verbatim (the model's emission, or
-	// the engine-injected external-edit synthesis). For projection back
-	// to the model, strip each SEARCH/REPLACE pair down to its REPLACE
-	// block — the model only needs to see what the lines have been
-	// changed TO; showing the SEARCH half doubles the diff cost and
-	// pins the model's working state on the stale content. Non-S/R ops
-	// (NEW / PREPEND / APPEND / REPLACE / DELETE) project verbatim.
+	// Render new/changed lines with their target-file line numbers, blank
+	// line between separate operations. Delete ops contribute nothing (the
+	// log entry's beforeActionTokens / afterActionTokens carry the signal).
+	// `1:\t<line>` format mirrors <get>; the materializer skips its global
+	// numberLines pass when full() returns { preNumbered: true }.
+	static #projectFromPositions(opPositions) {
+		const blocks = [];
+		for (const t of opPositions) {
+			if (!t.content) continue;
+			const lines = t.content.split("\n");
+			const trailingBlank = lines[lines.length - 1] === "";
+			const effective = trailingBlank ? lines.slice(0, -1) : lines;
+			const numbered = effective
+				.map((line, i) => `${t.startLine + i}:\t${line}`)
+				.join("\n");
+			blocks.push(numbered);
+		}
+		return blocks.join("\n\n");
+	}
+
+	// Fallback projection when opPositions isn't attached (older entries,
+	// or non-operation set writes). Verbatim body — `numberLines` will be
+	// applied by the materializer's global pass.
 	static #projectBody(body) {
 		if (!body) return body;
 		const { ops, error } = parseMarkerBody(body);
@@ -455,17 +476,75 @@ export default class Set {
 
 	static #applyOperations(currentBody, operations) {
 		let body = currentBody;
+		// Per-op tracking in *final body* coords. Each completed op records
+		// where its new content lives; subsequent ops shift prior records.
+		// Delete ops record nothing (no content to project).
+		const tracked = [];
+		const shiftAfter = (afterLine, delta) => {
+			for (const t of tracked) {
+				if (t.startLine >= afterLine) {
+					t.startLine += delta;
+				}
+			}
+		};
+		const invalidateRange = (start, end) => {
+			for (let i = tracked.length - 1; i >= 0; i--) {
+				const t = tracked[i];
+				const tEnd = t.startLine + t.lineCount - 1;
+				if (t.startLine >= start && tEnd <= end) tracked.splice(i, 1);
+			}
+		};
+		const countLines = (s) => (s === "" ? 0 : s.split("\n").length);
+
 		for (const op of operations) {
 			if (op.op === "new" || op.op === "replace") {
 				body = op.content;
+				tracked.length = 0;
+				const lc = countLines(op.content);
+				if (lc > 0)
+					tracked.push({
+						kind: op.op,
+						startLine: 1,
+						lineCount: lc,
+						content: op.content,
+					});
 			} else if (op.op === "append") {
+				const preLines = countLines(body);
 				body = body + op.content;
+				const lc = countLines(op.content);
+				if (lc > 0)
+					tracked.push({
+						kind: "append",
+						startLine: preLines + 1,
+						lineCount: lc,
+						content: op.content,
+					});
 			} else if (op.op === "prepend") {
+				const lc = countLines(op.content);
+				shiftAfter(1, lc);
 				body = op.content + body;
+				if (lc > 0)
+					tracked.push({
+						kind: "prepend",
+						startLine: 1,
+						lineCount: lc,
+						content: op.content,
+					});
 			} else if (op.op === "delete") {
 				const result = Hedberg.replace(body, op.content, "");
 				if (result.error) {
-					return { body, error: result.error, attempted: op.content };
+					return {
+						body,
+						error: result.error,
+						attempted: op.content,
+						opPositions: tracked,
+					};
+				}
+				const matchStart = result.matchStartLine;
+				const removed = result.searchLineCount;
+				if (matchStart != null && removed > 0) {
+					invalidateRange(matchStart, matchStart + removed - 1);
+					shiftAfter(matchStart + removed, -removed);
 				}
 				body = result.patch;
 			} else if (op.op === "search_replace") {
@@ -477,19 +556,52 @@ export default class Set {
 							error: result.error,
 							attempted: result.attempted,
 							currentBody: result.currentBody,
+							opPositions: tracked,
 						};
 					}
+					const { start, end } = op.scope;
+					const oldLines = end - start + 1;
+					const newLines = countLines(op.replace);
+					invalidateRange(start, end);
+					shiftAfter(end + 1, newLines - oldLines);
 					body = result.body;
+					if (newLines > 0)
+						tracked.push({
+							kind: "search_replace",
+							startLine: start,
+							lineCount: newLines,
+							content: op.replace,
+						});
 				} else {
 					const result = Hedberg.replace(body, op.search, op.replace);
 					if (result.error) {
-						return { body, error: result.error, attempted: op.search };
+						return {
+							body,
+							error: result.error,
+							attempted: op.search,
+							opPositions: tracked,
+						};
+					}
+					const matchStart = result.matchStartLine;
+					const oldLines = result.searchLineCount;
+					const newLines = result.replaceLineCount;
+					if (matchStart != null) {
+						invalidateRange(matchStart, matchStart + oldLines - 1);
+						shiftAfter(matchStart + oldLines, newLines - oldLines);
+						if (newLines > 0)
+							tracked.push({
+								kind: "search_replace",
+								startLine: matchStart,
+								lineCount: newLines,
+								content: op.replace,
+							});
 					}
 					body = result.patch;
 				}
 			}
 		}
-		return { body, error: null, attempted: null };
+		tracked.sort((a, b) => a.startLine - b.startLine);
+		return { body, error: null, attempted: null, opPositions: tracked };
 	}
 
 	// Scoped SEARCH/REPLACE: `<<SEARCH[N-M]…SEARCH[N-M]<<REPLACE…REPLACE`.
