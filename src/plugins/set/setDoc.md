@@ -1,4 +1,4 @@
-## <set path="{path}" tags="{topical,searchable,folksonomic,internal,tags}" {archive|index}>[content or edit]</set> - Create, edit, or update an entry or file
+## <set path="{path}" tags="{topical,searchable,folksonomic,internal,tags}" {archive|index|manifest}>[content or edit]</set> - Create, edit, or update an entry or file
 
 YOU SHOULD prefer minimal and multiple atomic edits to reduce the frequency and severity of conflicts and errors
 

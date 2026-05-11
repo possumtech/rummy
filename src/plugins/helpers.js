@@ -90,7 +90,7 @@ export async function storePatternResult(
 	const logSlug = await store.logPath(runId, loopId, turn, scheme);
 	const filter = bodyFilter ? ` body="${bodyFilter}"` : "";
 	const total = matches.reduce((s, m) => s + m.tokens, 0);
-	const listing = matches.map((m) => `${m.path} (${m.tokens})`).join("\n");
+	const listing = matches.map((m) => manifestLine(m.path, m.tokens)).join("\n");
 	const prefix = manifest ? "MANIFEST " : "";
 	const body = `${prefix}${scheme} path="${path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
 	await store.set({
@@ -102,4 +102,12 @@ export async function storePatternResult(
 		loopId,
 		attributes,
 	});
+}
+
+// Canonical manifest row — one JSON object per line. Matches the
+// `{...} <<:::path` log-entry envelope so the model parses both with
+// the same primitive. Sister plugins (rummy.web, rummy.repo) should
+// import this helper rather than reinventing the row shape.
+export function manifestLine(path, tokens) {
+	return JSON.stringify({ path, tokens });
 }

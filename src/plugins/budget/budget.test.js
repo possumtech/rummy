@@ -234,7 +234,7 @@ describe("assembleTurn — <turn> table (@token_accounting)", () => {
 		);
 	});
 
-	it("archived rows render with indexed=0, archived=count and aggregate in Total line", () => {
+	it("archived rows render with indexed=0, archived=count in the table", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleTurn("", {
 			rows: [
@@ -248,10 +248,7 @@ describe("assembleTurn — <turn> table (@token_accounting)", () => {
 		assert.ok(out.includes("| indexed_thing | 1 | 0 | 200 |"));
 		assert.ok(out.includes("| arc_a | 0 | 1 | 0 |"));
 		assert.ok(out.includes("| arc_b | 0 | 1 | 0 |"));
-		assert.ok(
-			/1 indexed \+ 2 archived entries/.test(out),
-			`Total line carries archived count; got: ${out}`,
-		);
+		assert.ok(!out.includes("Total:"), "Total line is removed");
 	});
 
 	it("ignores rows without aTokens (audit/system entries)", () => {
@@ -278,7 +275,7 @@ describe("assembleTurn — <turn> table (@token_accounting)", () => {
 		assert.strictEqual(out, "preamble");
 	});
 
-	it("total prose line names counts and placeholders for tokenUsage/free", () => {
+	it("<turn> opening carries tokenCeiling, tokenUsage, tokensFree attrs", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleTurn("", {
 			rows: [
@@ -288,17 +285,18 @@ describe("assembleTurn — <turn> table (@token_accounting)", () => {
 			contextSize: 10000,
 		});
 		assert.ok(
-			/Total: 1 indexed \+ 1 archived entries/.test(out),
-			`total names indexed + archived counts; got: ${out}`,
+			/<turn [^>]*tokenCeiling="\d+"/.test(out),
+			"<turn> has tokenCeiling attr",
 		);
 		assert.ok(
-			/tokenUsage \{\{tokenUsage\}\} \/ ceiling \d+/.test(out),
-			"placeholder tokenUsage in total line",
+			/<turn [^>]*tokenUsage="\{\{tokenUsage\}\}"/.test(out),
+			"<turn> carries tokenUsage placeholder",
 		);
 		assert.ok(
-			out.includes("{{tokensFree}} tokens free"),
-			"placeholder tokensFree in total line",
+			/<turn [^>]*tokensFree="\{\{tokensFree\}\}"/.test(out),
+			"<turn> carries tokensFree placeholder",
 		);
+		assert.ok(!out.includes("Total:"), "Total line is removed");
 	});
 });
 

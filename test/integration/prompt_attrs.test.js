@@ -135,10 +135,11 @@ describe("Budget headline math (single source of truth)", () => {
 		await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
 		const { messages } = await assemble(tdb, runId, 1, 32768);
 		const user = messages[1].content;
+		assert.ok(/tokenCeiling="\d+"/.test(user), "tokenCeiling attr always present");
 		assert.ok(/tokenUsage="\d+"/.test(user), "tokenUsage attr always present");
 		assert.ok(/tokensFree="\d+"/.test(user), "tokensFree attr always present");
 		assert.ok(user.includes("| scheme |"), "breakdown table header renders");
-		assert.ok(/Total: \d+ indexed \+ \d+ archived/.test(user), "Total line");
+		assert.ok(!user.includes("Total:"), "Total prose line removed from <turn>");
 	});
 
 	it("countTokens(system) + countTokens(user) is internally self-consistent", async () => {

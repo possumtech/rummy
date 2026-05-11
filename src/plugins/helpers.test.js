@@ -152,8 +152,8 @@ describe("storePatternResult", () => {
 			w.body,
 			/^MANIFEST get path="src\/\*\*\/\*\.js": 2 matched \(300 tokens\)/,
 		);
-		assert.match(w.body, /src\/a\.js \(100\)/);
-		assert.match(w.body, /src\/b\.js \(200\)/);
+		assert.match(w.body, /\{"path":"src\/a\.js","tokens":100\}/);
+		assert.match(w.body, /\{"path":"src\/b\.js","tokens":200\}/);
 		assert.equal(w.state, "resolved");
 	});
 

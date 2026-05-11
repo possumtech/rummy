@@ -8,22 +8,18 @@ import Skill from "./skill.js";
 function makeCore() {
 	const schemes = [];
 	let handler = null;
-	const toolDocFilters = [];
+	let hidden = false;
 	return {
 		registerScheme: (opts) => schemes.push(opts),
 		on: (event, fn) => {
 			if (event === "handler") handler = fn;
 		},
-		filter: (name, fn) => {
-			if (name === "instructions.toolDocs") toolDocFilters.push(fn);
+		markHidden: () => {
+			hidden = true;
 		},
 		_schemes: schemes,
 		_handler: () => handler,
-		_toolDocs: async () => {
-			const map = {};
-			for (const f of toolDocFilters) await f(map);
-			return map;
-		},
+		_hidden: () => hidden,
 	};
 }
 
@@ -63,13 +59,14 @@ describe("Skill plugin", () => {
 		await rm(tmp, { recursive: true, force: true });
 	});
 
-	it("registers skill scheme + handler + tooldoc (default projection — no view registration)", async () => {
+	it("registers skill scheme + handler, hides the tool from model advertisement", async () => {
 		const core = makeCore();
 		new Skill(core);
 		assert.deepEqual(core._schemes, [{ name: "skill", category: "data" }]);
 		assert.equal(typeof core._handler(), "function");
-		const docs = await core._toolDocs();
-		assert.match(docs.skill, /<skill path/);
+		// Host-mediated only: RPC tool fallback dispatches the handler;
+		// the model never sees <skill> in <system_commands>.
+		assert.equal(core._hidden(), true, "skill tool is hidden from advertisement");
 	});
 
 	it("emits validation failure when path missing", async () => {
@@ -77,7 +74,7 @@ describe("Skill plugin", () => {
 		new Skill(core);
 		const store = makeStore();
 		await core._handler()(
-			{ attributes: {}, resultPath: "log://turn_0/skill/_" },
+			{ attributes: {}, resultPath: "log://1/0/1/skill" },
 			rummyCtxFor(store, tmp),
 		);
 		const fail = store.writes.find((w) => w.state === "failed");
@@ -93,7 +90,7 @@ describe("Skill plugin", () => {
 		await core._handler()(
 			{
 				attributes: { path: "playbook.md" },
-				resultPath: "log://turn_0/skill/_",
+				resultPath: "log://1/0/1/skill",
 			},
 			rummyCtxFor(store, tmp),
 		);
@@ -101,7 +98,7 @@ describe("Skill plugin", () => {
 		assert.ok(entry);
 		assert.equal(entry.body, "# playbook root");
 		assert.equal(entry.visibility, "indexed");
-		const result = store.writes.find((w) => w.path === "log://turn_0/skill/_");
+		const result = store.writes.find((w) => w.path === "log://1/0/1/skill");
 		assert.equal(result.state, "resolved");
 	});
 
@@ -119,7 +116,7 @@ describe("Skill plugin", () => {
 		await core._handler()(
 			{
 				attributes: { path: "playbook" },
-				resultPath: "log://turn_0/skill/_",
+				resultPath: "log://1/0/1/skill",
 			},
 			rummyCtxFor(store, tmp),
 		);
@@ -144,7 +141,7 @@ describe("Skill plugin", () => {
 		await core._handler()(
 			{
 				attributes: { path: "nope.md" },
-				resultPath: "log://turn_0/skill/_",
+				resultPath: "log://1/0/1/skill",
 			},
 			rummyCtxFor(store, tmp),
 		);

@@ -15,6 +15,8 @@
  * seeing what just landed.
  */
 import assert from "node:assert";
+import { execSync } from "node:child_process";
+import { unlinkSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -263,6 +265,167 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			const body = await entries.getBody(runId, "known://fact");
 			assert.strictEqual(body, "second version", "body updated");
+		});
+	});
+
+	// Phase 3 of the index/archive refactor: filesystem mutations the
+	// model didn't author surface as synthetic log entries in the
+	// model's own command grammar (set with SEARCH/REPLACE, or rm).
+	// FileScanner detects the change and writes through Entries the
+	// same way model dispatch does. The model reads them from <log>
+	// next turn, attrs.external=true distinguishing engine authorship.
+	describe("external mutation log injection (Phase 3)", () => {
+		async function makeGitProject(name) {
+			const root = join(tmpdir(), `phase3_${name}_${Date.now()}`);
+			await fs.mkdir(root, { recursive: true });
+			execSync(
+				'git init && git config user.email "t@t" && git config user.name T',
+				{ cwd: root },
+			);
+			return root;
+		}
+
+		async function commit(root) {
+			execSync("git add -A && git commit --no-verify -m sync", { cwd: root });
+		}
+
+		async function seedActiveRun(alias, projectRoot) {
+			const seed = await tdb.seedRun({ alias, projectRoot });
+			// Loop default status=100; transition to 102 so the
+			// FileScanner's `get_current_loop` lookup finds it.
+			await tdb.db.claim_next_loop.get({ run_id: seed.runId });
+			return seed;
+		}
+
+		async function fireScan(runId, projectId, projectRoot, sequence) {
+			const e = new Entries(tdb.db);
+			e.loadSchemes(tdb.db);
+			const loopId = 1;
+			// Loop-state init for plugins that track per-loop counters
+			// (error plugin's strike streak). Idempotent — re-emitting
+			// resets the counter, which is fine across test scans.
+			await tdb.hooks.loop.started.emit({ runId, loopId });
+			const rummy = {
+				runId,
+				projectId,
+				loopId,
+				project: { id: projectId, project_root: projectRoot },
+				entries: e,
+				db: tdb.db,
+				hooks: tdb.hooks,
+				sequence,
+				noRepo: false,
+			};
+			await tdb.hooks.turn.started.emit({ rummy });
+			return e;
+		}
+
+		async function findLogEntry(e, runId, action, turn) {
+			const re = new RegExp(`^log://\\d+/${turn}/\\d+/${action}$`);
+			const rows = await e.getEntriesByPattern(runId, "log://*", null);
+			return rows.find((r) => re.test(r.path));
+		}
+
+		it("NEW file synthesizes log://*/<turn>/*/set with empty-SEARCH body + attrs.external", async () => {
+			const root = await makeGitProject("new");
+			writeFileSync(join(root, "fresh.md"), "hello world\n");
+			await commit(root);
+
+			const { runId, projectId } = await seedActiveRun(
+				"phase3_new",
+				root,
+			);
+			const e = await fireScan(runId, projectId, root, 1);
+
+			const log = await findLogEntry(e, runId, "set", 1);
+			assert.ok(log, "log://*/1/*/set entry synthesized");
+			const attrs =
+				typeof log.attributes === "string"
+					? JSON.parse(log.attributes)
+					: log.attributes;
+			assert.strictEqual(attrs.path, "fresh.md");
+			assert.strictEqual(attrs.external, true);
+			assert.match(log.body, /^<<SEARCH\nSEARCH<<REPLACE/);
+			assert.match(log.body, /hello world/);
+		});
+
+		it("modified file synthesizes log://*/<turn>/*/set with SEARCH/REPLACE pair + attrs.patch (udiff)", async () => {
+			const root = await makeGitProject("mod");
+			writeFileSync(
+				join(root, "edit_me.md"),
+				"line1\nline2\nold\nline4\nline5\n",
+			);
+			await commit(root);
+
+			const { runId, projectId } = await seedActiveRun(
+				"phase3_mod",
+				root,
+			);
+
+			// Turn 1: ingest baseline. No external mutation log yet.
+			await fireScan(runId, projectId, root, 1);
+
+			// External edit between turns.
+			writeFileSync(
+				join(root, "edit_me.md"),
+				"line1\nline2\nnew\nline4\nline5\n",
+			);
+
+			// Turn 2: scanner detects the change.
+			const e = await fireScan(runId, projectId, root, 2);
+
+			const log = await findLogEntry(e, runId, "set", 2);
+			assert.ok(log, "log://*/2/*/set entry synthesized");
+			const attrs =
+				typeof log.attributes === "string"
+					? JSON.parse(log.attributes)
+					: log.attributes;
+			assert.strictEqual(attrs.path, "edit_me.md");
+			assert.strictEqual(attrs.external, true);
+			assert.match(
+				attrs.patch,
+				/^=+\n---/,
+				"attrs.patch carries the udiff (createTwoFilesPatch shape)",
+			);
+			assert.match(attrs.patch, /-old/);
+			assert.match(attrs.patch, /\+new/);
+			assert.match(log.body, /<<SEARCH\b/);
+			assert.match(log.body, /SEARCH<<REPLACE\b/);
+			assert.match(log.body, /old/, "SEARCH captures the prior content");
+			assert.match(log.body, /new/, "REPLACE captures the new content");
+		});
+
+		it("removed file synthesizes log://*/<turn>/*/rm before the entry rm", async () => {
+			const root = await makeGitProject("rm");
+			writeFileSync(join(root, "going.md"), "bye\n");
+			await commit(root);
+
+			const { runId, projectId } = await seedActiveRun(
+				"phase3_rm",
+				root,
+			);
+
+			// Turn 1: ingest baseline.
+			await fireScan(runId, projectId, root, 1);
+
+			// External delete between turns.
+			unlinkSync(join(root, "going.md"));
+
+			const e = await fireScan(runId, projectId, root, 2);
+
+			const log = await findLogEntry(e, runId, "rm", 2);
+			assert.ok(log, "log://*/2/*/rm entry synthesized");
+			const attrs =
+				typeof log.attributes === "string"
+					? JSON.parse(log.attributes)
+					: log.attributes;
+			assert.strictEqual(attrs.path, "going.md");
+			assert.strictEqual(attrs.external, true);
+			assert.strictEqual(log.body, "");
+
+			// File entry actually removed.
+			const body = await e.getBody(runId, "going.md");
+			assert.strictEqual(body, null);
 		});
 	});
 });

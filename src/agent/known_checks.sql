@@ -39,7 +39,10 @@ WHERE
 	AND scheme IN ('set', 'sh', 'rm', 'mv', 'cp');
 
 -- PREP: get_file_entries
-SELECT path, state, outcome, visibility, hash, updated_at
+-- Returns body so FileScanner can synthesize SEARCH/REPLACE log
+-- entries against the prior content when external edits are detected
+-- (Phase 3 — Index/Archive Refactor §file_freshness).
+SELECT path, body, state, outcome, visibility, hash, updated_at
 FROM known_entries
 WHERE
 	run_id = :run_id

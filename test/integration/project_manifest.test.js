@@ -112,28 +112,34 @@ describe("project manifest (@project_manifest)", () => {
 		const rollup = body.slice(0, idx);
 		const flat = body.slice(idx + "\n\n---\n\n".length);
 
-		// Rollup lines: "* dir/ - N files, T tokens"; root files under "./".
+		// Rollup lines: one JSON object per row,
+		// `{"path":"<dir>/","tokens":<N>}`. Root files under "./".
 		const rollupLines = rollup.split("\n").filter((l) => l.length > 0);
 		assert.ok(rollupLines.length > 0, "rollup lists at least one directory");
 		for (const line of rollupLines) {
-			assert.match(
-				line,
-				/^\* [^\s].*\/ - \d+ files, \d+ tokens$/,
-				`every rollup line is "* dir/ - N files, T tokens" — got ${JSON.stringify(line)}`,
+			const parsed = JSON.parse(line);
+			assert.equal(
+				typeof parsed.path,
+				"string",
+				`rollup row has string path — got ${JSON.stringify(line)}`,
 			);
+			assert.ok(
+				parsed.path.endsWith("/"),
+				`rollup path ends with / — got ${JSON.stringify(line)}`,
+			);
+			assert.equal(typeof parsed.tokens, "number");
 		}
-		assert.match(rollup, /^\* \.\/ /m, "root files roll up under ./");
-		assert.match(rollup, /^\* src\/ /m, "src/ has its own rollup line");
+		assert.match(rollup, /"path":"\.\/"/, "root files roll up under ./");
+		assert.match(rollup, /"path":"src\/"/, "src/ has its own rollup line");
 
-		// Flat list: per-file "* path - N tokens"; nested paths preserved.
+		// Flat list: per-file `{"path":"<file>","tokens":<N>}` per row.
 		const flatLines = flat.split("\n").filter((l) => l.length > 0);
 		assert.ok(flatLines.length > 0, "flat list has files");
 		for (const line of flatLines) {
-			assert.match(
-				line,
-				/^\* [^\s].* - \d+ tokens$/,
-				`every flat line is "* path - N tokens" — got ${JSON.stringify(line)}`,
-			);
+			const parsed = JSON.parse(line);
+			assert.equal(typeof parsed.path, "string");
+			assert.ok(!parsed.path.endsWith("/"), "flat row is a file, not a dir");
+			assert.equal(typeof parsed.tokens, "number");
 		}
 		assert.match(flat, /README\.md/, "root README.md is named");
 		assert.match(flat, /src\/a\.js/, "nested files use full relative path");

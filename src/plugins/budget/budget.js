@@ -87,8 +87,6 @@ export default class Budget {
 		const cap = ceiling(contextSize);
 
 		const byScheme = new Map();
-		let indexedCount = 0;
-		let archivedCount = 0;
 
 		const schemeEntry = (s) => {
 			let e = byScheme.get(s);
@@ -106,26 +104,34 @@ export default class Budget {
 			if (r.visibility === "indexed") {
 				entry.idx += 1;
 				entry.idxTokens += r.vTokens;
-				indexedCount += 1;
 			} else if (r.visibility === "archived") {
 				entry.arc += 1;
-				archivedCount += 1;
 			}
 		}
 
-		const schemeRows = [...byScheme.entries()]
-			.toSorted(([, a], [, b]) => b.idxTokens - a.idxTokens)
-			.map(
-				([scheme, e]) => `| ${scheme} | ${e.idx} | ${e.arc} | ${e.idxTokens} |`,
-			);
+		// Fixed scheme ordering: anchor the core schemes the model
+		// reasons about every turn at the top in `repo, known,
+		// unknown, log` order; everything else falls in after, sorted
+		// by `idxTokens` desc as before. Stable header makes the
+		// breakdown table cache-friendly across turns.
+		const ANCHOR_ORDER = ["repo", "known", "unknown", "log"];
+		const anchor = new Set(ANCHOR_ORDER);
+		const anchored = ANCHOR_ORDER.filter((s) => byScheme.has(s)).map((s) => [
+			s,
+			byScheme.get(s),
+		]);
+		const tail = [...byScheme.entries()]
+			.filter(([s]) => !anchor.has(s))
+			.toSorted(([, a], [, b]) => b.idxTokens - a.idxTokens);
+		const schemeRows = [...anchored, ...tail].map(
+			([scheme, e]) => `| ${scheme} | ${e.idx} | ${e.arc} | ${e.idxTokens} |`,
+		);
 
 		const table = [
 			"| scheme | indexed | archived | tokens |",
 			"|---|---|---|---|",
 			...schemeRows,
 		].join("\n");
-
-		const totalLine = `Total: ${indexedCount} indexed + ${archivedCount} archived entries; tokenUsage ${TOKEN_USAGE_PLACEHOLDER} / ceiling ${cap}. ${TOKENS_FREE_PLACEHOLDER} tokens free.`;
 
 		// Per-turn meta attrs (formerly on <prompt>): commands, mode warn,
 		// archived count from prior turn's grinder fire.
@@ -161,8 +167,8 @@ export default class Budget {
 			}
 		}
 
-		const opening = `<turn commands="${commands}"${warn}${archivedAttr} tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">`;
-		return `${content}${opening}\n${table}\n${totalLine}\n</turn>\n`;
+		const opening = `<turn commands="${commands}"${warn}${archivedAttr} tokenCeiling="${cap}" tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">`;
+		return `${content}${opening}\n${table}\n</turn>\n`;
 	}
 
 	#check({ contextSize, messages, rows, lastPromptTokens = 0 }) {

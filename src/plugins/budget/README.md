@@ -28,20 +28,25 @@ against the same assembled bytes.
 
 `assembleTurn` runs at `assembly.user` priority 90. It emits:
 
-- **Attrs**: `commands` (per-mode tool list), `warn` (ask-mode), `archived`
-  (count from prior turn's grinder fire), `tokenUsage`/`tokensFree`
-  placeholders.
-- **Body**: per-scheme breakdown table (`indexed | archived | tokens`)
-  + total prose line.
+- **Attrs**: `commands` (per-mode tool list), `warn` (ask-mode),
+  `archived` (count from prior turn's grinder fire), `tokenCeiling`,
+  `tokenUsage`, `tokensFree` (the last two as placeholders, fixed up
+  post-assembly).
+- **Body**: per-scheme breakdown table (`indexed | archived | tokens`).
+  Anchor schemes `repo`, `known`, `unknown`, `log` come first (in that
+  order, when present); remaining schemes follow sorted by indexed-
+  token cost desc. No trailing prose line — the tag attrs carry every
+  headline.
 
 ```
-<turn commands="get,set,…" tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">
+<turn commands="get,set,…" tokenCeiling="C" tokenUsage="{{tokenUsage}}" tokensFree="{{tokensFree}}">
 | scheme | indexed | archived | tokens |
 |---|---|---|---|
-| known | 2 | 0 | 60 |
+| repo  | 1 | 0 | 935 |
+| known | 2 | 0 |  60 |
+| log   | 3 | 0 | 286 |
 | https | 1 | 0 | 420 |
 …
-Total: N indexed + M archived entries; tokenUsage {{tokenUsage}} / ceiling C. {{tokensFree}} tokens free.
 </turn>
 ```
 

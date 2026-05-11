@@ -845,10 +845,12 @@ Two messages per turn. System = stable truth. User = active task.
         <search>, <error>, <update>, <prompt> (≤500-char preview).
         Active task = the last entry. (log.js, assembly.user priority 50)
     </log>
-    <turn commands="…" warn="…" archived="N" tokenUsage="N" tokensFree="M">
-        Per-turn meta: per-scheme breakdown table + total prose +
-        commands list + mode warn + archived count from prior 413.
-        (budget.js, assembly.user priority 90)
+    <turn commands="…" warn="…" archived="N" tokenCeiling="C" tokenUsage="N" tokensFree="M">
+        Per-turn meta: per-scheme breakdown table (anchor order:
+        repo, known, unknown, log; tail sorted by indexed-token
+        cost desc) + commands list + mode warn + archived count
+        from prior 413. Headline counts live on the tag attrs;
+        no trailing prose line. (budget.js, assembly.user priority 90)
     </turn>
     <system_requirements>
         instructions-user.md text. Per-turn imperative reminders.
@@ -938,7 +940,8 @@ Each turn:
      `ctx.persona` is set)
    - Log plugin (priority 50) → `<log>` section
    - Budget plugin (priority 90) → `<turn>` element (commands /
-     warn / archived / tokenUsage / tokensFree + breakdown table)
+     warn / archived / tokenCeiling / tokenUsage / tokensFree
+     + breakdown table)
    - Instructions plugin (priority 165) → `<system_requirements>`
      section (renders `instructions-user.md`)
 9. Store as `system://N` and `user://N` audit entries (telemetry plugin).

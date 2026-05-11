@@ -531,7 +531,7 @@ export default class Entries {
 					runId,
 					turn,
 					loopId,
-					message: "error: YOU MUST keep the update body to <= 80 characters",
+					message: "YOU MUST keep the update body to <= 80 characters",
 				});
 			}
 		}

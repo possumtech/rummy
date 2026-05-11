@@ -9,7 +9,6 @@ import {
 import { tmpdir } from "node:os";
 import { basename, extname, isAbsolute, join, relative } from "node:path";
 import { open as openZip } from "yauzl-promise";
-import docs from "./skillDoc.js";
 
 export default class Skill {
 	#core;
@@ -17,12 +16,12 @@ export default class Skill {
 	constructor(core) {
 		this.#core = core;
 		core.registerScheme({ name: "skill", category: "data" });
-		// No view registered: default summarizeEmission (≤500-char tile).
+		// Skill ingestion is host-mediated — clients invoke it via the
+		// RPC tool fallback (RpcRegistry#setToolFallback) so the handler
+		// must stay registered, but the command is never advertised to
+		// the model. Pattern parallels `store` (SPEC §store_rpc).
 		core.on("handler", this.handler.bind(this));
-		core.filter("instructions.toolDocs", async (docsMap) => {
-			docsMap.skill = docs;
-			return docsMap;
-		});
+		core.markHidden();
 	}
 
 	async handler(entry, rummy) {

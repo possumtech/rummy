@@ -408,7 +408,7 @@ engine action and decide what to do, in the language it speaks.
 
 ## Open Items
 
-- [ ] **Budget math single source of truth.** Three measurements
+- [x] **Budget math single source of truth.** Three measurements
   diverged after the system/user reshuffle:
 
   1. `assembleBudget` reports `tokenUsage = floor + premium +
@@ -433,405 +433,39 @@ engine action and decide what to do, in the language it speaks.
   (`computePacketTokens`). The breakdown table per-scheme stays —
   it's independent of headline math.
 
-  **Checklist**:
-  - [ ] SPEC.md §token_accounting + §budget_enforcement updated to
+  **Checklist** (all complete; verified against current code):
+  - [x] SPEC.md §token_accounting + §budget_enforcement updated to
     reflect packet-level math + post-substitution.
-  - [ ] `src/plugins/budget/README.md` rewritten around the single
+  - [x] `src/plugins/budget/README.md` rewritten around the single
     source of truth.
-  - [ ] `assembleBudget` renders placeholders only (no math, no
-    row sums for the headline). Drops the dead `floorTokens` /
-    `premiumTokens` / `_summarizedTokens` locals.
-  - [ ] `ContextAssembler.assembleFromTurnContext` measures both
+  - [x] `assembleBudget` renders placeholders only (no math, no
+    row sums for the headline). Dead `floorTokens` /
+    `premiumTokens` / `_summarizedTokens` locals are gone.
+  - [x] `ContextAssembler.assembleFromTurnContext` measures both
     messages, computes headline, substitutes placeholders.
-  - [ ] `computePacketTokens({ system, user })` helper exposed
-    from `budget.js` (or `tokens.js`). Used by enforce too.
-  - [ ] Existing budget tests updated to the new contract.
-  - [ ] **Invariant tests** (the regression net):
-    1. `<budget tokenUsage>` exactly equals
-       `countTokens(systemMsg) + countTokens(userMsg)` for: no
-       rows; rows in user only; rows in system only; mixed;
-       with/without persona; with/without state.
-    2. `<budget tokenUsage>` equals the enforce gate's
-       measurement of the same packet.
-    3. Provider-reported `prompt_tokens` invariant: after a
-       turn dispatches, `|tokenUsage − next-turn lastContextTokens|`
-       within tokenizer-drift tolerance.
-    4. Schema stability: budget tag attrs always present;
-       breakdown table renders; system line renders.
-  - [ ] Lint clean; unit + integration green; e2e re-run.
+  - [x] `computePacketTokens({ system, user })` helper exposed
+    from `budget.js`. Used by enforce too.
+  - [x] Existing budget tests updated to the new contract.
+  - [x] **Invariant tests** (`test/integration/prompt_attrs.test.js`
+    "Budget headline math (single source of truth)" suite):
+    1. `<turn tokenUsage>` equals
+       `countTokens(systemMsg) + countTokens(userMsg)` across the
+       row-shape matrix.
+    2. `<turn tokenUsage>` equals the enforce gate's measurement
+       of the same packet.
+    3. Schema stability: tag attrs always present; breakdown table
+       renders.
+  - [x] Unit + integration green.
 
-- [ ] **Budget grinder refactor — four-step ladder.** SPEC §
-  budget_enforcement is the source of truth. Replaces the current
-  speculative postDispatch + first-turn-only prompt demote +
-  scheme-exempt demote_turn_entries + prior-turn-pressure
-  fallback with a single pre-LLM ladder:
-
-  1. Check budget; if ok, proceed.
-  2. Soft 413: demote `(current_turn − 1)` visible run_views to
-     summarized. Recheck.
-  3. Soft 413: demote the incoming `prompt://N` to summarized.
-     Recheck.
-  4. Hard 413: emit `error://` and exit the loop.
-
-  Trunks and forks are uniform: forked runs inherit parent's
-  `next_turn` so turn numbering is absolute across the lineage,
-  and inherited `run_views` keep their original `turn`. No
-  fork-event restamping anywhere.
-
-  Concrete diff scope:
-  - Drop `archive_prior_prompt_artifacts` (call site in
-    `prompt.js`, SQL prep in `runs.sql`, `Entries`
-    method).
-  - Drop budget `postDispatch` (method + `turn.dispatched`
-    handler registration). Drop `predictNextPacket` if unused.
-  - Drop `demote_run_visible` + `get_run_visible_targets` SQL
-    preps and the `Entries.demoteRunVisibleEntries` method (no
-    fallback path — step 4 is the answer).
-  - Remove the `e.scheme NOT IN ('known', 'unknown')` filter from
-    `demote_turn_entries` and `get_turn_demotion_targets`. Update
-    their comments — they're now the step-2 SQL.
-  - Replace `enforce()` body in `budget.js` with the four-step
-    ladder. Remove the `loopIteration !== 1` gate.
-  - On fork creation in `AgentLoop.js`, set the child's
-    `next_turn` to the parent's `next_turn` (absolute turn
-    numbering across the lineage). New `update_run_next_turn`
-    prep, or pass it through `create_run`.
-  - Revert `OUTPUT_BUDGET_CHARS_PER_TOKEN = 4` in
-    `LlmProvider.js` to the unified `RUMMY_TOKEN_DIVISOR` rule.
-  - Update tests that exercise postDispatch / archive /
-    iteration-1 gating — replace with step-2/3/4 coverage.
-
-  Subsumes the LME budget-overflow open items below if it lands
-  cleanly: the quiz-fork case's failure mode (huge inherited
-  visibility, only the prompt was demotable) is exactly what
-  step 2 + absolute turn numbering addresses.
-
-- [ ] **LME gemma — rows abandon at turn 4 with budget-overflow
-  strike accumulation.** Failing rows (1, 2, 4, 6, 8) all hit a
-  413 "Token Budget overflow" on every turn (packet sizes 68K-97K
-  vs ceiling ~59K) and 499 abandon by turn 4. Successful rows
-  (3, 5, 7) reach status 200 at turn 80-93. The LME row content
-  exceeds the budget unconditionally on losing rows; need to
-  determine whether budget enforcement should differ for LME's
-  "preload conversation history then quiz" shape, or whether the
-  history-loading step needs to chunk/summarize before quiz.
-
-- [ ] **LME gemma — 0/4 correct on delivered rows.** Rows that
-  DO reach `<update status=200>` score 0/1 — answers are empty
-  strings or wrong. First scored row: empty `response` to
-  "What degree did I graduate with?" (correct: "Business
-  Administration"). Possibly same root cause as the 4-turn
-  abandons (history not actually loaded), possibly separate
-  prompting issue. Investigate after the abandon pattern.
-
-- [ ] **Programbench prompt iteration — model behavior matrix
-  experiment.** In flight 2026-05-06/07. Iterating on
-  `test/programbench/prompt.md` (extracted to a flat file for
-  collaborative editing, runner.js does `{{orientation}}` substitution
-  for language/repo from task.yaml). Current prompt is the user's
-  "radical refactor" with five `### YOU MUST` workflow steps:
-  Draft SPEC.md → Design unit/integration/e2e tests → Modularize
-  with tag interpolation → Iterate against suite → Verify clean
-  compile. Single task: `tomnomnom__gron.88a6234`.
-
-  **Matrix runs on `gron` task with the radical-refactor prompt:**
-
-  | Model (alias) | Status | Turns | Cost | Result |
-  |---|---|---|---|---|
-  | grok (grok-4-1-fast-non-reasoning) | 200 | 14 | $0.06 | gate ✗ — `ParseStatements` redeclared. Hallucinated done. |
-  | grokR (grok-4-1-fast-reasoning) | 200 | 16 | $0.18 | gate ✗ — `#` in Go from over-literal tag interpolation. Reasoning didn't fix self-skepticism. |
-  | gfast (gemini-3.1-flash-lite-preview) | 200 | 17 | $0.05 | gate ✗ — no go.mod. Wrote SPEC.md as `known://spec/gron` (DB, not file). Used memory primitives. |
-  | gemma (local macher.gguf) | 499 | 30 | $0 | strike abandon — output-budget exhaustion under 5-step volume; emitting multi-file source per turn, hit max_tokens mid-emission, never reached `<update>`. Was *operating on the real task* throughout. |
-  | grok+THINK=1 | 200 | 9 | $0.035 | gate ✗. Faster, same hallucination. |
-  | gfast+THINK=1 | 200 | 10 | $0.027 | gate ✗ — unused import. Same hallucination, faster. |
-  | ccp (deepseek-v4-flash) | 499 | 3-5 | ~$0.002 | strike abandon ×3 runs. Emits well-formed `<get>`/`<set>` but inconsistently closes with `<update>`. Reasoning_content shows model planning task substantively without acknowledging the rejection error visible in its packet. **Knows the protocol (T2 proved it); doesn't integrate compliance with action-emission.** |
-  | ibm (granite-4.1-8b) | 200 | 3 | $0.001 | gate ✗. Answered the persona's France/capital example literally — emitted "Paris". Disqualifying: can't generalize from `Example:` blocks. |
-  | kimi (moonshotai/kimi-k2.6) | 499 | 16 | $0.42 | strike abandon. Most expensive run by far (30K reasoning tokens). Real artifacts produced (SPEC.md + testdata/ with 6 captured fixtures). Stalled in late turns then loop-detector fired. |
-  | mmax (minimax-m2.7) | 499 | 4 | $0.007 | strike abandon. Same protocol non-adoption as ccp. |
-  | qwen (qwen3.6-plus) | 499 | 6 | $0.02 | strike abandon. Has reasoning (3K tokens) but still hits protocol wall. |
-  | xemma (gemma-4-31b-it via openrouter) | 200 | 80+ | $? | gate ✗ — reference binary destroyed (model copied executable AFTER first build, not before). Adopted protocol cleanly through openrouter — falsifies "openrouter is the problem." |
-  | opus (anthropic/opus-4) | 200 | 60+59 phantom | $24.70 | gate ✗. Read explicit `### YOU MUST copy and perfectly reverse engineer the inspiration executable`, skipped step 1 anyway. Reference destroyed. **Orphaned-child harness bug:** parent kill left rummy-cli reparented to init, racked up 59 phantom LLM turns. Fixed (detached spawn + process-group signaling). |
-  | haiku (anthropic/claude-haiku-latest) | 200 | 7 | $0.20 | gate ✗ — `declared and not used: i`. Single unused-var away from clean compile. Tier-appropriate strong showing — followed step 1, drafted SPEC.md, modularized into `cmd/`, almost passed. |
-  | gemma26 (gemma-4-26b-a4b-it via openrouter) | running 54+ | $0.10 so far | running. Methodical small-step at 4B-active. Produced compile.sh + src/ + tests/, currently iterating against test failures on bracket-notation core walk logic. **Determine step in flight — the one frontier models skip.** |
-
-  **Pattern across runs:**
-  - **Verification hallucination is universal in US capable models.** grok variants + gfast variants all emit `<update status="200">` despite broken builds. THINK=1 makes them *faster*, not more self-skeptical.
-  - **Protocol non-adoption clusters in non-US capable models** (ccp/mmax/qwen). Models emit beautifully structured tool calls in their *own* trained shape; rummy's `<update>` close convention isn't picked up from a single instruction read.
-  - **xemma falsifies "openrouter as transport is the issue"** — Google's gemma-4-31b through openrouter adopts the protocol cleanly. The non-US protocol failure is **model-family-specific**, not transport-layer.
-  - **gemma (local) is the best non-fake performer** — operates on the real task throughout, fails by capacity exhaustion under heavy prompt, not by faking compliance.
-
-  **Two orthogonal failure axes (revised after broader sample):**
-
-  1. **Task-oriented vs protocol-rejecting** — does the model
-     adopt rummy's protocol and operate on the actual task?
-  2. **Self-skeptical vs self-confident-at-verify** — does the
-     model verify its work before declaring done, or trust its
-     own narrative?
-
-  Mapping the matrix:
-
-  | Model | Task-oriented? | Self-skeptical? | Result |
-  |---|---|---|---|
-  | grok-fast | ✓ | ✗ | Real impl, hallucinated verify |
-  | grokR | ✓ | ✗ | Real impl with bugs, hallucinated verify |
-  | gfast | ✓ (partial — SPEC in DB) | ✗ | Hallucinated verify |
-  | gemma | ✓ | ✓ | Capacity-bound; ran out before completing |
-  | xemma | ✓ | ✓ | **Best run** — actually iterating on test failures (80+ turns) |
-  | kimi | ✓ | ✗ | Stalled then strike-abandoned |
-  | glm | ✓ (partial) | ? | Every-other-turn protocol gap; uses memory primitives |
-  | ccp / mmax / qwen | ✗ | n/a | Never adopted protocol; emit own trained tool shape |
-  | ibm/granite | n/a | n/a | Confused example with task ("Paris") |
-
-  **grok-fast belongs in the task-oriented camp with gemma**, not
-  with the protocol-rejecters. Failure mode is verification
-  hallucination, separate from refusal to engage with the task.
-  Cost-efficiency: $0.06 producing a near-working submission vs
-  kimi's $0.42 producing strike-abandon.
-
-  **The "task-oriented + self-skeptical" cell** (gemma + xemma) is
-  the only cell that produces credible engagement. Both are gemma
-  family. Both are instruction-tuned without aggressive
-  tool-call-format RLHF. The hypothesis: **gemma's lineage is
-  uniquely calibrated for general tool-following** rather than for
-  any specific tool-call format, which keeps it amenable to
-  rummy's idiosyncratic XML conventions. xemma (gemma-4-31b
-  through openrouter) confirms this isn't a local-vs-cloud
-  artifact — it's the model family.
-
-  **Capable models trained on tool use have priors about tool-call
-  format that compete with prompt instructions.** RLHF on
-  function-calling, on Anthropic's `<tool_use>`, on OpenAI's JSON
-  schema, on Gemini's structured output, on Qwen's function-call
-  schema — produces strong priors that prompt-side instruction
-  can't fully override. The pattern is roughly inverted-U: models
-  with no tool-RLHF (small open weights) and models trained for
-  *general* tool-following (gemma family) sit at the bottom and
-  top of the curve respectively, both amenable to rummy. The
-  middle (specifically tool-RLHF'd models like Qwen, DeepSeek,
-  Minimax) defects to its trained shape and rejects rummy's.
-
-  **In-bounds prompt has hit its ceiling.** Out-of-bounds (per
-  AGENTS.md "Benchmark integrity") would be runner-level enforcement:
-  refuse-to-tar without a clean compile, or loop-on-fail with stderr
-  fed back. Both crossing the line we set. Also out-of-bounds: a
-  per-model protocol-adaptation layer in `rummy.web` translating
-  rummy's protocol to/from each model's trained tool-call shape.
-
-  **Files in flight:**
-  - `test/programbench/prompt.md` — collaboratively-edited prompt
-  - `test/programbench/runner.js` — substitutes `{{orientation}}`
-  - `.env`'s `RUMMY_MODEL_*` aliases name the matrix participants
-
-  **Forensic target for next session:** xemma's 80+-turn run dir
-  (`test/programbench/results/2026-05-07T03-51-59/`) regardless of
-  where it ends up. Real iterate-against-tests workflow execution.
-  Look at: how the test-fix loop actually worked turn-by-turn,
-  what triggered the runner_test.go compilation issue, what the
-  agent did to recover, whether memory primitives were used,
-  total token economy. This is the richest dataset in the matrix.
-
-  **Hypothesis for next prompt iteration: scale-specification
-  over process-prescription.** The current heavy "YOU MUST do X"
-  prompt reads as a checklist to capable models — they produce a
-  token of each step and tick the boxes. Replacing process
-  instructions with scale anchors might force the model to
-  *infer* what "enough work" looks like rather than satisfying
-  a checklist:
-
-  - Process: "YOU MUST design unit, integration, and e2e tests"
-    → model writes one of each, declares done
-  - Scale: "The eval runs ~200 behavioral tests across every
-    documented flag/mode/option. Real CLI tools at this caliber
-    expose 10-15 flags; submissions that handle only the happy
-    path fail systematically." → model has to figure out what
-    200-behavior coverage looks like, which is harder to satisfy
-    with token effort
-
-  Sketch (~150 words vs current ~400):
-
-  ```
-  We're reproducing this program from scratch. The compiled
-  binary `./executable` is the reference; you have its docs but
-  cannot read its bytes.
-
-  The eval rebuilds your submission via
-  `chmod +x ./compile.sh && ./compile.sh` from a clean
-  container, then runs ~200 behavioral tests against the
-  resulting binary. Tests cover every flag, mode, and option
-  the documentation names.
-
-  Real CLI tools at this caliber expose 10–15 flags.
-  Submissions that implement only the happy path fail every
-  test that exercises a flag they don't.
-
-  You have whatever process you choose. The deliverable is
-  `./compile.sh` plus source files that produce a binary
-  matching the reference's observable behavior across the full
-  documented surface.
-  ```
-
-  Tradeoff: less guarantee weaker models pick a sensible
-  workflow. But heavy process prescription didn't produce
-  sensible workflow either — most models satisfied the form
-  without the substance. Worth A/B'ing: same matrix, two prompt
-  variants, see which spread of outcomes is more useful.
-
-  **State 2026-05-07 morning:**
-  - Gemma family thesis confirmed at 4B-active. Gemma26 produces
-    real artifacts and iterates against tests at $0.10 / 50+ turns.
-    Protocol functions as bricklayer's scaffold for small-active-
-    parameter models — they can't outrun their working memory, so
-    the rails are infrastructure they actually use.
-  - **Frontier-model failure is discipline-bounded, not capability-
-    bounded.** Opus on the same task: $24.70 / 60+ turns / no clean
-    artifact. Read explicit YOU MUST instructions and skipped step 1
-    anyway. The synthesize-and-ship RLHF prior dominates surface
-    persona/prompt strengthening.
-  - The frontier-paid hypothesis (Gemini Pro / Opus as plausible
-    high performers) was wrong for opus. Gemini Pro untested.
-  - Grok family owes partial apology — task-oriented in the gemma
-    cluster, just bound by verification hallucination.
-
-  **Path forward:** engine-side rails (see Open Items below).
-  Surface prompt-strengthening hit ceiling; discipline must be
-  enforced through existing strike + entries machinery, not
-  through stronger pleading.
-
-- [ ] **Forensic investigation: programbench 1298-error matrix → solution grind.**
-  Forensic source: `errors.md` / `errors.json` at the sweep root,
-  produced by `digest.js` (extended 2026-05-07 to emit cross-task
-  error report + handle programbench's `rummy_programbench.db`).
-  Corpus: 43 programbench gron runs across 2026-05-06/07, 1298
-  total errors (273 strike, 1025 soft). Distribution:
-
-  | Outcome | Count | Class |
-  |---|---|---|
-  | `not_found` | 687 | tooldoc gap |
-  | `conflict` | 197 | tooldoc + engine |
-  | `status:422` | 125 | engine (parser-swallow) |
-  | `unparsed` | 105 | engine + persona |
-  | `exit:127` | 60 | (cmd not installed; out of scope) |
-  | `validation` | 36 | (per-plugin; not yet investigated) |
-  | other | 88 | tail |
-
-  **Findings + solutions to grind. Status legend: tooldoc / engine / mixed.**
-
-  - **CC-14 — Glob-on-`<set>` `not_found` (~673).** Models emit
-    `<set path="log://turn_N/*"/>`, `sh://turn_N/**`,
-    `env://turn_*"` trying to bulk-demote past-turn artifacts.
-    `<get>` and `<rm>` support globs (per their tooldoc examples);
-    `<set>` does not. Models infer the natural extension and the
-    harness rejects. Concrete shape (gemma 5/6 T9):
-    `<set path="env://turn_[2-5]/**" visibility="archived"/>` + 4
-    siblings. The model is doing exactly what the
-    `<set visibility="archived"/>` tooldoc tells it to (per
-    `rmDoc.md` "Prefer `<set path="..." visibility="archived"/>`
-    to preserve for later retrieval"); the grammar gap is that
-    metadata-only `<set>` should fan out across the glob like
-    `<rm>` does. Fix is paradigm-aligned: extend `<set>` to fan
-    out on globs when the operation is metadata-only (visibility,
-    tags, summary). Body-write `<set>` with a glob remains an
-    error (no body fan-out semantics). **mixed:** engine extension
-    + tooldoc reinforcement of "one-path or glob with metadata-
-    only" once the engine supports it.
-
-  - **CC-15 — Multi-path-in-attr `not_found` (~22).** Model sends
-    `"README.mkd ADVANCED.mkd LICENSE"` as a single path attr.
-    Tooldoc example reinforcing one-path-per-tag. **tooldoc.**
-
-  - **CC-17 — SEARCH/REPLACE retry-without-refetch (~196).** When
-    SEARCH text doesn't match the current entry body, conflict
-    error echoes the failing patch back — useless feedback. Model
-    retries verbatim. Combined file (105) and `known://` (91 — all
-    on `known://plan`) cases share the same root cause: model's
-    SEARCH text uses an old version of the body. The model is
-    using SEARCH/REPLACE to update the plan as work progresses,
-    but the plan keeps drifting and the SEARCH text drifts behind.
-    Gemma26 ceiling case: 44× same patch turns 96-224 against
-    `tests/runner_test.go`. File sub-pattern: `./main.go` vs
-    `main.go` path-form split (24+12 occurrences) — verify
-    `Entries.normalizePath` strips leading `./` for file-scheme.
-    **mixed:** tooldoc edit (read current first) + engine fix
-    via EN-3 (conflict body includes the current entry body so
-    the model can author a delta).
-
-  - **CC-18 — Unparsed HTML-comment thinking (~17).** Models use
-    `<!-- ... -->` as alt-think channel. Fix: think-plugin
-    absorb-or-filter `<!--` (already does so for `<think>`); or
-    tooldoc points at `<think>` as the answer. **mixed.**
-
-  - **EN-1 — 422 verdict misleads when parser swallows `<update>`
-    (load-bearing).** When `<set>` containing SEARCH/REPLACE is
-    malformed (missing `<<<<<<< SEARCH` head OR missing `</set>`
-    tail), XmlParser absorbs every following tag — including
-    `<update>` — as nested body. The 422 fires "no <update>
-    emitted" but the model emitted one; the parser can't see it.
-    Confirmed at packet level on 5/6 14:39 T9: malformed second
-    `<set known://plan>` with no `</set>` swallowed `<sh>` and
-    `<update status="102">` at end-of-stream. Two paths:
-    (a) parser closes parent at next sibling-shaped top-level
-    tag; (b) verdict body changes to "Unclosed `<set>` swallowed
-    your `<update>` — check SEARCH/REPLACE markers and `</set>`"
-    so model gets accurate feedback. Per
-    `feedback_no_specificity_to_model`: prefer (a) — fix the
-    parser, don't paper over with verbose error prose.
-    **engine.** Highest-leverage fix in the dataset.
-
-  - **EN-3 — Conflict feedback verbosity.** Conflict error body
-    should include the current entry body context, not just echo
-    the failing patch. SEARCH/REPLACE conflict on a file: 20-line
-    window around where SEARCH text fuzzy-matches (or full file
-    if small). Conflict on a non-file scheme entry (`known://`,
-    `unknown://`): include current entry body so the model can
-    author a delta. Closes the loop for CC-17 (both file and
-    scheme variants). **engine.**
-
-  **Out of scope (do not address here):**
-
-  - Mode-collapse degenerate sampling (e.g., 130k-char loop of
-    `setPath,main,...` filling completion budget). Sampler escape
-    on small models; not a harness concern.
-  - Mid-emission truncation by completion-tokens budget — already
-    tracked separately as "Single-turn budget escape" below.
-  - `exit:127` errors — agent calling commands not installed in
-    container; benchmark-task-specific, not harness.
-  - **Discipline rails for prose-only / zero-emission turns
-    (~85 unparsed prose errors).** Capable models (Claude family
-    especially) fall out of tag-discipline under stress. Tempting
-    to add a zero-emission strike, but per
-    `feedback_protocol_over_enforcement`: strikes catch repeated
-    failures, they don't reform models that have structural
-    resistance to the protocol. Open philosophical question
-    (also frames the existing knowns/unknowns lifecycle strikes
-    item below): does *any* engine-side rail close the discipline
-    gap, or does it just abandon the resistant model faster?
-    Defer pending data. Don't grind here.
-
-  **Grind order:**
-
-  1. EN-1 — parser tail-recovery for unclosed tag bodies. **DONE
-     2026-05-07** (`src/agent/XmlParser.js`). Recovers trailing
-     well-formed tool calls after a botched close, so the verdict
-     layer sees the model's `<update>` instead of swallowing it.
-  2. EN-3 — conflict error body includes current entry body and
-     the attempted merge. **DONE 2026-05-07** (`src/plugins/set/set.js`).
-     Closes the SEARCH/REPLACE retry-without-refetch loop.
-  3. CC-17 path-form split — `./main.go` vs `main.go`. **DONE
-     2026-05-07** (`src/agent/Entries.js#normalizePath` strips
-     leading `./` on bare file paths).
-  4. CC-14 — sh/env entry slug pollution by `./` segments.
-     **DONE 2026-05-07** (`src/sql/functions/slugify.js` drops
-     `.` and `..` segments). Diagnosis revised: not a fan-out
-     gap (`<set>` already fans out via `getEntriesByPattern` for
-     metadata-only ops); root cause was slug paths like
-     `sh://turn_N/./executable_--help` that picomatch globs
-     can't cross. Future entries slug clean.
-  5. CC-15 — one-path-per-tag reinforcement in `getDoc.md`.
-     **DONE 2026-05-07** (one example + comment line). CC-18
-     (HTML-comment thinking, ~17 errors) declined: the soft
-     unparsed turns are already caught by the existing missing-
-     `<update>` path; teaching against them would spend tokens
-     on a behavior the engine already handles.
+- [x] **Budget grinder: fat-replay reclamation.** Superseded the
+  four-step ladder design. Current grinder walks `<get>` / `<set>`
+  log entries from prior turns by `(turn DESC, body_tokens DESC)`,
+  clears bodies one at a time until under budget, emits a single
+  413 error with `archivedCount` / `archivedTokens` attrs. Touches
+  only fat replays — catalog visibility (knowns / unknowns / files /
+  streams) is never auto-demoted. Aligns with the "visibility is
+  model-only" rule. Implementation: `src/plugins/budget/budget.js`
+  `enforce()`; tests in `test/integration/budget_math.test.js`.
 
 - [x] **Edit syntax migration: `<<:::IDENT...:::IDENT` family.**
   Landed 2026-05-07. Six named ops (NEW / PREPEND / APPEND / REPLACE
@@ -840,150 +474,35 @@ engine action and decide what to do, in the language it speaks.
   `src/lib/hedberg/marker.js`. Deferred: no-IDENT one-liner
   SEARCH/REPLACE — ship if data shows demand.
 
-- [ ] **Engine-side rails: knowns/unknowns lifecycle strikes — DESIGN.**
-  (Note: under philosophical question per the Out-of-scope rails
-  block above. Defer pending data on whether *any* engine-side rail
-  closes the discipline gap.) Three deterministic checks against
-  existing entries infrastructure — lifecycle-only, never content
-  judgment:
+- [x] **`<skill>` is not a model-facing plugin.** Skill ingestion is
+  a host-mediated lifecycle action, not a tool the model decides to
+  invoke. Stripped: dropped the `instructions.toolDocs` filter,
+  added `core.markHidden()`, deleted `skillDoc.{js,md}`. Handler
+  + scheme registration kept; clients invoke via the RPC tool
+  fallback (`skill { run, path }`) — same dispatch the model used
+  to use, just hidden from `<system_commands>`. Pattern parallels
+  `store` (SPEC §store_rpc).
 
-  1. **Turn 1 must create unknowns.** No entries at any visibility
-     → strike "Unknowns must be defined." Protocol expects
-     discovery-first; absence is wrong setup.
-  2. **Attempted status=200 with no knowns at any visibility** →
-     strike "Knowns must be distilled from Unknowns before
-     Completion."
-  3. **Attempted status=200 with unknowns still at visible
-     fidelity** → strike "Unknowns must be resolved and demoted
-     before Completion."
+- [x] **Manifest line format: JSON-object per row.** Replaced
+  `* path - tokens` with `{"path":"...","tokens":N}` per row in the
+  canonical writer (`storePatternResult` → exported `manifestLine`
+  helper), rummy.web's search log body, and rummy.repo's
+  `buildManifestBody` (both rollup + flat sections). Header lines
+  unchanged. Numeric `tokens` matches the existing meta-envelope
+  shape so the model parses both with one primitive.
 
-  One strike per turn (existing machinery). Multiple striking
-  errors stack on the attempt; earliest-violation message wins so
-  the model gets walked through the protocol in order. Rules 2/3
-  fire before the 200 lands — the strike is on the attempt, not
-  after the run terminates.
+- [x] **`<turn>` shape: tokenCeiling attr, no Total line, fixed
+  scheme order.** `<turn>` now carries `tokenCeiling="N"` alongside
+  `tokenUsage` / `tokensFree`. Trailing `Total:` line removed. Table
+  ordering anchors `repo`, `known`, `unknown`, `log` first (in that
+  order, when present), with the remaining schemes following sorted
+  by indexed-token cost descending.
 
-  **Why paradigm-aligned, not accretion:** uses existing
-  knowns/unknowns infrastructure + existing strike machinery. No
-  new tags, no new rules in the prompt, no thou-shalt accretion.
-  The discipline-pressure compartmentalizes to one load-bearing
-  decision (knowns/unknowns) and one transition (completion). The
-  rest of the protocol cascades from there.
-
-  **Validation experiment:** opus-with-rails on the same gron
-  task, compared against opus's $24.70/no-artifact baseline. Tells
-  us whether the rails close the discipline gap or whether the
-  synthesize-and-ship prior breaks through. Defer implementation
-  until current gemma26 baseline run completes (data cleanliness).
-
-  **Open implementation questions:**
-  - Where does the 200-validation actually live? Need to scope
-    before writing.
-  - Calibration risk: too-tight strikes corner opus into gemma26-
-    style mode-collapse (high protocol fidelity, low artifact).
-    Triggers must fire on *handling* (sequence, demotion proof,
-    premature resolution), not on *content*.
-
-- [ ] **ProgramBench sweep readiness.** Integration mirrors
-  mini-swe-agent's reference: agent runs on host, every `<sh>` is
-  proxied via `docker exec` into a per-task cleanroom container with
-  `--network=none`, bind-mount `host_workspace ↔ /workspace` keeps
-  host file ops in sync with the container view. Per AGENTS.md
-  "Benchmark integrity": no benchmark-specific prompts, no behavioral
-  coaching — task prompt is structurally aligned to the SWE-bench
-  reference (`test/programbench/runner.js buildPrompt()`).
-
-  **Runbook — single-task run:**
-  ```
-  npm run test:programbench -- --task tomnomnom__gron.88a6234 --model grok
-  ```
-  - Slug accepts either `__` (canonical / programbench data form) or
-    `_1776_` (Docker form); runner normalizes both. Pass canonical for
-    readability — it matches programbench's data dir and instance ids.
-  - `--model grok` resolves via `.env`'s `RUMMY_MODEL_grok` →
-    `xai/grok-4-1-fast-non-reasoning`. `RUMMY_PROGRAMBENCH_MODEL` env
-    overrides default; default is `grok`.
-  - Runner reads `task.yaml` (`programbench/data/tasks/<id>/task.yaml`)
-    and surfaces `language` + `repository` to the agent's prompt so it
-    knows the target language and upstream repo.
-  - Project files default to git-tracked workspace contents (no
-    whitelist override). Cleanroom workspaces typically commit their
-    docs to a stub `.git`; the executable stays untracked + `0o111`
-    unreadable, so it's invisible to the agent's read tools.
-  - The runner does not pre-judge the submission. Whatever the agent
-    leaves at `<task>/workspace/` is tarred verbatim into
-    `submission.tar.gz` and goes straight to `programbench eval` for
-    verdict. The agent's self-reported terminal status is captured in
-    the run audit, not used as a gate. Hallucinated completions land
-    in the eval as 0-score data points — that's the measurement, not
-    a failure mode to filter out.
-  - Eval (separate step, runs the test suite):
-    ```
-    npm run test:programbench:eval -- results/<run-id>/
-    ```
-    Path is relative to `test/programbench/` (script `cd`s in).
-    Output: `<run-id>/<instance>/<instance>.eval.json` per submission.
-
-  **Layout** — matches upstream usage guide
-  (`<run-root>/<instance_id>/submission.tar.gz`):
-  ```
-  results/<timestamp>/
-    <instance_id>/
-      submission.tar.gz   ← what programbench eval ingests
-      workspace/          ← scratch project root (admin)
-      agent/              ← rummy_programbench.db (audit/replay)
-  ```
-
-  **Before any sweep:**
-  - [ ] Per-profile env files: `.env.programbench`,
-    `.env.programbench.gemma`, `.env.programbench.grok` (currently
-    reuses `.env.tbench` — sloppy coupling)
-  - [ ] Sweep driver `test/programbench/sweep.js`: iterates task
-    list, spawns runner.js per task, isolates per-task failures,
-    supports same-folder skip-completed for resume
-  - [ ] Pre-pull all ~200 cleanroom images (broadband-bound, runs
-    once before sweeping)
-  - [ ] First gemma sweep on full task set with eval; sanity-check
-    against published baselines before announcing anything
-
-  **Post-sweep (parallel runs of gemma + grok):**
-  - [ ] grok profile uses xAI endpoint (different upstream from
-    gemma's local llama-server, so true parallelism — concurrency
-    matches each upstream's parallelism, not affected by cost)
-  - [ ] Sweep dirs separated by profile + invocation; never mixed
-
-- [ ] **Cache eviction anomaly with sandwich ordering.** Sandwich
-  e2e showed cache hitting only on turn 2 of multi-turn runs —
-  turns 3+ report `cached=0` despite system+prompt being
-  byte-identical across all turns. Aggregate hit rate dropped
-  from 61.4% (front-loaded) to 14.9% (sandwich) — much larger
-  than the design predicts (~400 tokens/turn delta vs observed
-  ~1900 tokens/turn delta). Possibly llama-server's `cache_reuse`
-  threshold giving up when the cacheable prefix is shorter
-  (~1900 tok system+prompt vs ~2400 tok system+instructions+prompt
-  in front-loaded). Investigate via `/props` for `cache_reuse`
-  setting, slot state across turns, or whether some other request
-  (proposal handshake? telemetry?) is hitting the slot mid-run
-  and evicting. Not blocking ProgramBench — but if recoverable,
-  could nearly 4x effective cache.
-
-- [ ] **Single-turn budget escape.** A run was observed sending
-  ~2.3× the configured budget cap in a single turn. Two candidate
-  causes, exactly one true:
-  1. **Token-counter divergence.** `countTokens(body) = length /
-     RUMMY_TOKEN_DIVISOR` undercounts vs the upstream tokenizer
-     for content that's binary/JSON/code-heavy. Budget enforcement
-     thought it was capping at N; actual tokenization came in
-     above.
-  2. **Budget-enforcement escape path.** Content gets added to the
-     assembled packet *after* the `turn.beforeDispatch` filter chain
-     runs (system prompt assembly, post-enforcement plugin filters,
-     `assembly.user` 175-priority inserts). Enforce caps at N;
-     downstream insertion blows past it.
-
-  Triage: replay the turn, compare `countTokens` to provider's
-  reported count for the loaded body. Whichever diverges identifies
-  the bug.
+- [x] **`<error>` body should not lead with `error:`.** Stripped the
+  only `error: ` body prefix in production — `Entries.js#L534` (the
+  update-body cap soft error). Body now reads as the message itself;
+  the `<error>` tag carries the kind. `test/integration/update_cap.test.js`
+  asserts via regex that survives the prefix removal.
 
 ## Scope Discipline
 

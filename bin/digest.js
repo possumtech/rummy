@@ -149,7 +149,8 @@ function parseAttrs(s) {
 	}
 }
 
-const TURN_FROM_PATH = /^log:\/\/turn_(\d+)\//;
+// log://<L>/<T>/<S>/<action> — T is the per-loop turn segment.
+const TURN_FROM_PATH = /^log:\/\/\d+\/(\d+)\/\d+\/\w+$/;
 
 function turnFromPath(path) {
 	const m = TURN_FROM_PATH.exec(path);
@@ -157,13 +158,13 @@ function turnFromPath(path) {
 }
 
 function actionFromPath(path) {
-	const m = path.match(/^log:\/\/turn_\d+\/([^/]+)\//);
+	const m = path.match(/^log:\/\/\d+\/\d+\/\d+\/(\w+)$/);
 	return m ? m[1] : null;
 }
 
 function pathSlug(path) {
-	// Decode the slug after `log://turn_N/<action>/`. URL-encoded.
-	const m = path.match(/^log:\/\/turn_\d+\/[^/]+\/(.+)$/);
+	// Action is the terminal segment; the slug-in-path model is gone.
+	const m = path.match(/^log:\/\/\d+\/\d+\/\d+\/(\w+)$/);
 	if (!m) return path;
 	try {
 		return decodeURIComponent(m[1]);
@@ -199,7 +200,7 @@ function readDb(rummyDb) {
 		 FROM entries e
 		 JOIN run_views rv ON rv.entry_id = e.id
 		 WHERE rv.run_id = ?
-		   AND e.path LIKE 'log://turn_%'
+		   AND e.scheme = 'log'
 		 ORDER BY e.id`,
 	);
 	const promptStmt = db.prepare(
@@ -608,7 +609,7 @@ function collectErrors(turnRows, logEntries, runIdent) {
 const SIG_BODY_CHARS = 80;
 function errorSignature({ outcome, sourcePath, body }) {
 	const out = outcome ?? "—";
-	const src = sourcePath ? sourcePath.replace(/turn_\d+/, "turn_*") : "—";
+	const src = sourcePath ? sourcePath.replace(/^log:\/\/\d+\/\d+\/\d+\//, "log://*/*/*/") : "—";
 	const flat = (body ?? "").replace(/\s+/g, " ").trim();
 	const head =
 		flat.length > SIG_BODY_CHARS ? `${flat.slice(0, SIG_BODY_CHARS)}…` : flat;
@@ -635,7 +636,7 @@ function aggregateErrors(allErrors) {
 				count: 0,
 				outcome: er.outcome,
 				sourcePathPattern: er.sourcePath
-					? er.sourcePath.replace(/turn_\d+/, "turn_*")
+					? er.sourcePath.replace(/^log:\/\/\d+\/\d+\/\d+\//, "log://*/*/*/")
 					: null,
 				turns: new Set(),
 				tasks: new Set(),

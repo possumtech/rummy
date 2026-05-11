@@ -83,7 +83,7 @@ describe("log plugin tokens= invariant", () => {
 		const searchLog = logRow({
 			action: "search",
 			seq: 1,
-			body: "* https://a.com - 80 tokens\n* https://b.com - 120 tokens",
+			body: '{"path":"https://a.com","tokens":80}\n{"path":"https://b.com","tokens":120}',
 			tokens: 204,
 			attrs: { query: "query" },
 		});
