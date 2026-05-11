@@ -1,4 +1,4 @@
-## <set path="{path}" tags="{topical,searchable,folksonomic,internal,tags}" {archive|index|manifest}>[content or edit]</set> - Create, edit, or update an entry or file
+## <set path="{path}" tags="{topical,searchable,folksonomic,internal,tags}" {archive|index} {manifest}>[Operative Label Edit]</set> - Create, edit, or update an entry
 
 YOU SHOULD prefer minimal and multiple atomic edits to reduce the frequency and severity of conflicts and errors
 
@@ -6,11 +6,11 @@ YOU SHOULD prefer minimal and multiple atomic edits to reduce the frequency and 
 * `index`: promote an archived entry to `<index>`.
 * archive/index are mutually exclusive on the same `<set>`.
 
-* The <set/> command requires matching HEREDOC label string literal syntax
+* The <set/> command's entry edit functionality requires matching HEREDOC string literal syntax
 
-* Special Operative Labels: ({SEARCH|REPLACE|NEW|PREPEND|APPEND|DELETE}) dictate the type of edit
+* Operative Labels: ({SEARCH|REPLACE|NEW|PREPEND|APPEND|DELETE}) dictate the type of edit
 	SEARCH/REPLACE - SEARCH/REPLACE string literal syntax uses HEREDOC in place of git conflict markers
-	SEARCH[LineFirst-LineFinal]/REPLACE - Replace lines by number instead of matching
+	SEARCH[LineFirst-LineFinal]/REPLACE - Replace by line number range instead of matching literal text
 	NEW - Create (or clobber) entry content
 	PREPEND - Prepend content at beginning of existing entry
 	APPEND - Append content to end of existing entry
@@ -57,7 +57,6 @@ Example:
 	<set path="src/main.go"><<DELETE
 	deprecated_function()
 	DELETE</set>
-<!-- DELETE: remove a literal-matching region. -->
 
 Example:
 	<set path="docs/guide.md" tags="docs" archive><<GUIDE

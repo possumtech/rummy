@@ -1,17 +1,7 @@
-## <get path="[path]"/> - Read an entry's full body into `<log>` (greedily re-indexes if archived)
+## <get path="[path]"/> - Read an entry's content into the log
 
 Example: <get path="known://*">auth</get>
-<!-- Body is a content filter, not new content. Path glob + body keyword = filtered recall. -->
 Example: <get path="src/**/!(*.test).js" manifest>auth</get>
-<!-- Negation: !(pattern) excludes matches; combine with body filter for "auth in sources, not tests." -->
-Example: <get path="log://turn_*/sh/**" manifest/>
-<!-- ** crosses path separators (matches log://turn_5/sh/build_1, log://turn_5/sh/test/run_2); * matches one segment only. -->
+Example: <get path="log://*/*/*/sh/**" manifest/>
 Example: <get path="src/agent/AgentLoop.js" line="644" limit="80"/>
-<!-- line/limit: read a slice. line=-50 tails the last 50 lines. -->
-Example: <get path="https://en.wikipedia.org/wiki/Long_Page" line="1" limit="200"/>
-<!-- URL slice. line/limit works on any scheme — files, sh stdout, knowns, urls. -->
 Example: <get path="*.md"/>
-<!-- One glob per call fans out. For unrelated paths, emit one `<get>` per path — `path` is a single entry or one pattern, not a space-separated list. -->
-<!-- `<get>` greedily re-indexes any archived match. To explicitly
-flip visibility without reading, use `<set path="..." index/>` or
-`<set path="..." archive/>`. -->

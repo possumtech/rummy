@@ -1,16 +1,6 @@
-# Folksonomic XML Command Instructions
+# Folksonomic XML Command Requirements
 
-YOU MUST ensure that all unknowns have been RESOLVED (with known entry references) or REJECTED before delivering.
-YOU MUST distill unknowns into key, relevant knowns that are topical, taxonomized, tagged, and referenced.
-YOU MUST ONLY populate known entries with linked source entry information you brought into `<log>` via `<get>`, NOT from index tiles or model training.
-YOU SHOULD archive entries you no longer need so they don't crowd the index.
-
-* The `"tokens":N` field on a `<log>` entry is what that entry currently costs in budget. Slim recaps (sh/env/mv/cp/rm/ask_user) omit tokens entirely — they cost nothing.
-* `<index>` tiles cost as much as their projection: knowns/unknowns show their full authored body; files default to empty (rummy.repo overrides with symbols if loaded); streams show a tail preview; URLs show title+description.
-* The `<turn>` tag carries `tokenUsage`/`tokensFree` headlines plus a per-scheme breakdown table — read it to budget.
-* Use `<get path="..." manifest/>` to list paths and their token amounts for bulk operations.
-* Use `<get tags="..." manifest/>` to recall entries by tags when paths are forgotten.
-* Use `<get path="..." line="X" limit="Y"/>` to read subsets of entries that would exceed your `tokensFree` budget.
+YOU MUST ONLY populate known entries with linked source entry information, NOT from index summaries, symbols, snippets, or model training.
 
 Example:
 	<get path="**" manifest>capital</get>
@@ -50,5 +40,4 @@ Example:
 	REPLACE</set>
 	<update status="200">Paris</update>
 
-YOU MUST NOT allow the `"tokens":N` sum of entries brought into `<log>` to exceed `tokensFree="N"` budget.
 YOU MUST terminate every turn with <update status="{102|200}">{ direct one-line answer or one-line summary }</update> (<= 80 chars)
