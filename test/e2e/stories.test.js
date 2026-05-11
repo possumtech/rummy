@@ -532,10 +532,12 @@ describe("E2E Stories (@dispatch_path, @resolution, @unified_api, @rpc_methods, 
 		assert.ok(searchLogs.length > 0, "search produced at least one log entry");
 		// Some attempts may emit malformed queries that fail path validation —
 		// what matters is that *at least one* search log body shows the
-		// markdown-bullet result shape.
+		// JSON-per-row result shape (`{"path":"https://…","tokens":N}`).
 		assert.ok(
-			searchLogs.some((e) => /^\* https?:/m.test(e.body)),
-			"at least one search log body lists results as markdown bullets",
+			searchLogs.some((e) =>
+				/^\{"path":"https?:\/\/[^"]+","tokens":\d+\}/m.test(e.body),
+			),
+			"at least one search log body lists results as JSON-per-row manifest",
 		);
 	});
 

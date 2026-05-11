@@ -1499,24 +1499,27 @@ Surgical in-place edits. `SEARCH` must be immediately followed by
 Multiple pairs in one `<set>` body apply in order against the
 progressively-edited body.
 
-`SEARCH` may carry an optional line-range scope `[N]` or `[N-M]`
-referring to the line numbers visible in the model's projection of
-the target body. Scoped SEARCH is matched only against the lines
-inside the scope (content verification is then exact, no fuzzy
-fallback); the close marker must repeat the scope verbatim:
+`SEARCH` may carry an optional line-range scope split across the
+opener and closer brackets — opener bracket = first line, closer
+bracket = final line — referring to the line numbers visible in
+the model's projection of the target body. Scoped SEARCH is
+matched only against the lines inside the scope (content
+verification is then exact, no fuzzy fallback). The closer bracket
+provides the range's upper bound; closer line ≥ opener line.
 
-    <set path="src/main.go"><<SEARCH[12-14]
+    <set path="src/main.go"><<SEARCH[12]
     exact
     text
     at lines 12-14
-    SEARCH[12-14]<<REPLACE
+    SEARCH[14]<<REPLACE
     new content
     REPLACE</set>
 
-A scope without matching SEARCH content (empty SEARCH body) is the
-trust-the-numbers form: the engine replaces lines N..M with REPLACE
-without verification. Supported but undocumented to models — content
-verification is the safer default.
+Single-line edit collapses to `<<SEARCH[N]…SEARCH[N]`. A scope
+without matching SEARCH content (empty SEARCH body) is the
+trust-the-numbers form: the engine replaces lines opener..closer
+with REPLACE without verification. Supported but undocumented to
+models — content verification is the safer default.
 
 ### Suffix for Body Collisions
 
@@ -1537,8 +1540,9 @@ the outer marker:
 |---|---|
 | `SEARCH` content not found in current body | conflict (soft) |
 | `DELETE` content not found in current body | conflict (soft) |
-| Scoped `SEARCH[N-M]` range out of current line count | conflict (soft) |
-| Scoped `SEARCH[N-M]` content does not match lines at the range | conflict (soft) — error feedback carries the actual lines |
+| Scoped `SEARCH[X]…SEARCH[Y]` range out of current line count | conflict (soft) |
+| Scoped `SEARCH[X]…SEARCH[Y]` content does not match lines at the range | conflict (soft) — error feedback carries the actual lines |
+| Scoped `SEARCH[X]…SEARCH[Y]` with Y < X | parse error |
 | Lone `SEARCH` (no following `REPLACE`) | parse error |
 | Unclosed marker (opener with no matching `IDENT` closer) | parse error |
 | Non-keyword `IDENT` (e.g. `<<EOF`, `<<DOC`) | routes to REPLACE — inner content becomes the new body |

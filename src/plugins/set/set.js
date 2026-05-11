@@ -604,7 +604,7 @@ export default class Set {
 		return { body, error: null, attempted: null, opPositions: tracked };
 	}
 
-	// Scoped SEARCH/REPLACE: `<<SEARCH[N-M]…SEARCH[N-M]<<REPLACE…REPLACE`.
+	// Scoped SEARCH/REPLACE: `<<SEARCH[X]…SEARCH[Y]<<REPLACE…REPLACE`.
 	// Lines N..M (1-indexed, inclusive) of `body` are replaced by `op.replace`.
 	// If `op.search` is non-empty, it must exactly match the current text at
 	// that range (content verification on top of the positional scope). An

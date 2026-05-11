@@ -341,7 +341,7 @@ describe("extractSingleHeredoc — generic plugin body wrapper", () => {
 });
 
 describe("parseMarkerBody — scoped SEARCH/REPLACE", () => {
-	it("single-line scope: SEARCH[5] parses as search_replace with scope.start=end=5", () => {
+	it("single-line scope: SEARCH[5]…SEARCH[5] gives scope.start=end=5", () => {
 		const r = parseMarkerBody(
 			"<<SEARCH[5]\nold line\nSEARCH[5]<<REPLACE\nnew line\nREPLACE",
 		);
@@ -355,9 +355,9 @@ describe("parseMarkerBody — scoped SEARCH/REPLACE", () => {
 		]);
 	});
 
-	it("range scope: SEARCH[5-10] parses as search_replace with scope.start=5 end=10", () => {
+	it("range scope: SEARCH[5]…SEARCH[10] gives scope.start=5 end=10", () => {
 		const r = parseMarkerBody(
-			"<<SEARCH[5-10]\nold block\nSEARCH[5-10]<<REPLACE\nnew block\nREPLACE",
+			"<<SEARCH[5]\nold block\nSEARCH[10]<<REPLACE\nnew block\nREPLACE",
 		);
 		assert.deepEqual(r.ops, [
 			{
@@ -369,8 +369,7 @@ describe("parseMarkerBody — scoped SEARCH/REPLACE", () => {
 		]);
 	});
 
-	it("close marker must repeat the scope verbatim", () => {
-		// SEARCH[5] opener cannot pair with SEARCH closer.
+	it("scoped opener cannot pair with unscoped SEARCH closer", () => {
 		const r = parseMarkerBody(
 			"<<SEARCH[5]\nold\nSEARCH<<REPLACE\nnew\nREPLACE",
 		);
@@ -378,9 +377,9 @@ describe("parseMarkerBody — scoped SEARCH/REPLACE", () => {
 		assert.match(r.error, /unclosed/);
 	});
 
-	it("empty SEARCH body (trust-the-numbers form, undocumented)", () => {
+	it("empty SEARCH body (trust-the-numbers form)", () => {
 		const r = parseMarkerBody(
-			"<<SEARCH[5-7]\nSEARCH[5-7]<<REPLACE\nnew block\nREPLACE",
+			"<<SEARCH[5]\nSEARCH[7]<<REPLACE\nnew block\nREPLACE",
 		);
 		assert.deepEqual(r.ops, [
 			{
@@ -392,6 +391,14 @@ describe("parseMarkerBody — scoped SEARCH/REPLACE", () => {
 		]);
 	});
 
+	it("rejects closer line preceding opener line", () => {
+		const r = parseMarkerBody(
+			"<<SEARCH[10]\nold\nSEARCH[5]<<REPLACE\nnew\nREPLACE",
+		);
+		assert.equal(r.ops, null);
+		assert.match(r.error, /precedes opener/);
+	});
+
 	it("unscoped SEARCH/REPLACE still parses with no scope on the op", () => {
 		const r = parseMarkerBody("<<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE");
 		assert.deepEqual(r.ops, [
@@ -401,10 +408,19 @@ describe("parseMarkerBody — scoped SEARCH/REPLACE", () => {
 
 	it("multi-hunk scoped + unscoped in the same body", () => {
 		const body =
-			"<<SEARCH[3-3]\nA\nSEARCH[3-3]<<REPLACE\na\nREPLACE<<SEARCH\nB\nSEARCH<<REPLACE\nb\nREPLACE";
+			"<<SEARCH[3]\nA\nSEARCH[3]<<REPLACE\na\nREPLACE<<SEARCH\nB\nSEARCH<<REPLACE\nb\nREPLACE";
 		const r = parseMarkerBody(body);
 		assert.equal(r.ops.length, 2);
 		assert.deepEqual(r.ops[0].scope, { start: 3, end: 3 });
 		assert.equal(r.ops[1].scope, undefined);
+	});
+
+	it("disambiguating suffix on multi-SEARCH scoped: SEARCH1[3]…SEARCH1[5] / SEARCH2[10]…SEARCH2[12]", () => {
+		const body =
+			"<<SEARCH1[3]\nA\nSEARCH1[5]<<REPLACE1\na\nREPLACE1<<SEARCH2[10]\nB\nSEARCH2[12]<<REPLACE2\nb\nREPLACE2";
+		const r = parseMarkerBody(body);
+		assert.equal(r.ops.length, 2);
+		assert.deepEqual(r.ops[0].scope, { start: 3, end: 5 });
+		assert.deepEqual(r.ops[1].scope, { start: 10, end: 12 });
 	});
 });

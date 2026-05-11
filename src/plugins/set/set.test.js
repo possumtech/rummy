@@ -625,7 +625,7 @@ describe("Set plugin", () => {
 			assert.equal(log.outcome, "conflict");
 		});
 
-		// Scoped SEARCH/REPLACE: model authors `<<SEARCH[N-M]…SEARCH[N-M]<<REPLACE…REPLACE`
+		// Scoped SEARCH/REPLACE: model authors `<<SEARCH[X]…SEARCH[Y]<<REPLACE…REPLACE`
 		// against the line numbers it sees in projection. The scope makes the
 		// match positional (uniqueness no longer depends on the SEARCH content
 		// being unique in the file), and the content stays as a verification

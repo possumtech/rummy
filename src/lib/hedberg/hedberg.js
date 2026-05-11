@@ -55,7 +55,7 @@ export default class Hedberg {
 			out.push(body.slice(cursor));
 			patch = out.join("");
 			if (occurrences.length > 1) {
-				warning = `SEARCH matched ${occurrences.length} locations at line boundaries; all were replaced. Include more surrounding context (or a SEARCH[N-M] scope) for surgical edits.`;
+				warning = `SEARCH matched ${occurrences.length} locations at line boundaries; all were replaced. Include more surrounding context (or a SEARCH[X]…SEARCH[Y] scope) for surgical edits.`;
 			}
 			const lastIdx = occurrences[occurrences.length - 1];
 			matchStartLine = body.slice(0, lastIdx).split("\n").length;

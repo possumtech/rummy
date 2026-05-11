@@ -1,25 +1,31 @@
 // Edit-syntax marker parser for `<set>` bodies. Grammar in SPEC.md "Edit Syntax".
 // Returns { ops, error } — `ops: null` on either no-markers or parse failure.
 //
-// SEARCH supports an optional line-range scope: `<<SEARCH[5-10]…SEARCH[5-10]`
-// constrains the SEARCH match to lines 5-10 of the target body. The close
-// marker must repeat the scope verbatim (the standard open/close pairing
-// rule). Single-line form `[5]` is equivalent to `[5-5]`. Search_replace
-// ops carry `scope: { start, end }` when scoped.
+// SEARCH supports an optional line-range scope spread across opener/closer:
+// `<<SEARCH[X]…SEARCH[Y]<<REPLACE…REPLACE` — opener's bracket carries the
+// first line, closer's bracket carries the final line. Single-line form
+// (X === Y) is the trivial case. `<<SEARCH…SEARCH<<REPLACE…REPLACE` (no
+// brackets) is the literal-content-match form. Search_replace ops carry
+// `scope: { start, end }` when scoped.
+//
+// Non-SEARCH ops (NEW/PREPEND/APPEND/REPLACE/DELETE) follow the strict
+// closer-equals-opener rule. They never carry a scope today.
 
 const KEYWORD_RE =
-	/^(NEW|PREPEND|APPEND|REPLACE|DELETE|SEARCH)(?:\[(\d+)(?:-(\d+))?\]|([A-Za-z0-9_]*))$/;
+	/^(NEW|PREPEND|APPEND|REPLACE|DELETE|SEARCH)([A-Za-z0-9_]*)(?:\[(\d+)(?:-(\d+))?\])?$/;
 
 const OPENER_RE = /(?<=^|[\s>])<<([A-Z][A-Za-z0-9_]*(?:\[\d+(?:-\d+)?\])?)/;
 
 function operationFromIdent(ident) {
 	const m = ident.match(KEYWORD_RE);
-	if (!m) return { op: "replace", scope: null };
+	if (!m) return { op: "replace", scope: null, suffix: "", keyword: "" };
 	const op = m[1].toLowerCase();
-	if (m[2] == null) return { op, scope: null };
-	const start = Number(m[2]);
-	const end = m[3] != null ? Number(m[3]) : start;
-	return { op, scope: { start, end } };
+	const suffix = m[2] || "";
+	const keyword = m[1];
+	if (m[3] == null) return { op, scope: null, suffix, keyword };
+	const start = Number(m[3]);
+	const end = m[4] != null ? Number(m[4]) : start;
+	return { op, scope: { start, end }, suffix, keyword };
 }
 
 function findOpener(body, startIdx) {
@@ -33,16 +39,37 @@ function findOpener(body, startIdx) {
 	};
 }
 
-function findCloser(body, startIdx, ident) {
-	const escIdent = ident.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	// Trailing `<` lets `SEARCH<<REPLACE` adjoin without intermediate whitespace.
-	const re = new RegExp(`(?<=^|\\s)${escIdent}(?=[\\s<>]|$)`);
+// For SEARCH openers with a scoped opener, the closer matches keyword+suffix
+// and carries its OWN `[N]` (or `[N-M]`) bracket — that bracket provides the
+// FINAL line of the range. For all other cases (non-SEARCH, or unscoped
+// SEARCH), the closer must repeat the opener ident verbatim.
+function findCloser(body, startIdx, ident, parsed) {
+	const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	let re;
+	let captureCloserScope = false;
+	if (parsed && parsed.op === "search" && parsed.scope) {
+		const kw = escapeRe(parsed.keyword);
+		const sf = escapeRe(parsed.suffix);
+		re = new RegExp(
+			`(?<=^|\\s)${kw}${sf}\\[(\\d+)(?:-(\\d+))?\\](?=[\\s<>]|$)`,
+		);
+		captureCloserScope = true;
+	} else {
+		// Trailing `<` lets `SEARCH<<REPLACE` adjoin without intermediate whitespace.
+		re = new RegExp(`(?<=^|\\s)${escapeRe(ident)}(?=[\\s<>]|$)`);
+	}
 	const slice = body.slice(startIdx);
 	const match = slice.match(re);
 	if (!match) return null;
 	return {
 		closerStart: startIdx + match.index,
 		closerEnd: startIdx + match.index + match[0].length,
+		closerScope: captureCloserScope
+			? {
+					start: Number(match[1]),
+					end: match[2] != null ? Number(match[2]) : Number(match[1]),
+				}
+			: null,
 	};
 }
 
@@ -62,7 +89,8 @@ export function extractSingleHeredoc(body) {
 	const opener = findOpener(trimmed, 0);
 	if (!opener || opener.openerStart !== 0) return null;
 
-	const closer = findCloser(trimmed, opener.openerEnd, opener.ident);
+	const parsed = operationFromIdent(opener.ident);
+	const closer = findCloser(trimmed, opener.openerEnd, opener.ident, parsed);
 	if (!closer || closer.closerEnd !== trimmed.length) return null;
 
 	const content = trimMarkerNewlines(
@@ -79,8 +107,9 @@ export function parseMarkerBody(body) {
 	while (i < body.length) {
 		const opener = findOpener(body, i);
 		if (!opener) break;
-		const { op, scope } = operationFromIdent(opener.ident);
-		const closer = findCloser(body, opener.openerEnd, opener.ident);
+		const parsed = operationFromIdent(opener.ident);
+		const { op, scope } = parsed;
+		const closer = findCloser(body, opener.openerEnd, opener.ident, parsed);
 		if (!closer) {
 			// Tail-close recovery: last opener with no closer and no further
 			// opener absorbs body to EOF. SEARCH stays strict (needs REPLACE).
@@ -97,7 +126,22 @@ export function parseMarkerBody(body) {
 		const content = trimMarkerNewlines(
 			body.slice(opener.openerEnd, closer.closerStart),
 		);
-		raw.push({ op, scope, content });
+		// Scoped SEARCH: opener bracket = first line, closer bracket = final.
+		// Combine into a single scope on the op. `[X]` on both sides
+		// collapses to start=end=X (the single-line case).
+		let effectiveScope = scope;
+		if (op === "search" && scope && closer.closerScope) {
+			const start = scope.start;
+			const end = closer.closerScope.start;
+			if (end < start) {
+				return {
+					ops: null,
+					error: `SEARCH[${start}]…SEARCH[${end}] — closer line ${end} precedes opener line ${start}`,
+				};
+			}
+			effectiveScope = { start, end };
+		}
+		raw.push({ op, scope: effectiveScope, content });
 		i = closer.closerEnd;
 	}
 	if (raw.length === 0) return { ops: null, error: null };
