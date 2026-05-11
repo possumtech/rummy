@@ -185,8 +185,19 @@ export default class Set {
 			return;
 		}
 
-		// Pure visibility/metadata change — no body content
-		if (!entry.body && visibilityAttr && attrs.path) {
+		// Pure visibility/metadata change — no body content AND no
+		// edit operations. `<set path="X" index><<NEW…NEW</set>` parses
+		// the inner content into `attrs.operations`, leaving
+		// `entry.body` empty; if we routed that through the visibility-
+		// flip branch we'd silently drop the model's write. Visibility
+		// flip is what falls through to the edit branch below — apply
+		// content first, then visibility lands on the resulting entry.
+		if (
+			!entry.body &&
+			!attrs.operations &&
+			visibilityAttr &&
+			attrs.path
+		) {
 			const target = attrs.path;
 			const matches = await store.getEntriesByPattern(
 				runId,
@@ -316,6 +327,9 @@ export default class Set {
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,
+						...(visibilityAttr && visibilityAttr !== "conflict"
+							? { [visibilityAttr === "indexed" ? "index" : "archive"]: true }
+							: {}),
 					},
 					loopId,
 				});

@@ -364,6 +364,51 @@ describe("Set plugin", () => {
 		});
 	});
 
+	// Regression: model emitted `<set path="OC_RIVERS.md" index><<NEW…</set>`
+	// with both a visibility attr AND a NEW body. The visibility-flip-only
+	// branch caught the empty `entry.body` (XmlParser routes content into
+	// `attrs.operations`), saw the target didn't exist, failed with
+	// "not_found", and silently dropped the body. The model's delivery
+	// became a hallucination from our side.
+	describe("regression: visibility attr + edit operations writes the body, not a not_found", () => {
+		it("`<set path=X index><<NEW…NEW</set>` on a non-existing file lands as a proposal carrying the body", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			const newBody = "# Report\n\nFull contents.\n";
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://1/14/1/set",
+					resultPath: "log://1/14/1/set",
+					attributes: {
+						path: "OC_RIVERS.md",
+						index: "",
+						tags: "report,internal",
+						operations: [
+							{ op: "new", content: newBody },
+						],
+					},
+				},
+				{ entries: store, sequence: 14, runId: "r", loopId: "l" },
+			);
+			const log = store._calls.find(
+				(c) => c.path === "log://1/14/1/set",
+			);
+			assert.ok(log, "log entry written");
+			assert.notEqual(
+				log.state,
+				"failed",
+				`expected proposed/resolved, got failed (${log.outcome}: ${log.body?.slice(0, 80)})`,
+			);
+			assert.equal(log.state, "proposed");
+			assert.equal(log.attributes.path, "OC_RIVERS.md");
+			assert.equal(log.attributes.patched, newBody);
+			// The visibility hint survives onto the proposal so
+			// #materializeFile can honor it at accept time.
+			assert.equal(log.attributes.index, true);
+		});
+	});
+
 	describe("bare-file SEARCH/REPLACE emits a proposal (not a resolved entry)", () => {
 		const editOps = [
 			{ op: "search_replace", search: "old line", replace: "new line" },
