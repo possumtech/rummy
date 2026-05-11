@@ -70,13 +70,17 @@ export default class Known {
 		);
 		if (entries.length === 0) return content;
 		const lines = entries.map((e) =>
-			renderContextTag(e, e.vBody != null ? e.vBody : e.body),
+			renderContextTag(
+				e,
+				e.vBody != null ? e.vBody : e.body,
+				ctx.expectedTokensFree,
+			),
 		);
 		return `${content}<index>\n${lines.join("\n")}\n</index>\n`;
 	}
 }
 
-function renderContextTag(entry, projectedBody) {
+function renderContextTag(entry, projectedBody, expectedTokensFree = null) {
 	const attrs =
 		typeof entry.attributes === "string"
 			? JSON.parse(entry.attributes)
@@ -102,5 +106,16 @@ function renderContextTag(entry, projectedBody) {
 	else if (entry.aTokens != null) meta.tokens = entry.aTokens;
 	if (entry.bodyLines != null) meta.lines = entry.bodyLines;
 	else if (entry.vLines != null) meta.lines = entry.vLines;
+	// `overflow: true` when fetching this entry's full body would
+	// exceed available budget. Model uses it to gate `<get>` decisions
+	// without recomputing `tokens > tokensFree` mentally. Omitted when
+	// false (the absence is the negative case — keeps envelopes terse).
+	if (
+		expectedTokensFree != null &&
+		meta.tokens != null &&
+		meta.tokens > expectedTokensFree
+	) {
+		meta.overflow = true;
+	}
 	return renderEntry(entry.path, meta, projectedBody);
 }

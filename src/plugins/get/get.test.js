@@ -345,8 +345,8 @@ describe("Get manifest mode", () => {
 			/^MANIFEST get path="src\/\*\.js": 2 matched \(350 tokens\)/,
 			"MANIFEST prefix, count, total tokens in header",
 		);
-		assert.ok(log.body.includes('{"path":"src/a.js","tokens":100}'));
-		assert.ok(log.body.includes('{"path":"src/b.js","tokens":250}'));
+		assert.ok(log.body.includes('{"path":"src/a.js","tokens":100,"lines":1}'));
+		assert.ok(log.body.includes('{"path":"src/b.js","tokens":250,"lines":1}'));
 	});
 });
 

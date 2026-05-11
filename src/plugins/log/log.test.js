@@ -151,8 +151,8 @@ describe("log plugin tokens= invariant", () => {
 			tokens: 200,
 			attrs: {
 				path: "https://example.com/page",
-				lineStart: 1,
-				lineEnd: 50,
+				firstLine: 1,
+				finalLine: 50,
 				totalLines: 262,
 			},
 		});

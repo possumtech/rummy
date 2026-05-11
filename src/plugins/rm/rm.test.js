@@ -55,7 +55,11 @@ describe("Rm", () => {
 		const log = upserted.find((u) => u.path?.startsWith("log://"));
 		assert.ok(log, "wrote a manifest log entry");
 		assert.match(log.body, /^MANIFEST rm path="known:\/\/temp_\*": 2 matched/);
-		assert.ok(log.body.includes('{"path":"known://temp_a","tokens":100}'));
-		assert.ok(log.body.includes('{"path":"known://temp_b","tokens":50}'));
+		assert.ok(
+			log.body.includes('{"path":"known://temp_a","tokens":100,"lines":1}'),
+		);
+		assert.ok(
+			log.body.includes('{"path":"known://temp_b","tokens":50,"lines":1}'),
+		);
 	});
 });

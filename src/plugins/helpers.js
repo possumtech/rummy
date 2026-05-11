@@ -90,7 +90,9 @@ export async function storePatternResult(
 	const logSlug = await store.logPath(runId, loopId, turn, scheme);
 	const filter = bodyFilter ? ` body="${bodyFilter}"` : "";
 	const total = matches.reduce((s, m) => s + m.tokens, 0);
-	const listing = matches.map((m) => manifestLine(m.path, m.tokens)).join("\n");
+	const listing = matches
+		.map((m) => manifestLine(m.path, m.tokens, lineCount(m.body)))
+		.join("\n");
 	const prefix = manifest ? "MANIFEST " : "";
 	const body = `${prefix}${scheme} path="${path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
 	await store.set({
@@ -106,8 +108,19 @@ export async function storePatternResult(
 
 // Canonical manifest row — one JSON object per line. Matches the
 // `{...} <<:::path` log-entry envelope so the model parses both with
-// the same primitive. Sister plugins (rummy.web, rummy.repo) should
-// import this helper rather than reinventing the row shape.
-export function manifestLine(path, tokens) {
-	return JSON.stringify({ path, tokens });
+// the same primitive. `lines` is the file/entry line count (when
+// known); omitted when 0/null so empty entries aren't decorated.
+// Sister plugins (rummy.web, rummy.repo) import this helper rather
+// than reinventing the row shape.
+export function manifestLine(path, tokens, lines = null) {
+	return lines
+		? JSON.stringify({ path, tokens, lines })
+		: JSON.stringify({ path, tokens });
+}
+
+function lineCount(body) {
+	if (typeof body !== "string" || body === "") return 0;
+	return body.endsWith("\n")
+		? body.split("\n").length - 1
+		: body.split("\n").length;
 }

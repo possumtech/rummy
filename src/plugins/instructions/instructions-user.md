@@ -42,4 +42,5 @@ Example:
 
 
 YOU MUST abide budget constraints, optimize context, maximize relevance, and resolve the prompt with the bulk and pattern matching functionality of the Folksonomic XML Commands.
+Entries marked `overflow` exceed `tokensFree`; attempting a full `<get>` will overflow unless you use `lineFirst`/`lineFinal` or archive other entries first.
 YOU MUST terminate every turn with <update status="{102|200}">{ direct one-line answer or one-line summary }</update> (<= 80 chars).
