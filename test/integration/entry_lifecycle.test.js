@@ -25,7 +25,6 @@ describe("entry lifecycle (@entries, @upsert_semantics, @plugins_entry_lifecycle
 		const store = new Entries(tdb.db);
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "known://test",
@@ -45,7 +44,6 @@ describe("entry lifecycle (@entries, @upsert_semantics, @plugins_entry_lifecycle
 		const store = new Entries(tdb.db);
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "known://lifecycle_vis",
@@ -60,11 +58,12 @@ describe("entry lifecycle (@entries, @upsert_semantics, @plugins_entry_lifecycle
 	});
 
 	it("archived visibility hides an entry from v_model_context", async () => {
-		const { runId, loopId } = await tdb.seedRun({ alias: "entry_vis_archived" });
+		const { runId, loopId } = await tdb.seedRun({
+			alias: "entry_vis_archived",
+		});
 		const store = new Entries(tdb.db);
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "known://lifecycle_archived",

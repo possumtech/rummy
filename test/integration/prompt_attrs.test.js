@@ -66,7 +66,6 @@ describe("Budget headline math (single source of truth)", () => {
 		const contextSize = 32768;
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "prompt://1",
@@ -90,7 +89,6 @@ describe("Budget headline math (single source of truth)", () => {
 		const cap = Math.floor(contextSize * CEILING_RATIO);
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "prompt://1",
@@ -105,10 +103,11 @@ describe("Budget headline math (single source of truth)", () => {
 	});
 
 	it("placeholders are fully substituted (no `{{` survives in the wire)", async () => {
-		const { runId, loopId } = await tdb.seedRun({ alias: "headline_no_placeholders" });
+		const { runId, loopId } = await tdb.seedRun({
+			alias: "headline_no_placeholders",
+		});
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "prompt://1",
@@ -132,7 +131,6 @@ describe("Budget headline math (single source of truth)", () => {
 		const { runId, loopId } = await tdb.seedRun({ alias: "headline_schema" });
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "prompt://1",
@@ -163,7 +161,6 @@ describe("Budget headline math (single source of truth)", () => {
 		const { runId, loopId } = await tdb.seedRun({ alias: "headline_self" });
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "prompt://1",

@@ -74,7 +74,6 @@ describe("Handler dispatch", () => {
 		const seed = await tdb.seedRun({ alias: "dispatch_1" });
 		RUN_ID = seed.runId;
 		LOOP_ID = seed.loopId;
-		LOOP_ID = seed.loopId;
 		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
 
 		hooks = createHooks();

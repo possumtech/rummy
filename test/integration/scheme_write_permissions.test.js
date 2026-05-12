@@ -66,7 +66,9 @@ describe("Scheme write permissions", () => {
 	});
 
 	it("model write to unregistered scheme raises PermissionError", async () => {
-		const { runId, loopId } = await tdb.seedRun({ alias: "perm_unknown_model" });
+		const { runId, loopId } = await tdb.seedRun({
+			alias: "perm_unknown_model",
+		});
 
 		await assert.rejects(
 			store.set({
@@ -86,11 +88,12 @@ describe("Scheme write permissions", () => {
 	});
 
 	it("plugin write to unregistered scheme is allowed (plumbing-friendly)", async () => {
-		const { runId, loopId } = await tdb.seedRun({ alias: "perm_unknown_plugin" });
+		const { runId, loopId } = await tdb.seedRun({
+			alias: "perm_unknown_plugin",
+		});
 
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "novel://probe",
@@ -128,7 +131,6 @@ describe("Scheme write permissions", () => {
 
 		await store.set({
 			runId,
-			loopId,
 			turn: 0,
 			loopId,
 			path: "repo://manifest",

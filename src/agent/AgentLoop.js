@@ -16,7 +16,7 @@ async function loadDefaultPersona() {
 	return cachedDefaultPersona;
 }
 
-const HTTP_TO_RUN_STATE = {
+const _HTTP_TO_RUN_STATE = {
 	100: "proposed",
 	102: "streaming",
 	200: "resolved",

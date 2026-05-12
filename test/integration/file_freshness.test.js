@@ -41,7 +41,10 @@ async function seedProjectWithFile(tdb, alias, fileName, originalContent) {
 	const fullPath = join(projectRoot, fileName);
 	await fs.mkdir(join(fullPath, ".."), { recursive: true });
 	await fs.writeFile(fullPath, originalContent);
-	const { runId, projectId, loopId } = await tdb.seedRun({ alias, projectRoot });
+	const { runId, projectId, loopId } = await tdb.seedRun({
+		alias,
+		projectRoot,
+	});
 	return { projectRoot, runId, projectId, loopId };
 }
 
@@ -72,7 +75,6 @@ describe("file freshness (@filesystem_freshness)", () => {
 			// Pre-promote so we test the preservation path
 			await entries.set({
 				runId,
-				loopId,
 				path: "src/app.js",
 				loopId,
 				body: "const x = 1;\n// TODO: stuff\n",
@@ -81,10 +83,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 				writer: "plugin",
 			});
 
-			const proposalPath = await entries.logPath(runId, 1, "set", "src/app.js");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: proposalPath,
@@ -124,7 +125,6 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			await entries.set({
 				runId,
-				loopId,
 				path: "src/app.js",
 				loopId,
 				body: "const x = 1;\n// TODO: stuff\n",
@@ -133,10 +133,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 				writer: "plugin",
 			});
 
-			const proposalPath = await entries.logPath(runId, 1, "set", "src/app.js");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: proposalPath,
@@ -170,7 +169,6 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			await entries.set({
 				runId,
-				loopId,
 				path: "src/app.js",
 				loopId,
 				body: "const x = 1;\n// TODO: stuff\n",
@@ -179,10 +177,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 				writer: "plugin",
 			});
 
-			const proposalPath = await entries.logPath(runId, 1, "set", "src/app.js");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: proposalPath,
@@ -214,10 +211,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 				"placeholder.txt",
 				"placeholder",
 			);
-			const proposalPath = await entries.logPath(runId, 1, "set", "src/new.js");
+			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: proposalPath,
@@ -257,7 +253,6 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			await entries.set({
 				runId,
-				loopId,
 				path: "known://fact",
 				loopId,
 				body: "first version",
@@ -267,7 +262,6 @@ describe("file freshness (@filesystem_freshness)", () => {
 			});
 			await entries.set({
 				runId,
-				loopId,
 				path: "known://fact",
 				loopId,
 				body: "second version",

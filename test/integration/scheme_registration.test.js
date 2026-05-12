@@ -45,7 +45,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 	it("bare file paths visible in model context", async () => {
 		await store.set({
 			runId,
-			loopId,
 			turn: 0,
 			loopId,
 			path: "src/app.js",
@@ -61,7 +60,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 	it("known:// entries visible in model context", async () => {
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "known://test_fact",
@@ -77,7 +75,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 	it("unknown:// entries visible in model context", async () => {
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "unknown://what_is_x",
@@ -95,7 +92,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 		// them use writer: "system" to match.
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "system://1",
@@ -105,7 +101,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 		});
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "assistant://1",
@@ -115,7 +110,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 		});
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "model://1",
@@ -133,7 +127,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 	it("proposed entries are visible in model context", async () => {
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "set://proposed_edit",
@@ -149,7 +142,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 	it("stored visibility entries hidden from model context", async () => {
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "known://stored_fact",
@@ -165,7 +157,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 	it("prompt entries are catalog data, archived by default", async () => {
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "prompt://1",
@@ -182,7 +173,6 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 		// Indexing it puts it in <index> like any other catalog entry.
 		await store.set({
 			runId,
-			loopId,
 			path: "prompt://1",
 			loopId,
 			visibility: "indexed",

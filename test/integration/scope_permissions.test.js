@@ -34,7 +34,6 @@ describe("Scope + permissions (Phase D)", () => {
 
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "known://a",
@@ -44,7 +43,6 @@ describe("Scope + permissions (Phase D)", () => {
 		});
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "known://b",
@@ -104,7 +102,6 @@ describe("Scope + permissions (Phase D)", () => {
 
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "assistant://1",
@@ -141,7 +138,6 @@ describe("Scope + permissions (Phase D)", () => {
 
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "prompt://1",
@@ -159,7 +155,6 @@ describe("Scope + permissions (Phase D)", () => {
 
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "known://scoped",

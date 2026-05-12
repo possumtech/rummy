@@ -98,12 +98,13 @@ describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter,
 
 	describe("entry change notifications", () => {
 		it("onChanged fires on upsert", async () => {
-			const { runId, loopId } = await tdb.seedRun({ alias: "onchanged_upsert" });
+			const { runId, loopId } = await tdb.seedRun({
+				alias: "onchanged_upsert",
+			});
 			const events = [];
 			const store = new Entries(tdb.db, { onChanged: (e) => events.push(e) });
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "known://upsert_probe",
@@ -115,12 +116,13 @@ describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter,
 		});
 
 		it("onChanged fires on visibility change", async () => {
-			const { runId, loopId } = await tdb.seedRun({ alias: "onchanged_visibility" });
+			const { runId, loopId } = await tdb.seedRun({
+				alias: "onchanged_visibility",
+			});
 			const events = [];
 			const store = new Entries(tdb.db, { onChanged: (e) => events.push(e) });
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "known://visibility_probe",
@@ -130,7 +132,6 @@ describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter,
 			events.length = 0;
 			await store.set({
 				runId,
-				loopId,
 				path: "known://visibility_probe",
 				loopId,
 				visibility: "archived",
@@ -142,12 +143,13 @@ describe("events and filters (@events_and_filters, @plugins_on, @plugins_filter,
 		});
 
 		it("onChanged fires on remove", async () => {
-			const { runId, loopId } = await tdb.seedRun({ alias: "onchanged_remove" });
+			const { runId, loopId } = await tdb.seedRun({
+				alias: "onchanged_remove",
+			});
 			const events = [];
 			const store = new Entries(tdb.db, { onChanged: (e) => events.push(e) });
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "known://remove_probe",

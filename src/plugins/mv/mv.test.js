@@ -124,7 +124,10 @@ describe("Mv", () => {
 		assert.ok(setProposal, "set proposal emitted at the linked path");
 		assert.equal(setProposal.attributes.path, "deliverable.md");
 		assert.equal(setProposal.attributes.patched, "draft body content");
-		assert.ok(setProposal.attributes.patch?.startsWith("==="), "set proposal carries udiff");
+		assert.ok(
+			setProposal.attributes.patch?.startsWith("==="),
+			"set proposal carries udiff",
+		);
 		assert.equal(
 			setProposal.attributes.from,
 			undefined,

@@ -4,13 +4,14 @@ import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("State lock: proposed entries block execution (@run_state_machine)", () => {
-	let tdb, store, RUN_ID;
+	let tdb, store, RUN_ID, LOOP_ID;
 
 	before(async () => {
 		tdb = await TestDb.create();
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "lock_1" });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {
@@ -25,7 +26,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("getUnresolved returns proposed entries", async () => {
 		await store.set({
 			runId: RUN_ID,
-			loopId,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "set://1",
 			body: "diff content",
@@ -41,7 +42,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("multiple proposed entries all returned", async () => {
 		await store.set({
 			runId: RUN_ID,
-			loopId,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "sh://1",
 			body: "echo hi",
@@ -55,7 +56,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("resolving an entry removes it from unresolved", async () => {
 		await store.set({
 			runId: RUN_ID,
-			loopId,
+			loopId: LOOP_ID,
 			path: "set://1",
 			state: "resolved",
 			body: "applied",
@@ -69,7 +70,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("resolving all entries clears the lock", async () => {
 		await store.set({
 			runId: RUN_ID,
-			loopId,
+			loopId: LOOP_ID,
 			path: "sh://1",
 			state: "failed",
 			body: "rejected",
@@ -82,7 +83,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("non-proposed result entries do not block", async () => {
 		await store.set({
 			runId: RUN_ID,
-			loopId,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "env://2",
 			body: "contents",
@@ -90,7 +91,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 		});
 		await store.set({
 			runId: RUN_ID,
-			loopId,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "update://2",
 			body: "summary text",

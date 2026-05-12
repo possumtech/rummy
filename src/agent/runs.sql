@@ -137,13 +137,16 @@ RETURNING next_seq - 1 AS seq;
 -- PREP: fork_known_entries
 -- Cheap fork: copy only view rows. Entries stay shared between parent
 -- and child. Child's subsequent writes diverge via upsert into a new
--- run-scoped entry.
+-- run-scoped entry. Forked views inherit the parent view's loop_id —
+-- the entry's prior-loop provenance carries across the fork. The
+-- child's own subsequent writes update loop_id to the child's
+-- current loop.
 INSERT INTO run_views (
 	run_id, entry_id, loop_id, turn, state, outcome, visibility
 	, write_count, refs
 )
 SELECT
-	:new_run_id, entry_id, NULL, turn, state, outcome, visibility
+	:new_run_id, entry_id, loop_id, turn, state, outcome, visibility
 	, write_count, refs
 FROM run_views
 WHERE run_id = :parent_run_id;

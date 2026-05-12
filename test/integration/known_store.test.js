@@ -22,7 +22,6 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		const seed = await tdb.seedRun({ alias: "test_1" });
 		RUN_ID = seed.runId;
 		LOOP_ID = seed.loopId;
-		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {

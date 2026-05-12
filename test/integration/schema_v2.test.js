@@ -36,7 +36,6 @@ describe("Schema V2 invariants", () => {
 			for (const visibility of ["indexed", "archived"]) {
 				await store.set({
 					runId,
-					loopId,
 					turn: 1,
 					loopId,
 					path: `known://fid-${visibility}`,
@@ -72,7 +71,6 @@ describe("Schema V2 invariants", () => {
 			const { runId, loopId } = await tdb.seedRun({ alias: "scope_default" });
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "known://scoped",
@@ -87,11 +85,11 @@ describe("Schema V2 invariants", () => {
 		});
 
 		it("writing an entry creates one content row and one view row", async () => {
-			const { runId: a, loopId } = await tdb.seedRun({ alias: "dup_a" });
-			const { runId: b, loopId } = await tdb.seedRun({ alias: "dup_b" });
+			const { runId: a, loopId: loopA } = await tdb.seedRun({ alias: "dup_a" });
+			const { runId: b, loopId: loopB } = await tdb.seedRun({ alias: "dup_b" });
 			await store.set({
 				runId: a,
-				loopId,
+				loopId: loopA,
 				turn: 1,
 				path: "known://sharedpath",
 				body: "A body",
@@ -99,7 +97,7 @@ describe("Schema V2 invariants", () => {
 			});
 			await store.set({
 				runId: b,
-				loopId,
+				loopId: loopB,
 				turn: 1,
 				path: "known://sharedpath",
 				body: "B body",

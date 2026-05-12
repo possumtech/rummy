@@ -112,7 +112,13 @@ export async function initPlugins(db, hooks, instances) {
 			model_visible: 1,
 			category: "logging",
 			default_scope: "run",
-			writable_by: JSON.stringify(["system", "plugin", "model"]),
+			// `client` writer admitted: RPC dispatches (e.g. `set
+			// state=resolved` accepting a proposed log entry) route
+			// through entries.set with writer="client". The wire
+			// contract treats clients as a legitimate writer tier for
+			// log:// state transitions; full state-machine
+			// trg_run_state_transition still gates valid moves.
+			writable_by: JSON.stringify(["system", "plugin", "model", "client"]),
 		});
 	}
 	for (const name of LIFECYCLE_SCHEMES) {

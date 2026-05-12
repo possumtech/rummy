@@ -49,6 +49,8 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 	async function seedProposal(runAlias, path, attributes) {
 		const runRow = await tdb.db.get_run_by_alias.get({ alias: runAlias });
 		if (!runRow) throw new Error(`run not found: ${runAlias}`);
+		const loop = await tdb.db.get_current_loop.get({ run_id: runRow.id });
+		if (!loop) throw new Error(`no active loop for ${runAlias}`);
 		const entryRow = await tdb.db.upsert_entry.get({
 			scope: `run:${runRow.id}`,
 			path,
@@ -59,7 +61,7 @@ describe("E2E: Streaming", { concurrency: 1 }, () => {
 		await tdb.db.upsert_run_view.run({
 			run_id: runRow.id,
 			entry_id: entryRow.id,
-			loop_id: null,
+			loop_id: loop.id,
 			turn: 1,
 			state: "proposed",
 			outcome: null,

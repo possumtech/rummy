@@ -47,7 +47,6 @@ async function seedSetProposal(entries, runId, loopId, turn, relPath, content) {
 	const proposalPath = await entries.logPath(runId, loopId, turn, "set");
 	await entries.set({
 		runId,
-		loopId,
 		turn,
 		loopId,
 		path: proposalPath,
@@ -65,7 +64,6 @@ async function seedShProposal(entries, runId, loopId, turn, command) {
 	const proposalPath = await entries.logPath(runId, loopId, turn, "sh");
 	await entries.set({
 		runId,
-		loopId,
 		turn,
 		loopId,
 		path: proposalPath,

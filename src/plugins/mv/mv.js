@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
-import { generatePatch } from "../../lib/hedberg/matcher.js";
 import { countLines, countTokens } from "../../agent/tokens.js";
+import { generatePatch } from "../../lib/hedberg/matcher.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./mvDoc.js";
 
@@ -42,10 +42,7 @@ export default class Mv {
 		const acceptedPath = ctx.path;
 		const setMatch = LOG_ACTION_RE.exec(acceptedPath);
 		if (setMatch?.[1] !== "set") return;
-		const recaps = await ctx.entries.getEntriesByPattern(
-			ctx.runId,
-			"log://*",
-		);
+		const recaps = await ctx.entries.getEntriesByPattern(ctx.runId, "log://*");
 		const recap = recaps.find((r) => {
 			if (LOG_ACTION_RE.exec(r.path)?.[1] !== "mv") return false;
 			const attrs =
@@ -180,12 +177,7 @@ export default class Mv {
 			// acceptance, #onAccepted matches the recap by setProposal
 			// linkage and emits an rm proposal for the source. Serial:
 			// reject the set → no rm prompt; move fails atomically.
-			const setProposalPath = await store.logPath(
-				runId,
-				loopId,
-				turn,
-				"set",
-			);
+			const setProposalPath = await store.logPath(runId, loopId, turn, "set");
 			await store.set({
 				runId,
 				turn,

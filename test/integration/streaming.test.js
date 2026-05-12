@@ -38,7 +38,6 @@ describe("Streaming primitives", () => {
 			// Streaming entry starts at 102, empty body (created on accept).
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path,
@@ -86,7 +85,6 @@ describe("Streaming primitives", () => {
 
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path,
@@ -131,7 +129,6 @@ describe("Streaming primitives", () => {
 
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path,
@@ -148,7 +145,13 @@ describe("Streaming primitives", () => {
 			});
 
 			// Simulate stream/completed — transition to terminal status.
-			await store.set({ runId, loopId, path, state: "resolved", body: "ran ok\n" });
+			await store.set({
+				runId,
+				loopId,
+				path,
+				state: "resolved",
+				body: "ran ok\n",
+			});
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
@@ -163,7 +166,6 @@ describe("Streaming primitives", () => {
 
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path,
@@ -179,7 +181,13 @@ describe("Streaming primitives", () => {
 				append: true,
 			});
 
-			await store.set({ runId, loopId, path, state: "failed", body: "error output\n" });
+			await store.set({
+				runId,
+				loopId,
+				path,
+				state: "failed",
+				body: "error output\n",
+			});
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
@@ -196,7 +204,6 @@ describe("Streaming primitives", () => {
 			// Log entry (200, logging-shaped)
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: base,
@@ -208,7 +215,6 @@ describe("Streaming primitives", () => {
 			// Data channels at 102
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: `${base}_1`,
@@ -219,7 +225,6 @@ describe("Streaming primitives", () => {
 			});
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: `${base}_2`,
@@ -256,7 +261,6 @@ describe("Streaming primitives", () => {
 			for (const ch of channels) {
 				await store.set({
 					runId,
-					loopId,
 					path: ch.path,
 					loopId,
 					state: "resolved",
@@ -279,7 +283,6 @@ describe("Streaming primitives", () => {
 
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path,

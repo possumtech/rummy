@@ -30,7 +30,6 @@ describe("Tool visibility: v_model_context content projection", () => {
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
 		LOOP_ID = seed.loopId;
-		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {

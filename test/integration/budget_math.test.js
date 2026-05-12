@@ -26,7 +26,7 @@ function pad(n) {
 }
 
 describe("Budget math", () => {
-	let tdb, store, cascade, RUN_ID;
+	let tdb, store, cascade, RUN_ID, LOOP_ID;
 
 	before(async () => {
 		tdb = await TestDb.create("budget_math");
@@ -52,6 +52,7 @@ describe("Budget math", () => {
 		};
 		const seed = await tdb.seedRun({ alias: "math_1" });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {
@@ -66,7 +67,7 @@ describe("Budget math", () => {
 			const body = pad(50);
 			await store.set({
 				runId: RUN_ID,
-				loopId,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "known://full_entry",
 				body,
@@ -92,7 +93,7 @@ describe("Budget math", () => {
 			const body = pad(200);
 			await store.set({
 				runId: RUN_ID,
-				loopId,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "test_file.js",
 				body,
@@ -125,7 +126,6 @@ describe("Budget math", () => {
 			// Create a large entry at archive — should NOT count toward budget
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "big_archive_file.js",
@@ -136,7 +136,6 @@ describe("Budget math", () => {
 			// Create a small entry at full — should count
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "known://small",
@@ -188,12 +187,13 @@ describe("Budget math", () => {
 		});
 
 		it("enforce measures assembled tokens from messages when lastPromptTokens is 0", async () => {
-			const { runId, loopId } = await tdb.seedRun({ alias: "math_postdispatch" });
+			const { runId, loopId } = await tdb.seedRun({
+				alias: "math_postdispatch",
+			});
 
 			// Simulate: entries exist from dispatch (promoted files)
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "known://big",
@@ -250,7 +250,6 @@ describe("Budget math", () => {
 
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "known://fact",
@@ -295,7 +294,6 @@ describe("Budget math", () => {
 			// Entry at full
 			await store.set({
 				runId,
-				loopId,
 				turn: 1,
 				loopId,
 				path: "known://tc_test",
@@ -353,7 +351,6 @@ describe("Budget math", () => {
 				fatBodies.push(body);
 				await store.set({
 					runId,
-					loopId,
 					turn: 0,
 					loopId,
 					path: `log://1/0/${i + 1}/get`,

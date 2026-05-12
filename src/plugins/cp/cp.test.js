@@ -62,7 +62,9 @@ describe("Cp", () => {
 			const recap = store._calls.find((c) => c.path === "log://1/1/1/cp");
 			const proposal = store._calls.find(
 				(c) =>
-					c.state === "proposed" && typeof c.path === "string" && /\/set$/.test(c.path),
+					c.state === "proposed" &&
+					typeof c.path === "string" &&
+					/\/set$/.test(c.path),
 			);
 			assert.ok(recap, "cp recap entry written");
 			assert.equal(recap.state, "resolved", "recap is resolved, not proposed");
@@ -105,7 +107,9 @@ describe("Cp", () => {
 			);
 			const proposal = store._calls.find(
 				(c) =>
-					c.state === "proposed" && typeof c.path === "string" && /\/set$/.test(c.path),
+					c.state === "proposed" &&
+					typeof c.path === "string" &&
+					/\/set$/.test(c.path),
 			);
 			assert.equal(proposal.attributes.patched, "new");
 			assert.match(proposal.attributes.patch, /-old/);

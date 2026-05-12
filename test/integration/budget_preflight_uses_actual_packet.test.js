@@ -69,7 +69,6 @@ describe("Budget pre-flight measures the assembled packet (@budget_enforcement)"
 		const fatBody = pad(2000);
 		await store.set({
 			runId,
-			loopId,
 			turn: 1,
 			loopId,
 			path: "log://1/1/1/get",

@@ -135,9 +135,7 @@ export default class Rpc {
 					run_id: runRow.id,
 				});
 				if (!loop) {
-					throw new Error(
-						`update RPC: no active loop on run=${runRow.alias}`,
-					);
+					throw new Error(`update RPC: no active loop on run=${runRow.alias}`);
 				}
 				const path = await ctx.projectAgent.entries.update({
 					runId: runRow.id,
@@ -601,10 +599,16 @@ export default class Rpc {
 				ctx.projectAgent.abortRun(existing.id);
 			}
 			const httpStatus = runStateToHttpStatus(params.state);
+			// SQLite can't bind `undefined`; convert at the JS/SQL
+			// boundary. NOT a silent fallback — outcome is an optional
+			// RPC param, NULL is the explicit "no failure reason" value
+			// in the runs.outcome column.
+			const outcome =
+				params.outcome === undefined ? null : params.outcome;
 			await ctx.db.set_run_state.run({
 				id: existing.id,
 				status: httpStatus,
-				outcome: params.outcome ?? null,
+				outcome,
 			});
 			return { ok: true, alias };
 		}

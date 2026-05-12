@@ -13,6 +13,7 @@ const _pluginsDir = join(
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
+let LOOP_ID;
 let _PROJECT;
 
 function pad(n) {
