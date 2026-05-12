@@ -136,6 +136,15 @@ export default class Set {
 			return;
 		}
 
+		// Handler-entry permission gate. The model's `<set>` emission is
+		// always model-attributed; if the target scheme isn't model-
+		// writable (unknown scheme, or registered plugin-only like
+		// repo://), throw before any branch runs. Dispatch turns
+		// PermissionError into error.log → strike.
+		if (attrs.path && !attrs.path.startsWith("log://")) {
+			await store.assertWritable(attrs.path, "model");
+		}
+
 		// Both archive + index → conflict; surface as validation failure.
 		if (visibilityAttr === "conflict") {
 			await store.set({

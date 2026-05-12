@@ -11,12 +11,38 @@
  *
  * Also pins the rummy.repo scheme as plugin-only — the manifest tile
  * is engine-maintained orientation, not a model-writable surface.
+ *
+ * Handler-level gating: `<set path="X" archive/>` (pure visibility,
+ * no body) and `<set path="X"><<NEW>>...</NEW></set>` (body write)
+ * are both model intents to mutate X. If X is in a scheme model can't
+ * write, the handler must raise PermissionError up front rather than
+ * silently routing through a non-checking branch.
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import Entries from "../../src/agent/Entries.js";
 import { PermissionError } from "../../src/agent/errors.js";
+// biome-ignore lint/suspicious/noShadowRestrictedNames: the tool plugin's class is named "Set" by design
+import Set from "../../src/plugins/set/set.js";
 import TestDb from "../helpers/TestDb.js";
+
+function stubCore() {
+	const filters = new Map();
+	const events = new Map();
+	return {
+		registerScheme() {},
+		ensureTool() {},
+		on(name, fn) {
+			if (!events.has(name)) events.set(name, []);
+			events.get(name).push(fn);
+		},
+		filter(name, fn) {
+			if (!filters.has(name)) filters.set(name, []);
+			filters.get(name).push(fn);
+		},
+		hooks: {},
+	};
+}
 
 describe("Scheme write permissions", () => {
 	let tdb, store;
@@ -107,5 +133,68 @@ describe("Scheme write permissions", () => {
 
 		const body = await store.getBody(runId, "repo://manifest");
 		assert.strictEqual(body, '{"path":"a.txt","tokens":4}');
+	});
+
+	it("set handler rejects model body-write to repo:// with PermissionError", async () => {
+		const { runId, loopId } = await tdb.seedRun({ alias: "handler_repo_body" });
+		const plugin = new Set(stubCore());
+
+		await assert.rejects(
+			plugin.handler(
+				{
+					body: "#!/bin/sh",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
+					attributes: { path: "repo://compile.sh", inner: "#!/bin/sh" },
+				},
+				{ entries: store, sequence: 1, runId, loopId },
+			),
+			(err) =>
+				err instanceof PermissionError &&
+				err.scheme === "repo" &&
+				err.writer === "model",
+		);
+	});
+
+	it("set handler rejects model visibility-flip on repo:// with PermissionError", async () => {
+		const { runId, loopId } = await tdb.seedRun({ alias: "handler_repo_vis" });
+		const plugin = new Set(stubCore());
+
+		await assert.rejects(
+			plugin.handler(
+				{
+					body: "",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
+					attributes: { path: "repo://README.mkd", archive: true },
+				},
+				{ entries: store, sequence: 1, runId, loopId },
+			),
+			(err) =>
+				err instanceof PermissionError &&
+				err.scheme === "repo" &&
+				err.writer === "model",
+		);
+	});
+
+	it("set handler rejects model write to unregistered scheme with PermissionError", async () => {
+		const { runId, loopId } = await tdb.seedRun({ alias: "handler_unknown" });
+		const plugin = new Set(stubCore());
+
+		await assert.rejects(
+			plugin.handler(
+				{
+					body: "anything",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
+					attributes: { path: "bogus://x", inner: "anything" },
+				},
+				{ entries: store, sequence: 1, runId, loopId },
+			),
+			(err) =>
+				err instanceof PermissionError &&
+				err.scheme === "bogus" &&
+				err.writer === "model",
+		);
 	});
 });

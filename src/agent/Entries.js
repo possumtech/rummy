@@ -180,6 +180,19 @@ export default class Entries {
 		return { kind, writers, category };
 	}
 
+	// Handler-entry gate: tool plugins call this with the model's target
+	// path before any mutation (body write, visibility flip, attribute
+	// set). Failure throws PermissionError which dispatch surfaces as an
+	// error.log → strike. Bare paths (no scheme) are always writable.
+	async assertWritable(path, writer) {
+		const scheme = Entries.scheme(path);
+		if (!scheme) return;
+		const { writers } = await this.#schemeRules(scheme);
+		if (!writers.includes(writer)) {
+			throw new PermissionError(scheme, writer, writers);
+		}
+	}
+
 	#defaultVisibility() {
 		return "indexed";
 	}

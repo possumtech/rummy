@@ -43,6 +43,12 @@ function makeStore() {
 			calls.push(args);
 			if (args.body !== undefined) bodies.set(args.path, args.body);
 		},
+		async assertWritable(_path, _writer) {
+			// Mock: permissive — real Entries throws PermissionError on
+			// restricted schemes; tests that pin gating live in
+			// test/integration/scheme_write_permissions.test.js against
+			// the real Entries.
+		},
 		async getEntriesByPattern(_runId, pattern, _filter) {
 			if (entriesByPath.has(pattern))
 				return [{ path: pattern, ...entriesByPath.get(pattern) }];
@@ -815,6 +821,7 @@ describe("Set plugin: manifest is universal", () => {
 			async set(args) {
 				calls.push(args);
 			},
+			async assertWritable() {},
 			async getEntriesByPattern() {
 				return matches;
 			},
