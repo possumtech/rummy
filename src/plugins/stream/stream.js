@@ -1,3 +1,4 @@
+import Entries from "../../agent/Entries.js";
 import { logPathToDataBase } from "../helpers.js";
 import finalizeStream from "./finalize.js";
 
@@ -106,6 +107,23 @@ export default class Stream {
 						`path must be a log entry (log://<L>/<T>/<S>/<action>); got: ${params.path}`,
 					);
 				}
+				const parsed = Entries.parseLogPath(params.path);
+				if (!parsed) {
+					throw new Error(
+						`stream/abort: path must be log://<L>/<T>/<S>/<action>; got ${params.path}`,
+					);
+				}
+				const loopRow = await ctx.db.get_loop_by_sequence.get({
+					run_id: runId,
+					sequence: parsed.loopSequence,
+				});
+				if (!loopRow) {
+					throw new Error(
+						`stream/abort: no loop sequence=${parsed.loopSequence} for run=${runRow.alias}`,
+					);
+				}
+				const loopId = loopRow.id;
+				const turn = parsed.turn;
 				const store = ctx.projectAgent.entries;
 				const channels = await store.getEntriesByPattern(
 					runId,
@@ -115,6 +133,8 @@ export default class Stream {
 				for (const ch of channels) {
 					await store.set({
 						runId,
+						loopId,
+						turn,
 						path: ch.path,
 						state: "cancelled",
 						body: ch.body,
@@ -139,7 +159,14 @@ export default class Stream {
 					? ` (${qualifiers.join(", ")})`
 					: "";
 				const body = `aborted '${command}'${qualifier}. Output: ${channelSummary}`;
-				await store.set({ runId, path: params.path, state: "resolved", body });
+				await store.set({
+					runId,
+					loopId,
+					turn,
+					path: params.path,
+					state: "resolved",
+					body,
+				});
 
 				return { status: "ok", channels: channels.length };
 			},
@@ -175,6 +202,23 @@ export default class Stream {
 						`path must be a log entry (log://<L>/<T>/<S>/<action>); got: ${params.path}`,
 					);
 				}
+				const parsedC = Entries.parseLogPath(params.path);
+				if (!parsedC) {
+					throw new Error(
+						`stream/cancel: path must be log://<L>/<T>/<S>/<action>; got ${params.path}`,
+					);
+				}
+				const loopRowC = await ctx.db.get_loop_by_sequence.get({
+					run_id: runId,
+					sequence: parsedC.loopSequence,
+				});
+				if (!loopRowC) {
+					throw new Error(
+						`stream/cancel: no loop sequence=${parsedC.loopSequence} for run=${runRow.alias}`,
+					);
+				}
+				const loopIdC = loopRowC.id;
+				const turnC = parsedC.turn;
 				const store = ctx.projectAgent.entries;
 				const channels = await store.getEntriesByPattern(
 					runId,
@@ -184,6 +228,8 @@ export default class Stream {
 				for (const ch of channels) {
 					await store.set({
 						runId,
+						loopId: loopIdC,
+						turn: turnC,
 						path: ch.path,
 						state: "cancelled",
 						body: ch.body,
@@ -203,7 +249,14 @@ export default class Stream {
 					.join(", ");
 				const qualifier = reason ? ` (${reason})` : "";
 				const body = `cancelled '${command}'${qualifier}. Output: ${channelSummary}`;
-				await store.set({ runId, path: params.path, state: "resolved", body });
+				await store.set({
+					runId,
+					loopId: loopIdC,
+					turn: turnC,
+					path: params.path,
+					state: "resolved",
+					body,
+				});
 
 				// Notify connected clients so they can kill local processes.
 				hooks.stream.cancelled.emit({

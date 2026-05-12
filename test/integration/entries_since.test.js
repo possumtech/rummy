@@ -15,6 +15,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 	let tdb;
 	let store;
 	let RUN_ID;
+	let LOOP_ID;
 	let seq = 0;
 
 	before(async () => {
@@ -31,11 +32,13 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 		seq += 1;
 		const seed = await tdb.seedRun({ alias: `since_test_${seq}` });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 	});
 
 	it("returns nothing when no entries exist past `since`", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "known://a",
 			body: "alpha",
@@ -52,6 +55,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 	it("returned rows include id, body, scheme, state, outcome, visibility, turn, tokens, attributes (CLIENT_INTERFACE §4 wire shape)", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 7,
 			path: "known://shape_check",
 			body: "shape body",
@@ -85,6 +89,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 	it("returns only entries with id > since, in insertion order", async () => {
 		const _a = await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "known://a",
 			body: "alpha",
@@ -95,6 +100,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 2,
 			path: "known://b",
 			body: "beta",
@@ -102,6 +108,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 3,
 			path: "known://c",
 			body: "gamma",
@@ -122,6 +129,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 	it("respects limit when chunking catch-up", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "known://1",
 			body: "1",
@@ -129,6 +137,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 2,
 			path: "known://2",
 			body: "2",
@@ -136,6 +145,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 3,
 			path: "known://3",
 			body: "3",
@@ -143,6 +153,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 4,
 			path: "known://4",
 			body: "4",
@@ -171,6 +182,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 	it("path-only mode (no `since`) preserves alphabetical ordering for browsing", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "known://zebra",
 			body: "z",
@@ -178,6 +190,7 @@ describe("getEntriesByPattern since-mode (@plugins_rummy_queries)", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 2,
 			path: "known://apple",
 			body: "a",

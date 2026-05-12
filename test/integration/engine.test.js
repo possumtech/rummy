@@ -28,6 +28,7 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "engine_1" });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 		_PROJECT = { id: seed.projectId, project_root: "/tmp/test", name: "Test" };
 	});
 
@@ -43,6 +44,7 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 		it("materializes entries into turn_context", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/small.js",
 				body: pad(100),
@@ -50,6 +52,7 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "known://note",
 				body: "short",
@@ -58,6 +61,7 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 
 			await materialize(tdb.db, {
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				systemPrompt: "test system prompt",
 			});
@@ -74,6 +78,7 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 		it("includes system prompt as first entry", async () => {
 			await materialize(tdb.db, {
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				systemPrompt: "test system prompt",
 			});
@@ -100,6 +105,7 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 		it("tokens unchanged through archive and re-index cycle", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "known://test_entry",
 				body: pad(200),
@@ -116,6 +122,7 @@ describe("Engine integration (@materialization, @upsert_semantics, @engine_plugi
 
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				path: "known://test_entry",
 				visibility: "archived",
 			});

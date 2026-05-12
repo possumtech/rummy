@@ -60,6 +60,7 @@ describe("Yolo plugin", () => {
 					get_project_by_id: {
 						get: async () => ({ project_root: null }),
 					},
+					get_loop_by_sequence: { get: async () => ({ id: 99 }) },
 				},
 			},
 			proposed: [{ path: "log://1/1/1/set" }],
@@ -78,6 +79,8 @@ describe("Yolo plugin", () => {
 			acceptedEvt = ctx;
 		});
 		hooks.proposal.content.addFilter(async () => "resolved-body");
+		// Path encodes loop=1, turn=7 — yolo's serverResolve threads
+		// both into the entries.set write.
 		await hooks.proposal.pending.emit({
 			rummy: {
 				yolo: true,
@@ -88,9 +91,10 @@ describe("Yolo plugin", () => {
 					get_project_by_id: {
 						get: async () => ({ project_root: null }),
 					},
+					get_loop_by_sequence: { get: async () => ({ id: 99 }) },
 				},
 			},
-			proposed: [{ path: "log://1/1/1/set" }],
+			proposed: [{ path: "log://1/7/1/set" }],
 		});
 		const resolved = store._calls.find((c) => c.state === "resolved");
 		assert.ok(resolved);

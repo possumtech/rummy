@@ -371,7 +371,7 @@ strengthen `rummy.web/main/src/search.md:11` and add a MUST in
 Skipped for now — won't help if the engine doesn't enforce, and
 adds packet weight every turn.
 
-### Scheme-write permission + change-render unification
+### Scheme-write permission + change-render unification (LANDED — superseded by next section)
 
 Surfaced 2026-05-11 by `test/programbench` grok run on
 `tomnomnom__gron.88a6234`. Grok declared status=200 in 4 turns,
@@ -429,6 +429,98 @@ emission in `attributes.emission` for forensic just-in-case.
 
 **Order:** T1 → E1 → T2 → E2 → T3 → E3 → T4 → E4 → T5 → E5 → D1 → D2 → D3.
 Standard red-green for each pair.
+
+### Manifest paradigm + loopId migration finish
+
+Surfaced 2026-05-12 by gemma demo + gemma e2e + grok re-run. Three
+intertwined defects, one root paradigmatic shift:
+
+1. **Manifest dominated `<index>`.** E3's per-scan refresh + files-
+   default-`archived` made `repo://manifest` the ONLY visible
+   file-listing surface, rendering its full body. The packet taught
+   the model that `repo://` is the file scheme — grok rationally
+   wrote `<set path="repo://compile.sh">`. The manifest's role is the
+   compaction lifeline, not the primary inventory.
+2. **loopId migration incomplete.** Yesterday's path-shape migration
+   to `log://<L>/<T>/<S>/<action>` keyed `turns` on `(run_id,
+   loop_id, sequence)` with `loop_id NOT NULL`. But `run_views.
+   loop_id` and `turn_context.loop_id` were left nullable, and
+   multiple write callers (`AgentLoop.resolve`, `rpc.js#update`,
+   `rpc.js#dispatchSet`) didn't thread `loopId`. Symptom: `[RUMMY]
+   RPC Error: NOT NULL constraint failed: turns.loop_id` whenever a
+   `state="failed"` write fires `#fireFailed → error.log.emit →
+   logPath → next_turn_seq` with `loop_id = undefined`.
+3. **No turn-0 budget plan.** With files about to default `indexed`
+   (rich orientation), real-world projects may overshoot the
+   ceiling on turn 1. Today's grinder reclaims fat replays — but
+   turn 1 has none. Without a plan, oversized projects hard-413
+   before their first dispatch.
+
+**Paradigmatic shift:** files become the primary inventory; the
+manifest becomes the compaction lifeline.
+
+- File default visibility: `archived` → `indexed`. Each file is a
+  symbol-bearing tile in `<index>` at run init.
+- `repo://manifest` tile in `<index>`: empty body. Inventory of
+  record retrievable via `<get repo://manifest>`.
+- Manifest stays per-scan refreshed (model must trust it's current).
+- Turn-0 budget gate: if assembly overshoots at run init, archive
+  all `<index>` tiles except `repo://manifest`. Single invariant,
+  no priority heuristics.
+- Run-level state (run status / lifecycle) lifts off `run_views` to
+  a column on `runs`; `run_views` becomes strictly per-loop.
+
+**Schema refactor (Option 2b — strict):**
+- `run_views.loop_id INTEGER NOT NULL REFERENCES loops(id)`
+- `turn_context.loop_id INTEGER NOT NULL REFERENCES loops(id)`
+- Add `runs.outcome TEXT` (nullable, populated on terminal failure).
+- Add `runs.prompt TEXT NOT NULL DEFAULT ''` (initial run prompt
+  moves off the dropped `run://<alias>` entries.body).
+- `run://<alias>` is DROPPED from `entries` / `run_views` entirely.
+  The RPC lifecycle interface (`set run://...`) stays for clients,
+  but server-side dispatch mutates `runs` directly.
+- `Entries.set` rejects `run://*` paths — the scheme is no longer a
+  valid entries path.
+
+**Tests-first**
+
+| # | File | Test name | What it pins | Expected failure today |
+|---|---|---|---|---|
+| T1 | new `test/integration/run_views_loop_id_not_null.test.js` | "run_views insert without loop_id raises constraint error" | Direct `upsert_run_view.run({...loop_id: null})` rejects; existing nullable column accepts. | Schema allows NULL. |
+| T2 | new `test/integration/run_level_state_on_runs.test.js` | "run lifecycle state lives on runs.status, not run_views" | After `AgentLoop.start(...)`, query `runs.status`; assert run-level state column populated; assert no `run_views` row for `run://<alias>`. | Today `run://<alias>` has a run_views row. |
+| T3 | new `test/integration/agent_loop_resolve_threads_loopid.test.js` | "AgentLoop.resolve(reject) writes succeed with loopId derived from path" | Seed a proposed entry at `log://1/12/2/set`, call `resolve(reject)`, assert state=failed write succeeds and error.log entry lands at `log://1/12/<S>/error`. | Today crashes at `next_turn_seq` NOT NULL. |
+| T4 | new `test/integration/rpc_update_threads_loopid.test.js` | "RPC update looks up current loop and threads loopId+turn" | Seed an active loop, call update RPC; assert `log://<L>/<T>/<S>/update` path lands correctly. | Today crashes at `next_turn_seq` NOT NULL. |
+| T5 | `rummy.repo/main/src/FileScanner.test.js` (existing) | "scanned files default to indexed visibility" | After scan, every bare-path entry has `visibility = "indexed"`. | Today default is `archived`. |
+| T6 | new `test/integration/manifest_tile_empty_body.test.js` | "repo://manifest tile renders empty body in <index>" | Assemble context; assert `<index>` contains `repo://manifest` envelope but no body bytes. | Today body renders verbatim. |
+| T7 | same file | "<get repo://manifest> returns the full inventory body" | Model `<get>`s the manifest path; assert the retrieved body matches the canonical JSON-per-row list. | Today same (no change needed; pin behavior). |
+| T8 | new `test/integration/turn_zero_budget_gate.test.js` | "turn-0 oversize → archive all indexed tiles except repo://manifest" | Seed project where indexed-tile total > ceiling; assemble; assert only `repo://manifest` remains indexed in the final assembly. | Today: no gate; budget grinder hard-413s on turn 1. |
+
+**Engine fixes**
+
+| # | File | Change | Makes which test pass |
+|---|---|---|---|
+| E1 | `migrations/001_initial_schema.sql` | `run_views.loop_id` and `turn_context.loop_id` → NOT NULL. Add `runs.outcome TEXT` and `runs.prompt TEXT NOT NULL DEFAULT ''`. | T1, T2 |
+| E2 | `src/agent/runs.sql` + new prep | New `set_run_state(run_id, status, outcome)` query. `create_run` accepts `prompt`. | T2 |
+| E3 | `src/agent/AgentLoop.js:94, 115, 656` + `src/plugins/rpc/rpc.js:#dispatchRunSet` | Drop `entries.set` for `run://*`. Run lifecycle writes target `runs` directly via `set_run_state`. `Entries.set` rejects `run://*` paths with a hard error. | T2 |
+| E4 | `src/agent/AgentLoop.js:185, 596, 635` | Parse `log://<L>/<T>/<S>/<action>` path; look up `loop_id` via `get_loop_by_sequence`; thread `loopId` + `turn` to `entries.set`. Hard-fail if loop not found (no fallback). | T3 |
+| E5 | `src/plugins/rpc/rpc.js:129` | `entries.update` from RPC looks up current loop via `get_current_loop` (existing prep); thread `loopId` + current `turn` from loop's `next_turn - 1`. Hard-fail if no active loop. | T4 |
+| E6 | `src/plugins/rpc/rpc.js:516` | `dispatchSet` parses log-scheme paths; threads loopId. Non-log paths: look up current loop. Hard-fail if missing. | T3 / T4 |
+| E7 | `rummy.repo/main/src/FileScanner.js` | Default file visibility in constraint mapping: `archived` → `indexed`. Pass `loopId` on manifest write (FileScanner already has it from `get_current_loop`). | T5 |
+| E8 | `rummy.repo/main/src/rummy.repo.js:24` | `onView("repo", ...)` returns empty body. Bypassed when retrieved via `<get>` (which reads `entry.body` directly). | T6, T7 |
+| E9 | `src/agent/ContextAssembler.js` (or wherever `<index>` materializes) | After computing total assembled tokens at turn-0, if over ceiling: archive every `<index>` tile except `repo://manifest`; re-assemble. | T8 |
+
+**Doc + spec alignment**
+
+| # | File | Change |
+|---|---|---|
+| D1 | `SPEC.md` Project Manifest section | Reframe: manifest is the **compaction lifeline**, not primary inventory. Tile body empty in `<index>`. Files default `indexed`. Turn-0 budget gate behavior. |
+| D2 | `SPEC.md` Schemes table | Update `repo://` row: view renders empty body; full retrievable via `<get>`. Update bare-path row: default `indexed`. |
+| D3 | `SPEC.md` (new section) | Run-state separation: `runs.state` holds run-level lifecycle; `run_views.loop_id` NOT NULL. |
+| D4 | `SPEC.md` Budget section | Document turn-0 gate: oversize → archive all `<index>` except `repo://manifest`. |
+
+**Order:** Schema (E1, E2) → run state separation (E3, T2) → loopId threading (E4, E5, E6, T3, T4) → file visibility (E7, T5) → manifest tile body (E8, T6, T7) → turn-0 gate (E9, T8) → docs (D1-D4).
+
+Each pair red-green. Land as one cohesive change set per user direction.
 
 ## Scope Discipline
 

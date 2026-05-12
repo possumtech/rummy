@@ -1,4 +1,4 @@
-import { createTwoFilesPatch } from "diff";
+import { createTwoFilesPatch, structuredPatch } from "diff";
 
 export function generatePatch(entryPath, oldContent, newContent) {
 	return createTwoFilesPatch(
@@ -10,6 +10,44 @@ export function generatePatch(entryPath, oldContent, newContent) {
 		"",
 		{ context: 3 },
 	);
+}
+
+// Render an old→new content change as a HEREDOC SEARCH/REPLACE body
+// matching the model's edit grammar (marker.js). One SEARCH/REPLACE pair
+// per diff hunk; empty SEARCH on first-appearance materializes the
+// whole file. Used by the engine-side filesystem watcher to surface
+// external file changes back to the model in its native idiom.
+export function generateSearchReplaceBody(oldContent, newContent) {
+	const before = oldContent == null ? "" : oldContent;
+	const after = newContent == null ? "" : newContent;
+	if (before === after) return "";
+	if (before === "") {
+		return `<<SEARCH\nSEARCH<<REPLACE\n${after}\nREPLACE`;
+	}
+	const { hunks } = structuredPatch("a", "b", before, after, "", "", {
+		context: 3,
+	});
+	const pairs = [];
+	for (const hunk of hunks) {
+		const search = [];
+		const replace = [];
+		for (const line of hunk.lines) {
+			const prefix = line[0];
+			const text = line.slice(1);
+			if (prefix === " ") {
+				search.push(text);
+				replace.push(text);
+			} else if (prefix === "-") {
+				search.push(text);
+			} else if (prefix === "+") {
+				replace.push(text);
+			}
+		}
+		pairs.push(
+			`<<SEARCH\n${search.join("\n")}\nSEARCH<<REPLACE\n${replace.join("\n")}\nREPLACE`,
+		);
+	}
+	return pairs.join("");
 }
 
 export default class HeuristicMatcher {

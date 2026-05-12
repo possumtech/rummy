@@ -51,6 +51,15 @@ CREATE TABLE IF NOT EXISTS runs (
 	, parent_run_id INTEGER REFERENCES runs (id) ON DELETE SET NULL
 	, model TEXT
 	, status INTEGER NOT NULL DEFAULT 100 CHECK (status BETWEEN 100 AND 599)
+	-- Outcome detail string when status indicates failure or abort.
+	-- NULL for non-terminal or success states. Replaces the
+	-- previously-projected run_views.outcome for run://<alias>
+	-- entries (those entries no longer exist).
+	, outcome TEXT
+	-- Initial prompt for the run. Set on creation. Loops carry their
+	-- own per-loop prompt in loops.prompt; this column captures the
+	-- prompt the run was started with.
+	, prompt TEXT NOT NULL DEFAULT ''
 	, alias TEXT NOT NULL UNIQUE
 	, temperature REAL CHECK (
 		temperature IS NULL OR (temperature >= 0 AND temperature <= 2)
@@ -161,7 +170,11 @@ CREATE TABLE IF NOT EXISTS run_views (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
 	, entry_id INTEGER NOT NULL REFERENCES entries (id) ON DELETE CASCADE
-	, loop_id INTEGER REFERENCES loops (id) ON DELETE CASCADE
+	-- Every per-loop projection MUST carry its loop. Run-level state
+	-- lives on the runs table (runs.status, runs.outcome), not here.
+	-- Forces every entries.set caller to thread loopId; the DB
+	-- rejects writes that don't.
+	, loop_id INTEGER NOT NULL REFERENCES loops (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL DEFAULT 0 CHECK (turn >= 0)
 	, state TEXT NOT NULL DEFAULT 'resolved' CHECK (
 		state IN ('proposed', 'streaming', 'resolved', 'failed', 'cancelled')
@@ -226,7 +239,9 @@ WHERE rv.state IN ('proposed', 'streaming');
 CREATE TABLE IF NOT EXISTS turn_context (
 	id INTEGER PRIMARY KEY AUTOINCREMENT
 	, run_id INTEGER NOT NULL REFERENCES runs (id) ON DELETE CASCADE
-	, loop_id INTEGER REFERENCES loops (id) ON DELETE CASCADE
+	-- Per-loop snapshot, no exceptions. Run-level state lives on
+	-- runs, not in turn-context shipments.
+	, loop_id INTEGER NOT NULL REFERENCES loops (id) ON DELETE CASCADE
 	, turn INTEGER NOT NULL CHECK (turn >= 1)
 	, ordinal INTEGER NOT NULL CHECK (ordinal >= 0)
 	, path TEXT NOT NULL

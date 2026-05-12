@@ -19,6 +19,7 @@ function makeDb({ pendingLoops = [], latestLoop = null } = {}) {
 	return {
 		get_pending_loops: { all: async () => pendingLoops },
 		get_latest_completed_loop: { get: async () => latestLoop },
+		get_loop_by_sequence: { get: async () => ({ id: 99 }) },
 	};
 }
 

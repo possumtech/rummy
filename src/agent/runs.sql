@@ -4,6 +4,7 @@ INSERT INTO runs (
 	, parent_run_id
 	, model
 	, alias
+	, prompt
 	, temperature
 	, persona
 	, context_limit
@@ -13,6 +14,7 @@ VALUES (
 	, :parent_run_id
 	, :model
 	, :alias
+	, COALESCE(:prompt, '')
 	, :temperature
 	, :persona
 	, :context_limit
@@ -21,14 +23,14 @@ RETURNING id;
 
 -- PREP: get_run_by_alias
 SELECT
-	id, project_id, parent_run_id, model, status, alias
+	id, project_id, parent_run_id, model, status, outcome, prompt, alias
 	, temperature, persona, context_limit, next_turn, next_loop, created_at
 FROM runs
 WHERE alias = :alias;
 
 -- PREP: get_run_by_id
 SELECT
-	id, project_id, parent_run_id, model, status, alias
+	id, project_id, parent_run_id, model, status, outcome, prompt, alias
 	, temperature, persona, context_limit, next_turn, next_loop, created_at
 FROM runs
 WHERE id = :id;
@@ -81,6 +83,15 @@ WHERE id = :id AND alias = :old_alias;
 
 -- PREP: update_run_status
 UPDATE runs SET status = :status WHERE id = :id;
+
+-- PREP: set_run_state
+-- Run-level lifecycle write. status is required (HTTP code per state
+-- machine); outcome is the failure-reason string (NULL when status
+-- indicates success or non-terminal). Replaces the prior entries.set
+-- on `run://<alias>` projection.
+UPDATE runs
+SET status = :status, outcome = :outcome
+WHERE id = :id;
 
 -- PREP: update_run_config
 UPDATE runs SET

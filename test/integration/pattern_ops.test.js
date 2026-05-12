@@ -15,6 +15,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		// Seed files
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 0,
 			path: "src/app.js",
 			body: "const app = 1;",
@@ -22,6 +23,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 0,
 			path: "src/config.js",
 			body: "const port = 3000;",
@@ -29,6 +31,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 0,
 			path: "src/utils.js",
 			body: "// TODO: refactor",
@@ -36,6 +39,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 0,
 			path: "readme.md",
 			body: "# Hello",
@@ -45,6 +49,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		// Seed knowledge
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 0,
 			path: "known://auth_flow",
 			body: "OAuth2 PKCE",
@@ -52,6 +57,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 0,
 			path: "known://auth_secret",
 			body: "hunter2",
@@ -59,6 +65,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 0,
 			path: "known://db_type",
 			body: "SQLite",
@@ -150,6 +157,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		it("promotes with value filter", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				path: "src/*.js",
 				visibility: "archived",
 				pattern: true,
@@ -183,6 +191,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				path: "src/*.js",
 				visibility: "archived",
 				pattern: true,
@@ -202,6 +211,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		it("deletes matching entries", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 0,
 				path: "known://temp_a",
 				body: "x",
@@ -209,6 +219,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 0,
 				path: "known://temp_b",
 				body: "y",
@@ -232,6 +243,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		it("deletes with value filter", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 0,
 				path: "known://cache_a",
 				body: "stale",
@@ -239,6 +251,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 0,
 				path: "known://cache_b",
 				body: "fresh",
@@ -265,6 +278,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		it("bulk updates matching values", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 0,
 				path: "known://ver_a",
 				body: "v1",
@@ -272,6 +286,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 0,
 				path: "known://ver_b",
 				body: "v1",
@@ -280,6 +295,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				path: "known://ver_*",
 				body: "v2",
 				pattern: true,
@@ -294,6 +310,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		it("updates with value filter", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 0,
 				path: "known://status_a",
 				body: "stale",
@@ -301,6 +318,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 0,
 				path: "known://status_b",
 				body: "fresh",
@@ -309,6 +327,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				path: "known://status_*",
 				body: "refreshed",
 				bodyFilter: "stale",
@@ -325,6 +344,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		it("search result can be stored and retrieved", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 1,
 				path: "search://1",
 				body: "1. SQLite WAL mode overview\n2. Write-Ahead Logging explained",
@@ -346,6 +366,7 @@ describe("Pattern operations integration (@hedberg, @upsert_semantics, @cp_plugi
 		it("literal search and replace on file content", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 1,
 				path: "src/sr_test.js",
 				body: "const host = 'localhost';\nconst port = 3000;\n",

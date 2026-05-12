@@ -32,13 +32,15 @@ describe("Streaming primitives", () => {
 
 	describe("appendBody", () => {
 		it("appends chunks to a running entry and recomputes tokens", async () => {
-			const { runId } = await tdb.seedRun({ alias: "stream_append" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "stream_append" });
 			const path = "sh://turn_1/npm_test_1";
 
 			// Streaming entry starts at 102, empty body (created on accept).
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path,
 				body: "",
 				state: "streaming",
@@ -47,18 +49,21 @@ describe("Streaming primitives", () => {
 
 			await store.set({
 				runId: runId,
+				loopId,
 				path: path,
 				body: "hello ",
 				append: true,
 			});
 			await store.set({
 				runId: runId,
+				loopId,
 				path: path,
 				body: "world\n",
 				append: true,
 			});
 			await store.set({
 				runId: runId,
+				loopId,
 				path: path,
 				body: "line 2\n",
 				append: true,
@@ -76,12 +81,14 @@ describe("Streaming primitives", () => {
 		});
 
 		it("tokens grow as body grows", async () => {
-			const { runId } = await tdb.seedRun({ alias: "stream_tokens" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "stream_tokens" });
 			const path = "sh://turn_1/grow_1";
 
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path,
 				body: "",
 				state: "streaming",
@@ -90,6 +97,7 @@ describe("Streaming primitives", () => {
 
 			await store.set({
 				runId: runId,
+				loopId,
 				path: path,
 				body: "a".repeat(100),
 				append: true,
@@ -100,6 +108,7 @@ describe("Streaming primitives", () => {
 
 			await store.set({
 				runId: runId,
+				loopId,
 				path: path,
 				body: "a".repeat(500),
 				append: true,
@@ -117,12 +126,14 @@ describe("Streaming primitives", () => {
 
 	describe("Status lifecycle", () => {
 		it("transitions 102 → 200 on successful completion", async () => {
-			const { runId } = await tdb.seedRun({ alias: "stream_success" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "stream_success" });
 			const path = "sh://turn_1/ok_1";
 
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path,
 				body: "",
 				state: "streaming",
@@ -130,13 +141,14 @@ describe("Streaming primitives", () => {
 			});
 			await store.set({
 				runId: runId,
+				loopId,
 				path: path,
 				body: "ran ok\n",
 				append: true,
 			});
 
 			// Simulate stream/completed — transition to terminal status.
-			await store.set({ runId, path, state: "resolved", body: "ran ok\n" });
+			await store.set({ runId, loopId, path, state: "resolved", body: "ran ok\n" });
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
@@ -146,12 +158,14 @@ describe("Streaming primitives", () => {
 		});
 
 		it("transitions 102 → 500 on failure", async () => {
-			const { runId } = await tdb.seedRun({ alias: "stream_fail" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "stream_fail" });
 			const path = "sh://turn_1/bad_1";
 
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path,
 				body: "",
 				state: "streaming",
@@ -159,12 +173,13 @@ describe("Streaming primitives", () => {
 			});
 			await store.set({
 				runId: runId,
+				loopId,
 				path: path,
 				body: "error output\n",
 				append: true,
 			});
 
-			await store.set({ runId, path, state: "failed", body: "error output\n" });
+			await store.set({ runId, loopId, path, state: "failed", body: "error output\n" });
 
 			const entry = (
 				await tdb.db.get_known_entries.all({ run_id: runId })
@@ -175,13 +190,15 @@ describe("Streaming primitives", () => {
 
 	describe("Multi-channel pattern", () => {
 		it("log + stdout + stderr entries coexist with pattern matching", async () => {
-			const { runId } = await tdb.seedRun({ alias: "stream_multi" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "stream_multi" });
 			const base = "sh://turn_1/cmd";
 
 			// Log entry (200, logging-shaped)
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: base,
 				body: "ran 'cmd'",
 				state: "resolved",
@@ -191,7 +208,9 @@ describe("Streaming primitives", () => {
 			// Data channels at 102
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: `${base}_1`,
 				body: "",
 				state: "streaming",
@@ -200,7 +219,9 @@ describe("Streaming primitives", () => {
 			});
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: `${base}_2`,
 				body: "",
 				state: "streaming",
@@ -210,12 +231,14 @@ describe("Streaming primitives", () => {
 
 			await store.set({
 				runId: runId,
+				loopId,
 				path: `${base}_1`,
 				body: "stdout content\n",
 				append: true,
 			});
 			await store.set({
 				runId: runId,
+				loopId,
 				path: `${base}_2`,
 				body: "stderr content\n",
 				append: true,
@@ -233,7 +256,9 @@ describe("Streaming primitives", () => {
 			for (const ch of channels) {
 				await store.set({
 					runId,
+					loopId,
 					path: ch.path,
+					loopId,
 					state: "resolved",
 					body: ch.body,
 				});
@@ -249,12 +274,14 @@ describe("Streaming primitives", () => {
 
 	describe("Tail on streaming entries", () => {
 		it("negative line reads the tail of a growing entry", async () => {
-			const { runId } = await tdb.seedRun({ alias: "stream_tail" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "stream_tail" });
 			const path = "sh://turn_1/long_1";
 
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path,
 				body: "",
 				state: "streaming",
@@ -264,6 +291,7 @@ describe("Streaming primitives", () => {
 			for (let i = 1; i <= 100; i++) {
 				await store.set({
 					runId: runId,
+					loopId,
 					path: path,
 					body: `line ${i}\n`,
 					append: true,

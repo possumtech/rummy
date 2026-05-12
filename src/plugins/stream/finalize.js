@@ -29,11 +29,27 @@ export default async function finalizeStream({
 	}
 	// Normalize for `${dataBase}_*` glob matching against stored channels.
 	const dataBase = Entries.normalizePath(rawBase);
-	// Pin state-transition writes to the action's originating turn.
-	const turnMatch = path.match(/^log:\/\/\d+\/(\d+)\/\d+\/\w+$/);
-	const turn = turnMatch ? Number(turnMatch[1]) : 0;
-
+	// Pin state-transition writes to the action's originating loop+turn.
+	// Path encodes both; hard-fail if not recoverable — finalize is
+	// only called for log://<L>/<T>/<S>/<action> shapes.
+	const parsed = Entries.parseLogPath(path);
+	if (!parsed) {
+		throw new Error(
+			`finalizeStream: path must be log://<L>/<T>/<S>/<action>; got ${path}`,
+		);
+	}
 	const runId = runRow.id;
+	const loopRow = await db.get_loop_by_sequence.get({
+		run_id: runId,
+		sequence: parsed.loopSequence,
+	});
+	if (!loopRow) {
+		throw new Error(
+			`finalizeStream: no loop sequence=${parsed.loopSequence} for run=${runId}`,
+		);
+	}
+	const loopId = loopRow.id;
+	const turn = parsed.turn;
 	const terminalState = exitCode === 0 ? "resolved" : "failed";
 	const terminalOutcome = exitCode === 0 ? null : `exit:${exitCode}`;
 
@@ -45,6 +61,7 @@ export default async function finalizeStream({
 	for (const ch of channels) {
 		await entries.set({
 			runId,
+			loopId,
 			turn,
 			path: ch.path,
 			state: terminalState,
@@ -66,7 +83,7 @@ export default async function finalizeStream({
 	const dur = duration ? ` (${duration})` : "";
 	const exitLabel = exitCode === 0 ? "exit=0" : `exit=${exitCode}`;
 	const body = `ran '${command}', ${exitLabel}${dur}. Output: ${channelSummary}`;
-	await entries.set({ runId, turn, path, state: "resolved", body });
+	await entries.set({ runId, loopId, turn, path, state: "resolved", body });
 
 	if (!wake) return { channels: channels.length };
 

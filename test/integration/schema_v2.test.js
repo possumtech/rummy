@@ -32,11 +32,13 @@ describe("Schema V2 invariants", () => {
 
 	describe("visibility constraint", () => {
 		it("accepts the two canonical values (indexed/archived)", async () => {
-			const { runId } = await tdb.seedRun({ alias: "fid_accept" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "fid_accept" });
 			for (const visibility of ["indexed", "archived"]) {
 				await store.set({
 					runId,
+					loopId,
 					turn: 1,
+					loopId,
 					path: `known://fid-${visibility}`,
 					body: "body",
 					state: "resolved",
@@ -46,11 +48,12 @@ describe("Schema V2 invariants", () => {
 		});
 
 		it("rejects stale visibility vocabulary", async () => {
-			const { runId } = await tdb.seedRun({ alias: "fid_reject" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "fid_reject" });
 			for (const stale of ["visible", "summarized", "full", "summary"]) {
 				await assert.rejects(
 					store.set({
 						runId,
+						loopId,
 						turn: 1,
 						path: `known://fid-${stale}`,
 						body: "body",
@@ -66,10 +69,12 @@ describe("Schema V2 invariants", () => {
 
 	describe("entries + run_views separation", () => {
 		it("entries.scope defaults to 'run:<runId>' for default-scope schemes", async () => {
-			const { runId } = await tdb.seedRun({ alias: "scope_default" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "scope_default" });
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: "known://scoped",
 				body: "content",
 				state: "resolved",
@@ -82,10 +87,11 @@ describe("Schema V2 invariants", () => {
 		});
 
 		it("writing an entry creates one content row and one view row", async () => {
-			const { runId: a } = await tdb.seedRun({ alias: "dup_a" });
-			const { runId: b } = await tdb.seedRun({ alias: "dup_b" });
+			const { runId: a, loopId } = await tdb.seedRun({ alias: "dup_a" });
+			const { runId: b, loopId } = await tdb.seedRun({ alias: "dup_b" });
 			await store.set({
 				runId: a,
+				loopId,
 				turn: 1,
 				path: "known://sharedpath",
 				body: "A body",
@@ -93,6 +99,7 @@ describe("Schema V2 invariants", () => {
 			});
 			await store.set({
 				runId: b,
+				loopId,
 				turn: 1,
 				path: "known://sharedpath",
 				body: "B body",

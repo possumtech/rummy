@@ -62,11 +62,13 @@ describe("Budget headline math (single source of truth)", () => {
 	});
 
 	it("tokenUsage equals countTokens(system) + countTokens(user)", async () => {
-		const { runId } = await tdb.seedRun({ alias: "headline_basic" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "headline_basic" });
 		const contextSize = 32768;
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "prompt://1",
 			body: "do thing",
 			state: "resolved",
@@ -83,12 +85,14 @@ describe("Budget headline math (single source of truth)", () => {
 	});
 
 	it("tokensFree equals max(0, ceiling - tokenUsage)", async () => {
-		const { runId } = await tdb.seedRun({ alias: "headline_free" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "headline_free" });
 		const contextSize = 32768;
 		const cap = Math.floor(contextSize * CEILING_RATIO);
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "prompt://1",
 			body: "do thing",
 			state: "resolved",
@@ -101,10 +105,12 @@ describe("Budget headline math (single source of truth)", () => {
 	});
 
 	it("placeholders are fully substituted (no `{{` survives in the wire)", async () => {
-		const { runId } = await tdb.seedRun({ alias: "headline_no_placeholders" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "headline_no_placeholders" });
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "prompt://1",
 			body: "ask",
 			state: "resolved",
@@ -123,10 +129,12 @@ describe("Budget headline math (single source of truth)", () => {
 	});
 
 	it("schema stability: budget tag attrs always present + table renders", async () => {
-		const { runId } = await tdb.seedRun({ alias: "headline_schema" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "headline_schema" });
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "prompt://1",
 			body: "ask",
 			state: "resolved",
@@ -152,10 +160,12 @@ describe("Budget headline math (single source of truth)", () => {
 		// than the placeholders), so user-only countTokens drifts by a
 		// small bounded amount — the headline reflects the pre-substitution
 		// measurement.
-		const { runId } = await tdb.seedRun({ alias: "headline_self" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "headline_self" });
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "prompt://1",
 			body: "ask",
 			state: "resolved",

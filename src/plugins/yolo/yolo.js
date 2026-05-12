@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import Entries from "../../agent/Entries.js";
 import { logPathToDataBase } from "../helpers.js";
 import finalizeStream from "../stream/finalize.js";
 
@@ -34,6 +35,25 @@ export default class Yolo {
 		const runRow = await db.get_run_by_id.get({ id: runId });
 		const project = await db.get_project_by_id.get({ id: runRow.project_id });
 		const attrs = await entries.getAttributes(runId, path);
+		// Derive loopId+turn from the proposal path. Hard-fail if the
+		// path isn't a log entry — yolo only resolves log://* paths.
+		const parsed = Entries.parseLogPath(path);
+		if (!parsed) {
+			throw new Error(
+				`yolo.serverResolve: path must be log://<L>/<T>/<S>/<action>; got ${path}`,
+			);
+		}
+		const loopRow = await db.get_loop_by_sequence.get({
+			run_id: runId,
+			sequence: parsed.loopSequence,
+		});
+		if (!loopRow) {
+			throw new Error(
+				`yolo.serverResolve: no loop sequence=${parsed.loopSequence} for run=${runId}`,
+			);
+		}
+		const loopId = loopRow.id;
+		const turn = parsed.turn;
 		const ctx = {
 			runId,
 			runRow,
@@ -42,6 +62,8 @@ export default class Yolo {
 			path,
 			attrs,
 			output: "",
+			loopId,
+			turn,
 			db,
 			entries,
 		};
@@ -50,6 +72,8 @@ export default class Yolo {
 		if (veto?.allow === false) {
 			await entries.set({
 				runId,
+				loopId,
+				turn,
 				path,
 				state: "failed",
 				outcome: veto.outcome,
@@ -59,11 +83,10 @@ export default class Yolo {
 		}
 
 		const resolvedBody = await this.core.hooks.proposal.content.filter("", ctx);
-		const existing = await entries.getState(runId, path);
-		const existingTurn = existing?.turn === undefined ? 0 : existing.turn;
 		await entries.set({
 			runId,
-			turn: existingTurn,
+			loopId,
+			turn,
 			path,
 			state: "resolved",
 			body: resolvedBody,

@@ -21,11 +21,13 @@ describe("entry lifecycle (@entries, @upsert_semantics, @plugins_entry_lifecycle
 	});
 
 	it("created entries carry scheme, path, body, state", async () => {
-		const { runId } = await tdb.seedRun({ alias: "entry_basic" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "entry_basic" });
 		const store = new Entries(tdb.db);
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "known://test",
 			body: "test body",
 			state: "resolved",
@@ -39,11 +41,13 @@ describe("entry lifecycle (@entries, @upsert_semantics, @plugins_entry_lifecycle
 	});
 
 	it("indexed default makes data entries appear in v_model_context", async () => {
-		const { runId } = await tdb.seedRun({ alias: "entry_vis_default" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "entry_vis_default" });
 		const store = new Entries(tdb.db);
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "known://lifecycle_vis",
 			body: "body",
 			state: "resolved",
@@ -56,11 +60,13 @@ describe("entry lifecycle (@entries, @upsert_semantics, @plugins_entry_lifecycle
 	});
 
 	it("archived visibility hides an entry from v_model_context", async () => {
-		const { runId } = await tdb.seedRun({ alias: "entry_vis_archived" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "entry_vis_archived" });
 		const store = new Entries(tdb.db);
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "known://lifecycle_archived",
 			body: "hidden",
 			state: "resolved",

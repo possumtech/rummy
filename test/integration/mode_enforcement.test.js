@@ -22,10 +22,12 @@ describe("Mode enforcement in ask mode", () => {
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 
 		// Seed some entries for the model to target
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "src/app.js",
 			body: "const x = 1;",
@@ -33,6 +35,7 @@ describe("Mode enforcement in ask mode", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "known://note",
 			body: "test note",

@@ -41,8 +41,8 @@ async function seedProjectWithFile(tdb, alias, fileName, originalContent) {
 	const fullPath = join(projectRoot, fileName);
 	await fs.mkdir(join(fullPath, ".."), { recursive: true });
 	await fs.writeFile(fullPath, originalContent);
-	const { runId, projectId } = await tdb.seedRun({ alias, projectRoot });
-	return { projectRoot, runId, projectId };
+	const { runId, projectId, loopId } = await tdb.seedRun({ alias, projectRoot });
+	return { projectRoot, runId, projectId, loopId };
 }
 
 describe("file freshness (@filesystem_freshness)", () => {
@@ -63,7 +63,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 
 	describe("SEARCH/REPLACE accept", () => {
 		it("entry body matches new content on disk", async () => {
-			const { projectRoot, runId } = await seedProjectWithFile(
+			const { projectRoot, runId, loopId } = await seedProjectWithFile(
 				tdb,
 				"sr_body_sync",
 				"src/app.js",
@@ -72,7 +72,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			// Pre-promote so we test the preservation path
 			await entries.set({
 				runId,
+				loopId,
 				path: "src/app.js",
+				loopId,
 				body: "const x = 1;\n// TODO: stuff\n",
 				state: "resolved",
 				visibility: "indexed",
@@ -82,7 +84,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			const proposalPath = await entries.logPath(runId, 1, "set", "src/app.js");
 			await entries.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: proposalPath,
 				body: "(merge proposal)",
 				state: "proposed",
@@ -112,7 +116,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 		});
 
 		it("preserves visibility=indexed after edit (no silent flip)", async () => {
-			const { runId } = await seedProjectWithFile(
+			const { runId, loopId } = await seedProjectWithFile(
 				tdb,
 				"sr_vis_preserve_visible",
 				"src/app.js",
@@ -120,7 +124,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			await entries.set({
 				runId,
+				loopId,
 				path: "src/app.js",
+				loopId,
 				body: "const x = 1;\n// TODO: stuff\n",
 				state: "resolved",
 				visibility: "indexed",
@@ -130,7 +136,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			const proposalPath = await entries.logPath(runId, 1, "set", "src/app.js");
 			await entries.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: proposalPath,
 				body: "(merge proposal)",
 				state: "proposed",
@@ -154,7 +162,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 		});
 
 		it("preserves visibility=archived after edit", async () => {
-			const { runId } = await seedProjectWithFile(
+			const { runId, loopId } = await seedProjectWithFile(
 				tdb,
 				"sr_vis_preserve_summarized",
 				"src/app.js",
@@ -162,7 +170,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			await entries.set({
 				runId,
+				loopId,
 				path: "src/app.js",
+				loopId,
 				body: "const x = 1;\n// TODO: stuff\n",
 				state: "resolved",
 				visibility: "archived",
@@ -172,7 +182,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			const proposalPath = await entries.logPath(runId, 1, "set", "src/app.js");
 			await entries.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: proposalPath,
 				body: "(merge proposal)",
 				state: "proposed",
@@ -196,7 +208,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 		});
 
 		it("new file from SEARCH/REPLACE lands at indexed (model just wrote it)", async () => {
-			const { projectRoot, runId } = await seedProjectWithFile(
+			const { projectRoot, runId, loopId } = await seedProjectWithFile(
 				tdb,
 				"sr_new_file",
 				"placeholder.txt",
@@ -205,7 +217,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			const proposalPath = await entries.logPath(runId, 1, "set", "src/new.js");
 			await entries.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: proposalPath,
 				body: "(merge proposal)",
 				state: "proposed",
@@ -235,7 +249,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 
 	describe("entry-layer write (no proposal)", () => {
 		it("scheme write: visibility preserved across body update", async () => {
-			const { runId } = await seedProjectWithFile(
+			const { runId, loopId } = await seedProjectWithFile(
 				tdb,
 				"scheme_vis_preserve",
 				"placeholder.txt",
@@ -243,7 +257,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			await entries.set({
 				runId,
+				loopId,
 				path: "known://fact",
+				loopId,
 				body: "first version",
 				state: "resolved",
 				visibility: "indexed",
@@ -251,7 +267,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			});
 			await entries.set({
 				runId,
+				loopId,
 				path: "known://fact",
+				loopId,
 				body: "second version",
 				state: "resolved",
 				writer: "model",
@@ -326,7 +344,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			return rows.find((r) => re.test(r.path));
 		}
 
-		it("NEW file synthesizes log://*/<turn>/*/set with udiff body + attrs.external", async () => {
+		it("NEW file synthesizes log://*/<turn>/*/set with empty-SEARCH body + attrs.external", async () => {
 			// A genuine "new file" event is a file that appeared
 			// BETWEEN scans. The bootstrap scan establishes the baseline
 			// (no log injection); a subsequent scan picks up files that
@@ -357,9 +375,13 @@ describe("file freshness (@filesystem_freshness)", () => {
 					: log.attributes;
 			assert.strictEqual(attrs.path, "fresh.md");
 			assert.strictEqual(attrs.external, true);
-			assert.strictEqual(attrs.patch, undefined);
-			assert.match(log.body, /^=+\n---/, "udiff banner");
-			assert.match(log.body, /\+hello world/);
+			assert.match(
+				attrs.patch,
+				/^=+\n---/,
+				"attrs.patch carries the udiff projection",
+			);
+			assert.match(log.body, /^<<SEARCH\nSEARCH<<REPLACE/);
+			assert.match(log.body, /hello world/);
 		});
 
 		it("bootstrap scan (no prior file entries): no log entries injected, files land as baseline", async () => {
@@ -386,7 +408,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			assert.ok(await e.getBody(runId, "b.md"));
 		});
 
-		it("modified file synthesizes log://*/<turn>/*/set with udiff body", async () => {
+		it("modified file synthesizes log://*/<turn>/*/set with SEARCH/REPLACE pair + attrs.patch (udiff)", async () => {
 			const root = await makeGitProject("mod");
 			writeFileSync(
 				join(root, "edit_me.md"),
@@ -416,14 +438,17 @@ describe("file freshness (@filesystem_freshness)", () => {
 					: log.attributes;
 			assert.strictEqual(attrs.path, "edit_me.md");
 			assert.strictEqual(attrs.external, true);
-			assert.strictEqual(attrs.patch, undefined);
 			assert.match(
-				log.body,
+				attrs.patch,
 				/^=+\n---/,
-				"log body carries the udiff (createTwoFilesPatch shape)",
+				"attrs.patch carries the udiff (createTwoFilesPatch shape)",
 			);
-			assert.match(log.body, /-old/);
-			assert.match(log.body, /\+new/);
+			assert.match(attrs.patch, /-old/);
+			assert.match(attrs.patch, /\+new/);
+			assert.match(log.body, /<<SEARCH\b/);
+			assert.match(log.body, /SEARCH<<REPLACE\b/);
+			assert.match(log.body, /old/, "SEARCH captures the prior content");
+			assert.match(log.body, /new/, "REPLACE captures the new content");
 		});
 
 		it("removed file synthesizes log://*/<turn>/*/rm before the entry rm", async () => {

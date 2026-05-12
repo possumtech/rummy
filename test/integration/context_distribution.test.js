@@ -17,10 +17,12 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "dist_1" });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 
 		// Populate known_entries
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "src/app.js",
 			body: "const x = 1;",
@@ -28,6 +30,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "readme.md",
 			body: "# Hello",
@@ -36,6 +39,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "known://auth_flow",
 			body: "JWT tokens",
@@ -43,6 +47,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "search://1",
 			body: "search results",
@@ -50,6 +55,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "update://1",
 			body: "did a thing",
@@ -58,6 +64,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "unknown://1",
 			body: "what is X?",
@@ -65,6 +72,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path: "prompt://1",
 			body: "test question",
@@ -75,6 +83,7 @@ describe("turn_context distribution bucket correctness (@materialization)", () =
 		// Materialize turn_context
 		await materialize(tdb.db, {
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			systemPrompt: "You are a test assistant.",
 		});

@@ -1,6 +1,10 @@
+import Entries from "../../agent/Entries.js";
+import { stateToStatus } from "../../agent/httpStatus.js";
 import msg from "../../agent/messages.js";
 import RummyContext from "../../hooks/RummyContext.js";
 import File from "../file/file.js";
+
+const runStateToHttpStatus = stateToStatus;
 
 const CONSTRAINT_VISIBILITIES = new Set(["add", "readonly", "ignore"]);
 
@@ -126,11 +130,22 @@ export default class Rpc {
 			handler: async (params, ctx) => {
 				const runRow = await this.#resolveRun(params.run, ctx);
 				const { status = 102, attributes = {} } = params;
+				// Active loop required — log path needs (loopId, turn).
+				const loop = await ctx.db.get_current_loop.get({
+					run_id: runRow.id,
+				});
+				if (!loop) {
+					throw new Error(
+						`update RPC: no active loop on run=${runRow.alias}`,
+					);
+				}
 				const path = await ctx.projectAgent.entries.update({
 					runId: runRow.id,
 					body: params.body,
 					status,
 					attributes,
+					loopId: loop.id,
+					turn: loop.next_turn - 1,
 					writer: "client",
 				});
 				return { ok: true, path };
@@ -513,6 +528,37 @@ export default class Rpc {
 			}
 		}
 
+		// Thread loopId for the entry write. Log-scheme paths encode
+		// loop sequence + turn in the path itself; other schemes pull
+		// from the run's active loop. Hard-fail if neither resolves.
+		let loopId = null;
+		let turn;
+		const parsedLog = Entries.parseLogPath(params.path);
+		if (parsedLog) {
+			const loopRow = await ctx.db.get_loop_by_sequence.get({
+				run_id: runRow.id,
+				sequence: parsedLog.loopSequence,
+			});
+			if (!loopRow) {
+				throw new Error(
+					`set RPC: no loop sequence=${parsedLog.loopSequence} for run=${runRow.alias}`,
+				);
+			}
+			loopId = loopRow.id;
+			turn = parsedLog.turn;
+		} else {
+			const current = await ctx.db.get_current_loop.get({
+				run_id: runRow.id,
+			});
+			if (!current) {
+				throw new Error(
+					`set RPC: no active loop on run=${runRow.alias} for path ${params.path}`,
+				);
+			}
+			loopId = current.id;
+			turn = current.next_turn - 1;
+		}
+
 		await ctx.projectAgent.entries.set({
 			runId: runRow.id,
 			projectId: ctx.projectId,
@@ -525,6 +571,8 @@ export default class Rpc {
 			append: params.append,
 			pattern: params.pattern,
 			bodyFilter: params.bodyFilter,
+			loopId,
+			turn,
 			writer: "client",
 		});
 		return { ok: true };
@@ -546,19 +594,17 @@ export default class Rpc {
 
 		const existing = await ctx.db.get_run_by_alias.get({ alias });
 
-		const runPath = `run://${alias}`;
-
-		// State transition on an existing run.
+		// State transition on an existing run. Run lifecycle lives on
+		// the runs table — write directly, no entries projection.
 		if (existing && params.state) {
 			if (params.state === "cancelled") {
 				ctx.projectAgent.abortRun(existing.id);
 			}
-			await ctx.projectAgent.entries.set({
-				runId: existing.id,
-				path: runPath,
-				state: params.state,
-				outcome: params.outcome,
-				writer: "client",
+			const httpStatus = runStateToHttpStatus(params.state);
+			await ctx.db.set_run_state.run({
+				id: existing.id,
+				status: httpStatus,
+				outcome: params.outcome ?? null,
 			});
 			return { ok: true, alias };
 		}

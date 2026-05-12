@@ -30,11 +30,13 @@ describe("Scope + permissions (Phase D)", () => {
 	});
 
 	it("permissive scheme accepts both model and plugin writers", async () => {
-		const { runId } = await tdb.seedRun({ alias: "perm_ok" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "perm_ok" });
 
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "known://a",
 			body: "fact a",
 			state: "resolved",
@@ -42,7 +44,9 @@ describe("Scope + permissions (Phase D)", () => {
 		});
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "known://b",
 			body: "fact b",
 			state: "resolved",
@@ -56,11 +60,12 @@ describe("Scope + permissions (Phase D)", () => {
 	});
 
 	it("audit scheme rejects plugin writer with PermissionError", async () => {
-		const { runId } = await tdb.seedRun({ alias: "perm_audit_plugin" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "perm_audit_plugin" });
 
 		await assert.rejects(
 			store.set({
 				runId,
+				loopId,
 				turn: 1,
 				path: "system://probe",
 				body: "attempt",
@@ -75,11 +80,12 @@ describe("Scope + permissions (Phase D)", () => {
 	});
 
 	it("audit scheme rejects model writer with PermissionError", async () => {
-		const { runId } = await tdb.seedRun({ alias: "perm_audit_model" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "perm_audit_model" });
 
 		await assert.rejects(
 			store.set({
 				runId,
+				loopId,
 				turn: 1,
 				path: "reasoning://probe",
 				body: "attempt",
@@ -94,11 +100,13 @@ describe("Scope + permissions (Phase D)", () => {
 	});
 
 	it("audit scheme accepts system writer", async () => {
-		const { runId } = await tdb.seedRun({ alias: "perm_audit_ok" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "perm_audit_ok" });
 
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "assistant://1",
 			body: "response body",
 			state: "resolved",
@@ -109,11 +117,12 @@ describe("Scope + permissions (Phase D)", () => {
 	});
 
 	it("prompt scheme rejects model writer with PermissionError", async () => {
-		const { runId } = await tdb.seedRun({ alias: "perm_prompt_model" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "perm_prompt_model" });
 
 		await assert.rejects(
 			store.set({
 				runId,
+				loopId,
 				turn: 1,
 				path: "prompt://1",
 				body: "forged prompt",
@@ -128,11 +137,13 @@ describe("Scope + permissions (Phase D)", () => {
 	});
 
 	it("prompt scheme accepts plugin writer", async () => {
-		const { runId } = await tdb.seedRun({ alias: "perm_prompt_ok" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "perm_prompt_ok" });
 
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "prompt://1",
 			body: "user prompt",
 			state: "resolved",
@@ -144,11 +155,13 @@ describe("Scope + permissions (Phase D)", () => {
 	});
 
 	it("entries land at 'run:<runId>' scope by default", async () => {
-		const { runId } = await tdb.seedRun({ alias: "perm_scope" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "perm_scope" });
 
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "known://scoped",
 			body: "content",
 			state: "resolved",

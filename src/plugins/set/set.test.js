@@ -252,7 +252,7 @@ describe("Set plugin", () => {
 			assert.deepEqual(store._calls, []);
 		});
 
-		it("scheme write: log body is udiff; attributes.emission preserves verbatim", async () => {
+		it("scheme write: stores resolved body + log entry with verbatim emission", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -271,26 +271,16 @@ describe("Set plugin", () => {
 			assert.equal(target.visibility, "indexed");
 			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.ok(log);
+			assert.equal(log.body, "v2", "log body is the model's verbatim emission");
 			assert.equal(log.attributes.beforeActionTokens, 0);
 			assert.ok(log.attributes.afterActionTokens > 0);
 			assert.ok(
-				log.body.startsWith("==="),
-				"log body is udiff (createTwoFilesPatch banner)",
-			);
-			assert.ok(log.body.includes("+v2"));
-			assert.equal(
-				log.attributes.emission,
-				"v2",
-				"verbatim model emission preserved",
-			);
-			assert.equal(
 				log.attributes.patch,
-				undefined,
-				"attributes.patch retired; body is the patch",
+				"attrs.patch carries the udiff projection for client rendering",
 			);
 		});
 
-		it("file write (no scheme on path) issues a `proposed` log entry with udiff body", async () => {
+		it("file write (no scheme on path) issues a `proposed` log entry with patched body", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -307,10 +297,11 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/foo.js");
 			assert.equal(log.attributes.patched, "new content");
-			assert.ok(log.body.startsWith("==="), "log body is udiff");
-			assert.ok(log.body.includes("+new content"));
-			assert.equal(log.attributes.emission, "new content");
-			assert.equal(log.attributes.patch, undefined);
+			assert.equal(log.body, "new content", "log body is verbatim emission");
+			assert.ok(
+				log.attributes.patch,
+				"attrs.patch carries the udiff for client rendering",
+			);
 		});
 	});
 
@@ -482,8 +473,10 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/app.js");
 			assert.equal(log.attributes.patched, "new line");
-			assert.ok(log.body.startsWith("==="), "log body is udiff");
-			assert.equal(log.attributes.patch, undefined);
+			assert.ok(
+				log.attributes.patch,
+				"attrs.patch carries the udiff projection for client rendering",
+			);
 		});
 
 		it("does not write a set:// canonical entry (no detour)", async () => {

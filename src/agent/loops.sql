@@ -45,7 +45,7 @@ SET status = 100
 WHERE status = 102;
 
 -- PREP: get_current_loop
-SELECT id, sequence, mode, model, prompt, status
+SELECT id, sequence, mode, model, prompt, status, next_turn
 FROM loops
 WHERE run_id = :run_id AND status = 102
 LIMIT 1;
@@ -54,6 +54,15 @@ LIMIT 1;
 SELECT id, run_id, sequence, mode, model, prompt, status, config
 FROM loops
 WHERE id = :id;
+
+-- PREP: get_loop_by_sequence
+-- Look up a loop's row by its `(run_id, sequence)`. Used by callers
+-- that hold a `log://<L>/<T>/<S>/<action>` path and need the loop_id
+-- for downstream writes. Returns NULL if no such loop — caller must
+-- treat that as a contract violation (hard fail), not a silent skip.
+SELECT id, sequence, mode, status
+FROM loops
+WHERE run_id = :run_id AND sequence = :sequence;
 
 -- PREP: get_latest_completed_loop
 SELECT id, sequence, mode, status

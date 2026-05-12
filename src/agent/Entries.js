@@ -84,6 +84,22 @@ export default class Entries {
 		return idx > 0 ? path.slice(0, idx) : null;
 	}
 
+	// Parse a `log://<L>/<T>/<S>/<action>` path into its components.
+	// Returns null when the path doesn't match the canonical log shape
+	// — callers gate on this and either thread loopId from another
+	// source or hard-fail. Never silently fall back.
+	static parseLogPath(path) {
+		if (!path) return null;
+		const m = path.match(/^log:\/\/(\d+)\/(\d+)\/(\d+)\/(\w+)$/);
+		if (!m) return null;
+		return {
+			loopSequence: Number(m[1]),
+			turn: Number(m[2]),
+			seq: Number(m[3]),
+			action: m[4],
+		};
+	}
+
 	static normalizePath(path) {
 		if (!path) return path;
 		if (!path.includes("://")) {
@@ -213,6 +229,15 @@ export default class Entries {
 	async set(args) {
 		if (!args.runId) throw new Error("set: runId is required");
 		if (!args.path) throw new Error("set: path is required");
+		// run:// is the run lifecycle surface and lives exclusively on
+		// the runs table (runs.status, runs.outcome, runs.prompt). It
+		// is not addressable through entries / run_views. RPC dispatch
+		// routes `set run://*` to runs-table mutations directly.
+		if (typeof args.path === "string" && args.path.startsWith("run://")) {
+			throw new Error(
+				`set: run://* paths are not addressable through entries (path: ${args.path}). Use db.set_run_state / db.update_run_status instead.`,
+			);
+		}
 		try {
 			return await this.#setImpl(args);
 		} catch (err) {

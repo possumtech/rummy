@@ -74,6 +74,7 @@ describe("Handler dispatch", () => {
 		const seed = await tdb.seedRun({ alias: "dispatch_1" });
 		RUN_ID = seed.runId;
 		LOOP_ID = seed.loopId;
+		LOOP_ID = seed.loopId;
 		PROJECT = { id: seed.projectId, path: "/tmp/test", name: "Test" };
 
 		hooks = createHooks();
@@ -94,6 +95,7 @@ describe("Handler dispatch", () => {
 		it("re-indexes target and writes a concise log so the model sees the action", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 0,
 				path: "src/target.js",
 				body: "const x = 1;",
@@ -159,6 +161,7 @@ describe("Handler dispatch", () => {
 		it("applies patch and sets proposed for files", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/edit_me.js",
 				body: "const port = 3000;",
@@ -203,6 +206,7 @@ describe("Handler dispatch", () => {
 			const original = "function add(a, b) {\n    return a + b;\n}\n";
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/fuzzy.js",
 				body: original,
@@ -256,6 +260,7 @@ describe("Handler dispatch", () => {
 		it("bare→bare mv materializes destination and honors visibility", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/old_name.js",
 				body: "const x = 1;\n",
@@ -300,6 +305,7 @@ describe("Handler dispatch", () => {
 		it("bare→bare cp materializes destination and honors archive attr", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/source.js",
 				body: "const y = 2;\n",
@@ -344,6 +350,7 @@ describe("Handler dispatch", () => {
 		it("two edits to the same file produce two independent proposals", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/math.txt",
 				body: "a + 4 = 6\n7 - a = \nb / 4 = 3\na + b = \n",
@@ -419,6 +426,7 @@ describe("Handler dispatch", () => {
 		it("applies patch immediately for known:// entries", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "known://config",
 				body: "port=3000",
@@ -462,6 +470,7 @@ describe("Handler dispatch", () => {
 			const resultPath = await store.slugPath(RUN_ID, "sh", "npm test");
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: resultPath,
 				body: "npm test",
@@ -497,6 +506,7 @@ describe("Handler dispatch", () => {
 			const resultPath = await store.slugPath(RUN_ID, "env", "node --version");
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: resultPath,
 				body: "node --version",
@@ -530,6 +540,7 @@ describe("Handler dispatch", () => {
 		it("archives entry via boolean archive attr", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "known://demote_me",
 				body: "some data",
@@ -564,6 +575,7 @@ describe("Handler dispatch", () => {
 		it("proposes deletion for files", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/doomed.js",
 				body: "content",
@@ -593,6 +605,7 @@ describe("Handler dispatch", () => {
 		it("immediately removes known:// entries", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "known://ephemeral",
 				body: "temp",
@@ -621,6 +634,7 @@ describe("Handler dispatch", () => {
 		it("multi-match produces one aggregate result entry", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 2,
 				path: "known://bulk_a",
 				body: "data-a",
@@ -628,6 +642,7 @@ describe("Handler dispatch", () => {
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 2,
 				path: "known://bulk_b",
 				body: "data-b",
@@ -635,6 +650,7 @@ describe("Handler dispatch", () => {
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 2,
 				path: "known://bulk_c",
 				body: "data-c",
@@ -710,6 +726,7 @@ describe("Handler dispatch", () => {
 
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/priority_test.js",
 				body: "x",

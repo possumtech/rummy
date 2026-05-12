@@ -26,6 +26,8 @@ const RUN_DB = (id = "r1") => ({
 	get_run_by_alias: { get: async () => ({ id, alias: "test_run" }) },
 	get_pending_loops: { all: async () => [] },
 	get_latest_completed_loop: { get: async () => null },
+	get_loop_by_sequence: { get: async () => ({ id: 99 }) },
+	get_current_loop: { get: async () => ({ id: 99, next_turn: 1 }) },
 });
 
 describe("Stream plugin", () => {

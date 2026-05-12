@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import HeuristicMatcher from "./matcher.js";
+import { parseMarkerBody } from "./marker.js";
+import HeuristicMatcher, { generateSearchReplaceBody } from "./matcher.js";
 
 describe("HeuristicMatcher", () => {
 	describe("exact match", () => {
@@ -151,5 +152,54 @@ describe("HeuristicMatcher", () => {
 			assert.equal(result.error, null);
 			assert.ok(result.newContent.includes("line1\nline2"));
 		});
+	});
+});
+
+describe("generateSearchReplaceBody", () => {
+	it("returns empty string when content is unchanged", () => {
+		assert.equal(generateSearchReplaceBody("same", "same"), "");
+	});
+
+	it("first-appearance: empty SEARCH + full REPLACE", () => {
+		const body = generateSearchReplaceBody("", "hello\nworld\n");
+		assert.equal(body, "<<SEARCH\nSEARCH<<REPLACE\nhello\nworld\n\nREPLACE");
+		const { ops, error } = parseMarkerBody(body);
+		assert.equal(error, null, "parseable by marker.js");
+		assert.equal(ops.length, 1);
+		assert.equal(ops[0].op, "search_replace");
+		assert.equal(ops[0].search, "");
+		assert.match(ops[0].replace, /hello\nworld/);
+	});
+
+	it("single-hunk edit: one SEARCH/REPLACE pair with hunk context", () => {
+		const before = "line1\nline2\nold\nline4\nline5\n";
+		const after = "line1\nline2\nnew\nline4\nline5\n";
+		const body = generateSearchReplaceBody(before, after);
+		const { ops, error } = parseMarkerBody(body);
+		assert.equal(error, null);
+		assert.equal(ops.length, 1);
+		assert.equal(ops[0].op, "search_replace");
+		assert.match(ops[0].search, /old/);
+		assert.match(ops[0].replace, /new/);
+		assert.doesNotMatch(ops[0].search, /new/);
+		assert.doesNotMatch(ops[0].replace, /old/);
+	});
+
+	it("multi-hunk edit: one pair per hunk, parseable as multiple search_replace ops", () => {
+		const before = Array.from({ length: 30 }, (_, i) => `line${i + 1}`).join(
+			"\n",
+		);
+		const after = before
+			.replace("line5", "FIVE")
+			.replace("line25", "TWENTY_FIVE");
+		const body = generateSearchReplaceBody(before, after);
+		const { ops, error } = parseMarkerBody(body);
+		assert.equal(error, null);
+		assert.equal(ops.length, 2);
+		assert.ok(ops.every((o) => o.op === "search_replace"));
+		assert.match(ops[0].search, /line5/);
+		assert.match(ops[0].replace, /FIVE/);
+		assert.match(ops[1].search, /line25/);
+		assert.match(ops[1].replace, /TWENTY_FIVE/);
 	});
 });

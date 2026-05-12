@@ -73,6 +73,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const newContent = "# A\nbody line";
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: newContent,
@@ -122,6 +124,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "should not land",
@@ -158,6 +162,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			await fs.writeFile(join(projectRoot, "doomed.md"), "bye");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: "doomed.md",
 				body: "bye",
@@ -166,6 +172,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "rm");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "doomed.md",
@@ -194,6 +202,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const { runId, loopId } = await seedProject(tdb, "mv_accept");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: "known://source",
 				body: "content",
@@ -202,6 +212,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "mv");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "moved",
@@ -225,6 +237,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "ask_user");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "pick one",
@@ -253,6 +267,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "sh");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "",
@@ -292,6 +308,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "never",
@@ -331,6 +349,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "# X\n",
@@ -361,6 +381,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "nope",
@@ -392,6 +414,8 @@ describe("proposal lifecycle (@resolution)", () => {
 			const proposalPath = await entries.logPath(runId, loopId, 1, "set");
 			await entries.set({
 				runId,
+				loopId,
+				loopId,
 				turn: 1,
 				path: proposalPath,
 				body: "# Z\n",

@@ -25,6 +25,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("getUnresolved returns proposed entries", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 1,
 			path: "set://1",
 			body: "diff content",
@@ -40,6 +41,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("multiple proposed entries all returned", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 1,
 			path: "sh://1",
 			body: "echo hi",
@@ -53,6 +55,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("resolving an entry removes it from unresolved", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			path: "set://1",
 			state: "resolved",
 			body: "applied",
@@ -66,6 +69,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("resolving all entries clears the lock", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			path: "sh://1",
 			state: "failed",
 			body: "rejected",
@@ -78,6 +82,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 	it("non-proposed result entries do not block", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 1,
 			path: "env://2",
 			body: "contents",
@@ -85,6 +90,7 @@ describe("State lock: proposed entries block execution (@run_state_machine)", ()
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 1,
 			path: "update://2",
 			body: "summary text",

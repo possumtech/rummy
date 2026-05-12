@@ -82,6 +82,7 @@ describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_pl
 	it("ok when under budget", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 1,
 			path: "known://small",
 			body: "a small fact",
@@ -95,6 +96,7 @@ describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_pl
 		for (let i = 0; i < 10; i++) {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: i + 1,
 				path: `known://fact_${i}`,
 				body: pad(50),
@@ -110,6 +112,7 @@ describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_pl
 		for (let i = 0; i < 5; i++) {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: i + 1,
 				path: `known://fact_${i}`,
 				body: pad(20),
@@ -128,6 +131,7 @@ describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_pl
 	it("assembledTokens returned whether ok or overflow", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId,
 			turn: 1,
 			path: "known://a",
 			body: "fact",
@@ -143,6 +147,7 @@ describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_pl
 		for (let i = 0; i < 10; i++) {
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: i + 2,
 				path: `known://b_${i}`,
 				body: pad(50),

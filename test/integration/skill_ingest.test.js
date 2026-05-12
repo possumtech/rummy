@@ -53,6 +53,7 @@ describe("Skill ingest", () => {
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "skill_1", projectRoot });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 		PROJECT_ID = seed.projectId;
 
 		hooks = createHooks();

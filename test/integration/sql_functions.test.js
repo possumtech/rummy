@@ -20,12 +20,14 @@ describe("SQL functions (@sql_functions)", () => {
 	let tdb;
 	let store;
 	let RUN_ID;
+	let LOOP_ID;
 
 	before(async () => {
 		tdb = await TestDb.create("sql_functions");
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "sql_fns" });
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {
@@ -42,6 +44,7 @@ describe("SQL functions (@sql_functions)", () => {
 			for (const [path, _expected] of cases) {
 				await store.set({
 					runId: RUN_ID,
+					loopId: LOOP_ID,
 					turn: 1,
 					path,
 					body: "x",
@@ -63,6 +66,7 @@ describe("SQL functions (@sql_functions)", () => {
 		it("bare file paths have NULL scheme (the 'file' case)", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/app.js",
 				body: "const x = 1;",
@@ -81,6 +85,7 @@ describe("SQL functions (@sql_functions)", () => {
 			const body = "x".repeat(divisor * 5);
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "known://tokens_probe",
 				body,
@@ -99,6 +104,7 @@ describe("SQL functions (@sql_functions)", () => {
 		it("empty body yields 0 tokens", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "known://empty_tokens",
 				body: "",

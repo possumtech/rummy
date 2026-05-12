@@ -30,7 +30,7 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 	});
 
 	it("oversized body triggers EntryOverflowError; onError swallows it", async () => {
-		const { runId } = await tdb.seedRun({ alias: "overflow_huge" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "overflow_huge" });
 		const cap = TEST_CAP;
 		const events = [];
 		const store = new Entries(tdb.db, {
@@ -40,7 +40,9 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 		const huge = "x".repeat(cap + 1);
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "data://test/huge",
 			body: huge,
 			loopId: 99,
@@ -61,7 +63,7 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 	});
 
 	it("body at cap is accepted; just-over-cap is rejected", async () => {
-		const { runId } = await tdb.seedRun({ alias: "overflow_boundary" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "overflow_boundary" });
 		const cap = TEST_CAP;
 		const events = [];
 		const store = new Entries(tdb.db, {
@@ -70,7 +72,9 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 		await store.loadSchemes();
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "data://test/at_cap",
 			body: "y".repeat(cap),
 		});
@@ -79,7 +83,9 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 		assert.equal(stored.length, cap);
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "data://test/over_cap",
 			body: "y".repeat(cap + 1),
 		});
@@ -87,7 +93,7 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 	});
 
 	it("append-mode that pushes existing body past cap is rejected", async () => {
-		const { runId } = await tdb.seedRun({ alias: "overflow_append" });
+		const { runId, loopId } = await tdb.seedRun({ alias: "overflow_append" });
 		const cap = TEST_CAP;
 		const events = [];
 		const store = new Entries(tdb.db, {
@@ -98,14 +104,18 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 		const seedSize = cap - 100;
 		await store.set({
 			runId,
+			loopId,
 			turn: 1,
+			loopId,
 			path: "data://test/append_target",
 			body: "z".repeat(seedSize),
 		});
 		// Append that pushes past cap — CHECK fires on the resulting body length.
 		await store.set({
 			runId,
+			loopId,
 			append: true,
+			loopId,
 			path: "data://test/append_target",
 			body: "z".repeat(200),
 		});

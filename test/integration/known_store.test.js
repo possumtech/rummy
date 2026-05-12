@@ -22,6 +22,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		const seed = await tdb.seedRun({ alias: "test_1" });
 		RUN_ID = seed.runId;
 		LOOP_ID = seed.loopId;
+		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {
@@ -78,6 +79,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("inserts a file entry", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 0,
 				path: "src/app.js",
 				body: "const x = 1;",
@@ -94,6 +96,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("inserts a knowledge entry", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 0,
 				path: "known://db_type",
 				body: "SQLite",
@@ -109,6 +112,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("inserts a result entry", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "search://1",
 				body: "file contents",
@@ -128,6 +132,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("upsert overwrites value on conflict", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 0,
 				path: "known://db_type",
 				body: "PostgreSQL",
@@ -141,6 +146,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("upsert preserves meta when new meta is null", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 0,
 				path: "search://1",
 				body: "updated",
@@ -159,6 +165,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("deletes an entry", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 0,
 				path: "known://temp",
 				body: "temporary",
@@ -177,6 +184,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("changes proposed to pass with output", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "set://1",
 				body: "",
@@ -189,6 +197,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				path: "set://1",
 				state: "resolved",
 				body: "edit applied",
@@ -205,6 +214,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("changes proposed to rejected on rejection", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "sh://1",
 				body: "",
@@ -213,6 +223,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				path: "sh://1",
 				state: "failed",
 				body: "rejected by user",
@@ -228,6 +239,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("get re-indexes an archived entry and updates turn", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 0,
 				path: "src/promoted.js",
 				body: "content",
@@ -252,6 +264,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("archive flips visibility on an indexed entry", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 10,
 				path: "src/demoted.js",
 				body: "content",
@@ -259,6 +272,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 			});
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				path: "src/demoted.js",
 				visibility: "archived",
 			});
@@ -290,6 +304,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 		it("handles collisions with sequence suffix", async () => {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "search://Tom_Petty_death",
 				body: "",
@@ -344,6 +359,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 			// Setup: file exists in store
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/doomed.js",
 				body: "content",
@@ -355,6 +371,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 			// Setup: proposed rm entry targeting that file
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "rm://50",
 				body: "",
@@ -365,6 +382,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 			// Resolve: accept the rm
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				path: "rm://50",
 				state: "resolved",
 				body: "",
@@ -387,6 +405,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 			// Setup: file exists
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "src/survivor.js",
 				body: "alive",
@@ -396,6 +415,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 			// Setup: proposed rm
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				path: "rm://51",
 				body: "",
@@ -406,6 +426,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 			// Resolve: reject
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				path: "rm://51",
 				state: "failed",
 				body: "rejected",
@@ -427,6 +448,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 				() =>
 					store.set({
 						runId: RUN_ID,
+						loopId: LOOP_ID,
 						turn: 0,
 						path: "bad.js",
 						body: "",
@@ -441,6 +463,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 				() =>
 					store.set({
 						runId: RUN_ID,
+						loopId: LOOP_ID,
 						turn: 0,
 						path: "known://bad",
 						body: "",
@@ -455,6 +478,7 @@ describe("Entries integration (@known_store, @schema, @upsert_semantics, @known_
 				() =>
 					store.set({
 						runId: RUN_ID,
+						loopId: LOOP_ID,
 						turn: 0,
 						path: "set://999",
 						body: "",

@@ -76,13 +76,13 @@ export default class Set {
 	}
 
 	async #materializeFile(ctx) {
-		const { attrs, runId, projectId, projectRoot, db, entries } = ctx;
+		const { attrs, runId, projectId, projectRoot, db, entries, loopId, turn } =
+			ctx;
 		if (!attrs?.path || attrs?.patched == null) return;
 
 		const existing = await entries.getBody(runId, attrs.path);
 		const isNewFile = existing === null;
 		const patched = attrs.patched;
-		const turn = (await db.get_run_by_id.get({ id: runId })).next_turn;
 		// Visibility precedence: explicit attr > existing state > scheme default.
 		// Visibility precedence: archive/index booleans → attrs.visibility
 		// (set by upstream cp/mv which already resolved the model's
@@ -95,6 +95,7 @@ export default class Set {
 				: attrs.visibility || existingState?.visibility;
 		await entries.set({
 			runId,
+			loopId,
 			turn,
 			path: attrs.path,
 			body: patched,
@@ -326,8 +327,10 @@ export default class Set {
 			const scheme = Entries.scheme(target);
 			if (scheme === null) {
 				// File write: proposed entry; #materializeFile writes to disk on accept.
-				// Log body is udiff (canonical change material); attrs.emission
-				// preserves the model's verbatim emission for forensic just-in-case.
+				// Log body = model's verbatim emission (model audit / log tape).
+				// attrs.patch = udiff (precomputed projection for client diff
+				// rendering — rummy.nvim and other UI consumers read this).
+				// attrs.patched = full new content (materializer reads on accept).
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
@@ -337,11 +340,11 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: udiff,
+					body: attrs.inner,
 					state: "proposed",
 					attributes: {
 						path: target,
-						emission: attrs.inner,
+						patch: udiff,
 						patched: newContent,
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
@@ -379,9 +382,9 @@ export default class Set {
 				);
 			} else {
 				// Scheme write (known://, unknown://, etc.): the underlying
-				// entry resolves directly. Log body is udiff; attrs.emission
-				// preserves the model's verbatim emission for forensic
-				// just-in-case.
+				// entry resolves directly. Log body = model's verbatim
+				// emission. attrs.patch = udiff projection for client-side
+				// diff rendering.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
@@ -402,12 +405,12 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: udiff,
+					body: attrs.inner,
 					state: "resolved",
 					loopId,
 					attributes: {
 						path: target,
-						emission: attrs.inner,
+						patch: udiff,
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,

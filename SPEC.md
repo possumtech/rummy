@@ -105,16 +105,24 @@ Every scheme declares `writable_by` as a subset of `{system, plugin,
 client, model}`. A write from an identity outside that subset rejects
 with state=failed, outcome="permission:403".
 
-### Runs Are Entries {#runs_are_entries}
+### Run Lifecycle: Entry-Grammar Interface, Runs-Table Storage {#runs_are_entries}
 
-Starting a run is not a separate API — it is a `set` to
-`run://{alias}` with a prompt body and attributes carrying model,
-restrictions, and resolution strategy. A run plugin observes `run://`
-entry writes and starts the turn loop. Cancelling is a state
-transition to `cancelled` on the same path. Resolving a proposed entry
-is a state transition on that entry's path.
+Starting a run is not a separate API — the client calls `set
+run://{alias}` with a prompt body and attributes carrying model,
+mode, and resolution strategy. The lifecycle API surface is the
+entry grammar: cancelling is `set run://{alias} state=cancelled`,
+resolving a proposed run is a state transition on the same path.
 
-The lifecycle API is the entry grammar. No parallel verb set.
+**Internal representation:** runs are NOT projected through
+`entries` / `run_views`. The RPC `set run://*` handler dispatches to
+`runs`-table mutations directly. Run lifecycle state, prompt, model,
+and attributes live as columns on `runs` (see [run_state_separation]).
+`run_views` is strictly per-loop — no row exists for the run itself.
+
+This is a paradigmatic refinement: the entry-grammar API surface is
+preserved (clients see one verb set), but runs aren't content
+addressable by `(scope, path)` — they ARE the run, not a projection
+of one.
 
 ### Events & Filters {#events_and_filters}
 
@@ -255,20 +263,20 @@ Every entry plays one of two roles:
 | Role | Category | Section | Description |
 |------|----------|---------|-------------|
 | **Data** | `data` | `<index>` | Catalog entries the model works with — knowns, unknowns, files, streams, URLs, prompts. Tile body per scheme: knowns/unknowns show full body; files (default) empty; streams a tail preview; URLs title+description. Stable schemes first, volatile (sh/env) sort to bottom for cache. |
-| **Logging** | `logging` | `<log>` | Time-ordered activity tape — action recaps, errors, retrievals, prompts. Slim by default (JSON envelope only); body present for `<set>` (unified udiff; `attrs.emission` preserves verbatim), `<get>` (retrieved content), `<search>`, `<error>`, `<update>`, `<prompt>` (≤500-char preview). |
+| **Logging** | `logging` | `<log>` | Time-ordered activity tape — action recaps, errors, retrievals, prompts. Slim by default (JSON envelope only); body present for `<set>` (verbatim model emission), `<get>` (retrieved content), `<search>`, `<error>`, `<update>`, `<prompt>` (≤500-char preview). |
 
 `logging` is the default category. Plugins opt into `data` explicitly.
 
 | Scheme | Category | `writable_by` | Description |
 |--------|----------|---------------|-------------|
-| `NULL` (bare path) | data | `model, plugin` | File content. JOINs via `COALESCE(scheme, 'file')`. |
+| `NULL` (bare path) | data | `model, plugin` | File content. JOINs via `COALESCE(scheme, 'file')`. Default visibility: `indexed` — every project file gets its own symbol-bearing tile in `<index>` at run init. |
 | `known://` | data | `model, plugin` | Model-registered knowledge. One fact per entry. Full-body tile in `<index>`. |
 | `unknown://` | data | `model, plugin` | Unresolved questions. Full-body tile in `<index>`. |
 | `skill://` | data | `model, plugin` | Skill docs. |
 | `http://`, `https://` | data | `model, plugin` | Web content. rummy.web overrides view with title+meta+description tile. |
 | `sh://`, `env://` | data (volatile) | `model, plugin` | Streaming-producer payload — stdout/stderr channel entries. Volatile: sort to bottom of `<index>`. **Channels only**; the action audit record lives in `log://`. See [scheme_category_split](#scheme_category_split). |
 | `prompt://` | data | `plugin` | User prompt. Written by prompt plugin (model can't `<set>` body). Default `visibility=archived` — model `<get>`s for full body or `<set index/>` to pin in `<index>`. |
-| `repo://` | data | `plugin` | Project manifest (`repo://manifest`). Engine-maintained, refreshed every scan. Model writes raise `PermissionError`. |
+| `repo://` | data | `plugin` | Project manifest (`repo://manifest`). Engine-maintained, refreshed every scan. Tile body renders empty in `<index>` (envelope only); full inventory retrievable via `<get>`. Model writes raise `PermissionError`. See [project_manifest]. |
 | `log://` | logging | `system, plugin, model` | Unified activity tape namespace for all tool actions and prompts. One entry per action at `log://<L>/<T>/<S>/<action>` (`L`=loop sequence, `T`=per-loop turn, `S`=per-turn sequence). |
 | `update://` | logging | `model, plugin` | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
 | `error://` | logging | `model, plugin` | Runtime errors — policy rejection, budget overflow (status 413), dispatch crashes, protocol violations. Unified channel via `hooks.error.log.emit`. |
@@ -362,6 +370,41 @@ name can access any run. Temperature, persona, and context_limit are per-run.
 **Models** are bootstrapped from `RUMMY_MODEL_*` env vars at startup (upsert).
 Clients can add/remove models at runtime via RPC. No default model — the
 client picks for every run.
+
+### Run State Lives on `runs` {#run_state_separation}
+
+Run-level lifecycle (queued / running / completed / failed / aborted)
+lives exclusively on the `runs` table:
+- `runs.status` — HTTP integer state code
+- `runs.outcome` — short failure-reason string (NULL for non-failed states)
+
+The `run_views` table is strictly the **per-loop projection** of
+entries: every row has `loop_id NOT NULL`. There is no `run_views`
+row for the run itself — runs aren't projections of an entry, they
+ARE the run.
+
+**Why the separation:** before this contract, `run://<alias>` entries
+projected through `run_views` with `loop_id = NULL` (the run exists
+across loops). That nullability bled into every per-loop write — the
+DB couldn't enforce "every model-facing entry knows its loop" without
+allowing the runs themselves through the same gate. Lifting run-level
+state to `runs` lets `run_views.loop_id` be `NOT NULL`, which is the
+real invariant the system wants.
+
+**Consequences:**
+- `run://<alias>` is NOT stored in `entries` or `run_views`. It is
+  exclusively a `runs`-table row (`runs.status`, `runs.outcome`,
+  `runs.prompt`, etc.).
+- `Entries.set` rejects `run://*` paths (the entry grammar's scheme
+  surface for runs routes elsewhere). The RPC dispatcher
+  (`rpc.js#dispatchRunSet`) handles all `set run://*` calls by
+  mutating `runs` directly.
+- `AgentLoop`'s state-update writes target `runs` via dedicated
+  preps (`set_run_state(runId, status, outcome)`), never
+  `entries.set`.
+- The RPC `set run://<alias>` lifecycle interface is unchanged from
+  the client's perspective — it still starts/resolves/cancels runs.
+  Server-side dispatch routes to runs-table mutations.
 
 ### Run State Machine {#run_state_machine}
 
@@ -697,53 +740,79 @@ on `proposal.pending`. Feature logic stays in
 
 ### Project Manifest {#project_manifest}
 
-The `rummy.repo` plugin maintains `repo://manifest` — a flat catalog
-of every project file with its token cost. It gives the model
-orientation at run start; the entry is plugin-only (model writes to
-`repo://` raise `PermissionError` → strike). Files themselves default
-to `archived` so a 5000-file repo doesn't dump hundreds of thousands
-of tokens into context before any work happens.
+**Files are the primary inventory; `repo://manifest` is the
+compaction lifeline.** Each project file gets its own symbol-bearing
+catalog tile in `<index>` at run init. The manifest is the
+always-accessible record of what files exist — used when the model
+archives files (its own choice) or when turn-0 budget pressure forces
+the engine to compact `<index>` (see [turn_zero_budget_gate]).
 
 **Entry contract.**
 
 - Path: `repo://manifest` (project-scope scheme owned by rummy.repo;
-  `writable_by: ["plugin"]`).
-- Visibility: `indexed` at write; archivable like any data entry.
-- Body: rollup section + `---` delimiter + flat file list. Each row is
-  one JSON object per line (`{"path":"...","tokens":N}`) — same shape
-  as the meta envelope on log entries so the model parses with one
-  primitive. Rollup rows aggregate by directory (path ends in `/`);
-  flat rows are per-file. Sorted alphabetically.
+  `writable_by: ["plugin"]`; model writes raise `PermissionError`).
+- Visibility: `indexed` at write — the tile is always present.
+- Tile rendering in `<index>`: **empty body**. Envelope only (path +
+  token cost). Inventory of record retrieved by `<get
+  repo://manifest>`.
+- Stored body: rollup section + `---` delimiter + flat file list.
+  Each row is one JSON object per line (`{"path":"...","tokens":N,
+  "lines":M}`) — same shape as the meta envelope on log entries so
+  the model parses with one primitive. Rollup rows aggregate by
+  directory (path ends in `/`); flat rows are per-file. Sorted
+  alphabetically.
+- Contents: project **files only**. Model-authored runtime artifacts
+  (`known://`, `unknown://`) are NOT in the manifest — they're the
+  model's authored state, not project state.
 
-**Live, not snapshot.** The scanner rewrites the manifest every scan;
-files added or removed during the run become visible to the model on
-next scan. Authoritative current per-file content lives in bare-path
-entries (mtime/hash-driven, change-only writes); discrete
-file-mutation log entries (see [file_freshness]) report individual
-diffs as they happen.
+**Live, not snapshot.** The scanner rewrites the manifest every scan
+so the inventory stays current — files added or removed during the
+run become visible to the model on the next scan. Authoritative
+current per-file content lives in bare-path entries (mtime/hash-
+driven, change-only writes); discrete file-mutation log entries (see
+[file_freshness]) report individual diffs as they happen.
 
 **File default visibility.**
 
-`FileScanner` registers each tracked file at `archived` by default.
-The model uses the manifest to discover paths, then `<get path=...>`
-brings the full content into `<log>` and greedily re-indexes the file
-in `<index>`.
+`FileScanner` registers each tracked file at `indexed` by default.
+Every project file becomes a symbol-bearing tile in `<index>` at run
+init. The model gets rich, native orientation from the start; the
+manifest is reserved for compaction.
+
+### Turn-0 Budget Gate {#turn_zero_budget_gate}
+
+At run init the assembler builds the turn-0 packet with all project
+files indexed (per default visibility). For most projects this
+fits. For projects whose tile set genuinely overshoots the context
+ceiling, the engine applies a single invariant:
+
+**If turn-0 assembly exceeds ceiling: archive every `<index>` tile
+except `repo://manifest`; reassemble.**
+
+No priority heuristics, no size-based sorting. The manifest preserves
+the inventory; the model on turn 1 sees `<prompt>` + the manifest
+tile and `<get>`s files it needs. The model owns visibility from
+turn 1 onward.
+
+This gate runs only at turn 0. After that the existing budget
+machinery (replay grinder, hard-413) carries the load — by then the
+model has acted and there are fat replays to reclaim.
 
 **Phase 3 — filesystem-mutation log injection {#file_freshness}.**
 Engine-mediated state changes the model didn't author surface as
-synthetic log entries — same body shape as model-authored `<set>`
-log entries (unified udiff via `hedberg.generatePatch`):
+synthetic log entries written in the model's own command grammar:
 
 - File appeared on disk between scans → `log://<L>/<T>/<S>/set` with
-  udiff body (full content as `+` lines against empty `-`).
-- File modified on disk → `log://<L>/<T>/<S>/set` with udiff body (one
-  hunk per locality of change).
+  empty SEARCH and full REPLACE body.
+- File modified on disk → `log://<L>/<T>/<S>/set` with one
+  SEARCH/REPLACE pair per diff hunk in the body.
 - File removed from disk → `log://<L>/<T>/<S>/rm`, empty body,
   followed by the actual entry removal.
 
 `attrs.external = true` distinguishes engine-injected entries from
-model emissions. The bootstrap scan (no prior file entries) does NOT
-inject — every file is baseline, not delta.
+model emissions; `attrs.patch` carries the udiff projection for
+client renderers (rummy.nvim). The bootstrap scan (no prior file
+entries) does NOT inject — every file is baseline, not delta.
 
 **Disabled when noRepo.** Setting `noRepo: true` on a run skips the
 scan entirely; no manifest is created and no file entries are

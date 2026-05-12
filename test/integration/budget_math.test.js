@@ -66,6 +66,7 @@ describe("Budget math", () => {
 			const body = pad(50);
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 1,
 				path: "known://full_entry",
 				body,
@@ -74,6 +75,7 @@ describe("Budget math", () => {
 			});
 			await materialize(tdb.db, {
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				systemPrompt: "test",
 			});
@@ -90,6 +92,7 @@ describe("Budget math", () => {
 			const body = pad(200);
 			await store.set({
 				runId: RUN_ID,
+				loopId,
 				turn: 1,
 				path: "test_file.js",
 				body,
@@ -98,6 +101,7 @@ describe("Budget math", () => {
 			});
 			await materialize(tdb.db, {
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: 1,
 				systemPrompt: "test",
 			});
@@ -116,12 +120,14 @@ describe("Budget math", () => {
 
 	describe("budget enforcement accuracy", () => {
 		it("budget enforce measures assembled messages, not stored tokens", async () => {
-			const { runId } = await tdb.seedRun({ alias: "math_enforce" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "math_enforce" });
 
 			// Create a large entry at archive — should NOT count toward budget
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: "big_archive_file.js",
 				body: pad(500),
 				state: "resolved",
@@ -130,7 +136,9 @@ describe("Budget math", () => {
 			// Create a small entry at full — should count
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: "known://small",
 				body: "tiny fact",
 				state: "resolved",
@@ -139,6 +147,7 @@ describe("Budget math", () => {
 
 			await materialize(tdb.db, {
 				runId,
+				loopId,
 				turn: 1,
 				systemPrompt: "test",
 			});
@@ -179,12 +188,14 @@ describe("Budget math", () => {
 		});
 
 		it("enforce measures assembled tokens from messages when lastPromptTokens is 0", async () => {
-			const { runId } = await tdb.seedRun({ alias: "math_postdispatch" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "math_postdispatch" });
 
 			// Simulate: entries exist from dispatch (promoted files)
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: "known://big",
 				body: pad(100),
 				state: "resolved",
@@ -193,6 +204,7 @@ describe("Budget math", () => {
 
 			await materialize(tdb.db, {
 				runId,
+				loopId,
 				turn: 1,
 				systemPrompt: "test",
 			});
@@ -232,13 +244,15 @@ describe("Budget math", () => {
 
 	describe("token column semantics", () => {
 		it("known_entries.tokens always reflects full body cost", async () => {
-			const { runId } = await tdb.seedRun({ alias: "math_ke" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "math_ke" });
 			const body = pad(100);
 			const expectedTokens = countTokens(body);
 
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: "known://fact",
 				body,
 				state: "resolved",
@@ -251,6 +265,7 @@ describe("Budget math", () => {
 			// Archive — tokens should NOT change
 			await store.set({
 				runId: runId,
+				loopId,
 				path: "known://fact",
 				visibility: "archived",
 			});
@@ -274,13 +289,15 @@ describe("Budget math", () => {
 		});
 
 		it("turn_context excludes archived entries", async () => {
-			const { runId } = await tdb.seedRun({ alias: "math_tc" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "math_tc" });
 			const body = pad(100);
 
 			// Entry at full
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: "known://tc_test",
 				body,
 				state: "resolved",
@@ -288,6 +305,7 @@ describe("Budget math", () => {
 			});
 			await materialize(tdb.db, {
 				runId,
+				loopId,
 				turn: 1,
 				systemPrompt: "test",
 			});
@@ -301,11 +319,13 @@ describe("Budget math", () => {
 			// Archive — should disappear from turn_context
 			await store.set({
 				runId: runId,
+				loopId,
 				path: "known://tc_test",
 				visibility: "archived",
 			});
 			await materialize(tdb.db, {
 				runId,
+				loopId,
 				turn: 2,
 				systemPrompt: "test",
 			});
@@ -333,7 +353,9 @@ describe("Budget math", () => {
 				fatBodies.push(body);
 				await store.set({
 					runId,
+					loopId,
 					turn: 0,
+					loopId,
 					path: `log://1/0/${i + 1}/get`,
 					body,
 					state: "resolved",
@@ -344,6 +366,7 @@ describe("Budget math", () => {
 			// candidates come from the rows it received, not from DB.
 			await materialize(tdb.db, {
 				runId,
+				loopId,
 				turn: 1,
 				systemPrompt: "test",
 			});

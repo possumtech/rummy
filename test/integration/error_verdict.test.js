@@ -354,6 +354,7 @@ describe("error verdict (@response_healing)", () => {
 		const path = "log://1/1/1/set";
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: 1,
 			path,
 			body: "target invalid",
@@ -426,6 +427,7 @@ describe("error verdict (@response_healing)", () => {
 			const path = `log://turn_${i + 1}/set/bad_${i}`;
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: i + 1,
 				path,
 				body: `bad payload ${i}`,

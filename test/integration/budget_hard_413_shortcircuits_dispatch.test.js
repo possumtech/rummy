@@ -55,6 +55,7 @@ describe("Budget hard 413 short-circuits dispatch (@budget_enforcement)", () => 
 		// (huge) current packet exists. Grinder has nothing to reclaim.
 		await materialize(tdb.db, {
 			runId,
+			loopId,
 			turn: 1,
 			systemPrompt: "test",
 		});

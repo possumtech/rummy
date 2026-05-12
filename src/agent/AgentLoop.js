@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import Entries from "./Entries.js";
 import msg from "./messages.js";
 
 const DEFAULT_PERSONA_PATH = join(
@@ -87,46 +88,14 @@ export default class AgentLoop {
 		});
 	}
 
-	async #setRunStatus(runId, alias, httpStatus) {
-		await this.#db.update_run_status.run({ id: runId, status: httpStatus });
-		const state = HTTP_TO_RUN_STATE[httpStatus];
-		if (!state) return;
-		await this.#entries.set({
-			runId,
-			path: `run://${alias}`,
-			state,
-			writer: "system",
-		});
-	}
-
-	async #writeRunEntry(
-		runId,
-		alias,
-		prompt,
-		{
-			projectId,
-			parentRunId,
-			model,
-			persona = null,
-			temperature = null,
-			contextLimit = null,
-		},
-	) {
-		await this.#entries.set({
-			runId,
-			turn: 0,
-			path: `run://${alias}`,
-			body: prompt ? prompt : "",
-			state: "proposed",
-			attributes: {
-				projectId,
-				parentRunId,
-				model,
-				persona,
-				temperature,
-				contextLimit,
-			},
-			writer: "system",
+	async #setRunStatus(runId, _alias, httpStatus, outcome = null) {
+		// Run-level lifecycle lives on runs.status / runs.outcome. The
+		// run:// surface is no longer projected through entries; this
+		// write goes directly to the runs table.
+		await this.#db.set_run_state.run({
+			id: runId,
+			status: httpStatus,
+			outcome,
 		});
 	}
 
@@ -151,6 +120,7 @@ export default class AgentLoop {
 				parent_run_id: existingRun.id,
 				model: requestedModel,
 				alias,
+				prompt: prompt ? prompt : "",
 				temperature,
 				persona,
 				context_limit: contextLimit,
@@ -158,14 +128,6 @@ export default class AgentLoop {
 			await this.#entries.forkEntries(existingRun.id, runRow.id);
 			// Absolute turn numbering across the lineage; SPEC §budget_enforcement.
 			await this.#entries.setNextTurn(runRow.id, existingRun.next_turn);
-			await this.#writeRunEntry(runRow.id, alias, prompt, {
-				projectId,
-				parentRunId: existingRun.id,
-				model: requestedModel,
-				persona,
-				temperature,
-				contextLimit,
-			});
 			await this.#hooks.run.created.emit({
 				runId: runRow.id,
 				alias,
@@ -182,12 +144,24 @@ export default class AgentLoop {
 
 				const unresolved = await this.#entries.getUnresolved(existingRun.id);
 				for (const u of unresolved) {
+					const parsed = Entries.parseLogPath(u.path);
+					if (!parsed) {
+						throw new Error(
+							`stale-proposal cleanup: cannot parse loop/turn from path ${u.path}`,
+						);
+					}
+					const loopId = await this.#loopIdForSequence(
+						existingRun.id,
+						parsed.loopSequence,
+					);
 					await this.#entries.set({
 						runId: existingRun.id,
 						path: u.path,
 						state: "cancelled",
 						body: "Stale proposal from interrupted run",
 						outcome: "interrupted",
+						loopId,
+						turn: parsed.turn,
 					});
 				}
 				return { runId: existingRun.id, alias: existingRun.alias };
@@ -200,20 +174,36 @@ export default class AgentLoop {
 			parent_run_id: null,
 			model: requestedModel,
 			alias,
+			prompt: prompt ? prompt : "",
 			temperature,
 			persona,
 			context_limit: contextLimit,
 		});
-		await this.#writeRunEntry(runRow.id, alias, prompt, {
-			projectId,
-			parentRunId: null,
-			model: requestedModel,
-			persona,
-			temperature,
-			contextLimit,
-		});
 		await this.#hooks.run.created.emit({ runId: runRow.id, alias });
 		return { runId: runRow.id, alias };
+	}
+
+	// Resolve a `(run_id, loop_sequence)` pair to the loop's row id.
+	// Used by callers that hold a `log://<L>/<T>/<S>/<action>` path
+	// and need the loop_id for downstream writes. Hard-fail if the
+	// loop doesn't exist — that's a contract violation, not a missing
+	// data case.
+	async #loopIdForSequence(runId, loopSequence) {
+		if (loopSequence == null) {
+			throw new Error(
+				`loopIdForSequence: loopSequence is required (runId=${runId})`,
+			);
+		}
+		const row = await this.#db.get_loop_by_sequence.get({
+			run_id: runId,
+			sequence: loopSequence,
+		});
+		if (!row) {
+			throw new Error(
+				`loopIdForSequence: no loop sequence=${loopSequence} for run=${runId}`,
+			);
+		}
+		return row.id;
 	}
 
 	async run(
@@ -592,6 +582,18 @@ export default class AgentLoop {
 			throw new Error(msg("error.resolution_invalid", { action }));
 		}
 
+		// Derive loop/turn from the proposal path's `log://<L>/<T>/...`
+		// shape. Hard-fail if the path doesn't match — caller is
+		// resolving something that isn't a log entry, which is a
+		// contract violation.
+		const parsed = Entries.parseLogPath(path);
+		if (!parsed) {
+			throw new Error(
+				`resolve: path must be log://<L>/<T>/<S>/<action>; got ${path}`,
+			);
+		}
+		const loopId = await this.#loopIdForSequence(runId, parsed.loopSequence);
+
 		if (action === "reject") {
 			await this.#entries.set({
 				runId,
@@ -599,6 +601,8 @@ export default class AgentLoop {
 				state: "failed",
 				body: output ? output : "rejected",
 				outcome: "permission",
+				loopId,
+				turn: parsed.turn,
 			});
 			await this.#hooks.proposal.rejected.emit({
 				runId,
@@ -624,6 +628,11 @@ export default class AgentLoop {
 			path,
 			attrs,
 			output,
+			// loopId + turn from the proposal path so proposal.accepted
+			// subscribers (set.js#materializeFile, etc.) can thread them
+			// into their own entries.set writes.
+			loopId,
+			turn: parsed.turn,
 			db: this.#db,
 			entries: this.#entries,
 		};
@@ -638,6 +647,8 @@ export default class AgentLoop {
 					state: "failed",
 					outcome: veto.outcome,
 					body: veto.body,
+					loopId,
+					turn: parsed.turn,
 				});
 				return { ok: true, state: "failed", outcome: veto.outcome };
 			}
@@ -651,11 +662,10 @@ export default class AgentLoop {
 		);
 		const state = action === "error" ? "failed" : "resolved";
 		const outcome = action === "error" ? "error" : null;
-		const existing = await this.#entries.getState(runId, path);
-		const existingTurn = existing?.turn === undefined ? 0 : existing.turn;
 		await this.#entries.set({
 			runId,
-			turn: existingTurn,
+			turn: parsed.turn,
+			loopId,
 			path,
 			state,
 			body: resolvedBody,

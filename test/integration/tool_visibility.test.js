@@ -30,6 +30,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
 		LOOP_ID = seed.loopId;
+		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {
@@ -56,6 +57,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 		for (const { name: scheme, status } of contentSchemes) {
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: TURN,
 				path: `${scheme}://${scheme}_test`,
 				body: `${MARKER}_${scheme}`,
@@ -67,6 +69,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 		// Also insert user prompt so engine has something to work with
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: `prompt://${TURN}`,
 			body: "test question",
@@ -77,6 +80,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 		// Materialize turn_context
 		await materialize(tdb.db, {
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			systemPrompt: "test",
 		});
@@ -123,6 +127,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 			const path = await store.logPath(RUN_ID, LOOP_ID, TURN, action);
 			await store.set({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
 				turn: TURN,
 				path,
 				body: `${MARKER}_${action}`,
@@ -133,6 +138,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: `prompt://${TURN}`,
 			body: "test question",
@@ -142,6 +148,7 @@ describe("Tool visibility: v_model_context content projection", () => {
 
 		await materialize(tdb.db, {
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			systemPrompt: "test",
 		});

@@ -84,11 +84,13 @@ describe("plugin registration (@plugin_system, @plugin_convention, @scheme_regis
 		});
 
 		it("registerScheme creates DB rows visible in views", async () => {
-			const { runId } = await tdb.seedRun({ alias: "scheme_registry_1" });
+			const { runId, loopId } = await tdb.seedRun({ alias: "scheme_registry_1" });
 			const store = new Entries(tdb.db);
 			await store.set({
 				runId,
+				loopId,
 				turn: 1,
+				loopId,
 				path: "known://scheme_test",
 				body: "test",
 				state: "resolved",

@@ -22,10 +22,10 @@ export default class AskUser {
 		const m = LOG_ACTION_RE.exec(ctx.path);
 		if (m?.[1] !== "ask_user") return;
 		if (!ctx.output) return;
-		const turn = (await ctx.db.get_run_by_id.get({ id: ctx.runId })).next_turn;
 		await ctx.entries.set({
 			runId: ctx.runId,
-			turn,
+			loopId: ctx.loopId,
+			turn: ctx.turn,
 			path: ctx.path,
 			attributes: { ...ctx.attrs, answer: ctx.output },
 		});

@@ -32,6 +32,7 @@ const TURN = 1;
 async function assembleMessages(tdb, _store) {
 	await materialize(tdb.db, {
 		runId: RUN_ID,
+		loopId: LOOP_ID,
 		turn: TURN,
 		systemPrompt: "You are a test assistant.",
 	});
@@ -64,6 +65,7 @@ describe("Message assembly", () => {
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun();
 		RUN_ID = seed.runId;
+		LOOP_ID = seed.loopId;
 	});
 
 	after(async () => {
@@ -74,6 +76,7 @@ describe("Message assembly", () => {
 		// Warn lives on <turn> per S11 (not <prompt>).
 		await materialize(tdb.db, {
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			systemPrompt: "You are a test assistant.",
 		});
@@ -106,6 +109,7 @@ describe("Message assembly", () => {
 	it("act mode: <turn> rendered without warn", async () => {
 		await materialize(tdb.db, {
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			systemPrompt: "You are a test assistant.",
 		});
@@ -135,6 +139,7 @@ describe("Message assembly", () => {
 	it("pattern result appears in messages with matched paths", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "src/app.js",
 			body: "const x = 1;",
@@ -142,6 +147,7 @@ describe("Message assembly", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "src/utils.js",
 			body: "const y = 2;",
@@ -149,6 +155,7 @@ describe("Message assembly", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "log://1/1/1/get",
 			body: 'get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
@@ -176,6 +183,7 @@ describe("Message assembly", () => {
 		).default;
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "known://big_fact",
 			body: Array(2000).fill("xxx").join(" "),
@@ -247,6 +255,7 @@ describe("Message assembly", () => {
 	it("manifest result shows MANIFEST prefix", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "log://1/1/2/get",
 			body: 'MANIFEST get path="src/*.js": 2 matched (100 tokens)\nsrc/app.js (50)\nsrc/utils.js (50)',
@@ -263,6 +272,7 @@ describe("Message assembly", () => {
 	it("tool result content is visible (not blank)", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "log://1/1/3/search",
 			body: "10 results for test",
@@ -270,6 +280,7 @@ describe("Message assembly", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "log://1/1/4/env",
 			body: "<env>node --version</env>",
@@ -277,6 +288,7 @@ describe("Message assembly", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "log://1/1/5/rm",
 			body: "rm src/old.js",
@@ -284,6 +296,7 @@ describe("Message assembly", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "log://1/1/6/mv",
 			body: "mv known://a known://b",
@@ -291,6 +304,7 @@ describe("Message assembly", () => {
 		});
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "log://1/1/7/cp",
 			body: "cp known://x known://y",
@@ -315,6 +329,7 @@ describe("Message assembly", () => {
 	it("structural entries (update) appear in <log>", async () => {
 		await store.set({
 			runId: RUN_ID,
+			loopId: LOOP_ID,
 			turn: TURN,
 			path: "log://1/1/8/update",
 			body: "The answer is 42",
