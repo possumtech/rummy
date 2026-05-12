@@ -12,6 +12,7 @@ function stubCore() {
 
 function makeStore({ bodies = {}, attributes = {} } = {}) {
 	const calls = [];
+	let seq = 0;
 	return {
 		_calls: calls,
 		async set(args) {
@@ -22,6 +23,10 @@ function makeStore({ bodies = {}, attributes = {} } = {}) {
 		},
 		async getAttributes(_runId, path) {
 			return path in attributes ? attributes[path] : null;
+		},
+		async logPath(_runId, _loopId, turn, action) {
+			seq += 1;
+			return `log://1/${turn}/${seq}/${action}`;
 		},
 	};
 }
@@ -36,8 +41,13 @@ describe("Cp", () => {
 		assert.equal(result, '<cp path="a">b</cp>');
 	});
 
-	describe("handler — bare-file destination materialization", () => {
-		it("emits proposed entry with attrs.path + attrs.patched for shared materializer", async () => {
+	describe("handler — bare-file destination decomposition", () => {
+		// cp to a bare path decomposes into (a) a resolved cp recap
+		// (model audit) at log://*/cp and (b) a set proposal at a
+		// fresh log://*/set path. The wire surface the client renders
+		// against is the set proposal — same shape as a direct
+		// `<set path="X">...` from the model.
+		it("emits resolved cp recap + a set proposal with set-shape attrs", async () => {
 			const plugin = new Cp(stubCore());
 			const store = makeStore({
 				bodies: { "https://x.example/page": "fetched body content" },
@@ -45,22 +55,40 @@ describe("Cp", () => {
 			await plugin.handler(
 				{
 					attributes: { path: "https://x.example/page", to: "src/out.c" },
-					resultPath: "log://turn_1/cp/x",
+					resultPath: "log://1/1/1/cp",
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const proposal = store._calls.find((c) => c.path === "log://turn_1/cp/x");
-			assert.ok(proposal);
-			assert.equal(proposal.state, "proposed");
+			const recap = store._calls.find((c) => c.path === "log://1/1/1/cp");
+			const proposal = store._calls.find(
+				(c) =>
+					c.state === "proposed" && typeof c.path === "string" && /\/set$/.test(c.path),
+			);
+			assert.ok(recap, "cp recap entry written");
+			assert.equal(recap.state, "resolved", "recap is resolved, not proposed");
+			assert.equal(recap.attributes.from, "https://x.example/page");
+			assert.equal(recap.attributes.to, "src/out.c");
+			assert.equal(recap.attributes.isMove, false);
+
+			assert.ok(proposal, "set proposal emitted alongside recap");
 			assert.equal(proposal.attributes.path, "src/out.c");
 			assert.equal(
 				proposal.attributes.patched,
 				"fetched body content",
-				"patched carries the source body",
+				"patched carries the source body for the materializer",
 			);
+			assert.ok(
+				proposal.attributes.patch?.startsWith("==="),
+				"set proposal carries attrs.patch (udiff) — uniform set-shape wire surface",
+			);
+			assert.equal(proposal.attributes.op, "new");
+			// cp's wire shape on the proposal must not leak cp-specific
+			// metadata clients would render differently:
+			assert.equal(proposal.attributes.from, undefined);
+			assert.equal(proposal.attributes.isMove, undefined);
 		});
 
-		it("when destination already exists, patched holds the source body that overwrites", async () => {
+		it("destination already exists: patch shows the diff, proposal still set-shaped", async () => {
 			const plugin = new Cp(stubCore());
 			const store = makeStore({
 				bodies: {
@@ -71,29 +99,19 @@ describe("Cp", () => {
 			await plugin.handler(
 				{
 					attributes: { path: "https://x.example/page", to: "src/out.c" },
-					resultPath: "log://turn_1/cp/x",
+					resultPath: "log://1/1/1/cp",
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
-			const proposal = store._calls.find((c) => c.path === "log://turn_1/cp/x");
+			const proposal = store._calls.find(
+				(c) =>
+					c.state === "proposed" && typeof c.path === "string" && /\/set$/.test(c.path),
+			);
 			assert.equal(proposal.attributes.patched, "new");
-			assert.match(proposal.attributes.warning, /Overwrote/);
-		});
-
-		it("preserves existing from/to/isMove attrs alongside path/patched", async () => {
-			const plugin = new Cp(stubCore());
-			const store = makeStore({ bodies: { "src/a": "content" } });
-			await plugin.handler(
-				{
-					attributes: { path: "src/a", to: "src/b" },
-					resultPath: "log://turn_1/cp/x",
-				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
-			);
-			const proposal = store._calls.find((c) => c.path === "log://turn_1/cp/x");
-			assert.equal(proposal.attributes.from, "src/a");
-			assert.equal(proposal.attributes.to, "src/b");
-			assert.equal(proposal.attributes.isMove, false);
+			assert.match(proposal.attributes.patch, /-old/);
+			assert.match(proposal.attributes.patch, /\+new/);
+			const recap = store._calls.find((c) => c.path === "log://1/1/1/cp");
+			assert.match(recap.attributes.warning, /Overwrote/);
 		});
 	});
 

@@ -1,5 +1,6 @@
 import Entries from "../../agent/Entries.js";
-import { countTokens } from "../../agent/tokens.js";
+import { generatePatch } from "../../lib/hedberg/matcher.js";
+import { countLines, countTokens } from "../../agent/tokens.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./mvDoc.js";
 
@@ -29,11 +30,71 @@ export default class Mv {
 		core.on("proposal.accepted", this.#onAccepted.bind(this));
 	}
 
+	// mv source removal: atomic on set acceptance. The user's single
+	// accept on the destination set proposal IS the move agreement;
+	// no second prompt for cleanup. Linkage: mv's resolved recap (at
+	// log://.../mv) carries `attrs.setProposal` = path of the spawned
+	// set proposal. On any proposal.accepted, mv scans for a recap
+	// whose setProposal matches the accepted path; if found, perform
+	// the source removal (entries.rm + filesystem unlink for bare
+	// sources) and emit a resolved /rm log entry for audit.
 	async #onAccepted(ctx) {
-		const m = LOG_ACTION_RE.exec(ctx.path);
-		if (m?.[1] !== "mv") return;
-		if (!ctx.attrs?.isMove || !ctx.attrs?.from) return;
-		await ctx.entries.rm({ runId: ctx.runId, path: ctx.attrs.from });
+		const acceptedPath = ctx.path;
+		const setMatch = LOG_ACTION_RE.exec(acceptedPath);
+		if (setMatch?.[1] !== "set") return;
+		const recaps = await ctx.entries.getEntriesByPattern(
+			ctx.runId,
+			"log://*",
+		);
+		const recap = recaps.find((r) => {
+			if (LOG_ACTION_RE.exec(r.path)?.[1] !== "mv") return false;
+			const attrs =
+				typeof r.attributes === "string"
+					? JSON.parse(r.attributes)
+					: r.attributes;
+			return attrs?.setProposal === acceptedPath;
+		});
+		if (!recap) return;
+		const recapAttrs =
+			typeof recap.attributes === "string"
+				? JSON.parse(recap.attributes)
+				: recap.attributes;
+		const source = recapAttrs.from;
+		if (!source) return;
+		await ctx.entries.rm({ runId: ctx.runId, path: source });
+		// Bare-path source: unlink from filesystem too. Schemed sources
+		// (known://, etc.) are scratchpad-only — entries.rm is the
+		// whole cleanup.
+		if (ctx.projectRoot && !source.includes("://")) {
+			const { unlink } = await import("node:fs/promises");
+			const { isAbsolute, join } = await import("node:path");
+			const targetPath = isAbsolute(source)
+				? source
+				: join(ctx.projectRoot, source);
+			try {
+				await unlink(targetPath);
+			} catch (err) {
+				// File may already be absent — entry rm'd regardless.
+				if (err.code !== "ENOENT") throw err;
+			}
+		}
+		// Audit: resolved /rm log entry so the model sees both halves
+		// of the mv complete in <log>.
+		const rmPath = await ctx.entries.logPath(
+			ctx.runId,
+			ctx.loopId,
+			ctx.turn,
+			"rm",
+		);
+		await ctx.entries.set({
+			runId: ctx.runId,
+			loopId: ctx.loopId,
+			turn: ctx.turn,
+			path: rmPath,
+			body: `removed ${source} (mv source)`,
+			state: "resolved",
+			attributes: { path: source, mv: recap.path },
+		});
 	}
 
 	async handler(entry, rummy) {
@@ -113,25 +174,61 @@ export default class Mv {
 		const afterTokens = sourceTokens;
 
 		if (destScheme === null) {
-			// Bare-file: hand the shared set.js materializer attrs.patched.
+			// Bare-file destination: decompose into (a) a resolved mv
+			// recap (model audit + setProposal linkage for the post-
+			// accept rm) + (b) a set proposal at destination. On set
+			// acceptance, #onAccepted matches the recap by setProposal
+			// linkage and emits an rm proposal for the source. Serial:
+			// reject the set → no rm prompt; move fails atomically.
+			const setProposalPath = await store.logPath(
+				runId,
+				loopId,
+				turn,
+				"set",
+			);
 			await store.set({
 				runId,
 				turn,
+				loopId,
 				path: entry.resultPath,
 				body: "",
-				state: "proposed",
+				state: "resolved",
 				attributes: {
 					from: path,
 					to,
 					isMove: true,
 					warning,
+					setProposal: setProposalPath,
+					beforeActionTokens: beforeTokens,
+					afterActionTokens: afterTokens,
+				},
+			});
+			const existingBody = existing == null ? "" : existing;
+			const patch = generatePatch(to, existingBody, source);
+			await store.set({
+				runId,
+				turn,
+				loopId,
+				path: setProposalPath,
+				body: "",
+				state: "proposed",
+				attributes: {
 					path: to,
+					patch,
 					patched: source,
+					op: "new",
+					opPositions: [
+						{
+							kind: "new",
+							startLine: 1,
+							lineCount: countLines(source),
+							content: source,
+						},
+					],
 					visibility,
 					beforeActionTokens: beforeTokens,
 					afterActionTokens: afterTokens,
 				},
-				loopId,
 			});
 		} else {
 			await store.set({

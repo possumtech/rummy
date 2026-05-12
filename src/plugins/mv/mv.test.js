@@ -17,11 +17,72 @@ describe("Mv", () => {
 		assert.equal(result, '<mv path="a">b</mv>');
 	});
 
-	it("schemed → bare-path: creates a proposal (not auto-resolved)", async () => {
-		// mv from known://draft to a file path is high-blast-radius (writes
-		// to disk on accept). Must route through proposal lifecycle so the
-		// client can accept/reject — never auto-resolve.
+	it("on set-proposal accept (linked by recap.setProposal): atomic source rm, no second prompt", async () => {
+		// User's accept on the destination set IS the move agreement.
+		// No second prompt for source cleanup — the post-accept hook
+		// performs the removal atomically and emits a resolved /rm log
+		// entry for audit.
 		const upserted = [];
+		const removed = [];
+		const recapPath = "log://1/3/1/mv";
+		const setPath = "log://1/3/2/set";
+		const recap = {
+			path: recapPath,
+			attributes: JSON.stringify({
+				from: "known://draft",
+				to: "deliverable.md",
+				isMove: true,
+				setProposal: setPath,
+			}),
+		};
+		const store = {
+			set: async (args) => upserted.push(args),
+			rm: async (args) => removed.push(args),
+			getEntriesByPattern: async () => [recap],
+			logPath: async () => "log://1/3/3/rm",
+		};
+		const ctx = {
+			runId: 1,
+			loopId: 1,
+			turn: 3,
+			path: setPath,
+			entries: store,
+			projectRoot: null, // schemed source — no filesystem unlink
+		};
+		// Trigger the post-accept hook directly. (proposal.accepted is the
+		// hook channel; mv subscribes in its constructor.)
+		const core = {
+			registerScheme() {},
+			on(name, fn) {
+				if (name === "proposal.accepted") core._hook = fn;
+			},
+			filter() {},
+		};
+		new Mv(core);
+		await core._hook(ctx);
+
+		assert.ok(
+			removed.some((r) => r.path === "known://draft"),
+			"source entry removed atomically",
+		);
+		const auditRm = upserted.find(
+			(u) => typeof u.path === "string" && u.path.endsWith("/rm"),
+		);
+		assert.ok(auditRm, "resolved /rm audit log entry emitted");
+		assert.equal(auditRm.state, "resolved");
+		assert.equal(auditRm.attributes.path, "known://draft");
+		assert.equal(auditRm.attributes.mv, recapPath);
+	});
+
+	it("schemed → bare-path: emits resolved mv recap + set proposal (source rm fires on set accept)", async () => {
+		// mv to a bare path decomposes into (a) a resolved mv recap +
+		// (b) a set proposal at destination. The rm proposal for the
+		// source is emitted ONLY after the set is accepted (serial),
+		// so the client never asks about removing source if the user
+		// rejected the destination create. The recap carries
+		// attrs.setProposal as linkage for the post-accept hook.
+		const upserted = [];
+		let logSeq = 0;
 		const store = {
 			getBody: async (_r, p) =>
 				p === "known://draft" ? "draft body content" : null,
@@ -30,20 +91,46 @@ describe("Mv", () => {
 			rm: async () => {
 				throw new Error("schemed→bare-path mv must not rm before accept");
 			},
+			logPath: async (_r, _l, turn, action) => {
+				logSeq += 1;
+				return `log://1/${turn}/${logSeq}/${action}`;
+			},
 		};
 		const rummy = { entries: store, sequence: 5, runId: 1, loopId: 1 };
 		const entry = {
 			attributes: { path: "known://draft", to: "deliverable.md" },
-			resultPath: "log://turn_5/mv/known___draft",
+			resultPath: "log://1/5/1/mv",
 		};
 		await plugin.handler(entry, rummy);
 
-		const log = upserted.find((u) => u.path === entry.resultPath);
-		assert.ok(log, "result log entry written");
-		assert.equal(log.state, "proposed", "state is proposed, not resolved");
-		assert.equal(log.attributes.from, "known://draft");
-		assert.equal(log.attributes.to, "deliverable.md");
-		assert.equal(log.attributes.isMove, true);
+		const recap = upserted.find((u) => u.path === entry.resultPath);
+		assert.ok(recap, "mv recap written");
+		assert.equal(recap.state, "resolved", "recap is resolved");
+		assert.equal(recap.attributes.from, "known://draft");
+		assert.equal(recap.attributes.to, "deliverable.md");
+		assert.equal(recap.attributes.isMove, true);
+		assert.ok(
+			typeof recap.attributes.setProposal === "string" &&
+				recap.attributes.setProposal.endsWith("/set"),
+			"recap carries setProposal linkage for the post-accept rm hook",
+		);
+
+		const setProposal = upserted.find(
+			(u) =>
+				u.state === "proposed" &&
+				typeof u.path === "string" &&
+				u.path.endsWith("/set"),
+		);
+		assert.ok(setProposal, "set proposal emitted at the linked path");
+		assert.equal(setProposal.attributes.path, "deliverable.md");
+		assert.equal(setProposal.attributes.patched, "draft body content");
+		assert.ok(setProposal.attributes.patch?.startsWith("==="), "set proposal carries udiff");
+		assert.equal(
+			setProposal.attributes.from,
+			undefined,
+			"mv-specific metadata not leaked onto the set proposal's wire shape",
+		);
+		assert.equal(setProposal.attributes.isMove, undefined);
 	});
 
 	it("schemed → schemed: auto-resolves (entry-to-entry, no proposal)", async () => {

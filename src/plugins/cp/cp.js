@@ -1,5 +1,6 @@
 import Entries from "../../agent/Entries.js";
-import { countTokens } from "../../agent/tokens.js";
+import { generatePatch } from "../../lib/hedberg/matcher.js";
+import { countLines, countTokens } from "../../agent/tokens.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./cpDoc.js";
 
@@ -79,25 +80,61 @@ export default class Cp {
 		const afterTokens = sourceTokens * 2;
 
 		if (destScheme === null) {
-			// Bare-file: hand the shared set.js materializer attrs.patched.
+			// Bare-file destination: decompose into (a) a resolved cp
+			// recap (model audit of the emission) + (b) a set proposal
+			// at the destination. The wire surface clients render
+			// against is just the set proposal — same shape as a direct
+			// `<set path="X"><<NEW>>...NEW</set>` from the model. cp is
+			// server-side intent; the user-facing proposal is a file
+			// creation/overwrite.
 			await store.set({
 				runId,
 				turn,
+				loopId,
 				path: entry.resultPath,
 				body: "",
-				state: "proposed",
+				state: "resolved",
 				attributes: {
 					from: path,
 					to,
 					isMove: false,
 					warning,
+					beforeActionTokens: beforeTokens,
+					afterActionTokens: afterTokens,
+				},
+			});
+			const setProposalPath = await store.logPath(
+				runId,
+				loopId,
+				turn,
+				"set",
+			);
+			const existingBody = existing == null ? "" : existing;
+			const patch = generatePatch(to, existingBody, source);
+			await store.set({
+				runId,
+				turn,
+				loopId,
+				path: setProposalPath,
+				body: "",
+				state: "proposed",
+				attributes: {
 					path: to,
+					patch,
 					patched: source,
+					op: "new",
+					opPositions: [
+						{
+							kind: "new",
+							startLine: 1,
+							lineCount: countLines(source),
+							content: source,
+						},
+					],
 					visibility,
 					beforeActionTokens: beforeTokens,
 					afterActionTokens: afterTokens,
 				},
-				loopId,
 			});
 		} else {
 			await store.set({
