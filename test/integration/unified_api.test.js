@@ -32,11 +32,13 @@ describe("unified API (@unified_api, @plugins_unified_api, @plugins_two_objects,
 	});
 
 	it("tool verbs on RummyContext write, read, and remove", async () => {
-		const { runId, projectId } = await tdb.seedRun({ alias: "unified_verbs" });
+		const { runId, loopId, projectId } = await tdb.seedRun({
+			alias: "unified_verbs",
+		});
 		const store = new Entries(tdb.db);
 		const rummy = new RummyContext(
 			{ children: [] },
-			{ db: tdb.db, store, runId, projectId, sequence: 1, loopId: null },
+			{ db: tdb.db, store, runId, projectId, sequence: 1, loopId },
 		);
 
 		const path = await rummy.set({
@@ -54,13 +56,13 @@ describe("unified API (@unified_api, @plugins_unified_api, @plugins_two_objects,
 	});
 
 	it("query methods on RummyContext surface attributes and state", async () => {
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, loopId, projectId } = await tdb.seedRun({
 			alias: "unified_queries",
 		});
 		const store = new Entries(tdb.db);
 		const rummy = new RummyContext(
 			{ children: [] },
-			{ db: tdb.db, store, runId, projectId, sequence: 1, loopId: null },
+			{ db: tdb.db, store, runId, projectId, sequence: 1, loopId },
 		);
 
 		await rummy.set({

@@ -54,7 +54,12 @@ describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_pl
 	async function assembleAndEnforce(contextSize) {
 		const turn = 1;
 		const systemPrompt = "test";
-		await materialize(tdb.db, { runId: RUN_ID, turn, systemPrompt });
+		await materialize(tdb.db, {
+			runId: RUN_ID,
+			loopId: LOOP_ID,
+			turn,
+			systemPrompt,
+		});
 
 		const rows = await tdb.db.get_turn_context.all({ run_id: RUN_ID, turn });
 		const messages = [

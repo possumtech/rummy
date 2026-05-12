@@ -44,7 +44,7 @@ function stubCore() {
 	};
 }
 
-describe("Scheme write permissions", () => {
+describe("Scheme write permissions (@scheme_registry, @run_state_separation)", () => {
 	let tdb, store;
 
 	before(async () => {

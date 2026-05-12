@@ -745,7 +745,8 @@ compaction lifeline.** Each project file gets its own symbol-bearing
 catalog tile in `<index>` at run init. The manifest is the
 always-accessible record of what files exist — used when the model
 archives files (its own choice) or when turn-0 budget pressure forces
-the engine to compact `<index>` (see [turn_zero_budget_gate]).
+the engine to compact `<index>` (see the "Turn-0 Budget Gate" section
+below — planned but not yet implemented).
 
 **Entry contract.**
 
@@ -779,24 +780,25 @@ Every project file becomes a symbol-bearing tile in `<index>` at run
 init. The model gets rich, native orientation from the start; the
 manifest is reserved for compaction.
 
-### Turn-0 Budget Gate {#turn_zero_budget_gate}
+### Turn-0 Budget Gate (planned)
+
+> **Not yet implemented.** Documented design for the turn-0 budget
+> ceiling-overflow case. Section is intentionally anchor-less until
+> the implementation lands.
 
 At run init the assembler builds the turn-0 packet with all project
-files indexed (per default visibility). For most projects this
-fits. For projects whose tile set genuinely overshoots the context
-ceiling, the engine applies a single invariant:
+files indexed (per default visibility). For most projects this fits.
+For projects whose tile set genuinely overshoots the context ceiling,
+the planned invariant is:
 
 **If turn-0 assembly exceeds ceiling: archive every `<index>` tile
 except `repo://manifest`; reassemble.**
 
 No priority heuristics, no size-based sorting. The manifest preserves
-the inventory; the model on turn 1 sees `<prompt>` + the manifest
-tile and `<get>`s files it needs. The model owns visibility from
-turn 1 onward.
-
-This gate runs only at turn 0. After that the existing budget
-machinery (replay grinder, hard-413) carries the load — by then the
-model has acted and there are fat replays to reclaim.
+the inventory; the model on turn 1 sees `<prompt>` + the manifest tile
+and `<get>`s files it needs. The model owns visibility from turn 1
+onward. This gate would run only at turn 0; after that the existing
+budget machinery (replay grinder, hard-413) carries the load.
 
 **Phase 3 — filesystem-mutation log injection {#file_freshness}.**
 Engine-mediated state changes the model didn't author surface as

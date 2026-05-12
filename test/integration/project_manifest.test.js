@@ -33,10 +33,16 @@ async function makeProject(name) {
 	return root;
 }
 
-async function fireTurnStarted({ tdb, runId, projectId, projectRoot, noRepo }) {
+async function fireTurnStarted({
+	tdb,
+	runId,
+	loopId,
+	projectId,
+	projectRoot,
+	noRepo,
+}) {
 	const entries = new Entries(tdb.db);
 	entries.loadSchemes(tdb.db);
-	const loopId = 1;
 	await tdb.hooks.loop.started.emit({ runId, loopId });
 	const rummy = {
 		runId,
@@ -66,7 +72,7 @@ describe("project manifest (@project_manifest)", () => {
 
 	it("scan registers a single visible repo://manifest entry", async () => {
 		const root = await makeProject("basic");
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, loopId, projectId } = await tdb.seedRun({
 			alias: "manifest_basic",
 			projectRoot: root,
 		});
@@ -74,6 +80,7 @@ describe("project manifest (@project_manifest)", () => {
 		const entries = await fireTurnStarted({
 			tdb,
 			runId,
+			loopId,
 			projectId,
 			projectRoot: root,
 		});
@@ -89,7 +96,7 @@ describe("project manifest (@project_manifest)", () => {
 
 	it("manifest body has directory rollup + flat list, no headers, no absolute path", async () => {
 		const root = await makeProject("body");
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, loopId, projectId } = await tdb.seedRun({
 			alias: "manifest_body",
 			projectRoot: root,
 		});
@@ -97,6 +104,7 @@ describe("project manifest (@project_manifest)", () => {
 		const entries = await fireTurnStarted({
 			tdb,
 			runId,
+			loopId,
 			projectId,
 			projectRoot: root,
 		});
@@ -158,46 +166,56 @@ describe("project manifest (@project_manifest)", () => {
 		assert.ok(!body.includes(root), "no absolute filesystem path leak");
 	});
 
-	it("subsequent scans do NOT rewrite the manifest (turn-0 snapshot, cache-stable)", async () => {
-		const root = await makeProject("stable");
-		const { runId, projectId } = await tdb.seedRun({
-			alias: "manifest_stable",
+	it("manifest refreshes every scan: files added mid-run appear on next scan", async () => {
+		const root = await makeProject("refresh");
+		const { runId, loopId, projectId } = await tdb.seedRun({
+			alias: "manifest_refresh",
 			projectRoot: root,
 		});
 
 		const entries = await fireTurnStarted({
 			tdb,
 			runId,
+			loopId,
 			projectId,
 			projectRoot: root,
 		});
 		const firstBody = await entries.getBody(runId, "repo://manifest");
+		assert.ok(!firstBody.includes("added_later.js"));
 
 		writeFileSync(join(root, "added_later.js"), "export const z = 0;\n");
-		await fireTurnStarted({ tdb, runId, projectId, projectRoot: root });
+		// ProjectContext.getMappableFiles filters by git-tracked. New
+		// file must be added to git before next scan or scanner won't
+		// see it.
+		execSync("git add added_later.js && git commit --no-verify -m 'add'", {
+			cwd: root,
+		});
+		await fireTurnStarted({
+			tdb,
+			runId,
+			loopId,
+			projectId,
+			projectRoot: root,
+		});
 		const secondBody = await entries.getBody(runId, "repo://manifest");
 
-		assert.strictEqual(
-			firstBody,
-			secondBody,
-			"manifest body is bit-identical across scans (no cache-bust)",
-		);
 		assert.ok(
-			!secondBody.includes("added_later.js"),
-			"manifest must not list files added after run start",
+			secondBody.includes("added_later.js"),
+			"manifest is live — added file appears on next scan",
 		);
 	});
 
-	it("file entries default to archived (not summarized)", async () => {
-		const root = await makeProject("archived");
-		const { runId, projectId } = await tdb.seedRun({
-			alias: "manifest_archived",
+	it("file entries default to indexed (each file gets its catalog tile)", async () => {
+		const root = await makeProject("indexed");
+		const { runId, loopId, projectId } = await tdb.seedRun({
+			alias: "manifest_indexed",
 			projectRoot: root,
 		});
 
 		const entries = await fireTurnStarted({
 			tdb,
 			runId,
+			loopId,
 			projectId,
 			projectRoot: root,
 		});
@@ -206,14 +224,14 @@ describe("project manifest (@project_manifest)", () => {
 		assert.strictEqual(fileMatches.length, 1, "src/a.js registered");
 		assert.strictEqual(
 			fileMatches[0].visibility,
-			"archived",
-			"new file defaults to archived under the new behaviour",
+			"indexed",
+			"files are the primary inventory — each gets its tile in <index>",
 		);
 	});
 
 	it("noRepo: true skips the scan; no manifest, no file entries", async () => {
 		const root = await makeProject("norepo");
-		const { runId, projectId } = await tdb.seedRun({
+		const { runId, loopId, projectId } = await tdb.seedRun({
 			alias: "manifest_norepo",
 			projectRoot: root,
 		});
@@ -221,6 +239,7 @@ describe("project manifest (@project_manifest)", () => {
 		const entries = await fireTurnStarted({
 			tdb,
 			runId,
+			loopId,
 			projectId,
 			projectRoot: root,
 			noRepo: true,

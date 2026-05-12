@@ -193,37 +193,14 @@ describe("proposal lifecycle (@resolution)", () => {
 		});
 	});
 
-	describe("mv proposal accept", () => {
-		it("removes source entry when isMove attribute is set", async () => {
-			const { runId, loopId } = await seedProject(tdb, "mv_accept");
-			await entries.set({
-				runId,
-				loopId,
-				turn: 1,
-				path: "known://source",
-				body: "content",
-				state: "resolved",
-			});
-			const proposalPath = await entries.logPath(runId, loopId, 1, "mv");
-			await entries.set({
-				runId,
-				loopId,
-				turn: 1,
-				path: proposalPath,
-				body: "moved",
-				state: "proposed",
-				attributes: { from: "known://source", isMove: true },
-			});
-
-			await agent.resolve("mv_accept", {
-				path: proposalPath,
-				action: "accept",
-			});
-
-			const gone = await entries.getBody(runId, "known://source");
-			assert.strictEqual(gone, null, "source entry removed on mv accept");
-		});
-	});
+	// mv accept-side: `<mv>` now decomposes into a resolved recap + a
+	// set proposal at the destination. The source removal is atomic
+	// on set acceptance (mv.js#onAccepted matches the recap by its
+	// setProposal linkage and removes the source). The decomposition
+	// + accept flow is covered in:
+	//  - src/plugins/mv/mv.test.js (unit, including the rm-on-accept hook)
+	//  - test/integration/proposal_wire_contract.test.js (wire shape)
+	// The old monolithic "mv proposal at /mv" shape no longer exists.
 
 	describe("ask_user proposal accept", () => {
 		it("stores user output as `answer` attribute on the entry", async () => {

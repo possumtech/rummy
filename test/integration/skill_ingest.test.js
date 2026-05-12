@@ -17,6 +17,7 @@ import { registerPlugins } from "../../src/plugins/index.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
+let LOOP_ID;
 let PROJECT_ID;
 
 function rummyFor(hooks, db, store, sequence) {
@@ -40,6 +41,7 @@ function rummyFor(hooks, db, store, sequence) {
 		type: "act",
 		sequence,
 		runId: RUN_ID,
+		loopId: LOOP_ID,
 		turnId: 1,
 	});
 }

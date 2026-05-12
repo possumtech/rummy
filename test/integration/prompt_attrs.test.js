@@ -73,7 +73,7 @@ describe("Budget headline math (single source of truth)", () => {
 			state: "resolved",
 			attributes: { mode: "ask" },
 		});
-		await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
+		await materialize(tdb.db, { runId, loopId, turn: 1, systemPrompt: "sys" });
 		const { messages } = await assemble(tdb, runId, 1, contextSize);
 		const nums = parseBudgetAttrs(messages[1].content);
 		const expected = computePacketTokens({
@@ -96,7 +96,7 @@ describe("Budget headline math (single source of truth)", () => {
 			state: "resolved",
 			attributes: { mode: "ask" },
 		});
-		await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
+		await materialize(tdb.db, { runId, loopId, turn: 1, systemPrompt: "sys" });
 		const { messages } = await assemble(tdb, runId, 1, contextSize);
 		const nums = parseBudgetAttrs(messages[1].content);
 		assert.strictEqual(nums.free, Math.max(0, cap - nums.used));
@@ -115,7 +115,7 @@ describe("Budget headline math (single source of truth)", () => {
 			state: "resolved",
 			attributes: { mode: "ask" },
 		});
-		await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
+		await materialize(tdb.db, { runId, loopId, turn: 1, systemPrompt: "sys" });
 		const { messages } = await assemble(tdb, runId, 1, 32768);
 		assert.ok(
 			!messages[0].content.includes("{{"),
@@ -138,7 +138,7 @@ describe("Budget headline math (single source of truth)", () => {
 			state: "resolved",
 			attributes: { mode: "ask" },
 		});
-		await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
+		await materialize(tdb.db, { runId, loopId, turn: 1, systemPrompt: "sys" });
 		const { messages } = await assemble(tdb, runId, 1, 32768);
 		const user = messages[1].content;
 		assert.ok(
@@ -168,7 +168,7 @@ describe("Budget headline math (single source of truth)", () => {
 			state: "resolved",
 			attributes: { mode: "ask" },
 		});
-		await materialize(tdb.db, { runId, turn: 1, systemPrompt: "sys" });
+		await materialize(tdb.db, { runId, loopId, turn: 1, systemPrompt: "sys" });
 		const { messages } = await assemble(tdb, runId, 1, 32768);
 		const nums = parseBudgetAttrs(messages[1].content);
 		// System content has no placeholders → exact match.

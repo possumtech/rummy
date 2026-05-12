@@ -22,7 +22,9 @@ import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
-describe("E2E: Streaming", { concurrency: 1 }, () => {
+describe("Live: streaming RPC pipeline (@streaming_entries, @resolution, @rpc_methods, @plugins_rpc, @plugins_rpc_wire_format, @plugins_rpc_primitives)", {
+	concurrency: 1,
+}, () => {
 	let tdb, tserver, client;
 
 	before(async () => {

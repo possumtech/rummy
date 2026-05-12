@@ -13,6 +13,7 @@ import XmlParser from "../../src/agent/XmlParser.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
+let LOOP_ID;
 
 describe("Mode enforcement in ask mode", () => {
 	let tdb, store;

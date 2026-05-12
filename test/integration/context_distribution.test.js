@@ -6,6 +6,7 @@ import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
+let LOOP_ID;
 const TURN = 1;
 
 describe("turn_context distribution bucket correctness (@materialization)", () => {

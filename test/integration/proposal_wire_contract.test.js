@@ -28,7 +28,7 @@ function stubCore() {
 	};
 }
 
-describe("proposal wire contract (@resolution, @plugins_set)", () => {
+describe("proposal wire contract (@resolution)", () => {
 	let tdb;
 	let plugin;
 	let store;

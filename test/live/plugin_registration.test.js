@@ -7,7 +7,7 @@ import AuditClient from "../helpers/AuditClient.js";
 import TestDb from "../helpers/TestDb.js";
 import TestServer from "../helpers/TestServer.js";
 
-describe("E2E: Custom Plugin Registration", () => {
+describe("Live: custom plugin registration (@plugin_system, @rpc_plugin)", () => {
 	let tdb, tserver, client;
 	const projectRoot = join(tmpdir(), `rummy-plugin-${Date.now()}`);
 

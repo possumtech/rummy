@@ -242,6 +242,8 @@ describe("Handler dispatch", () => {
 			// Fire proposal.accepted to trigger #materializeFile.
 			await hooks.proposal.accepted.emit({
 				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: 1,
 				attrs,
 				db: tdb.db,
 				entries: store,
@@ -256,95 +258,13 @@ describe("Handler dispatch", () => {
 			);
 		});
 
-		it("bare→bare mv materializes destination and honors visibility", async () => {
-			await store.set({
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: 1,
-				path: "src/old_name.js",
-				body: "const x = 1;\n",
-				state: "resolved",
-			});
-
-			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
-			const logPath = "log://1/1/5/mv";
-			const entry = {
-				scheme: "mv",
-				path: logPath,
-				body: "",
-				attributes: {
-					path: "src/old_name.js",
-					to: "src/new_name.js",
-					archive: true,
-					source: '<mv path="src/old_name.js" archive>src/new_name.js</mv>',
-				},
-				state: "resolved",
-				resultPath: logPath,
-			};
-			await hooks.tools.dispatch("mv", entry, rummy);
-
-			const attrs = await store.getAttributes(RUN_ID, logPath);
-			await hooks.proposal.accepted.emit({
-				runId: RUN_ID,
-				attrs,
-				db: tdb.db,
-				entries: store,
-				path: logPath,
-				projectRoot: null,
-			});
-
-			const newBody = await store.getBody(RUN_ID, "src/new_name.js");
-			assert.equal(newBody, "const x = 1;\n", "destination materialized");
-			const oldBody = await store.getBody(RUN_ID, "src/old_name.js");
-			assert.equal(oldBody, null, "source removed");
-			const newState = await store.getState(RUN_ID, "src/new_name.js");
-			assert.equal(newState.visibility, "archived", "archive attr honored");
-		});
-
-		it("bare→bare cp materializes destination and honors archive attr", async () => {
-			await store.set({
-				runId: RUN_ID,
-				loopId: LOOP_ID,
-				turn: 1,
-				path: "src/source.js",
-				body: "const y = 2;\n",
-				state: "resolved",
-			});
-
-			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
-			const logPath = "log://1/1/6/cp";
-			const entry = {
-				scheme: "cp",
-				path: logPath,
-				body: "",
-				attributes: {
-					path: "src/source.js",
-					to: "src/copy.js",
-					archive: true,
-					source: '<cp path="src/source.js" archive>src/copy.js</cp>',
-				},
-				state: "resolved",
-				resultPath: logPath,
-			};
-			await hooks.tools.dispatch("cp", entry, rummy);
-
-			const attrs = await store.getAttributes(RUN_ID, logPath);
-			await hooks.proposal.accepted.emit({
-				runId: RUN_ID,
-				attrs,
-				db: tdb.db,
-				entries: store,
-				path: logPath,
-				projectRoot: null,
-			});
-
-			const copyBody = await store.getBody(RUN_ID, "src/copy.js");
-			assert.equal(copyBody, "const y = 2;\n", "destination materialized");
-			const srcBody = await store.getBody(RUN_ID, "src/source.js");
-			assert.equal(srcBody, "const y = 2;\n", "source preserved");
-			const copyState = await store.getState(RUN_ID, "src/copy.js");
-			assert.equal(copyState.visibility, "archived", "archive attr honored");
-		});
+		// cp/mv to bare paths now decompose into resolved recap + set
+		// proposal (and for mv, atomic source rm on set accept). The
+		// decomposition contract is tested in plugins/cp/cp.test.js,
+		// plugins/mv/mv.test.js, and proposal_wire_contract.test.js;
+		// end-to-end accept-side materialization is exercised in
+		// proposal_lifecycle.test.js. The old "single proposal at
+		// log://*/cp" shape these tests pinned no longer exists.
 
 		it("two edits to the same file produce two independent proposals", async () => {
 			await store.set({

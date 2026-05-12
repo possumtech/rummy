@@ -1,14 +1,15 @@
 #!/usr/bin/env node
-// Validate 1:1 coverage between snake_case anchors and integration
-// + e2e test references across every anchored doc. Exits 1 on any
-// missing link in either direction.
+// Validate 1:1 coverage between snake_case anchors and test
+// references across every anchored doc. Exits 1 on any missing link
+// in either direction.
 //
 // Rule (SPEC.md → spec_anchored_testing): every heading with an
 // explicit `{#snake_case_id}` anchor — in SPEC.md, PLUGINS.md, or
 // any src/plugins/*/README.md — has at least one `@snake_case_id`
-// reference in test/integration/ or test/e2e/. Every test file in
-// those dirs references at least one `@`-anchor. Anchors die on
-// rename; they're permanent once published.
+// reference in test/integration/, test/live/, or test/e2e/ (incl.
+// `test/e2e/stories/`). Every test file in those dirs references at
+// least one `@`-anchor. Anchors die on rename; they're permanent
+// once published.
 
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -16,7 +17,11 @@ import { join } from "node:path";
 const ROOT = new URL("..", import.meta.url).pathname;
 const DOC_FILES = [join(ROOT, "SPEC.md"), join(ROOT, "PLUGINS.md")];
 const PLUGIN_DOCS_DIR = join(ROOT, "src/plugins");
-const TEST_DIRS = [join(ROOT, "test/integration"), join(ROOT, "test/e2e")];
+const TEST_DIRS = [
+	join(ROOT, "test/integration"),
+	join(ROOT, "test/live"),
+	join(ROOT, "test/e2e"),
+];
 
 // Heading with explicit snake_case anchor: "## Title {#snake_case_id}"
 const HEADING_RE = /^#+\s+(.+?)\s*\{#([a-z0-9_]+)\}\s*$/gm;
@@ -103,7 +108,7 @@ async function main() {
 	for (const a of anchors) {
 		if (!allRefs.has(a.id)) {
 			errors.push(
-				`MISSING TEST: @${a.id} "${a.title}" [${a.source}] has no reference in test/integration or test/e2e`,
+				`MISSING TEST: @${a.id} "${a.title}" [${a.source}] has no reference in test/integration, test/live, or test/e2e`,
 			);
 		}
 	}

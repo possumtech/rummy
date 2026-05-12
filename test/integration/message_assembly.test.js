@@ -26,6 +26,7 @@ import materialize from "../helpers/materialize.js";
 import TestDb from "../helpers/TestDb.js";
 
 let RUN_ID;
+let LOOP_ID;
 let hooks;
 const TURN = 1;
 

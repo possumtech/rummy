@@ -603,8 +603,7 @@ export default class Rpc {
 			// boundary. NOT a silent fallback — outcome is an optional
 			// RPC param, NULL is the explicit "no failure reason" value
 			// in the runs.outcome column.
-			const outcome =
-				params.outcome === undefined ? null : params.outcome;
+			const outcome = params.outcome === undefined ? null : params.outcome;
 			await ctx.db.set_run_state.run({
 				id: existing.id,
 				status: httpStatus,

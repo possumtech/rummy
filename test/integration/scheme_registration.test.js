@@ -11,13 +11,14 @@ import Entries from "../../src/agent/Entries.js";
 import TestDb from "../helpers/TestDb.js";
 
 describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
-	let tdb, store, runId;
+	let tdb, store, runId, loopId;
 
 	before(async () => {
 		tdb = await TestDb.create();
 		store = new Entries(tdb.db);
 		const seed = await tdb.seedRun({ alias: "scheme_1" });
 		runId = seed.runId;
+		loopId = seed.loopId;
 	});
 
 	after(async () => {
