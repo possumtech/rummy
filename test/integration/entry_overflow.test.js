@@ -30,7 +30,7 @@ describe("entry overflow (@entries, RUMMY_ENTRY_SIZE_MAX)", () => {
 	});
 
 	it("oversized body triggers EntryOverflowError; onError swallows it", async () => {
-		const { runId, loopId } = await tdb.seedRun({ alias: "overflow_huge" });
+		const { runId } = await tdb.seedRun({ alias: "overflow_huge" });
 		const cap = TEST_CAP;
 		const events = [];
 		const store = new Entries(tdb.db, {

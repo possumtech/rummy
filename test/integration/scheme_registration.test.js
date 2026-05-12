@@ -88,7 +88,7 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 		assert.strictEqual(entry.category, "data");
 	});
 
-	it("audit entries hidden from model context", async () => {
+	it("audit entries hidden from model context (@key_entries)", async () => {
 		// Audit schemes are system-only in production; tests simulating
 		// them use writer: "system" to match.
 		await store.set({
@@ -155,7 +155,7 @@ describe("Scheme registration via plugins (@plugins_path_conventions)", () => {
 		assert.ok(!entry, "stored entry should be hidden");
 	});
 
-	it("prompt entries are catalog data, archived by default", async () => {
+	it("prompt entries are catalog data, archived by default (@prompt_plugin)", async () => {
 		await store.set({
 			runId,
 			turn: 1,

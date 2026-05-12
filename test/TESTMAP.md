@@ -81,8 +81,7 @@ await store.set({ turn: 1, path: "known://x", body: "..." });
 SPEC sections that name behavior carry an anchor like
 `{#anchor_name}`. Each must have at least one test annotation
 matching `@anchor_name`. The check runs in `test/spec-coverage.js`
-and is wired into `npm run test:spec`. Two pre-existing violations
-(`@key_entries`, `@prompt_plugin`) are tracked outside this map.
+and is wired into `npm run test:spec`.
 
 ## Counts (post-refactor)
 
