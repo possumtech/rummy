@@ -317,8 +317,8 @@ export default class Set {
 			const scheme = Entries.scheme(target);
 			if (scheme === null) {
 				// File write: proposed entry; #materializeFile writes to disk on accept.
-				// Log body = model's verbatim emission (S6); attrs.patch =
-				// udiff (client-side wire, e.g., rummy.nvim renders the diff).
+				// Log body is udiff (canonical change material); attrs.emission
+				// preserves the model's verbatim emission for forensic just-in-case.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
@@ -328,11 +328,11 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: attrs.inner,
+					body: udiff,
 					state: "proposed",
 					attributes: {
 						path: target,
-						patch: udiff,
+						emission: attrs.inner,
 						patched: newContent,
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
@@ -370,8 +370,9 @@ export default class Set {
 				);
 			} else {
 				// Scheme write (known://, unknown://, etc.): the underlying
-				// entry resolves directly. Log body = verbatim emission;
-				// attrs.patch = udiff for client-side diff rendering.
+				// entry resolves directly. Log body is udiff; attrs.emission
+				// preserves the model's verbatim emission for forensic
+				// just-in-case.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
@@ -392,12 +393,12 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: attrs.inner,
+					body: udiff,
 					state: "resolved",
 					loopId,
 					attributes: {
 						path: target,
-						patch: udiff,
+						emission: attrs.inner,
 						beforeActionTokens: beforeTokens,
 						afterActionTokens: afterTokens,
 						tags: tagsText,

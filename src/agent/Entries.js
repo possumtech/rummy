@@ -172,6 +172,10 @@ export default class Entries {
 					? JSON.parse(row.writable_by)
 					: row.writable_by;
 			if (Array.isArray(parsed)) writers = parsed;
+		} else if (scheme && !row) {
+			// Unknown scheme: model can't invent paths. Plugins can
+			// still write (some surfaces ensure schemes lazily).
+			writers = ["plugin"];
 		}
 		return { kind, writers, category };
 	}

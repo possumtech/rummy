@@ -371,6 +371,65 @@ strengthen `rummy.web/main/src/search.md:11` and add a MUST in
 Skipped for now — won't help if the engine doesn't enforce, and
 adds packet weight every turn.
 
+### Scheme-write permission + change-render unification
+
+Surfaced 2026-05-11 by `test/programbench` grok run on
+`tomnomnom__gron.88a6234`. Grok declared status=200 in 4 turns,
+$0.04, but eval returned `compile_failed` — the workspace contained
+only the original docs. Model had written `<set path="repo://compile.sh">`
+(silent success into entries table; never hit disk) instead of bare
+workspace paths. After fixing plan-template inertia
+(`src/plugins/persona/default.md:5` directive to adapt plan to prompt),
+a second run with 26 turns / 219K tokens / $0.22 ALSO failed eval —
+same `repo://compile.sh` confusion, plus the model echoing the
+"MANIFEST set path=... 0 matched" response back as `<<NEW>>` body.
+Root causes: (a) `repo://` scheme registered with no `writable_by`
+restriction, so model writes silently succeed into the entries
+table; (b) unknown schemes have the same silent-success fallback
+in `Entries.js#schemeRules`; (c) `repo://manifest` was frozen at
+T0, so workspace mutation went invisible across the run.
+
+Secondary discovery while designing the fix: today's log body has
+**two grammars** for "what changed." Model `<set>` log entries
+store `body = attrs.inner` (verbatim emission) while
+FileScanner-injected entries store `body = generateSearchReplaceBody(...)`
+(engine-synthesized SEARCH/REPLACE). `attributes.patch` carries
+udiff in both cases. This is a documented split (`set.js:319-321`,
+`372-374`) but it means the model reads two formats when scanning
+the log for changes. Unify on udiff body, preserve verbatim
+emission in `attributes.emission` for forensic just-in-case.
+
+**Tests-first**
+
+| # | File | Test name | What it pins | Expected failure today |
+|---|---|---|---|---|
+| T1 | new `test/integration/scheme_write_permissions.test.js` | "model write to unregistered scheme raises PermissionError" | `<set path="bogus://x">` from model writer → PermissionError → error.log entry. | Falls back to `["model", "plugin"]` writers → silent success. |
+| T2 | same file | "model write to `repo://` scheme raises PermissionError" | After registering `repo` with `writable_by: ["plugin"]`, model `<set path="repo://compile.sh">` → PermissionError. Plugin write to `repo://manifest` still succeeds. | No `writable_by` on `repo` → model writes succeed. |
+| T3 | new `test/integration/repo_manifest_refresh.test.js` | "manifest refreshes when workspace files change" | Scan a project, model creates a new file via `<set path="foo.txt">`, scan again, assert `repo://manifest` body includes `foo.txt`. | One-shot guard `existingManifest.length === 0` prevents rewrite. |
+| T4 | new `test/integration/log_body_is_udiff.test.js` | "model `<set>` log body is udiff, `attributes.emission` preserves verbatim" | Model emits SEARCH/REPLACE on a known entry; assert log body starts with `===` (udiff banner) and `attributes.emission` equals the original `attrs.inner`. | Today `body = attrs.inner`; no `attributes.emission`. |
+| T5 | same file | "FileScanner-injected external change log body is udiff" | Mutate a project file on disk between scans; assert injected log body is udiff (not SEARCH/REPLACE), `attributes.external = true`, `attributes.patch` absent. | Today `body = generateSearchReplaceBody(...)`; `attributes.patch` present. |
+
+**Engine fixes (one per failing test)**
+
+| # | File | Change | Makes which test pass |
+|---|---|---|---|
+| E1 | `src/agent/Entries.js#schemeRules` | When scheme is unknown (not in `this.#schemes`) AND `writer === "model"`, throw `PermissionError`. Plugin writes still allowed (engine surfaces like the `repo` plugin need to register schemes still, but unknown-from-model is hard fail). | T1 |
+| E2 | `rummy.repo/main/src/rummy.repo.js:14` | Add `writable_by: ["plugin"]` to `repo` scheme registration. | T2 |
+| E3 | `rummy.repo/main/src/FileScanner.js:269-274` | Drop the one-shot `if (existingManifest.length === 0)` guard. Manifest rewrites every scan; FileScanner's existing mtime/hash skip on unchanged files keeps the work bounded. | T3 |
+| E4 | `src/plugins/set/set.js:327-347` (file proposed) + `381-407` (scheme write) | Set `body: generatePatch(target, oldContent, newContent)`; move `attrs.inner` into `attributes.emission`; drop `attributes.patch` (body is the patch). Keep `attributes.patched` (file `#materializeFile` reads it). | T4 |
+| E5 | `rummy.repo/main/src/FileScanner.js:142-177` | Replace `generateSearchReplaceBody(before, content)` with `generatePatch(relPath, before, content)`; drop `attributes.patch`. Remove `generateSearchReplaceBody` from `src/lib/hedberg/matcher.js` + `hedberg.js` exports + tests. | T5 |
+
+**Doc + spec alignment (after fixes pass)**
+
+| # | File | Change |
+|---|---|---|
+| D1 | `SPEC.md` (search for `repo://manifest` + `attributes.patch`) | Update: manifest now live (refreshes per scan); log body is unified udiff; `attributes.emission` preserves verbatim model emission; `attributes.patch` retired. |
+| D2 | `src/plugins/budget/README.md:36` | `ANCHOR_ORDER` doc still lists `repo` — leave as-is (the manifest's catalog tile placement is unchanged). |
+| D3 | `feedback_extension_surfaces.md` (memory) | Add example: `repo` scheme stays even though one path lives there. Don't conflate "few callers" with "remove." |
+
+**Order:** T1 → E1 → T2 → E2 → T3 → E3 → T4 → E4 → T5 → E5 → D1 → D2 → D3.
+Standard red-green for each pair.
+
 ## Scope Discipline
 
 - No legacy protocol accommodation. 2.0 is 2.0.

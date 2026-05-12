@@ -1,7 +1,4 @@
-import HeuristicMatcher, {
-	generatePatch,
-	generateSearchReplaceBody,
-} from "./matcher.js";
+import HeuristicMatcher, { generatePatch } from "./matcher.js";
 import { hedmatch, hedsearch } from "./patterns.js";
 
 // SPEC #hedberg. Edit-shape parsing lives in marker.js.
@@ -16,7 +13,6 @@ export default class Hedberg {
 			search: hedsearch,
 			replace: Hedberg.replace,
 			generatePatch,
-			generateSearchReplaceBody,
 		};
 	}
 
@@ -92,7 +88,7 @@ export default class Hedberg {
 	}
 }
 
-export { generatePatch, generateSearchReplaceBody };
+export { generatePatch };
 
 // All positions where `needle` occurs in `haystack` such that the
 // match starts at a line boundary (start-of-string or after `\n`) AND

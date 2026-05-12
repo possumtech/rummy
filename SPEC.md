@@ -255,7 +255,7 @@ Every entry plays one of two roles:
 | Role | Category | Section | Description |
 |------|----------|---------|-------------|
 | **Data** | `data` | `<index>` | Catalog entries the model works with — knowns, unknowns, files, streams, URLs, prompts. Tile body per scheme: knowns/unknowns show full body; files (default) empty; streams a tail preview; URLs title+description. Stable schemes first, volatile (sh/env) sort to bottom for cache. |
-| **Logging** | `logging` | `<log>` | Time-ordered activity tape — action recaps, errors, retrievals, prompts. Slim by default (JSON envelope only); body present for `<set>` (verbatim emission), `<get>` (retrieved content), `<search>`, `<error>`, `<update>`, `<prompt>` (≤500-char preview). |
+| **Logging** | `logging` | `<log>` | Time-ordered activity tape — action recaps, errors, retrievals, prompts. Slim by default (JSON envelope only); body present for `<set>` (unified udiff; `attrs.emission` preserves verbatim), `<get>` (retrieved content), `<search>`, `<error>`, `<update>`, `<prompt>` (≤500-char preview). |
 
 `logging` is the default category. Plugins opt into `data` explicitly.
 
@@ -268,6 +268,7 @@ Every entry plays one of two roles:
 | `http://`, `https://` | data | `model, plugin` | Web content. rummy.web overrides view with title+meta+description tile. |
 | `sh://`, `env://` | data (volatile) | `model, plugin` | Streaming-producer payload — stdout/stderr channel entries. Volatile: sort to bottom of `<index>`. **Channels only**; the action audit record lives in `log://`. See [scheme_category_split](#scheme_category_split). |
 | `prompt://` | data | `plugin` | User prompt. Written by prompt plugin (model can't `<set>` body). Default `visibility=archived` — model `<get>`s for full body or `<set index/>` to pin in `<index>`. |
+| `repo://` | data | `plugin` | Project manifest (`repo://manifest`). Engine-maintained, refreshed every scan. Model writes raise `PermissionError`. |
 | `log://` | logging | `system, plugin, model` | Unified activity tape namespace for all tool actions and prompts. One entry per action at `log://<L>/<T>/<S>/<action>` (`L`=loop sequence, `T`=per-loop turn, `S`=per-turn sequence). |
 | `update://` | logging | `model, plugin` | Lifecycle signal. Status attr classifies terminal (200/204/422) vs continuation (102). |
 | `error://` | logging | `model, plugin` | Runtime errors — policy rejection, budget overflow (status 413), dispatch crashes, protocol violations. Unified channel via `hooks.error.log.emit`. |
@@ -696,17 +697,17 @@ on `proposal.pending`. Feature logic stays in
 
 ### Project Manifest {#project_manifest}
 
-The `rummy.repo` plugin writes a single `repo://manifest` entry once
-per run — a flat snapshot of every project file with its token cost.
-It gives the model orientation at run start without burning prefix-
-cache on a turn-keyed regeneration. Files themselves default to
-`archived` so a 5000-file repo doesn't dump hundreds of thousands of
-tokens into context before any work happens.
+The `rummy.repo` plugin maintains `repo://manifest` — a flat catalog
+of every project file with its token cost. It gives the model
+orientation at run start; the entry is plugin-only (model writes to
+`repo://` raise `PermissionError` → strike). Files themselves default
+to `archived` so a 5000-file repo doesn't dump hundreds of thousands
+of tokens into context before any work happens.
 
 **Entry contract.**
 
-- Path: `repo://manifest` (project-scope scheme owned by rummy.repo).
-  One entry per run, written once.
+- Path: `repo://manifest` (project-scope scheme owned by rummy.repo;
+  `writable_by: ["plugin"]`).
 - Visibility: `indexed` at write; archivable like any data entry.
 - Body: rollup section + `---` delimiter + flat file list. Each row is
   one JSON object per line (`{"path":"...","tokens":N}`) — same shape
@@ -714,10 +715,12 @@ tokens into context before any work happens.
   primitive. Rollup rows aggregate by directory (path ends in `/`);
   flat rows are per-file. Sorted alphabetically.
 
-**Stale by design.** The manifest is a turn-0 snapshot; it does not
-update mid-run. Authoritative current state lives in the per-file
-entries (mtime/hash-driven, change-only writes) and in the Phase 3
-filesystem-mutation log injection (see [file_freshness]).
+**Live, not snapshot.** The scanner rewrites the manifest every scan;
+files added or removed during the run become visible to the model on
+next scan. Authoritative current per-file content lives in bare-path
+entries (mtime/hash-driven, change-only writes); discrete
+file-mutation log entries (see [file_freshness]) report individual
+diffs as they happen.
 
 **File default visibility.**
 
@@ -728,19 +731,19 @@ in `<index>`.
 
 **Phase 3 — filesystem-mutation log injection {#file_freshness}.**
 Engine-mediated state changes the model didn't author surface as
-synthetic log entries written in the model's own command grammar:
+synthetic log entries — same body shape as model-authored `<set>`
+log entries (unified udiff via `hedberg.generatePatch`):
 
 - File appeared on disk between scans → `log://<L>/<T>/<S>/set` with
-  empty SEARCH and full REPLACE.
-- File modified on disk → `log://<L>/<T>/<S>/set` with one
-  SEARCH/REPLACE pair per diff hunk.
+  udiff body (full content as `+` lines against empty `-`).
+- File modified on disk → `log://<L>/<T>/<S>/set` with udiff body (one
+  hunk per locality of change).
 - File removed from disk → `log://<L>/<T>/<S>/rm`, empty body,
   followed by the actual entry removal.
 
-In every case `attrs.external = true` distinguishes engine-injected
-entries from model emissions, and `attrs.patch` carries a udiff for
-client renderers (rummy.nvim). The bootstrap scan (no prior file
-entries) does NOT inject — every file is baseline, not delta.
+`attrs.external = true` distinguishes engine-injected entries from
+model emissions. The bootstrap scan (no prior file entries) does NOT
+inject — every file is baseline, not delta.
 
 **Disabled when noRepo.** Setting `noRepo: true` on a run skips the
 scan entirely; no manifest is created and no file entries are

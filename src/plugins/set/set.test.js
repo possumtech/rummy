@@ -246,7 +246,7 @@ describe("Set plugin", () => {
 			assert.deepEqual(store._calls, []);
 		});
 
-		it("scheme write: stores resolved body + log entry with verbatim emission", async () => {
+		it("scheme write: log body is udiff; attributes.emission preserves verbatim", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -254,7 +254,7 @@ describe("Set plugin", () => {
 					body: "v2",
 					path: "log://1/1/1/set",
 					resultPath: "log://1/1/1/set",
-					attributes: { path: "known://x" },
+					attributes: { path: "known://x", inner: "v2" },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
@@ -267,10 +267,24 @@ describe("Set plugin", () => {
 			assert.ok(log);
 			assert.equal(log.attributes.beforeActionTokens, 0);
 			assert.ok(log.attributes.afterActionTokens > 0);
-			assert.ok(log.attributes.patch, "udiff stored for client-side diff");
+			assert.ok(
+				log.body.startsWith("==="),
+				"log body is udiff (createTwoFilesPatch banner)",
+			);
+			assert.ok(log.body.includes("+v2"));
+			assert.equal(
+				log.attributes.emission,
+				"v2",
+				"verbatim model emission preserved",
+			);
+			assert.equal(
+				log.attributes.patch,
+				undefined,
+				"attributes.patch retired; body is the patch",
+			);
 		});
 
-		it("file write (no scheme on path) issues a `proposed` log entry with patched body", async () => {
+		it("file write (no scheme on path) issues a `proposed` log entry with udiff body", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -278,7 +292,7 @@ describe("Set plugin", () => {
 					body: "new content",
 					path: "log://1/1/1/set",
 					resultPath: "log://1/1/1/set",
-					attributes: { path: "src/foo.js" },
+					attributes: { path: "src/foo.js", inner: "new content" },
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
@@ -287,7 +301,10 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/foo.js");
 			assert.equal(log.attributes.patched, "new content");
-			assert.ok(log.attributes.patch, "udiff stored for client-side diff");
+			assert.ok(log.body.startsWith("==="), "log body is udiff");
+			assert.ok(log.body.includes("+new content"));
+			assert.equal(log.attributes.emission, "new content");
+			assert.equal(log.attributes.patch, undefined);
 		});
 	});
 
@@ -459,7 +476,8 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/app.js");
 			assert.equal(log.attributes.patched, "new line");
-			assert.ok(log.attributes.patch, "udiff stored for client-side diff");
+			assert.ok(log.body.startsWith("==="), "log body is udiff");
+			assert.equal(log.attributes.patch, undefined);
 		});
 
 		it("does not write a set:// canonical entry (no detour)", async () => {

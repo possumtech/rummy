@@ -7,10 +7,7 @@
 // the hook namespace is for plugins shipped in separate packages.
 
 import Hedberg from "../../lib/hedberg/hedberg.js";
-import {
-	generatePatch,
-	generateSearchReplaceBody,
-} from "../../lib/hedberg/matcher.js";
+import { generatePatch } from "../../lib/hedberg/matcher.js";
 import { hedmatch, hedsearch } from "../../lib/hedberg/patterns.js";
 
 export default class HedbergPlugin {
@@ -23,7 +20,6 @@ export default class HedbergPlugin {
 			search: hedsearch,
 			replace: Hedberg.replace,
 			generatePatch,
-			generateSearchReplaceBody,
 		};
 	}
 }

@@ -326,7 +326,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			return rows.find((r) => re.test(r.path));
 		}
 
-		it("NEW file synthesizes log://*/<turn>/*/set with empty-SEARCH body + attrs.external", async () => {
+		it("NEW file synthesizes log://*/<turn>/*/set with udiff body + attrs.external", async () => {
 			// A genuine "new file" event is a file that appeared
 			// BETWEEN scans. The bootstrap scan establishes the baseline
 			// (no log injection); a subsequent scan picks up files that
@@ -357,8 +357,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 					: log.attributes;
 			assert.strictEqual(attrs.path, "fresh.md");
 			assert.strictEqual(attrs.external, true);
-			assert.match(log.body, /^<<SEARCH\nSEARCH<<REPLACE/);
-			assert.match(log.body, /hello world/);
+			assert.strictEqual(attrs.patch, undefined);
+			assert.match(log.body, /^=+\n---/, "udiff banner");
+			assert.match(log.body, /\+hello world/);
 		});
 
 		it("bootstrap scan (no prior file entries): no log entries injected, files land as baseline", async () => {
@@ -385,7 +386,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			assert.ok(await e.getBody(runId, "b.md"));
 		});
 
-		it("modified file synthesizes log://*/<turn>/*/set with SEARCH/REPLACE pair + attrs.patch (udiff)", async () => {
+		it("modified file synthesizes log://*/<turn>/*/set with udiff body", async () => {
 			const root = await makeGitProject("mod");
 			writeFileSync(
 				join(root, "edit_me.md"),
@@ -415,17 +416,14 @@ describe("file freshness (@filesystem_freshness)", () => {
 					: log.attributes;
 			assert.strictEqual(attrs.path, "edit_me.md");
 			assert.strictEqual(attrs.external, true);
+			assert.strictEqual(attrs.patch, undefined);
 			assert.match(
-				attrs.patch,
+				log.body,
 				/^=+\n---/,
-				"attrs.patch carries the udiff (createTwoFilesPatch shape)",
+				"log body carries the udiff (createTwoFilesPatch shape)",
 			);
-			assert.match(attrs.patch, /-old/);
-			assert.match(attrs.patch, /\+new/);
-			assert.match(log.body, /<<SEARCH\b/);
-			assert.match(log.body, /SEARCH<<REPLACE\b/);
-			assert.match(log.body, /old/, "SEARCH captures the prior content");
-			assert.match(log.body, /new/, "REPLACE captures the new content");
+			assert.match(log.body, /-old/);
+			assert.match(log.body, /\+new/);
 		});
 
 		it("removed file synthesizes log://*/<turn>/*/rm before the entry rm", async () => {
