@@ -1,7 +1,7 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
 import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
-import { parseMarkerBody } from "../../lib/hedberg/marker.js";
+import { generateBodyUdiff } from "../../lib/hedberg/matcher.js";
 import File from "../file/file.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
@@ -327,20 +327,22 @@ export default class Set {
 			const scheme = Entries.scheme(target);
 			if (scheme === null) {
 				// File write: proposed entry; #materializeFile writes to disk on accept.
-				// Log body = model's verbatim emission (model audit / log tape).
-				// attrs.patch = udiff (precomputed projection for client diff
-				// rendering — rummy.nvim and other UI consumers read this).
+				// Log body = trimmed udiff (model-facing, training-friendly).
+				// attrs.patch = full createTwoFilesPatch udiff with header —
+				// rummy.nvim and other client renderers read this (wire
+				// contract pinned by proposal_wire_contract.test.js).
 				// attrs.patched = full new content (materializer reads on accept).
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
+				const bodyUdiff = generateBodyUdiff(oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 				await store.set({
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: attrs.inner,
+					body: bodyUdiff,
 					state: "proposed",
 					attributes: {
 						path: target,
@@ -382,12 +384,13 @@ export default class Set {
 				);
 			} else {
 				// Scheme write (known://, unknown://, etc.): the underlying
-				// entry resolves directly. Log body = model's verbatim
-				// emission. attrs.patch = udiff projection for client-side
-				// diff rendering.
+				// entry resolves directly. Log body = trimmed udiff
+				// (model-facing). attrs.patch = full udiff for client
+				// renderers.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
 				const udiff = generatePatch(target, oldContent, newContent);
+				const bodyUdiff = generateBodyUdiff(oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 
@@ -405,7 +408,7 @@ export default class Set {
 					runId,
 					turn,
 					path: entry.resultPath,
-					body: attrs.inner,
+					body: bodyUdiff,
 					state: "resolved",
 					loopId,
 					attributes: {
@@ -454,52 +457,7 @@ export default class Set {
 			}
 			return lines.join("\n");
 		}
-		if (Array.isArray(attrs.opPositions)) {
-			return {
-				body: Set.#projectFromPositions(attrs.opPositions),
-				preNumbered: true,
-			};
-		}
-		return Set.#projectBody(entry.body);
-	}
-
-	// Render new/changed lines with their target-file line numbers, blank
-	// line between separate operations. Delete ops contribute nothing (the
-	// log entry's beforeActionTokens / afterActionTokens carry the signal).
-	// `1:\t<line>` format mirrors <get>; the materializer skips its global
-	// numberLines pass when full() returns { preNumbered: true }.
-	static #projectFromPositions(opPositions) {
-		const blocks = [];
-		for (const t of opPositions) {
-			if (!t.content) continue;
-			const lines = t.content.split("\n");
-			const trailingBlank = lines[lines.length - 1] === "";
-			const effective = trailingBlank ? lines.slice(0, -1) : lines;
-			const numbered = effective
-				.map((line, i) => `${t.startLine + i}:\t${line}`)
-				.join("\n");
-			blocks.push(numbered);
-		}
-		return blocks.join("\n\n");
-	}
-
-	// Fallback projection when opPositions isn't attached (older entries,
-	// or non-operation set writes). Verbatim body — `numberLines` will be
-	// applied by the materializer's global pass.
-	static #projectBody(body) {
-		if (!body) return body;
-		const { ops, error } = parseMarkerBody(body);
-		if (error || !ops || ops.length === 0) return body;
-		const out = [];
-		for (const op of ops) {
-			if (op.op === "search_replace") {
-				out.push(`<<REPLACE\n${op.replace}\nREPLACE`);
-			} else {
-				const kw = op.op.toUpperCase();
-				out.push(`<<${kw}\n${op.content}\n${kw}`);
-			}
-		}
-		return out.join("");
+		return entry.body;
 	}
 
 	static #applyOperations(currentBody, operations) {

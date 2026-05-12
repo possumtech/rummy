@@ -38,7 +38,7 @@ describe("Story: autonomous web search returns the fact (@resolution)", () => {
 		assert.ok(searchLogs.length > 0, "search produced at least one log entry");
 		assert.ok(
 			searchLogs.some((e) =>
-				/^\{"path":"https?:\/\/[^"]+","tokens":\d+\}/m.test(e.body),
+				/^\{"path":"https?:\/\/[^"]+","tokens":\d+,"lines":\d+\}/m.test(e.body),
 			),
 			"at least one search log body lists results as JSON-per-row manifest",
 		);

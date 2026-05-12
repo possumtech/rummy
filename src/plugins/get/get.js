@@ -201,7 +201,10 @@ export default class Get {
 	}
 
 	full(entry) {
-		return entry.body;
+		// `<get>` is the only action whose log body opts into `N:\t<line>`
+		// numbering — line refs are the contract of the retrieval verb.
+		// Other entries render their bodies verbatim.
+		return { body: entry.body, numbered: true };
 	}
 }
 

@@ -331,15 +331,31 @@ table:
   enough; a dedicated 413-terminal would carry better signal but
   isn't urgent).
 
+### TODO: `tight_context_limit` story fails at minimum packet cost
+
+`test/e2e/stories/tight_context_limit.test.js` sets `contextLimit=7000`,
+ceiling = `7000 × RUMMY_BUDGET_CEILING (0.9) ≈ 6300`. Turn-1 packet
+(system + tooldocs + initial `<index>` + prompt scaffolding) lands at
+~6484 tokens — already over the ceiling before the model has anything
+to demote. Run terminates 499 ("Loop detected") after three identical
+overflows. Not a regression introduced by the udiff/numbering work
+(measured at the same ~6400-6700 range before). Either raise
+`contextLimit` to give the model headroom (defeats the "tight" intent)
+or shrink the static system/tooldocs floor so 7000 is genuinely
+operable. Separate scope from the udiff change.
+
 ### Scheme-write permission + change-render unification (LANDED 2026-05-12)
 
 Closed: `repo://` scheme writable_by `["plugin"]` (model writes raise
 `PermissionError` → strike); `Entries.set` rejects unknown schemes from
-model writer; `Set` plugin gates at handler entry. The udiff
-unification was reverted — body stays the model's verbatim emission;
-`attrs.patch` carries the udiff projection for client renderers
-(rummy.nvim). Wire contract pinned by
-`test/integration/proposal_wire_contract.test.js`.
+model writer; `Set` plugin gates at handler entry. Set log entry body
+is the trimmed udiff (no header, `context: 0`) — model-facing,
+training-friendly canonical edit shape. `attrs.patch` still carries
+the full `createTwoFilesPatch` udiff with header for client renderers
+(rummy.nvim); wire contract pinned by
+`test/integration/proposal_wire_contract.test.js`. Line-number
+prefixing (`N:\t<line>`) is opt-in via `{ body, numbered: true }` from
+a view; only `<get>` opts in.
 
 ### Manifest paradigm + loopId migration (LANDED 2026-05-12)
 

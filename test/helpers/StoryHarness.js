@@ -157,9 +157,13 @@ export default class StoryHarness {
 		const entries = await this.tdb.db.get_known_entries.all({
 			run_id: runRow.id,
 		});
+		// Order across loops first (recent loop wins), then by turn within
+		// loop. A single run with a follow-up ask reuses the run alias, so
+		// the second loop's turn=1 must beat the first loop's later turns;
+		// turn-only sort would return the prior loop's last emission.
 		const assistant = entries
 			.filter((e) => e.scheme === "assistant" && e.body)
-			.toSorted((a, b) => b.turn - a.turn);
+			.toSorted((a, b) => b.loop_id - a.loop_id || b.turn - a.turn);
 		if (assistant.length > 0) return assistant[0].body;
 
 		const latestLoop = await this.tdb.db.get_latest_completed_loop.get({

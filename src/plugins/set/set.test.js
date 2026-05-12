@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { generateBodyUdiff } from "../../lib/hedberg/matcher.js";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the tool plugin's class is named "Set" by design
 import Set from "./set.js";
 
@@ -67,58 +68,10 @@ describe("Set plugin", () => {
 	describe("full (visible projection)", () => {
 		const plugin = new Set(stubCore());
 
-		it("NEW emissions project verbatim (no SEARCH half to strip)", () => {
-			const body = "<<NEW\nfoo\nNEW";
+		it("non-error entries project the stored body verbatim (body IS the canonical udiff)", () => {
+			const body = "@@ -1,0 +1,1 @@\n+foo";
 			const out = plugin.full({ attributes: { path: "x.js" }, body });
-			assert.equal(out, "<<NEW\nfoo\nNEW");
-		});
-
-		it("SEARCH/REPLACE projects as REPLACE-only — model sees forward state, not the diff cost", () => {
-			const body = "<<SEARCH\nold\nSEARCH<<REPLACE\nnew\nREPLACE";
-			const out = plugin.full({ attributes: { path: "x" }, body });
-			assert.equal(out, "<<REPLACE\nnew\nREPLACE");
-		});
-
-		it("multi-hunk SEARCH/REPLACE projects as ordered REPLACE blocks", () => {
-			const body =
-				"<<SEARCH\nold1\nSEARCH<<REPLACE\nnew1\nREPLACE<<SEARCH\nold2\nSEARCH<<REPLACE\nnew2\nREPLACE";
-			const out = plugin.full({ attributes: { path: "x" }, body });
-			assert.equal(out, "<<REPLACE\nnew1\nREPLACE<<REPLACE\nnew2\nREPLACE");
-		});
-
-		it("opPositions projects target-line-numbered content with preNumbered flag", () => {
-			const out = plugin.full({
-				attributes: {
-					path: "x",
-					opPositions: [
-						{
-							kind: "search_replace",
-							startLine: 5,
-							lineCount: 2,
-							content: "alpha\nbeta",
-						},
-						{
-							kind: "append",
-							startLine: 42,
-							lineCount: 3,
-							content: "gamma\ndelta\nepsilon",
-						},
-					],
-				},
-				body: "<<SEARCH\nold\nSEARCH<<REPLACE\nalpha\nbeta\nREPLACE",
-			});
-			assert.deepEqual(out, {
-				body: "5:\talpha\n6:\tbeta\n\n42:\tgamma\n43:\tdelta\n44:\tepsilon",
-				preNumbered: true,
-			});
-		});
-
-		it("opPositions with empty content (delete-only set) projects empty body", () => {
-			const out = plugin.full({
-				attributes: { path: "x", opPositions: [] },
-				body: "<<DELETE\nfoo\nDELETE",
-			});
-			assert.deepEqual(out, { body: "", preNumbered: true });
+			assert.equal(out, body);
 		});
 
 		it("conflict synthesizes an error projection with attempted + current body", () => {
@@ -252,7 +205,7 @@ describe("Set plugin", () => {
 			assert.deepEqual(store._calls, []);
 		});
 
-		it("scheme write: stores resolved body + log entry with verbatim emission", async () => {
+		it("scheme write: stores resolved body + log entry whose body is the trimmed udiff", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -271,16 +224,20 @@ describe("Set plugin", () => {
 			assert.equal(target.visibility, "indexed");
 			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.ok(log);
-			assert.equal(log.body, "v2", "log body is the model's verbatim emission");
+			assert.equal(
+				log.body,
+				generateBodyUdiff("", "v2"),
+				"log body = trimmed udiff (model-facing)",
+			);
 			assert.equal(log.attributes.beforeActionTokens, 0);
 			assert.ok(log.attributes.afterActionTokens > 0);
 			assert.ok(
 				log.attributes.patch,
-				"attrs.patch carries the udiff projection for client rendering",
+				"attrs.patch carries the full udiff for client rendering",
 			);
 		});
 
-		it("file write (no scheme on path) issues a `proposed` log entry with patched body", async () => {
+		it("file write (no scheme on path) issues a `proposed` log entry with udiff body", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -297,10 +254,14 @@ describe("Set plugin", () => {
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/foo.js");
 			assert.equal(log.attributes.patched, "new content");
-			assert.equal(log.body, "new content", "log body is verbatim emission");
+			assert.equal(
+				log.body,
+				generateBodyUdiff("", "new content"),
+				"log body = trimmed udiff (model-facing)",
+			);
 			assert.ok(
 				log.attributes.patch,
-				"attrs.patch carries the udiff for client rendering",
+				"attrs.patch carries the full udiff for client rendering",
 			);
 		});
 	});

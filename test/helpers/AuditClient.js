@@ -196,7 +196,10 @@ export default class AuditClient extends RpcClient {
 	// Returns { run, alias } — for tests that want to observe the in-flight
 	// flow (seed proposals, stream chunks) rather than wait for terminal.
 	// The server kicks off the run async and returns the alias immediately;
-	// we poll until the row is visible so tests can safely seed by alias.
+	// we poll until both the run row AND its first loop are visible so
+	// callers can safely `seedProposal` by alias. Waiting on the run row
+	// alone races with AgentLoop's loop-claim step — `get_current_loop`
+	// would return null and seeders would throw "no active loop".
 	async startRun(params = {}) {
 		const { model, mode = "ask", prompt = "", ...rest } = params;
 		const attributes = { model, mode, ...rest };
@@ -209,10 +212,13 @@ export default class AuditClient extends RpcClient {
 		const deadline = Date.now() + 5_000;
 		while (Date.now() < deadline) {
 			const row = await this.#db.get_run_by_alias.get({ alias: res.alias });
-			if (row) return { run: res.alias, alias: res.alias };
+			if (row) {
+				const loop = await this.#db.get_current_loop.get({ run_id: row.id });
+				if (loop) return { run: res.alias, alias: res.alias };
+			}
 			await new Promise((r) => setTimeout(r, 25));
 		}
-		throw new Error(`startRun: run row not created for ${res.alias}`);
+		throw new Error(`startRun: run+loop not ready for ${res.alias}`);
 	}
 
 	// Resolve a proposal. resolution = { path, action: accept|reject|error, output? }

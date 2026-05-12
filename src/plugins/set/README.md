@@ -22,14 +22,19 @@ SEARCH/REPLACE edits, and pattern updates.
 
 ## Projection
 
-Shows `set {file}` with token delta (`before→after tokens`). Includes
-the merge conflict block when a SEARCH/REPLACE was performed.
+Log entry body is the trimmed udiff (no `---`/`+++` header,
+`context: 0`) — the canonical, training-friendly shape the model
+reads back from `<log>`. Conflict entries synthesize an error
+projection with `attempted` + `current body` blocks.
 
 ## Behavior
 
 - **Literal match first**: SEARCH text is matched literally.
 - **Heuristic fallback**: On literal failure, fuzzy matching with warnings.
-- **Patch generation**: `generatePatch` produces unified diff for client display.
+- **Patch generation**: `generateBodyUdiff` produces the model-facing
+  trimmed udiff stored as the log entry body. `generatePatch` produces
+  the full unified diff stashed in `attrs.patch` for client renderers
+  (rummy.nvim, web UI).
 - File writes are always status 202 (proposed); scheme writes resolve immediately.
 - **`proposal.content` filter** — when the client accepts a proposed
   set, this plugin overrides the resolved body to the body it

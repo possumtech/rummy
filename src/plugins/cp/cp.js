@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countLines, countTokens } from "../../agent/tokens.js";
-import { generatePatch } from "../../lib/hedberg/matcher.js";
+import { generateBodyUdiff, generatePatch } from "../../lib/hedberg/matcher.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./cpDoc.js";
 
@@ -106,12 +106,13 @@ export default class Cp {
 			const setProposalPath = await store.logPath(runId, loopId, turn, "set");
 			const existingBody = existing == null ? "" : existing;
 			const patch = generatePatch(to, existingBody, source);
+			const bodyUdiff = generateBodyUdiff(existingBody, source);
 			await store.set({
 				runId,
 				turn,
 				loopId,
 				path: setProposalPath,
-				body: "",
+				body: bodyUdiff,
 				state: "proposed",
 				attributes: {
 					path: to,

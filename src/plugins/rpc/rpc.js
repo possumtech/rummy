@@ -524,6 +524,26 @@ export default class Rpc {
 					});
 				}
 			}
+			// Idempotent confirmation. Race: yolo (or AgentLoop) accepts
+			// the proposal between the client's poll and its follow-up
+			// `set state=X body=""`. The current state already matches X,
+			// so the proposed-state guard above doesn't route to
+			// AgentLoop.resolve; falling through to the raw write would
+			// overwrite body with the client's empty payload, wiping
+			// content the first resolver staged. The first resolver also
+			// already emitted `proposal.accepted` and ran #materializeFile
+			// — re-firing on the duplicate would double-write disk.
+			// Narrow to the confirmation shape (state matches AND no
+			// body/attrs/visibility update) so a legitimate
+			// `set state=X attributes={...}` still applies.
+			if (
+				current?.state === params.state &&
+				!params.body &&
+				params.attributes == null &&
+				params.visibility == null
+			) {
+				return { ok: true };
+			}
 		}
 
 		// Thread loopId for the entry write. Log-scheme paths encode

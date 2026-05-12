@@ -40,20 +40,19 @@ export default async function materializeContext({
 			row.visibility === "archived"
 				? ""
 				: await hooks.tools.view(projectionKey, baseEntry);
-		// View contract: returns a string (default; assembler applies
-		// numberLines) or { body, preNumbered: true } (assembler trusts
-		// the body's own line refs). Used by <set> log entries whose
-		// numbers must reflect the target file, not the projection-local
-		// position.
+		// View contract: returns a string (verbatim — no line numbering)
+		// or { body, numbered: true } to opt INTO `N:\t<line>` numbering.
+		// Numbering belongs to <get> output exclusively; index tiles and
+		// other log entries (set/sh/env/update/prompt) render verbatim.
 		const rawProjection =
 			viewResult && typeof viewResult === "object"
 				? viewResult.body
 				: viewResult;
-		const preNumbered =
+		const numbered =
 			viewResult && typeof viewResult === "object"
-				? !!viewResult.preNumbered
+				? !!viewResult.numbered
 				: false;
-		const projection = preNumbered ? rawProjection : numberLines(rawProjection);
+		const projection = numbered ? numberLines(rawProjection) : rawProjection;
 		// tileTokens = packet cost; bodyTokens = what <get> would bring.
 		const tileTokens = countTokens(projection);
 		const tileLines = countLines(projection);

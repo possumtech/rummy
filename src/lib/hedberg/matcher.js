@@ -12,6 +12,25 @@ export function generatePatch(entryPath, oldContent, newContent) {
 	);
 }
 
+// Trimmed udiff for the model-facing log body: hunks only, no
+// `---`/`+++`/`Index:` header (target lives in the log entry meta),
+// `context: 0` (no surrounding lines — the model already has the
+// before/after token totals in meta if scale matters). Empty string
+// when content is unchanged.
+export function generateBodyUdiff(oldContent, newContent) {
+	const before = oldContent == null ? "" : oldContent;
+	const after = newContent == null ? "" : newContent;
+	if (before === after) return "";
+	const { hunks } = structuredPatch("a", "b", before, after, "", "", {
+		context: 0,
+	});
+	const blocks = hunks.map((h) => {
+		const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`;
+		return [header, ...h.lines].join("\n");
+	});
+	return blocks.join("\n");
+}
+
 // Render an old→new content change as a HEREDOC SEARCH/REPLACE body
 // matching the model's edit grammar (marker.js). One SEARCH/REPLACE pair
 // per diff hunk; empty SEARCH on first-appearance materializes the
