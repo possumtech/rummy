@@ -27,7 +27,8 @@
 
 ## Folksonomic XML Command Rules
 
+YOU MUST use `lineFirst`/`lineFinal` to read a chunk of the entry per turn if an entry overflows `tokensFree`.
+YOU MUST archive newly distilled and/or irrelevant log, file, and other entries every turn to optimize context and maximize relevance.
 YOU MUST ONLY populate known entries with linked source entry information, NOT from index summaries, symbols, snippets, or model training.
-YOU MUST archive newly distilled and/or irrelevant log, file, and other entries every turn to optimize context, maximize relevance, and increase `tokensFree`.
 YOU MUST adapt, edit, update, and revise the `known://plan` to align with the prompt and your progress every turn.
 YOU MUST terminate every turn with <update status="{102|200}">{ direct one-line answer or one-line summary }</update> (<= 80 chars).
