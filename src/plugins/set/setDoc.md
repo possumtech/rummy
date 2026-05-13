@@ -7,7 +7,7 @@ YOU SHOULD prefer minimal, atomic edits.
 * `archive`/`index`: visibility flip (mutually exclusive).
 
 Example — multi-hunk edit:
-	<set path="known://countries/france/capital">@@ -4,1 +4,1 @@
+	<set path="known://countries/france/capital" tags="">@@ -4,1 +4,1 @@
 	-The capital of France is Paris, on the river Seine in north-central France.
 	+The capital of France is Paris, on the river Seine in north-central France. Paris has been the continuous capital of France since 987 CE.
 	@@ -4,0 +5,5 @@
@@ -20,8 +20,8 @@ Example — multi-hunk edit:
 
 Example — mark a plan step complete:
 	<set path="known://plan">@@ -1,1 +1,1 @@
-	-- [ ] Decompose the prompt into unknown entries
-	+- [x] Decompose the prompt into unknown entries
+	-- [ ] Decompose the trivia question into unknown entries
+	+- [x] Decompose the trivia question into unknown entries
 	</set>
 
 Example — remove a log, file, or other entry from the index:

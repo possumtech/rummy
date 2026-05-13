@@ -11,7 +11,7 @@ Example:
 	+Entries without a scheme (`{scheme}://`) are the relative paths of project files; entries with a scheme exist in your Extended Context
 	</set>
 
-YOU MUST create and maintain a `known://plan` that's aligned with your `<system_instructions/>` and the current prompt.
+YOU MUST create and maintain a `known://plan` markdown checklist that's aligned with your `<system_instructions/>` and the current prompt.
 YOU MUST begin by decomposing the prompt into folksonomically taxonomized, tagged, and topical `unknown://` entries to be resolved with taxonomized, tagged, topical, and referenced `known://` entries.
 
 ## Core Folksonomic System Architecture
