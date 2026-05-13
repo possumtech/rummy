@@ -539,6 +539,97 @@ table:
   enough; a dedicated 413-terminal would carry better signal but
   isn't urgent).
 
+### In flight: mimetype-driven content handling (search-snippet bodies removed)
+
+**Why.** Search results currently store the per-result SearXNG snippet
+as the indexed `https://` entry's `attributes.content`, and that
+content renders inside the entry's `<index>` tile. Multi-result
+searches inflate the indexed body pool to tens of thousands of tokens
+the model didn't ask for. Beyond that: scheme-driven handling
+(`http`/`https` always do one thing) conflates *where an entry lives*
+with *what kind of content it is*. The Rummy Wiki and any future
+content source need content-type-aware projection — `text/markdown`
+with sections vs. `text/plain` lines vs. `application/json` raw
+lines — without piling per-scheme branches into the rendering layer.
+
+**Decisions (final).**
+
+- **`mimetype` is a first-class entry attribute** in the rummy core
+  contract. Optional on the wire; engine default is `text/markdown`
+  when unset. **No per-scheme default mimetype** — every scheme
+  follows the same rule. Imposing scheme-specific defaults invites
+  paradigmatic confusion (`known://` rendering differently because
+  of *what its scheme is* rather than what's in `mimetype`).
+- **Universal fallback default: `text/markdown`.** Friendly to the
+  model's training, structured, fine for plain text too.
+- **Binary refusal contract: soft `405`** with body
+  `{mimetype} fetch unsupported` (e.g. `image/png fetch unsupported`).
+  No body emitted on `<get>`. Model goes to `<env>`/`<sh>`/stream
+  if it really wants the bytes.
+- **mimetype surfaces in three places**:
+  1. Every `<index>` JSON tile envelope.
+  2. Every row in `repo://manifest`.
+  3. Every `log://<L>/<T>/<S>/get` action-entry envelope (so the
+     model sees the mimetype of what it just fetched).
+- **Engine line-numbering contract is uniform across textual
+  mimetypes.** Line-numbered `<get>` output is the engine floor,
+  not a mimetype-conditional behavior. `application/json` gets
+  numbered lines exactly like `text/plain` or `text/markdown`.
+  Mimetype enables *richer-than-raw* projections (rummy.repo's
+  enrichments), never *less-than-raw* downgrades.
+
+**Three tiers.**
+
+| Tier | Responsibility |
+|---|---|
+| rummy (core) | `mimetype` first-class attr; default `text/markdown`; line-numbered text body via `<get>`; soft `405` for binary; surface mimetype in index tiles, manifest rows, get log entries. |
+| rummy.web | Optionally tag fetched entries with `mimetype` when Content-Type is known. Drop the SearXNG snippet `content` from the entry body — search returns manifest-only entries; the model must `<get>` for content. |
+| rummy.repo | Read `mimetype` (or fall back to extension) for *enrichment* projections (TOC tiles for markdown, schema summaries for JSON, section-aware reads later). Never breaks the engine floor — uninstalled, `<get>` still returns numbered text bodies. |
+
+**Implementation order — SPEC first, code second.**
+
+1. Spec the contract in three places, in this order:
+   - `rummy/main/SPEC.md` — add `mimetype` to the entry contract,
+     define defaults, define the `405` refusal, define the three
+     surface points (index tile envelope, manifest row, get log
+     entry envelope). New anchor `{#mimetype}`.
+   - `rummy.web/main/SPEC.md` — drop snippet body, optional
+     `mimetype` tagging from Content-Type, search-result entry
+     attribute schema updated.
+   - `rummy.repo/main/SPEC.md` — `mimetype` precedence (explicit
+     attr → extension → engine default), enrichment menu by
+     mimetype, manifest-row mimetype column.
+2. Stop here for review. Code lands in a separate turn.
+3. Code phase (separate turn):
+   - rummy core: `mimetype` in entry attributes; line-numbered
+     `<get>` for textual mimetypes (already on the floor — just
+     formalize); `405` soft outcome for binary; surface mimetype
+     in the three places.
+   - rummy.web: drop `content` from indexed body; set `mimetype`
+     from Content-Type response header.
+   - rummy.repo: read mimetype → extension → default; manifest
+     rows gain mimetype.
+
+**Tests.**
+
+- Integration: `mimetype` defaults to `text/markdown` when unset;
+  binary `<get>` returns `405 {mimetype} fetch unsupported` soft;
+  index tile envelope carries `mimetype`; manifest row carries
+  `mimetype`; get log entry carries `mimetype`.
+- rummy.web: search-result entries have no `content` in body or
+  attributes; `mimetype` set from Content-Type when known.
+- rummy.repo: enrichment dispatch reads `mimetype` correctly with
+  extension fallback.
+
+**Out of scope (this round).**
+
+- Section-aware chunking (`<get heading="Career"/>`). The mimetype
+  attribute opens the door; the implementation is future work.
+- Stream/binary handling beyond the `405` refusal. The model has
+  `<env>`/`<sh>` for binary; richer flows can land later.
+
+---
+
 ### TODO: `tight_context_limit` model-behavior tail (floor resolved)
 
 `tight_context_limit` originally died at packet assembly: turn-1 floor

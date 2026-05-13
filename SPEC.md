@@ -56,6 +56,74 @@ visibility=archived` (complete and hidden, recallable by path), `state=streaming
 visibility=indexed` (in-flight, tile visible in `<index>`), or `state=proposed,
 visibility=indexed` (visible, awaiting resolution).
 
+### Mimetype {#mimetype}
+
+Every entry carries a `mimetype` attribute that names the content
+type of its body. Mimetype drives content-aware projection (rummy.repo
+adds enrichments by type) but never gates the engine's universal
+floor: textual mimetypes always render line-numbered through `<get>`,
+binary mimetypes refuse with a uniform `405`. Scheme is *where the
+entry lives*; mimetype is *what's in the body*. The two are
+orthogonal — `https://wiki/page` and `repo://manifest` can both carry
+`text/markdown`, and the rendering layer treats them identically.
+
+**Default.** Universal fallback: `text/markdown` when `mimetype` is
+unset. No per-scheme defaults — the same rule applies to every
+scheme, including `known://`, `unknown://`, `repo://`, `http(s)://`,
+and bare-file paths. Imposing scheme-specific defaults would invite
+paradigmatic confusion (entries handled differently because of their
+storage namespace rather than their declared content type).
+
+**Textual mimetypes.** Any `text/*` plus textual `application/*`
+types (`application/json`, `application/xml`, `application/yaml`,
+etc.). The engine floor for textual mimetypes:
+
+- `<get>` returns the body line-numbered (`N:\t<line>`), with `N`
+  reflecting the absolute source line (see [token_accounting](#token_accounting)).
+- Chunked reads via `lineFirst`/`lineFinal` work uniformly.
+- The line-numbering decision is the engine's, not the mimetype's.
+  Mimetype enables *richer-than-raw* projections (rummy.repo's
+  enrichments); never *less-than-raw* downgrades.
+
+**Binary mimetypes.** `image/*`, `application/octet-stream`,
+`application/pdf`, video/audio types, any non-text MIME class. The
+engine's `<get>` contract for binary entries:
+
+- Status: soft `405`.
+- Body: `{mimetype} fetch unsupported` — e.g. `image/png fetch
+  unsupported`.
+- No entry body returned.
+- Soft (`state: resolved`, no strike). The model knows to use
+  `<env>`/`<sh>` or stream channels if it needs the bytes.
+
+**Surfaces.** Mimetype appears in three model-visible places:
+
+1. **Every `<index>` tile envelope.** Indexed entries' JSON
+   envelope (preceding the body in `<log>` / `<index>`) carries
+   `"mimetype":"text/markdown"` alongside `lines` / `tokens`.
+2. **Every row in `repo://manifest`.** The manifest's per-file row
+   (see rummy.repo SPEC §6) carries `"mimetype":"…"` so the model
+   plans reads against the right content shape.
+3. **Every `log://<L>/<T>/<S>/get` action-entry envelope.** When
+   `<get>` resolves, its log entry's envelope carries the mimetype
+   of the fetched content. The model sees the type of what it just
+   fetched, not just the path it requested.
+
+**Precedence when reading mimetype.** Consumers (rummy.repo's
+enrichment layer, the engine's binary refusal) resolve in this
+order:
+
+1. Explicit `entry.attributes.mimetype`.
+2. Extension lookup (for file paths and any path with a recognizable
+   suffix).
+3. Engine default (`text/markdown`).
+
+The Content-Type response header (for web fetches) is consumed by
+the fetcher (rummy.web), which writes it onto `entry.attributes.mimetype`
+at write time — by the time downstream readers consult mimetype,
+it's either explicit (Content-Type tagged) or unset (caller fell
+back to extension/default).
+
 ### Six Primitives {#primitives}
 
 The entire grammar for changing entries:
