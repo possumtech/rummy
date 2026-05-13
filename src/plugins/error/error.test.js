@@ -140,6 +140,71 @@ describe("error plugin: error.log handler", () => {
 	});
 });
 
+describe("error plugin: sudden death (@sudden_death)", () => {
+	const MAX_LOOP_TURNS = Number(process.env.RUMMY_MAX_LOOP_TURNS);
+	const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
+	const THRESHOLD = MAX_LOOP_TURNS - MAX_STRIKES;
+	const MESSAGE =
+		"Maximum turns exceeded: Please terminate with status code 200";
+
+	it("no warning before the threshold", async () => {
+		const { hooks } = makeCore();
+		await startLoop(hooks, "L1");
+		const store = makeStore();
+		await startTurn(hooks, "L1", THRESHOLD, { entries: store });
+		assert.equal(
+			store._calls.length,
+			0,
+			"turn AT the threshold does not warn (only turn > threshold)",
+		);
+	});
+
+	it("warning fires for each turn after the threshold", async () => {
+		const { hooks } = makeCore();
+		await startLoop(hooks, "L1");
+		for (let t = 1; t <= MAX_STRIKES; t++) {
+			const turn = THRESHOLD + t;
+			const store = makeStore();
+			await startTurn(hooks, "L1", turn, { entries: store });
+			assert.equal(store._calls.length, 1, `warning fired on turn ${turn}`);
+			const entry = store._calls[0];
+			assert.equal(entry.body, MESSAGE);
+			assert.equal(entry.attributes.status, 429);
+			assert.equal(entry.state, "resolved", "soft — state=resolved");
+			assert.equal(entry.outcome, null, "soft — outcome=null (no strike)");
+		}
+	});
+
+	it("warning is soft: turnErrors stays 0 (model can terminate cleanly)", async () => {
+		const { hooks } = makeCore();
+		await startLoop(hooks, "L1");
+		const store = makeStore();
+		await startTurn(hooks, "L1", THRESHOLD + 1, { entries: store });
+		const verdict = await hooks.turn.verdict.filter(
+			{ continue: true },
+			{
+				store,
+				runId: "r",
+				loopId: "L1",
+				turn: THRESHOLD + 1,
+				recorded: [
+					{
+						scheme: "update",
+						path: `log://turn_${THRESHOLD + 1}/update/x`,
+						attributes: { status: 200 },
+					},
+				],
+				summaryText: "done",
+			},
+		);
+		assert.deepEqual(
+			verdict,
+			{ continue: false, status: 200 },
+			"summaryText with no hard strike → clean terminate at 200",
+		);
+	});
+});
+
 describe("error plugin: verdict", () => {
 	it("clean turn (no recorded errors, no summary) → continue: true, no streak", async () => {
 		const { hooks } = makeCore();
@@ -285,7 +350,7 @@ describe("error plugin: verdict", () => {
 		assert.deepEqual(verdict, { continue: true });
 	});
 
-it("repeated not_found failures (varied paths) do NOT accumulate strikes via recordedFailed", async () => {
+	it("repeated not_found failures (varied paths) do NOT accumulate strikes via recordedFailed", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
 		await startTurn(hooks, "L1");

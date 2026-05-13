@@ -538,9 +538,7 @@ describe("Get binary mimetype refusal (@mimetype)", () => {
 
 	it("unset mimetype reads normally (default text/markdown is textual)", async () => {
 		const body = "alpha\nbeta\ngamma";
-		const store = makeStore([
-			{ path: "src/x.js", body, tokens: 6 },
-		]);
+		const store = makeStore([{ path: "src/x.js", body, tokens: 6 }]);
 		const rummy = makeRummy(store);
 		const entry = makeEntry({ path: "src/x.js" });
 

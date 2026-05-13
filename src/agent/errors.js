@@ -1,8 +1,5 @@
 // Recoverable outcomes — recorded but no strike.
-export const SOFT_FAILURE_OUTCOMES = new Set([
-	"not_found",
-	"unparsed",
-]);
+export const SOFT_FAILURE_OUTCOMES = new Set(["not_found", "unparsed"]);
 
 // SPEC writer_tiers.
 export class PermissionError extends Error {

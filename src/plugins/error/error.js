@@ -1,8 +1,20 @@
 import { SOFT_FAILURE_OUTCOMES } from "../../agent/errors.js";
 
 const MAX_STRIKES = Number(process.env.RUMMY_MAX_STRIKES);
+const MAX_LOOP_TURNS = Number(process.env.RUMMY_MAX_LOOP_TURNS);
 const MIN_CYCLES = Number(process.env.RUMMY_MIN_CYCLES);
 const MAX_CYCLE_PERIOD = Number(process.env.RUMMY_MAX_CYCLE_PERIOD);
+
+// Sudden Death: when the loop's iteration count enters the last
+// MAX_STRIKES window before MAX_LOOP_TURNS, emit a soft 429 each
+// turn so the model knows to wrap up. `soft: true` — no strike,
+// no override of the model's terminal. The abandon at MAX_LOOP_TURNS
+// itself lives in AgentLoop.js. Lead-time = MAX_STRIKES is a
+// deliberate semantic coupling: both numbers represent "how many
+// chances does the model get."
+const SUDDEN_DEATH_THRESHOLD = MAX_LOOP_TURNS - MAX_STRIKES;
+const SUDDEN_DEATH_MESSAGE =
+	"Maximum turns exceeded: Please terminate with status code 200";
 
 function fingerprint(entry) {
 	const parts = Object.keys(entry.attributes)
@@ -61,9 +73,20 @@ export default class ErrorPlugin {
 		this.#loopState.delete(loopId);
 	}
 
-	#onTurnStarted({ rummy }) {
+	async #onTurnStarted({ rummy }) {
 		const state = this.#loopState.get(rummy.loopId);
 		state.turnErrors = 0;
+		if (rummy.sequence > SUDDEN_DEATH_THRESHOLD) {
+			await this.#onErrorLog({
+				store: rummy.entries,
+				runId: rummy.runId,
+				turn: rummy.sequence,
+				loopId: rummy.loopId,
+				message: SUDDEN_DEATH_MESSAGE,
+				status: 429,
+				soft: true,
+			});
+		}
 	}
 
 	async #onErrorLog({

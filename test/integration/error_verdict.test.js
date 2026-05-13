@@ -449,4 +449,101 @@ describe("error verdict (@response_healing)", () => {
 		assert.strictEqual(verdict.continue, false);
 		assert.strictEqual(verdict.status, 499);
 	});
+
+	// @sudden_death — last MAX_STRIKES turns before MAX_LOOP_TURNS get a
+	// soft 429 warning. Lives in error.js#onTurnStarted; the cap itself
+	// fires in AgentLoop.
+	describe("sudden death warning (@sudden_death)", () => {
+		const MAX_LOOP_TURNS = Number(process.env.RUMMY_MAX_LOOP_TURNS);
+		const THRESHOLD = MAX_LOOP_TURNS - MAX_STRIKES;
+
+		it("no warning at or below the threshold", async () => {
+			await newLoop(THRESHOLD);
+			const rows = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const error429 = rows.find(
+				(r) =>
+					r.scheme === "log" &&
+					r.body ===
+						"Maximum turns exceeded: Please terminate with status code 200",
+			);
+			assert.equal(error429, undefined, "no warning emitted at threshold");
+		});
+
+		it("warning fires on the first turn past the threshold; entry is soft", async () => {
+			await newLoop(THRESHOLD + 1);
+			const rows = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			const error429 = rows.find(
+				(r) =>
+					r.scheme === "log" &&
+					r.body ===
+						"Maximum turns exceeded: Please terminate with status code 200",
+			);
+			assert.ok(error429, "warning entry written");
+			assert.equal(error429.state, "resolved", "soft — state=resolved");
+			assert.equal(error429.outcome, null, "soft — outcome=null (no strike)");
+			const attrs = JSON.parse(error429.attributes);
+			assert.equal(attrs.status, 429);
+		});
+
+		it("warning is soft: model can terminate cleanly on a warned turn", async () => {
+			await newLoop(THRESHOLD + 1);
+			const verdict = await tdb.hooks.turn.verdict.filter(
+				{ continue: true },
+				{
+					store,
+					runId: RUN_ID,
+					loopId: LOOP_ID,
+					turn: THRESHOLD + 1,
+					recorded: [
+						{
+							scheme: "update",
+							path: `log://1/${THRESHOLD + 1}/1/update`,
+							attributes: { status: 200 },
+						},
+					],
+					summaryText: "done",
+				},
+			);
+			assert.equal(verdict.continue, false);
+			assert.equal(verdict.status, 200);
+		});
+	});
+
+	// @strike_visibility — strike system is engine-internal. The model
+	// sees triggering error messages but never sees streak count or
+	// MAX_STRIKES position. Test by exercising a strike and verifying
+	// no log entry leaks counter info to the model surface.
+	describe("strike-system visibility (@strike_visibility)", () => {
+		it("no error.log message reveals strike count, streak, or MAX_STRIKES", async () => {
+			await newLoop(1);
+			await tdb.hooks.error.log.emit({
+				store,
+				runId: RUN_ID,
+				turn: 1,
+				loopId: LOOP_ID,
+				message: "not a valid udiff edit: edit rejected",
+				status: 422,
+			});
+			const rows = await tdb.db.get_known_entries.all({ run_id: RUN_ID });
+			for (const r of rows) {
+				if (r.scheme !== "log") continue;
+				const body = r.body ?? "";
+				assert.equal(
+					/strike/i.test(body),
+					false,
+					`row ${r.path} leaks 'strike': ${body}`,
+				);
+				assert.equal(
+					/MAX_STRIKES/i.test(body),
+					false,
+					`row ${r.path} leaks 'MAX_STRIKES': ${body}`,
+				);
+				assert.equal(
+					/\bstreak\b/i.test(body),
+					false,
+					`row ${r.path} leaks 'streak': ${body}`,
+				);
+			}
+		});
+	});
 });

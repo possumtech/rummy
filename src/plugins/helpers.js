@@ -96,12 +96,10 @@ export async function storePatternResult(
 				typeof m.attributes === "string"
 					? JSON.parse(m.attributes)
 					: m.attributes;
-			return manifestLine(
-				m.path,
-				m.tokens,
-				lineCount(m.body),
-				attrs?.mimetype ?? null,
-			);
+			// `attrs?.mimetype` propagates undefined when missing, letting
+			// manifestLine's default-parameter substitute text/markdown.
+			// No `??` fallback — the helper owns the default contract.
+			return manifestLine(m.path, m.tokens, lineCount(m.body), attrs?.mimetype);
 		})
 		.join("\n");
 	const prefix = manifest ? "MANIFEST " : "";
@@ -126,10 +124,15 @@ export async function storePatternResult(
 // content shape without re-deriving from extension. Sister plugins
 // (rummy.web, rummy.repo) import this helper rather than
 // reinventing the row shape.
-export function manifestLine(path, tokens, lines = null, mimetype = null) {
+export function manifestLine(
+	path,
+	tokens,
+	lines = null,
+	mimetype = "text/markdown",
+) {
 	const row = { path, tokens };
 	if (lines) row.lines = lines;
-	row.mimetype = mimetype ?? "text/markdown";
+	row.mimetype = mimetype;
 	return JSON.stringify(row);
 }
 

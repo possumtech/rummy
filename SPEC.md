@@ -756,6 +756,66 @@ If your handler throws, the framework catches and routes through
 `error.log.emit` at status 500 — that's the only situation where the
 framework writes on your behalf.
 
+### Strike-System Visibility {#strike_visibility}
+
+The strike machinery — `MAX_STRIKES`, the `streak` counter,
+`turnErrors`, the failed→strike pipeline — is **engine-internal
+calibration**. It is never communicated to the model. The model
+sees the *triggering* error messages (e.g. "Budget overflow:
+log://…", a `state="failed"` action entry); it does not see "strike
+2 of 3," "one more failure abandons the run," or any other counter
+exposure.
+
+This rule is structural, not preferential. Communicating the
+streak position would invite the model to game the threshold:
+emit a clean turn to reset the counter, then resume the misbehavior.
+The strike system catches genuine drift specifically because the
+model doesn't see the threshold and can't tactically dodge it.
+Cycle detection follows the same rule for the same reason (see
+`Failure Reporting` above — "Cycle detection is silent").
+
+**The complementary case:** when an engine-internal cap (loop turn
+ceiling, e.g.) is *about* to fire, that is not a strike-system
+warning — it is a resource-cap notification (see [`#sudden_death`](#sudden_death)).
+The model gets the warning, can act on it. The strike count remains
+hidden; the cap is the visible boundary.
+
+Any proposal to "warn the model about strikes" is incorrect and
+should be rejected on sight.
+
+### Sudden Death {#sudden_death}
+
+Loops are capped at `RUMMY_MAX_LOOP_TURNS` (default 999). When a
+loop's iteration count enters the last `RUMMY_MAX_STRIKES` window
+(turns `MAX_LOOP_TURNS - MAX_STRIKES + 1` through `MAX_LOOP_TURNS`,
+inclusive), the engine emits a soft warning each turn so the
+model can wrap up before the cap fires.
+
+| Property | Value |
+|---|---|
+| Trigger | `ctx.turn > MAX_LOOP_TURNS - MAX_STRIKES` |
+| Status | 429 |
+| Soft | yes (`state: resolved`, no strike, no streak increment) |
+| Body | `Maximum turns exceeded: Please terminate with status code 200` |
+| Channel | `<error status="429">…</error>` log entry, emitted at `turn.started` |
+
+`soft: true` is load-bearing. A hard strike here would block the
+model's terminal `<update status="200">` via the
+`summaryText && !struck → terminate` branch (see verdict at
+`error.js:128`) — the model would try to obey and get dragged
+forward anyway. Soft keeps the warning informational; the model
+can terminate cleanly on any warned turn.
+
+If the model never obeys, `AgentLoop.js`'s natural
+`MAX_LOOP_TURNS` exit fires at iter cap and the run abandons at
+499. The strike system stays out of it entirely — running out of
+room is not misbehavior.
+
+**Lead-time = MAX_STRIKES** is a deliberate semantic coupling.
+Both numbers represent "how many chances does the model get."
+3 chances to recover from misbehavior, 3 chances to wrap up before
+the loop hits the wall. One constant, consistent semantics.
+
 ### Mode Enforcement {#mode_enforcement}
 
 Two mechanisms, operating at different layers:
@@ -1657,11 +1717,13 @@ personas only teach the `@@` form so the model learns one grammar.
 
 | Condition | Outcome |
 |---|---|
-| `-` lines not found in body (strict miss + Hedberg miss) | conflict (soft) — error feedback carries `attempted` + `currentBody` |
-| Multi-hunk: a later hunk fails | conflict (soft); earlier hunks' `opPositions` retained for forensics |
-| Malformed `@@` header | parse error (raised at XmlParser layer) |
-| Bare body on existing path | soft 422 "edit rejected" — no write |
-| Bare body on missing path | soft 422 "edit recovered" — pure-insert written |
+| Edit against missing path with `+` lines | Soft 422 "edit recovered" — `+` lines extracted as pure-insert |
+| Edit against missing path with no `+` lines | Soft 422 "edit rejected" — no write |
+| Edit against existing path with non-matching `-` lines (strict miss + Hedberg miss) | Soft 422 "edit rejected" — no write |
+| Multi-hunk: a later hunk fails | Soft 422 "edit rejected" — same path as single-hunk; earlier hunks not retained (no partial writes) |
+| Malformed `@@` header | Parse error (raised at XmlParser layer) |
+| Bare body on existing path | Soft 422 "edit rejected" — no write |
+| Bare body on missing path | Soft 422 "edit recovered" — pure-insert written |
 
 ### Wire Surface (proposal entries)
 
