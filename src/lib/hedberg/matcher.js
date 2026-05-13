@@ -1,76 +1,10 @@
-import { createTwoFilesPatch, structuredPatch } from "diff";
-
-export function generatePatch(entryPath, oldContent, newContent) {
-	return createTwoFilesPatch(
-		`${entryPath}\told`,
-		`${entryPath}\tnew`,
-		oldContent,
-		newContent,
-		"",
-		"",
-		{ context: 3 },
-	);
-}
-
-// Trimmed udiff for the model-facing log body: hunks only, no
-// `---`/`+++`/`Index:` header (target lives in the log entry meta),
-// `context: 0` (no surrounding lines — the model already has the
-// before/after token totals in meta if scale matters). Empty string
-// when content is unchanged.
-export function generateBodyUdiff(oldContent, newContent) {
-	const before = oldContent == null ? "" : oldContent;
-	const after = newContent == null ? "" : newContent;
-	if (before === after) return "";
-	const { hunks } = structuredPatch("a", "b", before, after, "", "", {
-		context: 0,
-	});
-	const blocks = hunks.map((h) => {
-		const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`;
-		return [header, ...h.lines].join("\n");
-	});
-	return blocks.join("\n");
-}
-
-// Render an old→new content change as a HEREDOC SEARCH/REPLACE body
-// matching the model's edit grammar (marker.js). One SEARCH/REPLACE pair
-// per diff hunk; empty SEARCH on first-appearance materializes the
-// whole file. Used by the engine-side filesystem watcher to surface
-// external file changes back to the model in its native idiom.
-export function generateSearchReplaceBody(oldContent, newContent) {
-	const before = oldContent == null ? "" : oldContent;
-	const after = newContent == null ? "" : newContent;
-	if (before === after) return "";
-	if (before === "") {
-		return `<<SEARCH\nSEARCH<<REPLACE\n${after}\nREPLACE`;
-	}
-	const { hunks } = structuredPatch("a", "b", before, after, "", "", {
-		context: 3,
-	});
-	const pairs = [];
-	for (const hunk of hunks) {
-		const search = [];
-		const replace = [];
-		for (const line of hunk.lines) {
-			const prefix = line[0];
-			const text = line.slice(1);
-			if (prefix === " ") {
-				search.push(text);
-				replace.push(text);
-			} else if (prefix === "-") {
-				search.push(text);
-			} else if (prefix === "+") {
-				replace.push(text);
-			}
-		}
-		pairs.push(
-			`<<SEARCH\n${search.join("\n")}\nSEARCH<<REPLACE\n${replace.join("\n")}\nREPLACE`,
-		);
-	}
-	return pairs.join("");
-}
+// Per-block literal-then-fuzzy-then-indent-heal applier. udiff.applyModel
+// delegates to Hedberg.replace (which uses this) for per-hunk rescue
+// when strict apply fails. Edit-shape rendering lives in udiff.js;
+// this module only matches and patches.
 
 export default class HeuristicMatcher {
-	static matchAndPatch(entryPath, entryBody, searchBlock, replaceBlock) {
+	static matchAndPatch(entryBody, searchBlock, replaceBlock) {
 		// Unescape common regex escapes (models often escape brackets, parens, etc.)
 		const unescaped = searchBlock.replace(/\\([[\](){}.*+?^$|\\])/g, "$1");
 		if (unescaped !== searchBlock && entryBody.includes(unescaped)) {
@@ -107,7 +41,6 @@ export default class HeuristicMatcher {
 				entryBody.slice(0, useIdx) +
 				replaceBlock +
 				entryBody.slice(useIdx + searchBlock.length);
-			const patch = generatePatch(entryPath, entryBody, newContent);
 			const warning =
 				exactCount > 1
 					? `SEARCH block matched ${exactCount} locations. Edit was applied to the last occurrence. Use more surrounding context in future edits to avoid ambiguity.`
@@ -118,7 +51,6 @@ export default class HeuristicMatcher {
 			const searchLineCount =
 				searchBlock === "" ? 0 : searchBlock.split("\n").length;
 			return {
-				patch,
 				newContent,
 				warning,
 				error: null,
@@ -138,13 +70,11 @@ export default class HeuristicMatcher {
 			// Empty SEARCH = append REPLACE to end of file
 			const trailing = entryBody.endsWith("\n") ? "" : "\n";
 			const newContent = `${entryBody + trailing + replaceBlock}\n`;
-			const patch = generatePatch(entryPath, entryBody, newContent);
 			const preLines =
 				entryBody + trailing === ""
 					? 0
 					: (entryBody + trailing).split("\n").length - 1;
 			return {
-				patch,
 				newContent,
 				warning: null,
 				error: null,
@@ -188,7 +118,7 @@ export default class HeuristicMatcher {
 
 		if (matchCount === 0) {
 			return {
-				patch: null,
+				newContent: null,
 				warning: null,
 				error: "SEARCH text not found in current body.",
 			};
@@ -238,8 +168,6 @@ export default class HeuristicMatcher {
 		];
 		const newContent = newFileLines.join("\n");
 
-		const patch = generatePatch(entryPath, entryBody, newContent);
-
 		if (fuzzyAmbiguous) {
 			warning =
 				(warning ? `${warning} ` : "") +
@@ -247,7 +175,6 @@ export default class HeuristicMatcher {
 		}
 
 		return {
-			patch,
 			newContent,
 			warning,
 			error: null,

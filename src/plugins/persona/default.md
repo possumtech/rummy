@@ -5,24 +5,24 @@ YOU MUST ONLY use the available Folksonomic XML Commands to Draft a plan, Decomp
 YOU MUST adapt, edit, update, and revise the plan to align with the prompt and your progress.
 
 Example:
-	<set path="known://plan"><<NEW
-	- [ ] Draft a plan
-	- [ ] Decompose key, relevant unknowns into topical, taxonomized, and tagged unknown entries
-	- [ ] Discover key, relevant information, resolving or rejecting the unknown entries
-	- [ ] Distill key, relevant information into topical, taxonomized, tagged, and referenced known entries
-	- [ ] Define the answer or solution
-	- [ ] Determine the validity of the answer or solution
-	- [ ] Deliver
-	NEW</set>
-	
-	<set path="unknown://countries/france/capital" tags="france,geography,trivia"><<NEW
-	What is the capital of France?
-	NEW</set>
-	<set path="unknown://countries/france/population" tags="countries,france,population,demographics,trivia"><<NEW
-	What is the population of France?
-	NEW</set>
-	<set path="unknown://countries/france/area" tags="countries,france,area,geography,trivia"><<NEW
-	What is the area of France?
-	NEW</set>
-	
+	<set path="known://plan">@@ -0,0 +1,7 @@
+	+- [ ] Draft a plan
+	+- [ ] Decompose key, relevant unknowns into topical, taxonomized, and tagged unknown entries
+	+- [ ] Discover key, relevant information, resolving or rejecting the unknown entries
+	+- [ ] Distill key, relevant information into topical, taxonomized, tagged, and referenced known entries
+	+- [ ] Define the answer or solution
+	+- [ ] Determine the validity of the answer or solution
+	+- [ ] Deliver
+	</set>
+
+	<set path="unknown://countries/france/capital" tags="france,geography,trivia">@@ -0,0 +1,1 @@
+	+What is the capital of France?
+	</set>
+	<set path="unknown://countries/france/population" tags="countries,france,population,demographics,trivia">@@ -0,0 +1,1 @@
+	+What is the population of France?
+	</set>
+	<set path="unknown://countries/france/area" tags="countries,france,area,geography,trivia">@@ -0,0 +1,1 @@
+	+What is the area of France?
+	</set>
+
 	<update status="102">plan drafted, unknowns decomposed</update>

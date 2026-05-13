@@ -28,6 +28,17 @@ function stubCore() {
 	};
 }
 
+// Stub the soft-error hook so the raw-body recovery path can fire 422.
+function rummyCtx(store, runId, loopId, sequence = 1) {
+	return {
+		entries: store,
+		sequence,
+		runId,
+		loopId,
+		hooks: { error: { log: { emit: async () => {} } } },
+	};
+}
+
 describe("proposal wire contract (@resolution)", () => {
 	let tdb;
 	let plugin;
@@ -50,20 +61,19 @@ describe("proposal wire contract (@resolution)", () => {
 		const newContent = "# Hello\n\nbody line one\nbody line two\n";
 
 		// Drive the actual set.js handler with the parser-output shape:
-		// `attrs.operations` is what XmlParser produces from
-		// `<<NEW>>...NEW`. inner carries the verbatim HEREDOC.
+		// new-file emissions land as raw body (no `@@` header) → entry.body
+		// carries the full content, no hunks attr.
 		await plugin.handler(
 			{
+				body: newContent,
 				path: proposalPath,
 				resultPath: proposalPath,
 				attributes: {
 					path: "RUMSFELD.md",
-					inner: `<<NEW\n${newContent}\nNEW`,
-					operations: [{ op: "new", content: newContent }],
 					tags: "essay,test",
 				},
 			},
-			{ entries: store, sequence: 1, runId, loopId },
+			rummyCtx(store, runId, loopId),
 		);
 
 		// Read the proposal back the same way wire clients would:
@@ -97,11 +107,6 @@ describe("proposal wire contract (@resolution)", () => {
 			"attrs.patch is unified diff (createTwoFilesPatch banner shape)",
 		);
 		assert.match(attrs.patch, /\+# Hello/, "udiff shows added content");
-		assert.equal(attrs.op, "new", "attrs.op = operative intent");
-		assert.ok(
-			Array.isArray(attrs.opPositions) && attrs.opPositions.length === 1,
-			"attrs.opPositions = per-op breakdown for clients",
-		);
 		assert.equal(typeof attrs.afterActionTokens, "number");
 		assert.ok(attrs.afterActionTokens > 0);
 	});
@@ -117,7 +122,7 @@ describe("proposal wire contract (@resolution)", () => {
 				resultPath: proposalPath,
 				attributes: { path: "known://x", inner: "v2" },
 			},
-			{ entries: store, sequence: 1, runId, loopId },
+			rummyCtx(store, runId, loopId),
 		);
 
 		const matches = await store.getEntriesByPattern(runId, proposalPath, null);

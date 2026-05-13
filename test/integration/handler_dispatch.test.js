@@ -156,7 +156,7 @@ describe("Handler dispatch", () => {
 		});
 	});
 
-	describe("set handler — edit mode", () => {
+	describe("set handler — edit mode (@edit_grammar)", () => {
 		it("applies patch and sets proposed for files", async () => {
 			await store.set({
 				runId: RUN_ID,
@@ -175,13 +175,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/edit_me.js",
-					inner:
-						"<<SEARCH\nconst port = 3000;\nSEARCH<<REPLACE\nconst port = 8080;\nREPLACE",
-					operations: [
+					hunks: [
 						{
-							op: "search_replace",
-							search: "const port = 3000;",
-							replace: "const port = 8080;",
+							oldStart: 1,
+							oldLines: 1,
+							newStart: 1,
+							newLines: 1,
+							lines: ["-const port = 3000;", "+const port = 8080;"],
 						},
 					],
 				},
@@ -214,19 +214,28 @@ describe("Handler dispatch", () => {
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const logPath = "log://1/1/4/set";
-			// SEARCH has tab indent (mismatched). Fuzzy matcher should heal.
+			// `-` lines have tab indent (mismatched against file's 4-space).
+			// Strict apply misses; Hedberg fallback heals the indent.
 			const entry = {
 				scheme: "set",
 				path: logPath,
 				body: "",
 				attributes: {
 					path: "src/fuzzy.js",
-					inner: "",
-					operations: [
+					hunks: [
 						{
-							op: "search_replace",
-							search: "function add(a, b) {\n\treturn a + b;\n}",
-							replace: "function add(a, b) {\n\treturn a + b + 1;\n}",
+							oldStart: 1,
+							oldLines: 3,
+							newStart: 1,
+							newLines: 3,
+							lines: [
+								"-function add(a, b) {",
+								"-\treturn a + b;",
+								"-}",
+								"+function add(a, b) {",
+								"+\treturn a + b + 1;",
+								"+}",
+							],
 						},
 					],
 				},
@@ -286,12 +295,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
-					inner: "",
-					operations: [
+					hunks: [
 						{
-							op: "search_replace",
-							search: "7 - a = ",
-							replace: "7 - a = 5",
+							oldStart: 2,
+							oldLines: 1,
+							newStart: 2,
+							newLines: 1,
+							lines: ["-7 - a = ", "+7 - a = 5"],
 						},
 					],
 				},
@@ -306,12 +316,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
-					inner: "",
-					operations: [
+					hunks: [
 						{
-							op: "search_replace",
-							search: "a + b = ",
-							replace: "a + b = 14",
+							oldStart: 4,
+							oldLines: 1,
+							newStart: 4,
+							newLines: 1,
+							lines: ["-a + b = ", "+a + b = 14"],
 						},
 					],
 				},
@@ -359,12 +370,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "known://config",
-					inner: "",
-					operations: [
+					hunks: [
 						{
-							op: "search_replace",
-							search: "port=3000",
-							replace: "port=8080",
+							oldStart: 1,
+							oldLines: 1,
+							newStart: 1,
+							newLines: 1,
+							lines: ["-port=3000", "+port=8080"],
 						},
 					],
 				},

@@ -315,7 +315,131 @@ See SPEC.md anchors `state_visibility`, `file_freshness`,
 
 ## Open Items
 
-### Budget cascade — partially landed
+### In flight: udiff edit-grammar migration (HEREDOC → udiffberg)
+
+**Why.** Static prompt floor is the single biggest cost. Tool docs +
+operative-label grammar (SEARCH/REPLACE/NEW/PREPEND/APPEND/DELETE +
+scoped form) burn ~600-1000 tokens teaching a syntax the model never
+saw in pretraining. Switching the model's edit grammar to unified
+diff hands that surface back: the model already knows udiff from git.
+Read-side already speaks udiff (`<log>` set bodies, `attrs.patch`,
+filesystem-watcher translation), so write-side alignment closes the
+loop — one canonical shape both directions.
+
+**Three formats, kept conceptually distinct.** Same bytes look alike;
+the contracts are not. Confusion between them is how this migration
+breaks.
+
+| name | who emits | who consumes | shape |
+|---|---|---|---|
+| **udiff** | engine | clients (rummy.nvim, web UI) | full `createTwoFilesPatch`: `Index:` / `---` / `+++` / `@@` / 3 lines context |
+| **udifflite** | engine | model (in `<log>` set bodies) | hunks only, no header, `context: 0`. Compressed presentation. |
+| **udiffberg** | model | engine (parsed at `<set>` resolution) | fuzzy-tolerant: line numbers are hints, content is the anchor, partial / "lazy" hunks accepted. Hedberg's literal-then-fuzzy rescue applied per hunk. |
+
+The three are sibling renderings of the same edit. Renderers and
+parser live in `src/lib/hedberg/udiff.js` so the names stay close
+together and drift is visible at one site.
+
+**udiffberg parsing rules.**
+
+- A `<set>` body whose first non-whitespace line is `@@` is parsed as
+  one or more udiffberg hunks.
+- Any other body is treated as raw NEW content (full-replace / new
+  file). No edit markers — the body IS the file.
+- Each hunk: `@@ -oldStart,oldLines +newStart,newLines @@` header
+  (counts optional → default 1), then `-`/`+`/` ` prefixed lines.
+- Multi-hunk: sequential `@@` headers; hunks apply in order against
+  the body that resulted from prior hunks.
+- Pure-insert hunk (no `-` lines): `@@` line ref anchors position.
+- Pure-delete hunk (no `+` lines): `-` lines locate the removal.
+
+**udiffberg apply strategy (strict → Hedberg fallback).**
+
+1. Try strict apply at `@@ -N,M @@` coords. Cheap fast path.
+2. On line mismatch, peel the hunk: feed `-` lines to Hedberg's
+   existing literal+fuzzy+indent-healing matcher (`matcher.js`)
+   anchored near the `@@` line, replace with `+` lines.
+3. Emit `opPositions` (kind, startLine, lineCount, content) from
+   the applied result so the wire contract stays stable.
+4. On unrescuable failure, store a conflict result with the same
+   shape we use today (`error`, `attempted`, `currentBody`).
+
+**Wire contract delta.**
+
+- `attrs.patch` stays full udiff (clients depend on this — pinned
+  by `proposal_wire_contract.test.js`).
+- `attrs.opPositions` stays — reconstructed from the applied hunks.
+- `attrs.patched` stays — full new content for the materializer.
+- `attrs.operations` (the model's parsed-emission shape) is replaced
+  by `attrs.hunks` (the parsed udiffberg hunks).
+- `attrs.inner` (verbatim model emission) drops — the body of the
+  set log entry is now udifflite, and the original udiffberg is
+  recoverable from `assistant://N` audit if forensic.
+
+**Migration phases.**
+
+1. **`src/lib/hedberg/udiff.js`** — new file. Exports
+   `renderClient(path, old, new)` (replaces `generatePatch`),
+   `renderModel(old, new)` (replaces `generateBodyUdiff`),
+   `parseModel(text)` → `{ hunks, error }`, `applyModel(body, hunks)`
+   → `{ newBody, opPositions, warning, error, attempted, currentBody }`.
+   Re-export `generatePatch` and `generateBodyUdiff` as thin shims
+   during migration; remove after callers move.
+2. **Apply primitives** — factor matcher.js's literal+fuzzy+indent-
+   heal block into `searchAnchor(body, searchLines)` so `applyModel`
+   can call it per hunk without duplicating logic.
+3. **XmlParser** — `resolveCommand("set", ...)`: detect leading `@@`,
+   parse via `udiff.parseModel`, set `attrs.hunks`. Else
+   `attrs.body` = raw new content. Drop `parseMarkerBody` import.
+4. **set.js handler** — replace `Hedberg.replace` + `parseMarkerBody`
+   path with `udiff.applyModel(existing, attrs.hunks)`. The
+   error / conflict reporting path is unchanged in shape.
+5. **cp.js, mv.js** — they already build proposals via
+   `generatePatch` / `generateBodyUdiff` directly. Just rename
+   imports to `renderClient` / `renderModel`.
+6. **marker.js cleanup** — `parseMarkerBody` deleted.
+   `extractSingleHeredoc` stays (non-set tools still wrap opaque
+   multi-line bodies in `<<IDENT...IDENT`).
+7. **Tool docs** — `setDoc.md` rewritten: short udiffberg grammar
+   description + 3-4 examples (NEW, single-hunk edit, multi-hunk,
+   delete). `cpDoc.md`/`mvDoc.md` unchanged (they don't carry edit
+   bodies).
+8. **Persona + instructions** — `instructions-system.md` and
+   `instructions-user.md` SET examples switch to udiffberg.
+   `persona/default.md` and any other personas with edit examples
+   switch in lockstep. Per `feedback_sacred_prompts_v2.md` these
+   are sacred — surgical edits, not rewrites; one example per
+   operative shape is enough.
+9. **Tests** — `set.test.js` full rewrite of the operative-label
+   suite; `marker.test.js` shrunk to heredoc-extraction only
+   (or deleted if no remaining callers); new `udiff.test.js`
+   covering parse + apply + the fuzzy rescue; integration tests
+   that seed `<set>` bodies migrate to udiffberg.
+10. **Story turn snapshots** — old `.txt` dumps with HEREDOC
+    emissions stay (historic). Delete only if they cause test
+    flake.
+11. **SPEC.md** — `edit_grammar` section (or whatever anchors the
+    HEREDOC syntax) rewritten around udiffberg. Add anchors for
+    the three formats so future readers see the distinction.
+12. **AGENTS.md** — close `TODO: tight_context_limit` once
+    measurements show the prompt-floor drop puts the test back
+    in the operable zone.
+
+**Risks worth tracking during the work.**
+
+- Multi-hunk overlap: if the model emits two hunks that touch the
+  same line range, the second one's coords reference the post-first
+  body. Decide on first hunk failure: apply remaining or abort?
+  Recommend: apply each independently, accumulate conflicts.
+- Token-count drift on the `<turn>` budget table: each hunk's
+  `+` lines contribute to the eventual `<log>` body's tokens. The
+  per-scheme breakdown in `<turn>` should hold up unchanged.
+- Small-model line-counting reliability: gemma may emit `@@ -14 @@`
+  when meaning line 17. The strict-then-Hedberg fallback is the
+  rescue; measure rescue rate via telemetry on the conflict
+  reporting.
+
+
 
 The strike system now treats budget overflow as a clean terminal: a
 run that can't fit reaches 499 ("Loop detected") rather than leaking
@@ -331,18 +455,23 @@ table:
   enough; a dedicated 413-terminal would carry better signal but
   isn't urgent).
 
-### TODO: `tight_context_limit` story fails at minimum packet cost
+### TODO: `tight_context_limit` model-behavior tail (floor resolved)
 
-`test/e2e/stories/tight_context_limit.test.js` sets `contextLimit=7000`,
-ceiling = `7000 × RUMMY_BUDGET_CEILING (0.9) ≈ 6300`. Turn-1 packet
-(system + tooldocs + initial `<index>` + prompt scaffolding) lands at
-~6484 tokens — already over the ceiling before the model has anything
-to demote. Run terminates 499 ("Loop detected") after three identical
-overflows. Not a regression introduced by the udiff/numbering work
-(measured at the same ~6400-6700 range before). Either raise
-`contextLimit` to give the model headroom (defeats the "tight" intent)
-or shrink the static system/tooldocs floor so 7000 is genuinely
-operable. Separate scope from the udiff change.
+`tight_context_limit` originally died at packet assembly: turn-1 floor
+of ~6484 tokens against ceiling 6300. The udiffberg migration brought
+the floor down to ~5783 (-693, ~11%): tool docs shrank (operative-
+label grammar → udiff), persona/instructions examples shortened.
+Test now reaches the model, run progresses past turn 1.
+
+Remaining failure is model behavior, not engine: under tight context
+the model emits `<get path="notes.md"/><update status="200">{guess}</update>`
+in the same turn — terminating at 200 before the get result lands,
+inventing the codename. The test's purpose (demote-recovery under
+budget pressure) only kicks in after the model first reads the
+source. Separate from the migration's scope. Options: prompt nudge
+toward "never close with 200 before reading sources for factual
+prompts," or accept that gemma at 7000-context can't reliably do
+multi-turn factual recall.
 
 ### Scheme-write permission + change-render unification (LANDED 2026-05-12)
 

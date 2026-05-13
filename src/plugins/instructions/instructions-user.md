@@ -8,24 +8,23 @@ Example:
 
 	<get path="trivia/capitals.csv"/>
 
-	<set path="known://trivia/geography/capitals" tags="countries,france,capital,geography,trivia"><<NEW
-	# Related
-	[trivia question](prompt://3)
-	[unknown resolving](unknown://countries/france/capital)
-	[source entry](trivia/capitals.csv)
+	<set path="known://trivia/geography/capitals" tags="countries,france,capital,geography,trivia">@@ -0,0 +1,6 @@
+	+# Related
+	+[trivia question](prompt://3)
+	+[unknown resolving](unknown://countries/france/capital)
+	+[source entry](trivia/capitals.csv)
+	+
+	+{ relevant information derived from the linked source entry brought into <log> }
+	</set>
 
-	{ relevant information derived from the linked source entry brought into <log> }
-	NEW</set>
-
-	<set path="known://plan"><<SEARCH
-	- [ ] Distill key, relevant information into topical, taxonomized, tagged, and referenced known entries
-	- [ ] Define the answer or solution
-	SEARCH<<REPLACE
-	- [ ] Distill key, relevant information about France into topical, taxonomized, tagged, and referenced known entries
-	  - [ ] Disambiguate the term "capital"
-	- [ ] Define the answer or solution
-	  - [ ] Confirm and reference credible sources
-	REPLACE</set>
+	<set path="known://plan">@@ -4,2 +4,4 @@
+	-- [ ] Distill key, relevant information into topical, taxonomized, tagged, and referenced known entries
+	-- [ ] Define the answer or solution
+	+- [ ] Distill key, relevant information about France into topical, taxonomized, tagged, and referenced known entries
+	+  - [ ] Disambiguate the term "capital"
+	+- [ ] Define the answer or solution
+	+  - [ ] Confirm and reference credible sources
+	</set>
 
 	<set path="unknown://countries/france/capital" tags="RESOLVED" archive/>
 	<set path="trivia/capitals.csv" archive/>
@@ -33,15 +32,17 @@ Example:
 	<set path="log://1/1/8/get" archive/>
 	{ archiving newly distilled and/or irrelevant log entries every turn }
 
-	<set path="known://plan"><<SEARCH - [ ] Find the capital of France SEARCH<<REPLACE - [x] Find the capital of France REPLACE</set>
+	<set path="known://plan">@@ -2,1 +2,1 @@
+	-- [ ] Find the capital of France
+	+- [x] Find the capital of France
+	</set>
 	<update status="102">distilled the capital of France into known entry; archived the source</update>
 
 Example:
-	<set path="known://plan"><<SEARCH
-	- [ ] Deliver answer to trivia question
-	SEARCH<<REPLACE
-	- [x] Deliver answer to trivia question
-	REPLACE</set>
+	<set path="known://plan">@@ -7,1 +7,1 @@
+	-- [ ] Deliver answer to trivia question
+	+- [x] Deliver answer to trivia question
+	</set>
 	<update status="200">Paris</update>
 
 

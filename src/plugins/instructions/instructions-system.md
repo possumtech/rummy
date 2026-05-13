@@ -7,9 +7,9 @@ YOU MUST ONLY use the available Folksonomic XML Commands.
 YOU MUST NOT use shell commands for entry file operations. Entry files require Folksonomic XML Commands.
 Example: <get path="src/*.txt" manifest/>
 Example:
-	<set path="file_on_disk.txt" tags="searchable,tags,internal,useful"><<NEW
-	Entries without a scheme (`{scheme}://`) are the relative paths of project files; entries with a scheme exist in your Extended Context
-	NEW</set>
+	<set path="file_on_disk.txt" tags="searchable,tags,internal,useful">@@ -0,0 +1,1 @@
+	+Entries without a scheme (`{scheme}://`) are the relative paths of project files; entries with a scheme exist in your Extended Context
+	</set>
 
 ## Core Folksonomic System Architecture
 

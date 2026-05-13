@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countLines, countTokens } from "../../agent/tokens.js";
-import { generateBodyUdiff, generatePatch } from "../../lib/hedberg/matcher.js";
+import { renderClient, renderModel } from "../../lib/hedberg/udiff.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./mvDoc.js";
 
@@ -196,8 +196,8 @@ export default class Mv {
 				},
 			});
 			const existingBody = existing == null ? "" : existing;
-			const patch = generatePatch(to, existingBody, source);
-			const bodyUdiff = generateBodyUdiff(existingBody, source);
+			const patch = renderClient(to, existingBody, source);
+			const bodyUdiff = renderModel(existingBody, source);
 			await store.set({
 				runId,
 				turn,

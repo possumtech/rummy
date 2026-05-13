@@ -12,7 +12,6 @@ describe("Hedberg plugin", () => {
 		assert.equal(typeof hooks.hedberg.match, "function");
 		assert.equal(typeof hooks.hedberg.search, "function");
 		assert.equal(typeof hooks.hedberg.replace, "function");
-		assert.equal(typeof hooks.hedberg.generatePatch, "function");
 	});
 
 	describe("Hedberg.replace", () => {

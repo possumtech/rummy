@@ -22,7 +22,15 @@ describe("hedberg API (@hedberg, @plugins_hedberg)", () => {
 	it("hedberg utilities are accessible via core.hooks.hedberg", () => {
 		const h = tdb.hooks.hedberg;
 		assert.ok(h, "hedberg object exists on hooks");
-		for (const name of ["match", "search", "replace", "generatePatch"]) {
+		for (const name of [
+			"match",
+			"search",
+			"replace",
+			"renderClient",
+			"renderModel",
+			"parseUdiffberg",
+			"applyUdiffberg",
+		]) {
 			assert.strictEqual(typeof h[name], "function", `${name} is callable`);
 		}
 	});

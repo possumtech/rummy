@@ -338,7 +338,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			return rows.find((r) => re.test(r.path));
 		}
 
-		it("NEW file synthesizes log://*/<turn>/*/set with empty-SEARCH body + attrs.external", async () => {
+		it("NEW file synthesizes log://*/<turn>/*/set with pure-insert udiff body + attrs.external", async () => {
 			// A genuine "new file" event is a file that appeared
 			// BETWEEN scans. The bootstrap scan establishes the baseline
 			// (no log injection); a subsequent scan picks up files that
@@ -374,8 +374,8 @@ describe("file freshness (@filesystem_freshness)", () => {
 				/^=+\n---/,
 				"attrs.patch carries the udiff projection",
 			);
-			assert.match(log.body, /^<<SEARCH\nSEARCH<<REPLACE/);
-			assert.match(log.body, /hello world/);
+			assert.match(log.body, /^@@ -\d+,0 \+1,/, "udifflite pure-insert header");
+			assert.match(log.body, /\+hello world/);
 		});
 
 		it("bootstrap scan (no prior file entries): no log entries injected, files land as baseline", async () => {
@@ -402,7 +402,7 @@ describe("file freshness (@filesystem_freshness)", () => {
 			assert.ok(await e.getBody(runId, "b.md"));
 		});
 
-		it("modified file synthesizes log://*/<turn>/*/set with SEARCH/REPLACE pair + attrs.patch (udiff)", async () => {
+		it("modified file synthesizes log://*/<turn>/*/set with udifflite body + attrs.patch (full udiff)", async () => {
 			const root = await makeGitProject("mod");
 			writeFileSync(
 				join(root, "edit_me.md"),
@@ -439,10 +439,9 @@ describe("file freshness (@filesystem_freshness)", () => {
 			);
 			assert.match(attrs.patch, /-old/);
 			assert.match(attrs.patch, /\+new/);
-			assert.match(log.body, /<<SEARCH\b/);
-			assert.match(log.body, /SEARCH<<REPLACE\b/);
-			assert.match(log.body, /old/, "SEARCH captures the prior content");
-			assert.match(log.body, /new/, "REPLACE captures the new content");
+			assert.match(log.body, /^@@ /, "udifflite hunk header");
+			assert.match(log.body, /-old/, "minus line captures the prior content");
+			assert.match(log.body, /\+new/, "plus line captures the new content");
 		});
 
 		it("removed file synthesizes log://*/<turn>/*/rm before the entry rm", async () => {

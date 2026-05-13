@@ -1,6 +1,6 @@
 import Entries from "../../agent/Entries.js";
 import { countLines, countTokens } from "../../agent/tokens.js";
-import { generateBodyUdiff, generatePatch } from "../../lib/hedberg/matcher.js";
+import { renderClient, renderModel } from "../../lib/hedberg/udiff.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./cpDoc.js";
 
@@ -84,7 +84,7 @@ export default class Cp {
 			// recap (model audit of the emission) + (b) a set proposal
 			// at the destination. The wire surface clients render
 			// against is just the set proposal — same shape as a direct
-			// `<set path="X"><<NEW>>...NEW</set>` from the model. cp is
+			// `<set path="X">{body}</set>` from the model. cp is
 			// server-side intent; the user-facing proposal is a file
 			// creation/overwrite.
 			await store.set({
@@ -105,8 +105,8 @@ export default class Cp {
 			});
 			const setProposalPath = await store.logPath(runId, loopId, turn, "set");
 			const existingBody = existing == null ? "" : existing;
-			const patch = generatePatch(to, existingBody, source);
-			const bodyUdiff = generateBodyUdiff(existingBody, source);
+			const patch = renderClient(to, existingBody, source);
+			const bodyUdiff = renderModel(existingBody, source);
 			await store.set({
 				runId,
 				turn,

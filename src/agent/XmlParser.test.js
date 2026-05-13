@@ -63,83 +63,55 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].options, "PG, SQLite");
 		});
 
-		it("parses set with SEARCH/REPLACE marker pair", () => {
-			const input = `<set path="src/config.js"><<SEARCH
-const port = 3000;
-SEARCH
-<<REPLACE
-const port = 8080;
-REPLACE</set>`;
+		it("parses set with udiffberg single hunk", () => {
+			const input = `<set path="src/config.js">@@ -1,1 +1,1 @@
+-const port = 3000;
++const port = 8080;</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "src/config.js");
-			assert.strictEqual(commands[0].operations.length, 1);
-			assert.strictEqual(commands[0].operations[0].op, "search_replace");
-			assert.strictEqual(
-				commands[0].operations[0].search,
-				"const port = 3000;",
-			);
-			assert.strictEqual(
-				commands[0].operations[0].replace,
-				"const port = 8080;",
-			);
+			assert.strictEqual(commands[0].hunks.length, 1);
+			assert.deepEqual(commands[0].hunks[0].lines, [
+				"-const port = 3000;",
+				"+const port = 8080;",
+			]);
 		});
 
-		it("parses set with multiple SEARCH/REPLACE pairs", () => {
-			const input = `<set path="src/config.js"><<SEARCH
-const port = 3000;
-SEARCH
-<<REPLACE
-const port = 8080;
-REPLACE
-<<SEARCH
-const host = "localhost";
-SEARCH
-<<REPLACE
-const host = "0.0.0.0";
-REPLACE</set>`;
+		it("parses set with multiple udiffberg hunks", () => {
+			const input = `<set path="src/config.js">@@ -1,1 +1,1 @@
+-const port = 3000;
++const port = 8080;
+@@ -5,1 +5,1 @@
+-const host = "localhost";
++const host = "0.0.0.0";</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].operations.length, 2);
-			assert.strictEqual(commands[0].operations[0].op, "search_replace");
-			assert.strictEqual(commands[0].operations[1].op, "search_replace");
+			assert.strictEqual(commands[0].hunks.length, 2);
 		});
 
-		it("parses set with raw body (create / overwrite)", () => {
+		it("parses set with raw body (create / overwrite — no @@ header)", () => {
 			const input = '<set path="src/new.js">export default {};</set>';
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].path, "src/new.js");
 			assert.strictEqual(commands[0].body, "export default {};");
-			assert.ok(!commands[0].operations);
+			assert.ok(!commands[0].hunks);
 		});
 
-		it("parses set with NEW marker (explicit creation)", () => {
-			const input = `<set path="src/new.js"><<NEW
-export default {};
-NEW</set>`;
+		it("parses pure-insert hunk (new file content via @@ -0,0)", () => {
+			const input = `<set path="src/new.js">@@ -0,0 +1,2 @@
++export default {};
++// hello</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].operations.length, 1);
-			assert.strictEqual(commands[0].operations[0].op, "new");
-			assert.strictEqual(
-				commands[0].operations[0].content,
-				"export default {};",
-			);
+			assert.strictEqual(commands[0].hunks.length, 1);
+			assert.strictEqual(commands[0].hunks[0].oldStart, 0);
+			assert.strictEqual(commands[0].hunks[0].oldLines, 0);
 		});
 
-		it("parses set with APPEND marker", () => {
-			const input = `<set path="known://plan"><<APPEND
-- [ ] new task
-APPEND</set>`;
+		it("parses pure-delete hunk (no + lines)", () => {
+			const input = `<set path="src/main.go">@@ -3,1 +3,0 @@
+-deprecated_function()</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].operations[0].op, "append");
-			assert.strictEqual(commands[0].operations[0].content, "- [ ] new task");
-		});
-
-		it("parses set with DELETE marker", () => {
-			const input = `<set path="src/main.go"><<DELETE
-deprecated_function()
-DELETE</set>`;
-			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].operations[0].op, "delete");
+			assert.strictEqual(commands[0].hunks.length, 1);
+			assert.deepEqual(commands[0].hunks[0].lines, ["-deprecated_function()"]);
 		});
 
 		it("parses multiple commands in one response", () => {
@@ -391,17 +363,15 @@ I need to check the port.
 			);
 		});
 
-		it("botched SEARCH/REPLACE without </set> recovers trailing <sh>/<update>", () => {
+		it("botched udiffberg without </set> recovers trailing <sh>/<update>", () => {
 			// Reduction of a real model failure pattern: a `<set>` whose
-			// body botches its edit shape AND lacks the `</set>` tail.
-			// Without recovery the trailing `<sh>` and `<update>` get
-			// trapped in the unclosed body; the verdict
-			// reports a missing `<update>` even though one was emitted.
-			const input = `<set path="known://plan">
-- [ ] go.mod w/ deps
-=======
-- [x] go.mod w/ deps
->>>>>>> REPLACE
+			// body lacks the `</set>` tail. Without recovery the trailing
+			// `<sh>` and `<update>` get trapped in the unclosed body; the
+			// verdict reports a missing `<update>` even though one was
+			// emitted.
+			const input = `<set path="known://plan">@@ -1,1 +1,1 @@
+-- [ ] go.mod w/ deps
++- [x] go.mod w/ deps
 <sh>chmod +x ./compile.sh && ./compile.sh</sh>
 <update status="102">go.mod created; deps ready</update>`;
 			const { commands, warnings } = XmlParser.parse(input);
@@ -445,12 +415,12 @@ I need to check the port.
 			assert.ok(commands[0].body.includes("<get"));
 		});
 
-		it("non-keyword marker IDENT preserves arbitrary content including </set> literals", () => {
+		it("<<IDENT...IDENT heredoc wrap preserves arbitrary set content including </set> literals", () => {
 			const input = [
 				'<set path="docs.md"><<EOF',
 				"# Heading",
 				"Tag examples: <env>x</env>, <set path='y'>z</set>",
-				"Even </set> in prose is opaque inside the marker.",
+				"Even </set> in prose is opaque inside the wrapper.",
 				"EOF</set>",
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);
@@ -461,19 +431,19 @@ I need to check the port.
 			);
 			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "docs.md");
-			assert.strictEqual(commands[0].operations[0].op, "replace");
 			assert.ok(
-				commands[0].operations[0].content.includes("</set> in prose is opaque"),
-				"literal </set> inside marker is content",
+				commands[0].body.includes("</set> in prose is opaque"),
+				"literal </set> inside heredoc wrap is body content",
 			);
 			assert.ok(
-				commands[0].operations[0].content.includes("<env>x</env>"),
-				"tag examples inside marker are content",
+				commands[0].body.includes("<env>x</env>"),
+				"tag examples inside heredoc wrap are body content",
 			);
+			assert.ok(!commands[0].hunks, "raw body, no udiff hunks");
 			assert.deepEqual(warnings, [], "no Unclosed/Mismatched warnings");
 		});
 
-		it("custom IDENT (any non-keyword identifier) routes to REPLACE", () => {
+		it("custom IDENT heredoc wrap (any uppercase identifier) yields raw body", () => {
 			const input = [
 				'<set path="x.md"><<MARKER_42',
 				"content with EOF and END as words but they aren't the closer",
@@ -481,20 +451,16 @@ I need to check the port.
 			].join("\n");
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
-			assert.strictEqual(commands[0].operations[0].op, "replace");
-			assert.match(
-				commands[0].operations[0].content,
-				/content with EOF and END/,
-			);
+			assert.match(commands[0].body, /content with EOF and END/);
+			assert.ok(!commands[0].hunks);
 		});
 
-		it("packet-shape `<<:::path` falls through to plain-body REPLACE", () => {
-			// Edit syntax is bare-only (`<<IDENT...IDENT`). The engine's
-			// packet-rendering shape (`<<:::path...:::path`) is engine-emit
-			// only — a body echoing it from a model becomes literal content
-			// for plain-body REPLACE, with the markers preserved verbatim.
-			// Tag-shaped content inside is still opaque to body scanning
-			// because XmlParser.skipEditMarker recognizes both shapes.
+		it("packet-shape `<<:::path` falls through to raw body", () => {
+			// Engine packet-rendering shape (`<<:::path...:::path`) is
+			// engine-emit only — a model echoing it lands as literal body
+			// content (no @@ → no udiff hunks). Tag-shaped content inside
+			// the packet remains opaque to the parser's body scanner
+			// because skipEditMarker still recognizes the shape.
 			const input = [
 				'<set path="OC_RIVERS.md"><<:::OC_RIVERS.md',
 				"# Hydrology",
@@ -503,16 +469,17 @@ I need to check the port.
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 1);
-			assert.ok(!commands[0].operations, "no edit-syntax ops");
+			assert.ok(!commands[0].hunks, "no udiff hunks");
 			assert.match(commands[0].body, /<<:::OC_RIVERS\.md/);
 			assert.match(commands[0].body, /# Hydrology/);
 			assert.deepEqual(warnings, []);
 		});
 
-		it("opus-regression: markdown documentation table inside marker body", () => {
-			// Reproduction of the opus failure case under the marker family.
-			// The markdown table has unclosed `<ask_user>` and stray `</mv>`
-			// references; under marker opacity none of them are tokens.
+		it("opus-regression: markdown documentation table inside heredoc-wrapped set", () => {
+			// Reproduction of the opus failure case. The markdown table
+			// has unclosed `<ask_user>` and stray `</mv>` references; the
+			// `<<DOC...DOC>` heredoc keeps them opaque to the body scanner
+			// so the trailing `<update>` parses correctly.
 			const input = [
 				'<set path="OPUS_ANALYSIS.md"><<DOC',
 				"# rummy commands",
@@ -526,10 +493,10 @@ I need to check the port.
 			assert.strictEqual(commands.length, 2, "set + update");
 			assert.strictEqual(commands[0].path, "OPUS_ANALYSIS.md");
 			assert.ok(
-				commands[0].operations[0].content.includes(
+				commands[0].body.includes(
 					'<mv path="known://draft">known://final</mv>',
 				),
-				"full table preserved in marker content",
+				"full table preserved in heredoc-wrapped body",
 			);
 			assert.strictEqual(commands[1].body, "notes written");
 			assert.deepEqual(warnings, []);

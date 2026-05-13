@@ -1,7 +1,10 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import Hedberg, { generatePatch } from "../../lib/hedberg/hedberg.js";
-import { generateBodyUdiff } from "../../lib/hedberg/matcher.js";
+import {
+	applyModel as applyUdiffberg,
+	renderClient,
+	renderModel,
+} from "../../lib/hedberg/udiff.js";
 import File from "../file/file.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
@@ -260,25 +263,11 @@ export default class Set {
 		if (!target) return;
 		let newContent;
 		let opPositions = null;
-		if (attrs.operations) {
+		if (attrs.hunks) {
 			const existing = await store.getBody(runId, target);
-			// Missing-path recovery: search_replace → append (replace text only),
-			// delete → drop. Lets the model's edit-shaped emission land on a
-			// fresh path without first having to write a NEW.
-			const operations =
-				existing === null
-					? attrs.operations.flatMap((op) => {
-							if (op.op === "search_replace") {
-								return [{ op: "append", content: op.replace }];
-							}
-							if (op.op === "delete") return [];
-							return [op];
-						})
-					: attrs.operations;
-			if (operations.length === 0) return;
-			const result = Set.#applyOperations(
+			const result = applyUdiffberg(
 				existing == null ? "" : existing,
-				operations,
+				attrs.hunks,
 			);
 			if (result.error) {
 				await store.set({
@@ -293,9 +282,6 @@ export default class Set {
 						path: target,
 						error: result.error,
 						attempted: result.attempted,
-						// Scoped ops carry just the lines at the failed range
-						// (already small, targeted feedback). Unscoped ops
-						// fall back to the truncated whole body.
 						currentBody:
 							result.currentBody != null
 								? result.currentBody
@@ -304,24 +290,67 @@ export default class Set {
 				});
 				return;
 			}
-			newContent = result.body;
+			newContent = result.newBody;
 			opPositions = result.opPositions;
 		} else if (entry.body) {
-			newContent = entry.body;
+			// Bare body (no `@@` hunk header). udiff is the documented
+			// grammar — bare bodies are a recovery path, not a contract:
+			//   - target does NOT exist → deterministically a NEW (the
+			//     body IS the content). Recover: write it as a pure-
+			//     insert hunk equivalent + soft 422 ("edit recovered").
+			//   - target exists → ambiguous (replace? append?). Reject
+			//     with soft 422 ("edit rejected"); no write.
+			const existing = await store.getBody(runId, target);
+			if (existing !== null) {
+				await rummy.hooks.error.log.emit({
+					store,
+					runId,
+					turn,
+					loopId,
+					message: "not a valid udiff edit: edit rejected",
+					status: 422,
+					soft: true,
+				});
+				return;
+			}
+			const lines = entry.body.split("\n");
+			const recoveredHunks = [
+				{
+					oldStart: 0,
+					oldLines: 0,
+					newStart: 1,
+					newLines: lines.length,
+					lines: lines.map((l) => `+${l}`),
+				},
+			];
+			const result = applyUdiffberg("", recoveredHunks);
+			newContent = result.newBody;
+			opPositions = result.opPositions;
+			await rummy.hooks.error.log.emit({
+				store,
+				runId,
+				turn,
+				loopId,
+				message: "not a valid udiff edit: edit recovered",
+				status: 422,
+				soft: true,
+			});
 		}
 
 		// `op` envelope attribute: comma-separated list of operative
-		// label kinds from the model's emission. Surfaces the operative
-		// intent at zero body cost — the body projection strips SEARCH
-		// halves (and the operative labels themselves) for budget
-		// reasons; the envelope JSON carries the intent forward so the
-		// model's future-self reading the log knows what kind of edit
-		// happened without inferring from numbered-line shape alone.
-		// Derived from `attrs.operations` (parser output) so DELETE ops
-		// — which contribute no renderable body — are still surfaced.
-		const opField = attrs.operations
-			? attrs.operations.map((o) => o.op).join(",")
-			: null;
+		// kinds derived from the applied hunks. Surfaces the intent at
+		// zero body cost — the udifflite body shows the `+`/`-` lines
+		// but `op` makes the kind queryable without re-parsing. Kinds
+		// come from applyModel's opPositions (search_replace / insert
+		// / delete / new).
+		// Built-in Set is shadowed by the plugin class. Array.from + reduce
+		// dedupes without summoning a fresh plugin instance.
+		const uniqueKinds = (positions) =>
+			positions.reduce((acc, p) => {
+				if (!acc.includes(p.kind)) acc.push(p.kind);
+				return acc;
+			}, []);
+		const opField = opPositions ? uniqueKinds(opPositions).join(",") : null;
 
 		if (newContent !== undefined) {
 			const scheme = Entries.scheme(target);
@@ -334,8 +363,8 @@ export default class Set {
 				// attrs.patched = full new content (materializer reads on accept).
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
-				const udiff = generatePatch(target, oldContent, newContent);
-				const bodyUdiff = generateBodyUdiff(oldContent, newContent);
+				const udiff = renderClient(target, oldContent, newContent);
+				const bodyUdiff = renderModel(oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 				await store.set({
@@ -389,8 +418,8 @@ export default class Set {
 				// renderers.
 				const existing = await store.getBody(runId, target);
 				const oldContent = existing == null ? "" : existing;
-				const udiff = generatePatch(target, oldContent, newContent);
-				const bodyUdiff = generateBodyUdiff(oldContent, newContent);
+				const udiff = renderClient(target, oldContent, newContent);
+				const bodyUdiff = renderModel(oldContent, newContent);
 				const beforeTokens = oldContent ? countTokens(oldContent) : 0;
 				const afterTokens = countTokens(newContent);
 
@@ -458,169 +487,5 @@ export default class Set {
 			return lines.join("\n");
 		}
 		return entry.body;
-	}
-
-	static #applyOperations(currentBody, operations) {
-		let body = currentBody;
-		// Per-op tracking in *final body* coords. Each completed op records
-		// where its new content lives; subsequent ops shift prior records.
-		// Delete ops record nothing (no content to project).
-		const tracked = [];
-		const shiftAfter = (afterLine, delta) => {
-			for (const t of tracked) {
-				if (t.startLine >= afterLine) {
-					t.startLine += delta;
-				}
-			}
-		};
-		const invalidateRange = (start, end) => {
-			for (let i = tracked.length - 1; i >= 0; i--) {
-				const t = tracked[i];
-				const tEnd = t.startLine + t.lineCount - 1;
-				if (t.startLine >= start && tEnd <= end) tracked.splice(i, 1);
-			}
-		};
-		const countLines = (s) => (s === "" ? 0 : s.split("\n").length);
-
-		for (const op of operations) {
-			if (op.op === "new" || op.op === "replace") {
-				body = op.content;
-				tracked.length = 0;
-				const lc = countLines(op.content);
-				if (lc > 0)
-					tracked.push({
-						kind: op.op,
-						startLine: 1,
-						lineCount: lc,
-						content: op.content,
-					});
-			} else if (op.op === "append") {
-				const preLines = countLines(body);
-				body = body + op.content;
-				const lc = countLines(op.content);
-				if (lc > 0)
-					tracked.push({
-						kind: "append",
-						startLine: preLines + 1,
-						lineCount: lc,
-						content: op.content,
-					});
-			} else if (op.op === "prepend") {
-				const lc = countLines(op.content);
-				shiftAfter(1, lc);
-				body = op.content + body;
-				if (lc > 0)
-					tracked.push({
-						kind: "prepend",
-						startLine: 1,
-						lineCount: lc,
-						content: op.content,
-					});
-			} else if (op.op === "delete") {
-				const result = Hedberg.replace(body, op.content, "");
-				if (result.error) {
-					return {
-						body,
-						error: result.error,
-						attempted: op.content,
-						opPositions: tracked,
-					};
-				}
-				const matchStart = result.matchStartLine;
-				const removed = result.searchLineCount;
-				if (matchStart != null && removed > 0) {
-					invalidateRange(matchStart, matchStart + removed - 1);
-					shiftAfter(matchStart + removed, -removed);
-				}
-				body = result.patch;
-			} else if (op.op === "search_replace") {
-				if (op.scope) {
-					const result = Set.#applyScopedReplace(body, op);
-					if (result.error) {
-						return {
-							body,
-							error: result.error,
-							attempted: result.attempted,
-							currentBody: result.currentBody,
-							opPositions: tracked,
-						};
-					}
-					const { start, end } = op.scope;
-					const oldLines = end - start + 1;
-					const newLines = countLines(op.replace);
-					invalidateRange(start, end);
-					shiftAfter(end + 1, newLines - oldLines);
-					body = result.body;
-					if (newLines > 0)
-						tracked.push({
-							kind: "search_replace",
-							startLine: start,
-							lineCount: newLines,
-							content: op.replace,
-						});
-				} else {
-					const result = Hedberg.replace(body, op.search, op.replace);
-					if (result.error) {
-						return {
-							body,
-							error: result.error,
-							attempted: op.search,
-							opPositions: tracked,
-						};
-					}
-					const matchStart = result.matchStartLine;
-					const oldLines = result.searchLineCount;
-					const newLines = result.replaceLineCount;
-					if (matchStart != null) {
-						invalidateRange(matchStart, matchStart + oldLines - 1);
-						shiftAfter(matchStart + oldLines, newLines - oldLines);
-						if (newLines > 0)
-							tracked.push({
-								kind: "search_replace",
-								startLine: matchStart,
-								lineCount: newLines,
-								content: op.replace,
-							});
-					}
-					body = result.patch;
-				}
-			}
-		}
-		tracked.sort((a, b) => a.startLine - b.startLine);
-		return { body, error: null, attempted: null, opPositions: tracked };
-	}
-
-	// Scoped SEARCH/REPLACE: `<<SEARCH[X]…SEARCH[Y]<<REPLACE…REPLACE`.
-	// Lines N..M (1-indexed, inclusive) of `body` are replaced by `op.replace`.
-	// If `op.search` is non-empty, it must exactly match the current text at
-	// that range (content verification on top of the positional scope). An
-	// empty `op.search` is the trust-the-numbers form — undocumented but
-	// supported. Out-of-range or content-mismatch produces a `conflict` so
-	// the model gets the actual range body back as feedback.
-	static #applyScopedReplace(body, op) {
-		const { start, end } = op.scope;
-		const lines = body.split("\n");
-		if (start < 1 || end < start || end > lines.length) {
-			return {
-				error: `SEARCH[${start}${start === end ? "" : `-${end}`}] is out of range; current body has ${lines.length} line${lines.length === 1 ? "" : "s"}.`,
-				attempted: op.replace,
-				currentBody: body,
-			};
-		}
-		const actual = lines.slice(start - 1, end).join("\n");
-		if (op.search !== "" && op.search !== actual) {
-			return {
-				error: `SEARCH[${start}${start === end ? "" : `-${end}`}] content does not match the current lines at that range.`,
-				attempted: op.search,
-				currentBody: actual,
-			};
-		}
-		const replaceLines = op.replace === "" ? [] : op.replace.split("\n");
-		const next = [
-			...lines.slice(0, start - 1),
-			...replaceLines,
-			...lines.slice(end),
-		];
-		return { body: next.join("\n") };
 	}
 }

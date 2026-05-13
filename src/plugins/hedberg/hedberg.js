@@ -7,11 +7,13 @@
 // the hook namespace is for plugins shipped in separate packages.
 
 import Hedberg from "../../lib/hedberg/hedberg.js";
-import {
-	generatePatch,
-	generateSearchReplaceBody,
-} from "../../lib/hedberg/matcher.js";
 import { hedmatch, hedsearch } from "../../lib/hedberg/patterns.js";
+import {
+	applyModel as applyUdiffberg,
+	parseModel as parseUdiffberg,
+	renderClient,
+	renderModel,
+} from "../../lib/hedberg/udiff.js";
 
 export default class HedbergPlugin {
 	#core;
@@ -22,8 +24,12 @@ export default class HedbergPlugin {
 			match: hedmatch,
 			search: hedsearch,
 			replace: Hedberg.replace,
-			generatePatch,
-			generateSearchReplaceBody,
+			// Edit pipeline exposed for external plugins. Three siblings of
+			// one edit — see src/lib/hedberg/udiff.js for the contract.
+			renderClient,
+			renderModel,
+			parseUdiffberg,
+			applyUdiffberg,
 		};
 	}
 }

@@ -1,8 +1,30 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { generateBodyUdiff } from "../../lib/hedberg/matcher.js";
+import { renderModel } from "../../lib/hedberg/udiff.js";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the tool plugin's class is named "Set" by design
 import Set from "./set.js";
+
+// udiffberg hunks the XmlParser would produce for the model's emission.
+function hunk(oldStart, oldLines, newStart, newLines, lines) {
+	return { oldStart, oldLines, newStart, newLines, lines };
+}
+
+// Stub hooks for raw-body recover/reject path which fires soft 422.
+function rummyCtx(store, overrides = {}) {
+	const errors = [];
+	return {
+		entries: store,
+		sequence: overrides.sequence ?? 1,
+		runId: overrides.runId ?? "r",
+		loopId: overrides.loopId ?? "l",
+		_errors: errors,
+		hooks: {
+			error: {
+				log: { emit: async (e) => errors.push(e) },
+			},
+		},
+	};
+}
 
 // Minimal stub PluginContext: every wiring call is a captured no-op.
 function stubCore() {
@@ -205,17 +227,18 @@ describe("Set plugin", () => {
 			assert.deepEqual(store._calls, []);
 		});
 
-		it("scheme write: stores resolved body + log entry whose body is the trimmed udiff", async () => {
+		it("raw-body scheme write on new path: recovered (write + soft 422)", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
+			const ctx = rummyCtx(store);
 			await plugin.handler(
 				{
 					body: "v2",
 					path: "log://1/1/1/set",
 					resultPath: "log://1/1/1/set",
-					attributes: { path: "known://x", inner: "v2" },
+					attributes: { path: "known://x" },
 				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+				ctx,
 			);
 			const target = store._calls.find(
 				(c) => c.path === "known://x" && c.body === "v2",
@@ -224,45 +247,55 @@ describe("Set plugin", () => {
 			assert.equal(target.visibility, "indexed");
 			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.ok(log);
-			assert.equal(
-				log.body,
-				generateBodyUdiff("", "v2"),
-				"log body = trimmed udiff (model-facing)",
-			);
-			assert.equal(log.attributes.beforeActionTokens, 0);
-			assert.ok(log.attributes.afterActionTokens > 0);
-			assert.ok(
-				log.attributes.patch,
-				"attrs.patch carries the full udiff for client rendering",
-			);
+			assert.equal(log.body, renderModel("", "v2"));
+			assert.equal(ctx._errors.length, 1, "soft 422 fired");
+			assert.equal(ctx._errors[0].status, 422);
+			assert.match(ctx._errors[0].message, /recovered/);
 		});
 
-		it("file write (no scheme on path) issues a `proposed` log entry with udiff body", async () => {
+		it("raw-body scheme write on existing path: rejected (no write + soft 422)", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
+			store.setEntry("known://x", { body: "prior content" });
+			const ctx = rummyCtx(store);
+			await plugin.handler(
+				{
+					body: "ambiguous replacement",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
+					attributes: { path: "known://x" },
+				},
+				ctx,
+			);
+			const targetWrites = store._calls.filter(
+				(c) => c.path === "known://x" && c.body !== undefined,
+			);
+			assert.equal(targetWrites.length, 0, "no write to existing path");
+			assert.equal(ctx._errors.length, 1, "soft 422 fired");
+			assert.match(ctx._errors[0].message, /rejected/);
+		});
+
+		it("raw-body file write on new path: recovered as pure-insert proposal", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			const ctx = rummyCtx(store);
 			await plugin.handler(
 				{
 					body: "new content",
 					path: "log://1/1/1/set",
 					resultPath: "log://1/1/1/set",
-					attributes: { path: "src/foo.js", inner: "new content" },
+					attributes: { path: "src/foo.js" },
 				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+				ctx,
 			);
 			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.ok(log);
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "src/foo.js");
 			assert.equal(log.attributes.patched, "new content");
-			assert.equal(
-				log.body,
-				generateBodyUdiff("", "new content"),
-				"log body = trimmed udiff (model-facing)",
-			);
-			assert.ok(
-				log.attributes.patch,
-				"attrs.patch carries the full udiff for client rendering",
-			);
+			assert.equal(log.body, renderModel("", "new content"));
+			assert.equal(ctx._errors.length, 1);
+			assert.match(ctx._errors[0].message, /recovered/);
 		});
 	});
 
@@ -366,221 +399,48 @@ describe("Set plugin", () => {
 		});
 	});
 
-	// Regression: model emitted `<set path="OC_RIVERS.md" index><<NEW…</set>`
-	// with both a visibility attr AND a NEW body. The visibility-flip-only
-	// branch caught the empty `entry.body` (XmlParser routes content into
-	// `attrs.operations`), saw the target didn't exist, failed with
-	// "not_found", and silently dropped the body. The model's delivery
-	// became a hallucination from our side.
-	describe("regression: visibility attr + edit operations writes the body, not a not_found", () => {
-		it("`<set path=X index><<NEW…NEW</set>` on a non-existing file lands as a proposal carrying the body", async () => {
+	// Regression: model emitted `<set path="OC_RIVERS.md" index>{full body}</set>`
+	// with both a visibility attr AND a raw body. Under the older operative-
+	// label grammar this routed into `attrs.operations`; the visibility-flip
+	// branch saw the target didn't exist, failed with "not_found", and
+	// silently dropped the body. Under udiffberg the raw body lands at
+	// `entry.body` and writes through.
+	describe("regression: visibility attr + raw body on new path is recovered, not not_found", () => {
+		it("`<set path=X index>{body}</set>` on a non-existing file lands as a recovered proposal", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
+			const ctx = rummyCtx(store, { sequence: 14 });
 			const newBody = "# Report\n\nFull contents.\n";
 			await plugin.handler(
 				{
-					body: "",
+					body: newBody,
 					path: "log://1/14/1/set",
 					resultPath: "log://1/14/1/set",
 					attributes: {
 						path: "OC_RIVERS.md",
 						index: "",
 						tags: "report,internal",
-						operations: [{ op: "new", content: newBody }],
 					},
 				},
-				{ entries: store, sequence: 14, runId: "r", loopId: "l" },
+				ctx,
 			);
 			const log = store._calls.find((c) => c.path === "log://1/14/1/set");
 			assert.ok(log, "log entry written");
-			assert.notEqual(
-				log.state,
-				"failed",
-				`expected proposed/resolved, got failed (${log.outcome}: ${log.body?.slice(0, 80)})`,
-			);
 			assert.equal(log.state, "proposed");
 			assert.equal(log.attributes.path, "OC_RIVERS.md");
 			assert.equal(log.attributes.patched, newBody);
-			// The visibility hint survives onto the proposal so
-			// #materializeFile can honor it at accept time.
 			assert.equal(log.attributes.index, true);
+			assert.equal(ctx._errors.length, 1, "soft 422 fired for the recovery");
+			assert.match(ctx._errors[0].message, /recovered/);
 		});
 	});
 
-	describe("bare-file SEARCH/REPLACE emits a proposal (not a resolved entry)", () => {
-		const editOps = [
-			{ op: "search_replace", search: "old line", replace: "new line" },
-		];
-
+	describe("bare-file udiffberg edits emit a proposal (not a resolved entry)", () => {
 		it("successful edit on bare file yields state=proposed with attrs.path + attrs.patched", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			store.setEntry("src/app.js", {
-				body: "old line",
-				scheme: null,
-				tokens: 2,
-			});
-			await plugin.handler(
-				{
-					body: "",
-					path: "log://1/1/1/set",
-					resultPath: "log://1/1/1/set",
-					attributes: { path: "src/app.js", operations: editOps },
-				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
-			);
-			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-			assert.ok(log);
-			assert.equal(log.state, "proposed");
-			assert.equal(log.attributes.path, "src/app.js");
-			assert.equal(log.attributes.patched, "new line");
-			assert.ok(
-				log.attributes.patch,
-				"attrs.patch carries the udiff projection for client rendering",
-			);
-		});
-
-		it("does not write a set:// canonical entry (no detour)", async () => {
-			const plugin = new Set(stubCore());
-			const store = makeStore();
-			store.setEntry("src/app.js", {
-				body: "old line",
-				scheme: null,
-				tokens: 2,
-			});
-			await plugin.handler(
-				{
-					body: "",
-					path: "log://1/1/1/set",
-					resultPath: "log://1/1/1/set",
-					attributes: { path: "src/app.js", operations: editOps },
-				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
-			);
-			const canonical = store._calls.find((c) =>
-				c.path?.startsWith?.("set://"),
-			);
-			assert.equal(canonical, undefined);
-		});
-
-		it("search_replace on a missing path is implicitly recovered as APPEND", async () => {
-			// Implicit-edit recovery: model emitted SEARCH/REPLACE on a
-			// path that doesn't exist yet. Engine treats it as APPEND of
-			// the replace content (byte-identical to NEW on empty body)
-			// rather than failing with not_found. Silent: the model's
-			// natural shape for "make this edit land" works.
-			const plugin = new Set(stubCore());
-			const store = makeStore();
-			await plugin.handler(
-				{
-					body: "",
-					path: "log://1/1/2/set",
-					resultPath: "log://1/1/2/set",
-					attributes: {
-						path: "known://new",
-						operations: [
-							{
-								op: "search_replace",
-								search: "ignored",
-								replace: "fresh body",
-							},
-						],
-					},
-				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
-			);
-			const upsert = store._calls.find((c) => c.path === "known://new");
-			assert.ok(upsert, "path was created");
-			assert.equal(upsert.body, "fresh body");
-			const log = store._calls.find((c) => c.path === "log://1/1/2/set");
-			assert.notEqual(log?.state, "failed", "no not_found error");
-		});
-
-		it("delete on a missing path is silently dropped", async () => {
-			const plugin = new Set(stubCore());
-			const store = makeStore();
-			await plugin.handler(
-				{
-					body: "",
-					path: "log://1/1/2/set",
-					resultPath: "log://1/1/2/set",
-					attributes: {
-						path: "known://new",
-						operations: [{ op: "delete", content: "anything" }],
-					},
-				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
-			);
-			// Delete-only on missing path → no upsert (effective ops is empty),
-			// no failure either.
-			const upsert = store._calls.find((c) => c.path === "known://new");
-			assert.equal(upsert, undefined);
-			const log = store._calls.find((c) => c.path === "log://1/1/2/set");
-			assert.notEqual(log?.state, "failed");
-		});
-
-		it("multi-op (search_replace + new + delete) on missing path applies in order", async () => {
-			const plugin = new Set(stubCore());
-			const store = makeStore();
-			await plugin.handler(
-				{
-					body: "",
-					path: "log://1/1/2/set",
-					resultPath: "log://1/1/2/set",
-					attributes: {
-						path: "known://new",
-						operations: [
-							{ op: "search_replace", search: "x", replace: "alpha\n" },
-							{ op: "append", content: "beta\n" },
-							{ op: "delete", content: "won't apply" },
-							{ op: "search_replace", search: "y", replace: "gamma\n" },
-						],
-					},
-				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
-			);
-			const upsert = store._calls.find((c) => c.path === "known://new");
-			assert.ok(upsert);
-			// search_replace #1 → APPEND alpha; append beta; delete dropped;
-			// search_replace #2 → APPEND gamma. Final body: alpha\nbeta\ngamma\n
-			assert.equal(upsert.body, "alpha\nbeta\ngamma\n");
-		});
-
-		it("search_replace on existing path with non-matching text still conflicts", async () => {
-			// Recovery only applies when path is missing entirely. An
-			// existing body with a non-matching SEARCH still surfaces as
-			// conflict so the model gets actionable feedback.
-			const plugin = new Set(stubCore());
-			const store = makeStore();
-			store.setEntry("known://exists", {
-				body: "actual stored content",
-				scheme: "known",
-				tokens: 2,
-			});
-			await plugin.handler(
-				{
-					body: "",
-					path: "log://1/1/3/set",
-					resultPath: "log://1/1/3/set",
-					attributes: {
-						path: "known://exists",
-						operations: [
-							{ op: "search_replace", search: "absent", replace: "x" },
-						],
-					},
-				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
-			);
-			const log = store._calls.find((c) => c.path === "log://1/1/3/set");
-			assert.equal(log.state, "failed");
-			assert.equal(log.outcome, "conflict");
-		});
-
-		it("failed edit (search not found) yields state=failed with conflict outcome", async () => {
-			const plugin = new Set(stubCore());
-			const store = makeStore();
-			store.setEntry("src/app.js", {
-				body: "actual content",
+				body: "old line\n",
 				scheme: null,
 				tokens: 2,
 			});
@@ -591,178 +451,120 @@ describe("Set plugin", () => {
 					resultPath: "log://1/1/1/set",
 					attributes: {
 						path: "src/app.js",
-						operations: [
-							{ op: "search_replace", search: "absent", replace: "x" },
+						hunks: [hunk(1, 1, 1, 1, ["-old line", "+new line"])],
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
+			assert.ok(log);
+			assert.equal(log.state, "proposed");
+			assert.equal(log.attributes.path, "src/app.js");
+			assert.match(log.attributes.patched, /new line/);
+			assert.ok(
+				log.attributes.patch,
+				"attrs.patch carries the full udiff for client rendering",
+			);
+		});
+
+		it("does not write a set:// canonical entry (no detour)", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("src/app.js", {
+				body: "old line\n",
+				scheme: null,
+				tokens: 2,
+			});
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
+					attributes: {
+						path: "src/app.js",
+						hunks: [hunk(1, 1, 1, 1, ["-old line", "+new line"])],
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const canonical = store._calls.find((c) =>
+				c.path?.startsWith?.("set://"),
+			);
+			assert.equal(canonical, undefined);
+		});
+
+		it("pure-insert hunk creates new content on a missing path", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://1/1/2/set",
+					resultPath: "log://1/1/2/set",
+					attributes: {
+						path: "known://new",
+						hunks: [hunk(0, 0, 1, 1, ["+fresh body"])],
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const upsert = store._calls.find((c) => c.path === "known://new");
+			assert.ok(upsert, "path was created");
+			assert.equal(upsert.body, "fresh body");
+		});
+
+		it("search-hunk on existing path with non-matching - lines fails with conflict", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("known://exists", {
+				body: "actual stored content\n",
+				scheme: "known",
+				tokens: 2,
+			});
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://1/1/3/set",
+					resultPath: "log://1/1/3/set",
+					attributes: {
+						path: "known://exists",
+						hunks: [hunk(1, 1, 1, 1, ["-absent line", "+x"])],
+					},
+				},
+				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+			);
+			const log = store._calls.find((c) => c.path === "log://1/1/3/set");
+			assert.equal(log.state, "failed");
+			assert.equal(log.outcome, "conflict");
+		});
+
+		it("op envelope attr is comma-separated unique kind list", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			store.setEntry("src/app.js", {
+				body: "alpha\nbeta\ngamma\n",
+				scheme: null,
+				tokens: 2,
+			});
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
+					attributes: {
+						path: "src/app.js",
+						hunks: [
+							hunk(1, 1, 1, 1, ["-alpha", "+ALPHA"]),
+							hunk(3, 1, 3, 0, ["-gamma"]),
 						],
 					},
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
 			);
 			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-			assert.equal(log.state, "failed");
-			assert.equal(log.outcome, "conflict");
-		});
-
-		// Scoped SEARCH/REPLACE: model authors `<<SEARCH[X]…SEARCH[Y]<<REPLACE…REPLACE`
-		// against the line numbers it sees in projection. The scope makes the
-		// match positional (uniqueness no longer depends on the SEARCH content
-		// being unique in the file), and the content stays as a verification
-		// check on top of the position.
-		describe("scoped SEARCH/REPLACE (line-targeted)", () => {
-			const fileBody = "line1\nline2\nold A\nold B\nold C\nline6\n";
-			async function run(operations) {
-				const plugin = new Set(stubCore());
-				const store = makeStore();
-				store.setEntry("src/app.js", {
-					body: fileBody,
-					scheme: null,
-					tokens: 2,
-				});
-				await plugin.handler(
-					{
-						body: "",
-						path: "log://1/1/1/set",
-						resultPath: "log://1/1/1/set",
-						attributes: { path: "src/app.js", operations },
-					},
-					{ entries: store, sequence: 1, runId: "r", loopId: "l" },
-				);
-				return store;
-			}
-
-			it("scoped replace with content verification applies cleanly", async () => {
-				const store = await run([
-					{
-						op: "search_replace",
-						scope: { start: 3, end: 5 },
-						search: "old A\nold B\nold C",
-						replace: "new A\nnew B\nnew C",
-					},
-				]);
-				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-				assert.equal(log.state, "proposed");
-				assert.equal(
-					log.attributes.patched,
-					"line1\nline2\nnew A\nnew B\nnew C\nline6\n",
-				);
-				assert.deepEqual(log.attributes.opPositions, [
-					{
-						kind: "search_replace",
-						startLine: 3,
-						lineCount: 3,
-						content: "new A\nnew B\nnew C",
-					},
-				]);
-				assert.equal(
-					log.attributes.op,
-					"search_replace",
-					"op envelope attr surfaces the operative intent",
-				);
-			});
-
-			it("multi-op set: op attr is comma-separated kind list (incl. delete)", async () => {
-				const store = await run([
-					{
-						op: "search_replace",
-						scope: { start: 3, end: 3 },
-						search: "old A",
-						replace: "new A",
-					},
-					{ op: "append", content: "appended line" },
-					{ op: "delete", content: "line2" },
-				]);
-				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-				assert.equal(
-					log.attributes.op,
-					"search_replace,append,delete",
-					"every op kind surfaces in order, including delete (which has no opPositions entry)",
-				);
-			});
-
-			it("scoped single-line replace (start == end)", async () => {
-				const store = await run([
-					{
-						op: "search_replace",
-						scope: { start: 4, end: 4 },
-						search: "old B",
-						replace: "REPLACED B",
-					},
-				]);
-				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-				assert.equal(log.state, "proposed");
-				assert.equal(
-					log.attributes.patched,
-					"line1\nline2\nold A\nREPLACED B\nold C\nline6\n",
-				);
-			});
-
-			it("empty SEARCH body is the trust-the-numbers form (undocumented)", async () => {
-				const store = await run([
-					{
-						op: "search_replace",
-						scope: { start: 3, end: 5 },
-						search: "",
-						replace: "X\nY\nZ",
-					},
-				]);
-				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-				assert.equal(log.state, "proposed");
-				assert.equal(log.attributes.patched, "line1\nline2\nX\nY\nZ\nline6\n");
-			});
-
-			it("content mismatch at the scoped range fails with conflict + actual lines feedback", async () => {
-				const store = await run([
-					{
-						op: "search_replace",
-						scope: { start: 3, end: 5 },
-						search: "WRONG\nWRONG\nWRONG",
-						replace: "x",
-					},
-				]);
-				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-				assert.equal(log.state, "failed");
-				assert.equal(log.outcome, "conflict");
-				assert.match(
-					log.attributes.error,
-					/SEARCH\[3-5\] content does not match/,
-				);
-				// Conflict body carries the actual lines at that range so the
-				// model can author a correct delta on the next turn.
-				assert.equal(log.attributes.currentBody, "old A\nold B\nold C");
-			});
-
-			it("out-of-range scope fails with the current line count in the error", async () => {
-				const store = await run([
-					{
-						op: "search_replace",
-						scope: { start: 50, end: 60 },
-						search: "",
-						replace: "x",
-					},
-				]);
-				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-				assert.equal(log.state, "failed");
-				assert.equal(log.outcome, "conflict");
-				assert.match(log.attributes.error, /out of range/);
-			});
-
-			it("REPLACE may shrink or grow the line range (insert-extra / delete-some)", async () => {
-				const store = await run([
-					{
-						op: "search_replace",
-						scope: { start: 3, end: 5 },
-						search: "",
-						replace: "only one line",
-					},
-				]);
-				const log = store._calls.find((c) => c.path === "log://1/1/1/set");
-				assert.equal(log.state, "proposed");
-				// 3 lines replaced by 1 → body shortens.
-				assert.equal(
-					log.attributes.patched,
-					"line1\nline2\nonly one line\nline6\n",
-				);
-			});
+			assert.equal(log.state, "proposed");
+			assert.match(log.attributes.op, /search_replace/);
+			assert.match(log.attributes.op, /delete/);
 		});
 	});
 });
@@ -832,14 +634,14 @@ describe("Set plugin: manifest is universal", () => {
 		);
 	});
 
-	it("manifest + SEARCH/REPLACE edit: lists matches without applying edit", async () => {
+	it("manifest + udiffberg edit: lists matches without applying edit", async () => {
 		const store = manifestStore(matches);
 		await plugin.handler(
 			{
 				attributes: {
 					path: "src/**/*.js",
 					manifest: "",
-					blocks: [{ search: "old", replace: "new" }],
+					hunks: [hunk(1, 1, 1, 1, ["-old", "+new"])],
 				},
 				body: "",
 				resultPath: "set://result",

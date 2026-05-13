@@ -1,10 +1,7 @@
-import HeuristicMatcher, {
-	generatePatch,
-	generateSearchReplaceBody,
-} from "./matcher.js";
+import HeuristicMatcher from "./matcher.js";
 import { hedmatch, hedsearch } from "./patterns.js";
 
-// SPEC #hedberg. Edit-shape parsing lives in marker.js.
+// SPEC #hedberg. Edit-shape parsing lives in udiff.js.
 export default class Hedberg {
 	#core;
 
@@ -15,8 +12,6 @@ export default class Hedberg {
 			match: hedmatch,
 			search: hedsearch,
 			replace: Hedberg.replace,
-			generatePatch,
-			generateSearchReplaceBody,
 		};
 	}
 
@@ -55,7 +50,7 @@ export default class Hedberg {
 			out.push(body.slice(cursor));
 			patch = out.join("");
 			if (occurrences.length > 1) {
-				warning = `SEARCH matched ${occurrences.length} locations at line boundaries; all were replaced. Include more surrounding context (or a SEARCH[X]…SEARCH[Y] scope) for surgical edits.`;
+				warning = `SEARCH matched ${occurrences.length} locations at line boundaries; all were replaced. Include more surrounding context for surgical edits.`;
 			}
 			const lastIdx = occurrences[occurrences.length - 1];
 			matchStartLine = body.slice(0, lastIdx).split("\n").length;
@@ -64,9 +59,8 @@ export default class Hedberg {
 			searchLineCount = searchText === "" ? 0 : searchText.split("\n").length;
 		}
 
-		if (!patch) {
+		if (patch === null) {
 			const matched = HeuristicMatcher.matchAndPatch(
-				"",
 				body,
 				searchText,
 				replaceText,
@@ -91,8 +85,6 @@ export default class Hedberg {
 		};
 	}
 }
-
-export { generatePatch, generateSearchReplaceBody };
 
 // All positions where `needle` occurs in `haystack` such that the
 // match starts at a line boundary (start-of-string or after `\n`) AND

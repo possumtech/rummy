@@ -1512,122 +1512,89 @@ are universal — not a feature of any single tool.
 
 ---
 
-## Edit Syntax
+## Edit Syntax {#edit_grammar}
 
-The model expresses entry writes through `<set path="..."><body></set>`.
-The body shape determines the operation. All shaped operations use a
-bash-heredoc-flavored marker family.
+The model expresses entry writes through `<set path="..."><udiff></set>`.
+The body is a unified diff. The model has seen millions of unified
+diffs in pretraining (git log, code review, patch files) — udiff is
+the cheapest grammar to teach.
 
-### Marker Grammar
+### Three Format Siblings
 
-    <<IDENT
-    body content
-    IDENT
+The same edit takes three superficially-similar shapes across the
+pipeline. They are kept conceptually distinct in `src/lib/hedberg/udiff.js`;
+drift between them is how this surface breaks.
 
-Where `IDENT` matches `[A-Z][A-Za-z0-9_]*`. The leading keyword of
-`IDENT` selects the operation; any trailing alphanumeric suffix is
-opaque to operation routing and exists to disambiguate nested markers
-or avoid collisions when the body literally contains the bare keyword
-(same convention as bash heredoc `<<EOF1` vs `<<EOF`).
+| name | who emits | who consumes | shape |
+|---|---|---|---|
+| **udiff** | engine | clients (rummy.nvim, web UI) | full `createTwoFilesPatch`: `Index:`, `---`/`+++`, `@@`, 3 lines of context |
+| **udifflite** | engine | model (in `<log>` set bodies) | hunks only, no banner, `context: 0` |
+| **udiffberg** | model | engine (parsed at `<set>` resolution) | fuzzy-tolerant: `@@` line numbers are hints, content is the anchor; Hedberg's literal-then-fuzzy-then-indent-heal rescue per hunk |
 
-The opener `<<IDENT` must be preceded by start-of-body, whitespace,
-or `>` (so `vec<<SEARCH` mid-token does not false-trigger). The
-closer is bare `IDENT` with whitespace boundaries on both sides.
+Renderers and parser live in one file (`src/lib/hedberg/udiff.js`)
+so the contracts stay visibly adjacent. Tool docs and personas
+expose only the model-facing shape; the term "udiff" is what the
+model sees. The `lite`/`berg` distinctions are engine vocabulary.
 
-Newline-tolerant: the multi-line shape above and the single-line
-`<<IDENT body IDENT` form parse identically.
+### Grammar (udiffberg)
 
-### Distinct from Packet Rendering
+    @@ -oldStart,oldLines +newStart,newLines @@
+    -lines to remove
+    +lines to add
+     context lines (optional, ride along on both sides)
 
-The engine renders entry bodies in context using a different marker
-shape: `<<:::path...:::path` (see `plugins/helpers.js`). Edit syntax
-is the bare `<<IDENT` form; packet rendering keeps the `:::` sentinel.
-The two grammars are visibly distinct so model emissions and engine
-renderings can never be confused. A `<set>` body echoing the packet
-shape is NOT treated as edit syntax — it falls through to plain-body
-REPLACE with the markers preserved as literal content.
+Counts default to 1 if omitted (`@@ -5 +5 @@` = `@@ -5,1 +5,1 @@`).
+Multiple hunks: each starts with its own `@@` header. Hunks apply in
+order against the body that resulted from prior hunks.
 
-### Operations
+### Apply Strategy (strict → Hedberg fallback)
 
-| IDENT prefix | Effect |
+1. **Strict apply**: do the hunk's `-` lines literally appear at
+   `oldStart`? Cheap precision when the model got coords right.
+2. **Hedberg fallback**: if strict misses, feed the `-` lines to
+   `Hedberg.replace` (literal line-bounded match → fuzzy tokenized
+   match → indent-healing). Same rescue path used for any string-
+   anchored edit. The `@@` line ref becomes a hint we ignored.
+3. **Unrescuable**: conflict (soft) with `attempted` (the `-` lines)
+   and `currentBody` so the model can author a correct delta on the
+   next turn.
+
+### Bare-Body Recovery
+
+A `<set>` body that does NOT start with `@@` is bare content rather
+than a udiff. The engine treats it as a recovery path, not a contract:
+
+| Target state | Bare-body outcome |
 |---|---|
-| `NEW` | Create the entry. Behaves identically to `REPLACE` on existing entries — named separately to align with model intent. |
-| `PREPEND` | Prepend body content to the existing entry. Creates the entry if it doesn't exist. |
-| `APPEND` | Append body content to the existing entry. Creates the entry if it doesn't exist. |
-| `REPLACE` | Replace the entire entry body with the marker content. Standalone (not preceded by `SEARCH`). |
-| `DELETE` | Remove a literal-matching region from the existing entry body. The marker content is the region to remove. |
-| `SEARCH` | Match a literal region in the existing entry body. Must be immediately followed by a `REPLACE` block; the pair is an in-place edit. |
+| Path does not exist | Recover: synthesize a pure-insert hunk (`@@ -0,0 +1,N @@` over the body lines), apply, write the proposal. Soft 422: `<error status="422">not a valid udiff edit: edit recovered</error>` |
+| Path exists | Reject: ambiguous (overwrite? append?). No write. Soft 422: `<error status="422">not a valid udiff edit: edit rejected</error>` |
 
-### SEARCH / REPLACE Pairs
-
-Surgical in-place edits. `SEARCH` must be immediately followed by
-`REPLACE` (no intervening operation):
-
-    <set path="src/main.go"><<SEARCH
-    old line
-    SEARCH
-    <<REPLACE
-    new line
-    REPLACE</set>
-
-Multiple pairs in one `<set>` body apply in order against the
-progressively-edited body.
-
-`SEARCH` may carry an optional line-range scope split across the
-opener and closer brackets — opener bracket = first line, closer
-bracket = final line — referring to the line numbers visible in
-the model's projection of the target body. Scoped SEARCH is
-matched only against the lines inside the scope (content
-verification is then exact, no fuzzy fallback). The closer bracket
-provides the range's upper bound; closer line ≥ opener line.
-
-    <set path="src/main.go"><<SEARCH[12]
-    exact
-    text
-    at lines 12-14
-    SEARCH[14]<<REPLACE
-    new content
-    REPLACE</set>
-
-Single-line edit collapses to `<<SEARCH[N]…SEARCH[N]`. A scope
-without matching SEARCH content (empty SEARCH body) is the
-trust-the-numbers form: the engine replaces lines opener..closer
-with REPLACE without verification. Supported but undocumented to
-models — content verification is the safer default.
-
-### Suffix for Body Collisions
-
-When the body content literally contains a marker keyword (`SEARCH`
-in prose, `<<` in code), the model appends a digit or alphanumeric
-suffix to the IDENT so the inner literal does not prematurely close
-the outer marker:
-
-    <set path="docs/grammar.md"><<DOC1
-    The opener is <<SEARCH and the closer is bare SEARCH alone on
-    a line. Use <<SEARCH1 ... SEARCH1 if your body contains literal
-    SEARCH or <<SEARCH tokens.
-    DOC1</set>
+No fuzzy guessing when the guess can't be 100% sure. Tool docs and
+personas only teach the `@@` form so the model learns one grammar.
 
 ### Errors
 
 | Condition | Outcome |
 |---|---|
-| `SEARCH` content not found in current body | conflict (soft) |
-| `DELETE` content not found in current body | conflict (soft) |
-| Scoped `SEARCH[X]…SEARCH[Y]` range out of current line count | conflict (soft) |
-| Scoped `SEARCH[X]…SEARCH[Y]` content does not match lines at the range | conflict (soft) — error feedback carries the actual lines |
-| Scoped `SEARCH[X]…SEARCH[Y]` with Y < X | parse error |
-| Lone `SEARCH` (no following `REPLACE`) | parse error |
-| Unclosed marker (opener with no matching `IDENT` closer) | parse error |
-| Non-keyword `IDENT` (e.g. `<<EOF`, `<<DOC`) | routes to REPLACE — inner content becomes the new body |
-| `<set>` body with no `<<IDENT` markers at all | full-body REPLACE (tolerated; not demonstrated to models) |
+| `-` lines not found in body (strict miss + Hedberg miss) | conflict (soft) — error feedback carries `attempted` + `currentBody` |
+| Multi-hunk: a later hunk fails | conflict (soft); earlier hunks' `opPositions` retained for forensics |
+| Malformed `@@` header | parse error (raised at XmlParser layer) |
+| Bare body on existing path | soft 422 "edit rejected" — no write |
+| Bare body on missing path | soft 422 "edit recovered" — pure-insert written |
 
-### Pattern Matching
+### Wire Surface (proposal entries)
 
-The literal-match semantics used by `SEARCH` and `DELETE` are
-delegated to the Hedberg pattern library — see [hedberg](#hedberg).
-Matching is fuzzy on whitespace and indentation; an exact-byte match
-is not required.
+When a `<set>` resolves to a `proposed` entry, the log entry carries:
+
+- `body` — udifflite (the trimmed model-facing rendering).
+- `attrs.path` — the target entry path.
+- `attrs.patch` — full udiff (`renderClient`) for client renderers.
+- `attrs.patched` — the full new content (the materializer reads
+  this on accept to write disk + update the entry).
+- `attrs.opPositions` — per-hunk `{kind, startLine, lineCount, content}`
+  breakdown clients use for visual layout.
+
+Pinned by `test/integration/proposal_wire_contract.test.js`.
 
 ---
 
