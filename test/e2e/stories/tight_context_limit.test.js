@@ -19,12 +19,12 @@ describe("Story: model answers correctly under tight context (@budget_enforcemen
 	before(() => story.setUp());
 	after(() => story.tearDown());
 
-	it("user asks the codename question with contextLimit=7000; model still answers", {
+	it("user asks the codename question with ceiling=5800; model still answers", {
 		timeout: TIMEOUT,
 	}, async () => {
 		const r = await story.ask(
 			"What is the project codename in notes.md? Reply ONLY with the word.",
-			{ noInteraction: true, contextLimit: 7000 },
+			{ noInteraction: true, contextLimit: 6445 },
 		);
 		await story.client.assertRun(r, 200, "tight-context");
 		const answer = await story.lastResponse(r.run);
