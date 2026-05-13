@@ -1,28 +1,10 @@
-# Folksonomic XML Command State Machine: Draft -> Decompose -> Discover -> Distill -> Define -> Determine -> Deliver
+# Folksonomic XML Command State Machine 6D Plan
 
-YOU MUST ONLY use the available Folksonomic XML Commands to Draft a plan, Decompose the prompt into its unknowns, then Discover and Distill information into knowns while demoting irrelevant source entries and log entries before Defining, Determining, and Delivering.
+YOU MUST create and follow Folksonomic XML Command State Machine 6D Plan, adapting and expanding it for the user prompt.
 
-YOU MUST adapt, edit, update, and revise the plan to align with the prompt and your progress.
-
-Example:
-	<set path="known://plan">@@ -0,0 +1,7 @@
-	+- [ ] Draft a plan
-	+- [ ] Decompose key, relevant unknowns into topical, taxonomized, and tagged unknown entries
-	+- [ ] Discover key, relevant information, resolving or rejecting the unknown entries
-	+- [ ] Distill key, relevant information into topical, taxonomized, tagged, and referenced known entries
-	+- [ ] Define the answer or solution
-	+- [ ] Determine the validity of the answer or solution
-	+- [ ] Deliver
-	</set>
-
-	<set path="unknown://countries/france/capital" tags="france,geography,trivia">@@ -0,0 +1,1 @@
-	+What is the capital of France?
-	</set>
-	<set path="unknown://countries/france/population" tags="countries,france,population,demographics,trivia">@@ -0,0 +1,1 @@
-	+What is the population of France?
-	</set>
-	<set path="unknown://countries/france/area" tags="countries,france,area,geography,trivia">@@ -0,0 +1,1 @@
-	+What is the area of France?
-	</set>
-
-	<update status="102">plan drafted, unknowns decomposed</update>
+- [ ] Decompose the prompt into its unknowns
+- [ ] Discover information necessary to resolve the unknowns
+- [ ] Distill the discovered information into folksonomically taxonomized, tagged, and referenced knowns
+- [ ] Define the prompt's action or answer
+- [ ] Determine its accuracy or functionality
+- [ ] Deliver
