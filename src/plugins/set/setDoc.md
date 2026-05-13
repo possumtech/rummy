@@ -6,28 +6,22 @@ YOU SHOULD prefer minimal, atomic edits.
 
 * `archive`/`index`: visibility flip (mutually exclusive).
 
-Example — initial creates (pure-insert hunks against an empty body):
-	<set path="known://plan">@@ -0,0 +1,6 @@
-	+- [ ] Decompose the prompt into unknown entries
-	+- [ ] Discover information for each unknown
-	+- [ ] Distill discoveries into known entries
-	+- [ ] Define the answer
-	+- [ ] Determine accuracy
-	+- [ ] Deliver
+Example — multi-hunk edit:
+	<set path="known://countries/france/capital">@@ -4,1 +4,1 @@
+	-The capital of France is Paris, on the river Seine in north-central France.
+	+The capital of France is Paris, on the river Seine in north-central France. Paris has been the continuous capital of France since 987 CE.
+	@@ -4,0 +5,5 @@
+	+
+    +## References
+	+[RESOLVES](unknown://countries/france/capital).
+	+[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris)
+	+[Wikipedia: History of Paris](https://en.wikipedia.org/wiki/History_of_Paris)
 	</set>
 
-	<set path="unknown://countries/france/capital" tags="france,geography,trivia">@@ -0,0 +1,1 @@
-	+What is the capital of France?
-	</set>
-
-Example — multi-hunk edit (mark complete + expand with a reference; hunks apply in order, line numbers reference the body that resulted from prior hunks):
+Example — mark a plan step complete:
 	<set path="known://plan">@@ -1,1 +1,1 @@
 	-- [ ] Decompose the prompt into unknown entries
 	+- [x] Decompose the prompt into unknown entries
-	@@ -2,1 +2,2 @@
-	-- [ ] Discover information for each unknown
-	+- [x] Discover information for each unknown
-	+  - https://en.wikipedia.org/wiki/Paris
 	</set>
 
 Example — remove a log, file, or other entry from the index:
@@ -37,4 +31,4 @@ Example — add an archived log, file, or other entry to the index:
 	<set path="trivia/capitals.csv" index/>
 
 Example — manifest (list matches without writing):
-	<set path="known://plans/*" manifest/>
+	<set path="known://countries/*" manifest/>
