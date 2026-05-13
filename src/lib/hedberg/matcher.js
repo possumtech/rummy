@@ -14,12 +14,13 @@ export default class HeuristicMatcher {
 		const searchLines = searchBlock.split(/\r?\n/);
 		const fileLines = entryBody.split(/\r?\n/);
 
-		// 1. Exact Match Attempt (line-boundary substring search).
-		// Requires BOTH start and end of the match to land on line
-		// boundaries — prefix-only matches (e.g. SEARCH `Foo` against
-		// body line `Foo (extra)`) used to splice mid-line and corrupt
-		// the surrounding content.
-		let exactIdx = entryBody.indexOf(searchBlock);
+		// Empty searchBlock falls through to the fuzzy / empty-search
+		// branch below ("append REPLACE to end"). Skipping the exact-
+		// match loop is critical: `indexOf("", N)` clamps N to body
+		// length and returns 0, so the loop would advance 0 → 0 → 0
+		// forever. Caught by the udiff splitter dropping bare empty
+		// lines too — this guard is belt-and-suspenders.
+		let exactIdx = searchBlock === "" ? -1 : entryBody.indexOf(searchBlock);
 		let lastExactIdx = -1;
 		let exactCount = 0;
 		while (exactIdx !== -1) {

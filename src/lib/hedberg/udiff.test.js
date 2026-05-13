@@ -150,6 +150,26 @@ describe("udiff: three siblings of one edit", () => {
 			assert.equal(r.newBody, "hello\nworld");
 		});
 
+		it("trailing empty hunk line (from the newline before </set>) doesn't hang the applier", () => {
+			// Real gemma emission: `<set>{header}\n\+content\n</set>`
+			// → parser captures lines including a trailing "". Before
+			// the fix, "" landed as bare context in BOTH search and
+			// replace, the Hedberg fallback then called
+			// `"".indexOf("", N)` which clamps to 0 and loops forever.
+			const hunks = [
+				{
+					oldStart: 0,
+					oldLines: 0,
+					newStart: 1,
+					newLines: 1,
+					lines: ["\\+ [ ] Draft a plan", ""],
+				},
+			];
+			const r = applyModel("", hunks);
+			assert.equal(r.error, null);
+			assert.match(r.newBody, /Draft a plan/);
+		});
+
 		it("`\\ No newline at end of file` metadata is still filtered", () => {
 			// Only the exact `\ ` (backslash-space) shape is metadata.
 			const out = renderModel("a\nb", "a\nB");

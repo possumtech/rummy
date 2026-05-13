@@ -207,6 +207,11 @@ function splitHunkLines(hunkLines) {
 	for (const raw of hunkLines) {
 		// Drop the canonical udiff metadata marker only.
 		if (raw.startsWith("\\ ")) continue;
+		// Trailing/blank lines (e.g. the newline right before `</set>`)
+		// carry no edit content. Pushing "" as bare context drives the
+		// strict miss → Hedberg fallback path with an empty needle,
+		// which loops forever inside HeuristicMatcher's exact-match.
+		if (raw === "") continue;
 		// Models sometimes emit `\+`, `\-`, `\ ` (escape carryover from
 		// markdown-flavored udiff in training). Strip a single stray
 		// leading backslash before a valid prefix — the intent is
