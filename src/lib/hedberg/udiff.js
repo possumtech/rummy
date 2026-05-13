@@ -41,8 +41,9 @@ export function renderModel(oldContent, newContent) {
 	const blocks = hunks.map((h) => {
 		const header = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`;
 		// Filter the `\ No newline at end of file` metadata marker — it's
-		// information for human readers, noise for the model.
-		const lines = h.lines.filter((l) => !l.startsWith("\\"));
+		// information for human readers, noise for the model. Match the
+		// exact `\ ` (backslash-space) shape only.
+		const lines = h.lines.filter((l) => !l.startsWith("\\ "));
 		return [header, ...lines].join("\n");
 	});
 	return blocks.join("\n");
@@ -86,7 +87,10 @@ export function parseModel(text) {
 			continue;
 		}
 		// `\ No newline at end of file` is udiff metadata — drop it.
-		if (line.startsWith("\\")) continue;
+		// Narrow: only the canonical `\ ` (backslash-space) marker; do
+		// not eat `\+`/`\-`/`\ ` (without space) content escapes that
+		// models sometimes emit.
+		if (line.startsWith("\\ ")) continue;
 		if (current) {
 			current.lines.push(line);
 		} else if (sawHeader || line.trim() !== "") {
@@ -114,8 +118,23 @@ export function applyModel(body, hunks) {
 	for (const hunk of hunks) {
 		const { search, replace } = splitHunkLines(hunk.lines);
 
+		// Hunk arrived with lines but split produced nothing → every
+		// line was filtered (e.g., all-metadata, or a parser failure).
+		// Raise loudly rather than silently skip; otherwise the model
+		// thinks its edit landed while the entry is still empty.
+		if (hunk.lines.length > 0 && search.length === 0 && replace.length === 0) {
+			return {
+				error: "udiff hunk had lines but none parsed as -/+/ context",
+				attempted: hunk.lines.join("\n"),
+				currentBody: working,
+				opPositions,
+				warning: warnings.length ? warnings.join(" ") : null,
+			};
+		}
+
 		// Pure insert: no `-` lines. Anchor on `@@` oldStart and just
-		// drop the `+` lines in. Empty replace is a no-op (skip).
+		// drop the `+` lines in. Empty hunk (no lines at all) is a
+		// legitimate degenerate case (e.g. zero-line file marker).
 		if (search.length === 0) {
 			if (replace.length === 0) continue;
 			const inserted = insertAtLine(working, hunk.oldStart, replace);
@@ -185,8 +204,14 @@ export function applyModel(body, hunks) {
 function splitHunkLines(hunkLines) {
 	const search = [];
 	const replace = [];
-	for (const line of hunkLines) {
-		if (line.startsWith("\\")) continue;
+	for (const raw of hunkLines) {
+		// Drop the canonical udiff metadata marker only.
+		if (raw.startsWith("\\ ")) continue;
+		// Models sometimes emit `\+`, `\-`, `\ ` (escape carryover from
+		// markdown-flavored udiff in training). Strip a single stray
+		// leading backslash before a valid prefix — the intent is
+		// unambiguously the underlying prefix.
+		const line = /^\\[-+ ]/.test(raw) ? raw.slice(1) : raw;
 		const prefix = line[0];
 		const text = line.slice(1);
 		if (prefix === "-") {

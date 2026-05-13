@@ -405,6 +405,36 @@ describe("Set plugin", () => {
 	// branch saw the target didn't exist, failed with "not_found", and
 	// silently dropped the body. Under udiffberg the raw body lands at
 	// `entry.body` and writes through.
+	describe("regression: visibility attr + udiff hunks on new path lands the content", () => {
+		it("`<set path=X index>{@@ -0,0 ...}</set>` on a non-existing path creates the entry (not not_found)", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			const ctx = rummyCtx(store);
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://1/1/1/set",
+					resultPath: "log://1/1/1/set",
+					attributes: {
+						path: "known://plan",
+						index: "",
+						tags: "plan",
+						hunks: [hunk(0, 0, 1, 1, ["+- [ ] Draft a plan"])],
+					},
+				},
+				ctx,
+			);
+			const target = store._calls.find((c) => c.path === "known://plan");
+			assert.ok(target, "known://plan was written");
+			assert.equal(target.body, "- [ ] Draft a plan");
+			assert.equal(target.visibility, "indexed");
+			const log = store._calls.find(
+				(c) => c.path === "log://1/1/1/set" && c.state === "resolved",
+			);
+			assert.ok(log, "resolved log entry, not failed not_found");
+		});
+	});
+
 	describe("regression: visibility attr + raw body on new path is recovered, not not_found", () => {
 		it("`<set path=X index>{body}</set>` on a non-existing file lands as a recovered proposal", async () => {
 			const plugin = new Set(stubCore());

@@ -139,6 +139,24 @@ describe("udiff: three siblings of one edit", () => {
 		});
 	});
 
+	describe("regression: stray-backslash escape on hunk lines", () => {
+		it("models sometimes emit `\\+content` (escaped); applier strips the stray \\", () => {
+			// Observed gemma emission. The parser must not eat the line
+			// (which would silently drop the entire hunk into a no-op).
+			const r = applyModel(
+				"",
+				parseModel("@@ -0,0 +1,2 @@\n\\+hello\n\\+world").hunks,
+			);
+			assert.equal(r.newBody, "hello\nworld");
+		});
+
+		it("`\\ No newline at end of file` metadata is still filtered", () => {
+			// Only the exact `\ ` (backslash-space) shape is metadata.
+			const out = renderModel("a\nb", "a\nB");
+			assert.ok(!out.includes("\\ No newline"));
+		});
+	});
+
 	describe("round-trip: renderModel + parseModel + applyModel", () => {
 		it("recovers the new content from a model-shaped udiff", () => {
 			const old = "alpha\nbeta\ngamma\n";

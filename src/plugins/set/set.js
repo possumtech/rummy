@@ -199,13 +199,14 @@ export default class Set {
 		}
 
 		// Pure visibility/metadata change — no body content AND no
-		// edit operations. `<set path="X" index><<NEW…NEW</set>` parses
-		// the inner content into `attrs.operations`, leaving
-		// `entry.body` empty; if we routed that through the visibility-
-		// flip branch we'd silently drop the model's write. Visibility
-		// flip is what falls through to the edit branch below — apply
-		// content first, then visibility lands on the resulting entry.
-		if (!entry.body && !attrs.operations && visibilityAttr && attrs.path) {
+		// edit hunks. `<set path="X" index>{udiff}</set>` parses the
+		// inner content into `attrs.hunks`, leaving `entry.body` empty;
+		// routing that through the visibility-flip-only branch would
+		// silently drop the model's write (and worse, return not_found
+		// on a missing path the model meant to CREATE). Visibility
+		// flips fall through to the edit branch below — apply content
+		// first, then visibility lands on the resulting entry.
+		if (!entry.body && !attrs.hunks && visibilityAttr && attrs.path) {
 			const target = attrs.path;
 			const matches = await store.getEntriesByPattern(
 				runId,
