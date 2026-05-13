@@ -52,7 +52,13 @@ export default async function materializeContext({
 			viewResult && typeof viewResult === "object"
 				? !!viewResult.numbered
 				: false;
-		const projection = numbered ? numberLines(rawProjection) : rawProjection;
+		const lineStart =
+			viewResult && typeof viewResult === "object"
+				? (viewResult.lineStart ?? 1)
+				: 1;
+		const projection = numbered
+			? numberLines(rawProjection, lineStart)
+			: rawProjection;
 		// tileTokens = packet cost; bodyTokens = what <get> would bring.
 		const tileTokens = countTokens(projection);
 		const tileLines = countLines(projection);

@@ -349,7 +349,7 @@ describe("error verdict (@response_healing)", () => {
 
 	it("action entry state=failed counts as a strike (no error.log.emit needed)", async () => {
 		// "validation" is a hard outcome (not in SOFT_FAILURE_OUTCOMES);
-		// soft outcomes like "not_found" / "conflict" are findings the
+		// soft outcomes like "not_found" / "unparsed" are findings the
 		// model adapts to, not contract violations, and don't strike.
 		const path = "log://1/1/1/set";
 		await store.set({
@@ -419,7 +419,7 @@ describe("error verdict (@response_healing)", () => {
 
 	it(`${MAX_STRIKES} action-entry failures abandon the run at 499`, async () => {
 		// Hard outcomes (e.g. "validation") strike each turn; soft
-		// outcomes ("not_found" / "conflict") don't accumulate strikes
+		// outcomes ("not_found" / "unparsed") don't accumulate strikes
 		// because they're recoverable findings, not contract violations.
 		let verdict;
 		for (let i = 0; i < MAX_STRIKES; i++) {

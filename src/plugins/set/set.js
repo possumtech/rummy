@@ -27,14 +27,6 @@ function isSetProposal(path) {
 	return m?.[1] === "set";
 }
 
-const CONFLICT_FEEDBACK_MAX_CHARS = 4000;
-function truncateForFeedback(body) {
-	if (body == null) return null;
-	if (body.length <= CONFLICT_FEEDBACK_MAX_CHARS) return body;
-	const head = body.slice(0, CONFLICT_FEEDBACK_MAX_CHARS);
-	return `${head}\n[truncated; ${body.length - CONFLICT_FEEDBACK_MAX_CHARS} more chars — <get> the path for full body]`;
-}
-
 // biome-ignore lint/suspicious/noShadowRestrictedNames: tool name is "set"
 export default class Set {
 	#core;
@@ -271,28 +263,55 @@ export default class Set {
 				attrs.hunks,
 			);
 			if (result.error) {
-				await store.set({
+				// udiff failed to apply. Recoverable iff entry does NOT
+				// exist AND any hunk carries `+` lines — those lines are
+				// deterministically the intended body. Same contract as
+				// bare-body recovery: soft 422, write happens, no strike.
+				// Otherwise (existing entry, or no `+` lines): no write,
+				// soft 422 "edit rejected".
+				const inserts =
+					existing == null
+						? attrs.hunks.flatMap((h) =>
+								h.lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1)),
+							)
+						: [];
+				if (inserts.length === 0) {
+					await rummy.hooks.error.log.emit({
+						store,
+						runId,
+						turn,
+						loopId,
+						message: "not a valid udiff edit: edit rejected",
+						status: 422,
+						soft: true,
+					});
+					return;
+				}
+				const recoveredHunks = [
+					{
+						oldStart: 0,
+						oldLines: 0,
+						newStart: 1,
+						newLines: inserts.length,
+						lines: inserts.map((l) => `+${l}`),
+					},
+				];
+				const recovered = applyUdiffberg("", recoveredHunks);
+				newContent = recovered.newBody;
+				opPositions = recovered.opPositions;
+				await rummy.hooks.error.log.emit({
+					store,
 					runId,
 					turn,
 					loopId,
-					path: entry.resultPath,
-					body: existing == null ? "" : existing,
-					state: "failed",
-					outcome: "conflict",
-					attributes: {
-						path: target,
-						error: result.error,
-						attempted: result.attempted,
-						currentBody:
-							result.currentBody != null
-								? result.currentBody
-								: truncateForFeedback(existing),
-					},
+					message: "not a valid udiff edit: edit recovered",
+					status: 422,
+					soft: true,
 				});
-				return;
+			} else {
+				newContent = result.newBody;
+				opPositions = result.opPositions;
 			}
-			newContent = result.newBody;
-			opPositions = result.opPositions;
 		} else if (entry.body) {
 			// Bare body (no `@@` hunk header). udiff is the documented
 			// grammar — bare bodies are a recovery path, not a contract:
@@ -475,18 +494,6 @@ export default class Set {
 	}
 
 	full(entry) {
-		const attrs = entry.attributes;
-		if (attrs.error) {
-			const target = attrs.path || entry.path;
-			const lines = [`error at ${target}: ${attrs.error}`];
-			if (attrs.attempted) {
-				lines.push("", "--- attempted ---", attrs.attempted);
-			}
-			if (attrs.currentBody != null) {
-				lines.push("", `--- current body of ${target} ---`, attrs.currentBody);
-			}
-			return lines.join("\n");
-		}
 		return entry.body;
 	}
 }

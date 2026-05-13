@@ -96,21 +96,15 @@ describe("Set plugin", () => {
 			assert.equal(out, body);
 		});
 
-		it("conflict synthesizes an error projection with attempted + current body", () => {
+		it("conflict no longer synthesizes a verbose error projection — body IS canonical", () => {
+			// Post-udiff: handler emits soft 422 "edit recovered" / "edit
+			// rejected" via the error-log channel. The action entry's view
+			// is just its body, no special render for error attrs.
 			const out = plugin.full({
-				attributes: {
-					path: "known://plan",
-					error: "Could not find the SEARCH block in the file.",
-					attempted: "- [ ] step 1",
-					currentBody: "- [x] step 1\n- [ ] step 2",
-				},
-				body: "",
+				attributes: { path: "known://plan" },
+				body: "stored body",
 			});
-			assert.match(out, /Could not find the SEARCH block/);
-			assert.match(out, /--- attempted ---/);
-			assert.match(out, /- \[ \] step 1/);
-			assert.match(out, /--- current body of known:\/\/plan ---/);
-			assert.match(out, /- \[x\] step 1\n- \[ \] step 2/);
+			assert.equal(out, "stored body");
 		});
 	});
 
@@ -543,7 +537,7 @@ describe("Set plugin", () => {
 			assert.equal(upsert.body, "fresh body");
 		});
 
-		it("search-hunk on existing path with non-matching - lines fails with conflict", async () => {
+		it("udiff edit on existing path with non-matching - lines: soft 422 edit rejected, no write", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			store.setEntry("known://exists", {
@@ -551,6 +545,7 @@ describe("Set plugin", () => {
 				scheme: "known",
 				tokens: 2,
 			});
+			const rummy = rummyCtx(store);
 			await plugin.handler(
 				{
 					body: "",
@@ -561,11 +556,95 @@ describe("Set plugin", () => {
 						hunks: [hunk(1, 1, 1, 1, ["-absent line", "+x"])],
 					},
 				},
-				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
+				rummy,
 			);
-			const log = store._calls.find((c) => c.path === "log://1/1/3/set");
-			assert.equal(log.state, "failed");
-			assert.equal(log.outcome, "conflict");
+			assert.equal(rummy._errors.length, 1);
+			assert.equal(
+				rummy._errors[0].message,
+				"not a valid udiff edit: edit rejected",
+			);
+			assert.equal(rummy._errors[0].status, 422);
+			assert.equal(rummy._errors[0].soft, true);
+			assert.equal(
+				store._calls.find((c) => c.path === "log://1/1/3/set"),
+				undefined,
+				"no action entry written on reject",
+			);
+		});
+
+		it("udiff edit against non-existent entry with + lines: soft 422 edit recovered, write happens", async () => {
+			// Regression: model sees the 6D plan items in the persona text
+			// of the system prompt, infers known://plan already exists,
+			// emits a multi-hunk edit. Entry doesn't exist → matcher
+			// returns error → engine extracts + lines and writes them.
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			const rummy = rummyCtx(store);
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://1/1/2/set",
+					resultPath: "log://1/1/2/set",
+					attributes: {
+						path: "known://plan",
+						hunks: [
+							hunk(1, 2, 1, 2, [
+								"-# old heading",
+								"-old bullet",
+								"+# new heading",
+								"+new bullet",
+							]),
+						],
+					},
+				},
+				rummy,
+			);
+			assert.equal(rummy._errors.length, 1);
+			assert.equal(
+				rummy._errors[0].message,
+				"not a valid udiff edit: edit recovered",
+			);
+			assert.equal(rummy._errors[0].status, 422);
+			assert.equal(rummy._errors[0].soft, true);
+			const targetWrite = store._calls.find(
+				(c) => c.path === "known://plan" && c.body != null,
+			);
+			assert.ok(targetWrite, "target entry written on recovery");
+			assert.equal(targetWrite.state, "resolved");
+			assert.match(targetWrite.body, /# new heading/);
+			assert.match(targetWrite.body, /new bullet/);
+			assert.doesNotMatch(targetWrite.body, /old heading/);
+			const log = store._calls.find((c) => c.path === "log://1/1/2/set");
+			assert.ok(log, "action entry written on recovery");
+			assert.equal(log.state, "resolved");
+		});
+
+		it("udiff edit against non-existent entry with only - lines: soft 422 edit rejected, no write", async () => {
+			const plugin = new Set(stubCore());
+			const store = makeStore();
+			const rummy = rummyCtx(store);
+			await plugin.handler(
+				{
+					body: "",
+					path: "log://1/1/2/set",
+					resultPath: "log://1/1/2/set",
+					attributes: {
+						path: "known://plan",
+						hunks: [hunk(1, 2, 1, 0, ["-some line", "-other line"])],
+					},
+				},
+				rummy,
+			);
+			assert.equal(rummy._errors.length, 1);
+			assert.equal(
+				rummy._errors[0].message,
+				"not a valid udiff edit: edit rejected",
+			);
+			assert.equal(
+				store._calls.find((c) => c.path === "log://1/1/2/set"),
+				undefined,
+				"no action entry written when nothing to recover",
+			);
 		});
 
 		it("op envelope attr is comma-separated unique kind list", async () => {

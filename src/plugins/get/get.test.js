@@ -460,3 +460,31 @@ describe("Get tag filter (folksonomic recall)", () => {
 		assert.ok(log.body.includes("known://hydrology/rivers"));
 	});
 });
+
+describe("Get.full() view: line numbering anchors to lineFirst", () => {
+	it("non-chunked entry numbers from 1", () => {
+		const view = plugin.full({
+			path: "log://1/1/1/get",
+			body: "alpha\nbeta\ngamma",
+			attributes: { lineTotal: 3 },
+		});
+		assert.deepEqual(view, {
+			body: "alpha\nbeta\ngamma",
+			numbered: true,
+			lineStart: 1,
+		});
+	});
+
+	it("chunked entry sets lineStart to lineFirst so display numbers match source", () => {
+		// Regression: previous behavior renumbered the chunk locally as
+		// 1:..N: regardless of lineFirst, causing the model to conclude
+		// chunked reads had failed and loop indefinitely.
+		const view = plugin.full({
+			path: "log://1/7/1/get",
+			body: "line301\nline302\nline303",
+			attributes: { lineFirst: 301, lineFinal: 303, lineTotal: 2524 },
+		});
+		assert.strictEqual(view.lineStart, 301);
+		assert.strictEqual(view.numbered, true);
+	});
+});

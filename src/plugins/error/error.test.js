@@ -285,35 +285,7 @@ describe("error plugin: verdict", () => {
 		assert.deepEqual(verdict, { continue: true });
 	});
 
-	it("recorded SOFT-failed entry (conflict outcome) does NOT strike", async () => {
-		const { hooks } = makeCore();
-		await startLoop(hooks, "L1");
-		await startTurn(hooks, "L1");
-		const stateByPath = new Map([
-			["log://turn_1/set/x", { state: "failed", outcome: "conflict" }],
-		]);
-		const store = makeStore({ stateByPath });
-		const recorded = [
-			{
-				scheme: "set",
-				path: "log://turn_1/set/x",
-				attributes: { path: "x" },
-			},
-		];
-		const verdict = await hooks.turn.verdict.filter(
-			{ continue: true },
-			{
-				store,
-				runId: "r",
-				loopId: "L1",
-				recorded,
-				summaryText: null,
-			},
-		);
-		assert.deepEqual(verdict, { continue: true });
-	});
-
-	it("repeated not_found failures (varied paths) do NOT accumulate strikes via recordedFailed", async () => {
+it("repeated not_found failures (varied paths) do NOT accumulate strikes via recordedFailed", async () => {
 		const { hooks } = makeCore();
 		await startLoop(hooks, "L1");
 		await startTurn(hooks, "L1");

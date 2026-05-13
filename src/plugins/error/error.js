@@ -110,7 +110,7 @@ export default class ErrorPlugin {
 			state.turnErrors++;
 		}
 
-		// Soft outcomes (not_found, conflict) are state-discovery findings
+		// Soft outcomes (not_found, unparsed) are state-discovery findings
 		// the model adapts to; only hard failures count toward the strike.
 		let recordedFailed = false;
 		for (const e of recorded) {

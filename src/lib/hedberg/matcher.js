@@ -121,7 +121,7 @@ export default class HeuristicMatcher {
 			return {
 				newContent: null,
 				warning: null,
-				error: "SEARCH text not found in current body.",
+				error: "udiff context lines not found in current body",
 			};
 		}
 

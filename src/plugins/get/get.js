@@ -203,8 +203,11 @@ export default class Get {
 	full(entry) {
 		// `<get>` is the only action whose log body opts into `N:\t<line>`
 		// numbering — line refs are the contract of the retrieval verb.
-		// Other entries render their bodies verbatim.
-		return { body: entry.body, numbered: true };
+		// Other entries render their bodies verbatim. `lineStart` mirrors
+		// the chunk's `lineFirst` so numbering matches the source's
+		// absolute line positions; otherwise chunked reads would lie.
+		const lineStart = entry.attributes?.lineFirst ?? 1;
+		return { body: entry.body, numbered: true, lineStart };
 	}
 }
 

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
 	loadDoc,
 	logPathToDataBase,
+	numberLines,
 	SUMMARY_MAX_CHARS,
 	storePatternResult,
 	streamSummary,
@@ -196,5 +197,26 @@ describe("storePatternResult", () => {
 		});
 		assert.equal(writes[0].loopId, 7);
 		assert.deepEqual(writes[0].attributes, { foo: "bar" });
+	});
+});
+
+describe("numberLines", () => {
+	it("numbers from 1 by default", () => {
+		assert.equal(numberLines("a\nb\nc"), "1:\ta\n2:\tb\n3:\tc");
+	});
+
+	it("starts at the given offset so chunked reads match source line numbers", () => {
+		assert.equal(
+			numberLines("line301\nline302\nline303", 301),
+			"301:\tline301\n302:\tline302\n303:\tline303",
+		);
+	});
+
+	it("preserves a trailing newline", () => {
+		assert.equal(numberLines("a\nb\n", 10), "10:\ta\n11:\tb\n");
+	});
+
+	it("empty body returns empty string regardless of start", () => {
+		assert.equal(numberLines("", 99), "");
 	});
 });

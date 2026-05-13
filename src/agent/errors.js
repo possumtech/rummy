@@ -1,7 +1,6 @@
 // Recoverable outcomes — recorded but no strike.
 export const SOFT_FAILURE_OUTCOMES = new Set([
 	"not_found",
-	"conflict",
 	"unparsed",
 ]);
 

@@ -29,12 +29,12 @@ export function streamSummary(_label, entry, MAX_LINES = 20) {
 // Apply `1:\t<line>` numbering to a projected body. Display-only.
 // The leading digit prevents column-zero `:::path` collisions and
 // gives the model line refs for free (`<get path="X" lineFirst="42" lineFinal="46"/>`).
-export function numberLines(body) {
+export function numberLines(body, start = 1) {
 	if (!body) return "";
 	const trailingNewline = body.endsWith("\n");
 	const source = trailingNewline ? body.slice(0, -1) : body;
 	const lines = source.split("\n");
-	const numbered = lines.map((line, i) => `${i + 1}:\t${line}`).join("\n");
+	const numbered = lines.map((line, i) => `${start + i}:\t${line}`).join("\n");
 	return trailingNewline ? `${numbered}\n` : numbered;
 }
 
