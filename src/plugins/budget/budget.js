@@ -1,6 +1,8 @@
 import ContextAssembler from "../../agent/ContextAssembler.js";
 import { countTokens } from "../../agent/tokens.js";
 
+const LOG_PATH_RE = /^log:\/\/(\d+)\/(\d+)\/\d+\/\w+$/;
+
 const CEILING_RATIO = Number(process.env.RUMMY_BUDGET_CEILING);
 
 // Substituted post-assembly by ContextAssembler with the headline numbers.
@@ -41,20 +43,6 @@ export function substituteBudgetPlaceholders(text, { tokenUsage, tokensFree }) {
 	return text
 		.replaceAll(TOKEN_USAGE_PLACEHOLDER, String(tokenUsage))
 		.replaceAll(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
-}
-
-// Manifest format (S8): `* path - tokens` per line. Surface `tokensFree`
-// in the header so the model pattern-links the overflow to the gate
-// it should have consulted on `<turn tokensFree=N>`.
-export function overflowBody(overflow, contextSize, reclaimed) {
-	const cap = ceiling(contextSize);
-	const size = cap + overflow;
-	const count = reclaimed.length;
-	const totalTokens = reclaimed.reduce((s, r) => s + r.tokens, 0);
-	const head = `Token Budget overflow: packet was ${size} tokens, ceiling is ${cap}, tokensFree=0. ${count} fat replay${count === 1 ? "" : "s"} (${totalTokens} tokens) reclaimed.`;
-	if (count === 0) return head;
-	const lines = reclaimed.map((d) => `* ${d.path} - ${d.tokens} tokens`);
-	return `${head}\n${lines.join("\n")}`;
 }
 
 export default class Budget {
@@ -134,8 +122,10 @@ export default class Budget {
 			...schemeRows,
 		].join("\n");
 
-		// Per-turn meta attrs (formerly on <prompt>): commands, mode warn,
-		// archived count from prior turn's grinder fire.
+		// Per-turn meta attrs: commands, mode warn. The prior-turn 413
+		// grinder fire (if any) is fully described by the `<error>` log
+		// entry the model already sees; no need for a duplicate
+		// `archived="N"` attr on `<turn>`.
 		const activeTools = toolSet
 			? new Set(toolSet)
 			: new Set(this.#core.hooks.tools.names);
@@ -146,29 +136,7 @@ export default class Budget {
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
 
-		let archivedAttr = "";
-		const priorTurn = ctx.turn - 1;
-		if (priorTurn >= 1) {
-			const prior = rows.find((r) => {
-				if (r.scheme !== "log") return false;
-				if (r.source_turn !== priorTurn) return false;
-				if (!r.path?.endsWith("/error")) return false;
-				const a =
-					typeof r.attributes === "string"
-						? JSON.parse(r.attributes)
-						: r.attributes;
-				return a?.status === 413 && a?.archivedCount > 0;
-			});
-			if (prior) {
-				const a =
-					typeof prior.attributes === "string"
-						? JSON.parse(prior.attributes)
-						: prior.attributes;
-				archivedAttr = ` archived="${a.archivedCount}"`;
-			}
-		}
-
-		const opening = `<turn commands="${commands}"${warn}${archivedAttr} tokenCeiling="${cap}" tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">`;
+		const opening = `<turn commands="${commands}"${warn} tokenCeiling="${cap}" tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">`;
 		return `${content}${opening}\n${table}\n</turn>\n`;
 	}
 
@@ -207,12 +175,24 @@ export default class Budget {
 		);
 	}
 
-	// Walk fat replays (get/set log entries from turns < current) by
-	// (turn DESC, body_tokens DESC). For each: clear body, status=413.
-	// Stop when under budget. Catalog entries are NEVER touched —
-	// model owns visibility there. Walking back across turns is fine
-	// because fat log bodies are replays of catalog content; 413'ing
-	// loses no information (model can re-<get>).
+	// Two-layer overflow policy. Model owns context under rummy's
+	// contract; the engine's job at overflow is to punch the latest
+	// emissions in the nose, not silently bleed history.
+	//
+	// Layer 1 (turn > 1): archive every log entry from the prior
+	// turn — the model's most recent emissions, the entries that
+	// pushed this turn's packet over. Previous turn fit by induction,
+	// so reverting its log accumulation almost always lands us back
+	// under ceiling.
+	//
+	// Layer 2 (when layer 1 doesn't fit, or on turn 1 where no prior
+	// turn exists): archive every indexed catalog entry except
+	// `repo://manifest`. Manifest stays visible so its tile carries
+	// the lifeline token count for the model to chunk-read recovery.
+	//
+	// No layer 3. If layer 2 doesn't fit, hard 413 → strike → 499
+	// eventually. Adding "demote current emissions" or "demote large
+	// catalog entries" drags out disordered states.
 	async enforce({ contextSize, messages, rows, ctx, rummy }) {
 		if (!contextSize) {
 			return { messages, rows, assembledTokens: 0, ok: true };
@@ -221,95 +201,108 @@ export default class Budget {
 		const first = this.#check({ contextSize, messages, rows });
 		if (first.ok) return first;
 
-		// Collect fat replay candidates: get/set log entries from turns
-		// strictly less than the current turn, with non-empty bodies.
-		// log://<L>/<T>/<S>/<action> — terminal segment is the action.
-		const candidates = [];
-		const logActionRe = /^log:\/\/\d+\/(\d+)\/\d+\/(\w+)$/;
-		for (const r of rows) {
-			if (r.scheme !== "log") continue;
-			const m = logActionRe.exec(r.path);
-			if (!m) continue;
-			const turn = Number(m[1]);
-			const action = m[2];
-			if (turn >= ctx.turn) continue;
-			if (action !== "get" && action !== "set") continue;
-			if (!r.body) continue;
-			const tokens = r.aTokens ?? countTokens(r.body);
-			if (!tokens) continue;
-			candidates.push({ row: r, turn, tokens });
-		}
-		candidates.sort((a, b) => {
-			if (a.turn !== b.turn) return b.turn - a.turn; // turn DESC
-			return b.tokens - a.tokens; // size DESC
-		});
+		const priorTurn = ctx.turn - 1;
+		const loopSeq = this.#loopSequence(rows);
+		let layer1Glob = null;
 
-		const reclaimed = [];
-		let remaining = first.overflow;
-		for (const c of candidates) {
-			if (remaining <= 0) break;
-			// loopId propagates so the entry's downstream onFailed
-			// cascade (Entries#fireFailed → hooks.error.log.emit →
-			// store.logPath) can mint a log path; turns.loop_id is
-			// NOT NULL.
+		// Layer 1: archive prior-turn log entries.
+		if (priorTurn >= 1) {
+			let archivedAny = false;
+			for (const r of rows) {
+				if (r.scheme !== "log") continue;
+				const m = LOG_PATH_RE.exec(r.path);
+				if (!m) continue;
+				if (Number(m[2]) !== priorTurn) continue;
+				if (r.visibility === "archived") continue;
+				await rummy.entries.set({
+					runId: ctx.runId,
+					loopId: ctx.loopId,
+					path: r.path,
+					visibility: "archived",
+				});
+				r.visibility = "archived";
+				archivedAny = true;
+			}
+			if (archivedAny) {
+				layer1Glob = `log://${loopSeq}/${priorTurn}/**`;
+				const reMessages = await this.#reassemble({
+					rows,
+					ctx,
+					rummy,
+					contextSize,
+				});
+				const recheck = this.#check({
+					contextSize,
+					messages: reMessages,
+					rows,
+				});
+				if (recheck.ok) {
+					await this.#emitOverflow(
+						`Budget overflow: ${layer1Glob} archived.`,
+						ctx,
+						rummy,
+						false,
+					);
+					return recheck;
+				}
+			}
+		}
+
+		// Layer 2: archive every indexed catalog entry except repo://manifest.
+		for (const r of rows) {
+			if (r.category !== "data") continue;
+			if (r.visibility !== "indexed") continue;
+			if (r.path === "repo://manifest") continue;
 			await rummy.entries.set({
 				runId: ctx.runId,
 				loopId: ctx.loopId,
-				turn: ctx.turn,
-				path: c.row.path,
-				body: "",
-				state: "failed",
-				outcome: "budget",
+				path: r.path,
+				visibility: "archived",
 			});
-			c.row.body = "";
-			c.row.state = "failed";
-			c.row.outcome = "budget";
-			c.row.aTokens = 0;
-			c.row.vTokens = 0;
-			c.row.vBody = "";
-			reclaimed.push({ path: c.row.path, tokens: c.tokens, turn: c.turn });
-			remaining = Math.max(0, remaining - c.tokens);
+			r.visibility = "archived";
 		}
 
-		if (reclaimed.length === 0) {
-			await this.#emitOverflow(first.overflow, contextSize, [], ctx, rummy);
-			return this.#failed(messages, rows, contextSize, first.overflow);
-		}
-
-		const reMessages = await this.#reassemble({
+		const layer2Messages = await this.#reassemble({
 			rows,
 			ctx,
 			rummy,
 			contextSize,
 		});
-		const rechecked = this.#check({
+		const layer2Check = this.#check({
 			contextSize,
-			messages: reMessages,
+			messages: layer2Messages,
 			rows,
 		});
-		await this.#emitOverflow(
-			rechecked.ok ? first.overflow : rechecked.overflow,
-			contextSize,
-			reclaimed,
-			ctx,
-			rummy,
-		);
-		if (rechecked.ok) return rechecked;
-		return this.#failed(messages, rows, contextSize, rechecked.overflow);
+
+		const body = layer1Glob
+			? `Budget overflow: ${layer1Glob} archived; index archived (repo://manifest preserved).`
+			: `Budget overflow: index archived (repo://manifest preserved).`;
+		// Turn-1 soft exception: model had no chance to act yet, so
+		// the strike would be unfair. Every other 413 strikes.
+		const soft = ctx.turn === 1;
+		await this.#emitOverflow(body, ctx, rummy, soft);
+
+		if (layer2Check.ok) return layer2Check;
+		return this.#failed(messages, rows, contextSize, layer2Check.overflow);
 	}
 
-	async #emitOverflow(overflow, contextSize, reclaimed, ctx, rummy) {
+	#loopSequence(rows) {
+		for (const r of rows) {
+			const m = LOG_PATH_RE.exec(r.path);
+			if (m) return Number(m[1]);
+		}
+		return null;
+	}
+
+	async #emitOverflow(message, ctx, rummy, soft) {
 		await rummy.hooks.error.log.emit({
 			store: rummy.entries,
 			runId: ctx.runId,
 			turn: ctx.turn,
 			loopId: ctx.loopId,
-			message: overflowBody(overflow, contextSize, reclaimed),
+			message,
 			status: 413,
-			attributes: {
-				archivedCount: reclaimed.length,
-				archivedTokens: reclaimed.reduce((s, r) => s + r.tokens, 0),
-			},
+			soft,
 		});
 	}
 

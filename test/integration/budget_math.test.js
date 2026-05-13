@@ -226,11 +226,15 @@ describe("Budget math", () => {
 				messages,
 				rows,
 				lastPromptTokens: 0,
-				ctx: { runId, turn: 1, loopId: 0 },
-				rummy: {
-					entries: store,
-					hooks: { error: { log: { emit: async () => {} } } },
+				ctx: {
+					runId,
+					turn: 1,
+					loopId,
+					systemPrompt: "test",
+					mode: "ask",
+					toolSet: null,
 				},
+				rummy: { entries: store, hooks: tdb.hooks },
 			});
 
 			assert.strictEqual(result.ok, false, "should overflow");
@@ -341,37 +345,31 @@ describe("Budget math", () => {
 		});
 	});
 
-	describe("413 error carries structured archive attrs", () => {
-		it("grinder reclaims fat get/set replays + emits 413 with archivedCount/Tokens", async () => {
-			const { runId, loopId } = await tdb.seedRun({ alias: "err_attrs_413" });
-			// Seed turn-0 fat get replays in DB so reassembly sees them.
-			const fatBodies = [];
-			for (let i = 0; i < 5; i++) {
-				const body = pad(100);
-				fatBodies.push(body);
-				await store.set({
-					runId,
-					turn: 0,
-					loopId,
-					path: `log://1/0/${i + 1}/get`,
-					body,
-					state: "resolved",
-					visibility: "indexed",
-				});
-			}
-			// Materialize and pass the rows to enforce — the grinder
-			// candidates come from the rows it received, not from DB.
+	describe("413 body names the archived glob in path-tooling language", () => {
+		it("layer 1 fires on turn 2 overflow and reports the prior-turn glob", async () => {
+			const { runId, loopId } = await tdb.seedRun({ alias: "err_glob_413" });
+			// Seed a fat <get> log entry from turn 1 (the prior turn for
+			// the enforcement attempt at turn 2).
+			const fatBody = pad(2000);
+			await store.set({
+				runId,
+				turn: 1,
+				loopId,
+				path: "log://1/1/1/get",
+				body: fatBody,
+				state: "resolved",
+				visibility: "indexed",
+			});
 			await materialize(tdb.db, {
 				runId,
 				loopId,
-				turn: 1,
+				turn: 2,
 				systemPrompt: "test",
 			});
 			const rows = await tdb.db.get_turn_context.all({
 				run_id: runId,
-				turn: 1,
+				turn: 2,
 			});
-			// vBody/aTokens decoration so the grinder picks the rows up.
 			for (const r of rows) {
 				if (r.scheme === "log") {
 					r.aTokens = countTokens(r.body);
@@ -380,7 +378,7 @@ describe("Budget math", () => {
 			}
 			const messages = [
 				{ role: "system", content: "test" },
-				{ role: "user", content: pad(2000) },
+				{ role: "user", content: fatBody },
 			];
 			await cascade.enforce({
 				contextSize: 1000,
@@ -389,7 +387,7 @@ describe("Budget math", () => {
 				ctx: {
 					runId,
 					loopId,
-					turn: 1,
+					turn: 2,
 					systemPrompt: "test",
 					mode: "act",
 					toolSet: null,
@@ -400,16 +398,16 @@ describe("Budget math", () => {
 			const stored = await tdb.db.get_known_entries.all({ run_id: runId });
 			const err = stored.find(
 				(r) =>
-					/^log:\/\/\d+\/1\/\d+\/error$/.test(r.path) && r.scheme === "log",
+					/^log:\/\/\d+\/2\/\d+\/error$/.test(r.path) && r.scheme === "log",
 			);
 			assert.ok(err, "413 error entry written");
 			const attrs = JSON.parse(err.attributes);
 			assert.strictEqual(attrs.status, 413);
-			assert.ok(attrs.archivedCount > 0, "archivedCount present and positive");
-			assert.ok(
-				attrs.archivedTokens > 0,
-				"archivedTokens present and positive",
-			);
+			assert.match(err.body, /log:\/\/\d+\/1\/\*\* archived/);
+
+			// Prior-turn log entry visibility flipped to archived.
+			const archived = stored.find((r) => r.path === "log://1/1/1/get");
+			assert.strictEqual(archived?.visibility, "archived");
 		});
 	});
 });

@@ -77,11 +77,14 @@ describe("budget ceiling check (@budget_enforcement, @plugins_budget, @budget_pl
 			contextSize,
 			messages,
 			rows,
-			ctx: { runId: RUN_ID, turn: 1, loopId: 0, loopIteration: 0 },
-			rummy: {
-				entries: store,
-				hooks: { error: { log: { emit: async () => {} } } },
+			ctx: {
+				runId: RUN_ID,
+				turn: 1,
+				loopId: LOOP_ID,
+				loopIteration: 0,
+				mode: "ask",
 			},
+			rummy: { entries: store, hooks: tdb.hooks },
 		});
 	}
 

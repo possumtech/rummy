@@ -132,7 +132,8 @@ describe("Budget pre-flight measures the assembled packet (@budget_enforcement)"
 		});
 
 		// Grinder MUST have detected actual overflow (despite the
-		// misleading lastPromptTokens=100) and reclaimed the fat replay.
+		// misleading lastPromptTokens=100) and archived the prior-turn
+		// log via layer 1.
 		const stored = await tdb.db.get_known_entries.all({ run_id: runId });
 		const err = stored.find(
 			(r) => /^log:\/\/\d+\/2\/\d+\/error$/.test(r.path) && r.scheme === "log",
@@ -143,18 +144,19 @@ describe("Budget pre-flight measures the assembled packet (@budget_enforcement)"
 		);
 		const attrs = JSON.parse(err.attributes);
 		assert.strictEqual(attrs.status, 413, "error status is 413");
-		assert.ok(
-			attrs.archivedCount > 0,
-			`grinder must reclaim at least one fat replay; got archivedCount=${attrs.archivedCount}`,
+		assert.match(
+			err.body,
+			/log:\/\/\d+\/1\/\*\* archived/,
+			"layer 1 reports the prior-turn glob in the error body",
 		);
 
-		// The fat log entry's body should have been cleared.
-		const cleared = stored.find((r) => r.path === "log://1/1/1/get");
-		assert.ok(cleared, "fat log entry still exists");
+		// The prior-turn log entry should now be visibility=archived.
+		const archived = stored.find((r) => r.path === "log://1/1/1/get");
+		assert.ok(archived, "prior-turn log entry still exists");
 		assert.strictEqual(
-			cleared.body,
-			"",
-			"fat log entry's body must be cleared by reclamation",
+			archived.visibility,
+			"archived",
+			"prior-turn log entry must be flipped to archived",
 		);
 	});
 });

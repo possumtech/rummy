@@ -315,6 +315,90 @@ See SPEC.md anchors `state_visibility`, `file_freshness`,
 
 ## Open Items
 
+### In flight: Budget grinder simplification (two-layer policy)
+
+**Why.** The current `Budget.enforce` is overly complex and architecturally
+backwards: it spares the current turn and reclaims only `get`/`set` log
+entries from prior turns, sorted turn-DESC. Effect: standard-agent
+"oldest first" demotion, with most of the model's own emissions (and
+catalog state) untouchable. The model is supposed to own its context
+under rummy's contract; the engine should punch the latest emissions
+in the nose when they overflow, not silently bleed history.
+
+**New policy — two layers, then hard fail.**
+
+| condition | action | error body | strike |
+|---|---|---|---|
+| packet fits | nothing | — | — |
+| `ctx.turn > 1` AND layer 1 archive fits | archive all prior-turn log entries | `Budget overflow: log://<L>/<T-1>/** archived.` | hard |
+| else (layer 2 fits) | archive every indexed catalog entry except `repo://manifest` | (see below) | hard, EXCEPT soft when `ctx.turn === 1` |
+| layer 2 still overflows | no further reclaim | (same as layer 2 body) | hard |
+
+Layer 2 body (turn > 1 case, layer 1 ran and didn't fit):
+`Budget overflow: log://<L>/<T-1>/** archived; index archived (repo://manifest preserved).`
+
+Layer 2 body (turn = 1 case, no prior turn to archive):
+`Budget overflow: index archived (repo://manifest preserved).`
+
+The `<L>` is the current loop sequence (e.g. `1`), `<T-1>` is the
+literal prior turn number (e.g. `3`). No wildcards on the loop —
+smarter models would have existential questions about prior loops.
+Use the path-glob language the model already operates in. No inline
+tool examples (`<get ...>`) — model knows the tools.
+
+**Theory alignment.**
+
+- **Model owns context.** Catalog visibility flips (`<set archive/>` /
+  `<set index/>`) are the model's lever. Layer 1 archives only log
+  entries (which the model can't usually control) — the engine's lane.
+  Layer 2 is the desperate-recovery step where the engine also touches
+  catalog, with `repo://manifest` preserved as the navigation lifeline.
+- **Punch the latest.** Layer 1 archives the most-recent prior turn's
+  log entries — the model's most recent emissions, the ones that
+  pushed the packet over. Not the oldest.
+- **Previous turn fit, by induction.** Turn N's packet = turn (N-1)'s
+  packet + new log entries from (N-1)'s emissions + small assembly
+  deltas. If turn N-1 fit, archiving turn (N-1)'s log entries almost
+  always brings turn N back under ceiling. The "almost" is the
+  static-prompt + index case Layer 2 handles.
+- **Strikes per turn, not per error.** Existing error-plugin verdict
+  already counts `turnErrors > 0` once per turn as one strike toward
+  the streak. New policy preserves that: layer 1 + layer 2 both
+  firing on the same turn = one strike. 42 errors in a turn = one
+  strike.
+
+**Turn-1 soft-strike exception.** On turn 1 there is no prior turn
+to archive (Layer 1 no-ops) AND the model has not yet emitted
+anything. If layer 2 fires, the overflow is purely a static-prompt
++ initial-index condition the model could not have prevented. The
+413 is emitted with `soft: true` — visible to the model as an
+`<error status="413">` in `<log>` but not counted toward strikes.
+Every other 413 strikes.
+
+**Implementation.** `src/plugins/budget/budget.js#enforce` replaced
+end-to-end with the new policy. `#check`, `#reassemble`, `#emitOverflow`,
+`#failed` and `overflowBody` simplify or merge. Roughly 30 lines of
+core enforce logic vs ~80 today. `assembleTurn` (the `<turn>` block
+renderer) is untouched.
+
+**Tests to migrate.**
+
+- `src/plugins/budget/budget.test.js` — replace fat-replay tests with
+  new layer 1 / layer 2 / hard-fail cases. Add the turn-1 soft-strike
+  case.
+- `test/integration/budget_cascade.test.js`,
+  `test/integration/budget_preflight_uses_actual_packet.test.js`,
+  `test/integration/budget_hard_413_shortcircuits_dispatch.test.js` —
+  review for assumptions about per-entry reclaim order.
+- `test/live/budget_signals.test.js` — live test; should still work
+  but may need expected-message updates.
+
+**Out of scope.** No further layers past layer 2. If layer 2 doesn't
+fit, hard 413 → strike (or soft on turn 1) → streak → eventual 499.
+Adding any "demote current-turn emissions" or "demote individual
+oversized catalog entries" layer drags out disordered states; we
+end the run cleanly instead.
+
 ### In flight: udiff edit-grammar migration (HEREDOC → udiffberg)
 
 **Why.** Static prompt floor is the single biggest cost. Tool docs +

@@ -1,14 +1,14 @@
 /**
  * @budget_enforcement
  *
- * Hard 413 contract: when the assembled packet exceeds the
- * ceiling AND there are no fat replays to reclaim, the budget
- * grinder must return `ok: false`. TurnExecutor's
- * `turn.beforeDispatch.filter` consumer at `src/agent/TurnExecutor.js:134`
- * short-circuits dispatch on `!ok`, so the LLM provider is never
- * called. This test pins the gate. If the gate goes soft, the
- * caller will silently dispatch over-budget packets and the
- * provider will return 400 (the cascade we hit on the essay run).
+ * Hard 413 contract: when layer 2 (index archive, repo://manifest
+ * preserved) doesn't bring the packet under ceiling, `enforce`
+ * returns `ok: false`. TurnExecutor's `turn.beforeDispatch.filter`
+ * consumer at `src/agent/TurnExecutor.js:134` short-circuits
+ * dispatch on `!ok`, so the LLM provider is never called. This
+ * test pins the gate. If the gate goes soft, the caller will
+ * silently dispatch over-budget packets and the provider will
+ * return 400.
  */
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
@@ -48,7 +48,7 @@ describe("Budget hard 413 short-circuits dispatch (@budget_enforcement)", () => 
 		await tdb.cleanup();
 	});
 
-	it("over-budget packet with no reclaimable fat replays returns ok=false", async () => {
+	it("over-budget packet that layer 2 can't rescue returns ok=false", async () => {
 		const { runId, loopId } = await tdb.seedRun({ alias: "hard_413" });
 
 		// No fat <get>/<set> log entries from prior turns — only the
@@ -105,10 +105,10 @@ describe("Budget hard 413 short-circuits dispatch (@budget_enforcement)", () => 
 		assert.ok(err, "413 error entry written");
 		const attrs = JSON.parse(err.attributes);
 		assert.strictEqual(attrs.status, 413);
-		assert.strictEqual(
-			attrs.archivedCount,
-			0,
-			"archivedCount=0 (nothing was reclaimable)",
+		// Turn-1 overflow is the unfair-strike exception — soft.
+		assert.match(
+			err.body,
+			/Budget overflow: index archived \(repo:\/\/manifest preserved\)\.$/,
 		);
 	});
 });

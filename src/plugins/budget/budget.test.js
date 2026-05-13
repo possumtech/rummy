@@ -6,7 +6,6 @@ import Budget, {
 	computeBudget,
 	measureMessages,
 	measureRows,
-	overflowBody,
 } from "./budget.js";
 
 describe("ceiling", () => {
@@ -87,7 +86,7 @@ describe("computeBudget", () => {
 	});
 });
 
-describe("Budget", () => {
+describe("Budget.enforce — two-layer overflow policy", () => {
 	function makeBudget() {
 		return new Budget({
 			hooks: { tools: { onView: () => {} } },
@@ -97,69 +96,237 @@ describe("Budget", () => {
 		});
 	}
 
-	function makeRummy({ archiveResult = [] } = {}) {
+	// Stubbed harness: messages are paired with rows whose bodies the
+	// stub assembler concatenates back into a single user message after
+	// re-projection. Layer 1 / Layer 2 archives mark rows as archived;
+	// the stub assembler skips archived rows, mimicking real assembly.
+	function makeRummy({ initialUser = "", systemContent = "" } = {}) {
 		const emitted = [];
 		const setCalls = [];
-		return {
-			emitted,
-			setCalls,
-			rummy: {
-				entries: {
-					archiveTurnEntries: async () => archiveResult,
-					set: async (args) => setCalls.push(args),
+		const rows = [];
+		const rummy = {
+			entries: {
+				set: async (args) => {
+					setCalls.push(args);
+					if (args.visibility) {
+						const row = rows.find((r) => r.path === args.path);
+						if (row) row.visibility = args.visibility;
+					}
 				},
-				hooks: {
-					error: {
-						log: {
-							emit: async (e) => emitted.push(e),
+			},
+			hooks: {
+				error: { log: { emit: async (e) => emitted.push(e) } },
+				assembly: {
+					system: {
+						filter: async (val, _ctx) => {
+							// Stub: pass through system content untouched.
+							return val || systemContent;
+						},
+					},
+					user: {
+						filter: async (val, ctx) => {
+							// Stub: project user content from visible rows.
+							const visible = ctx.rows
+								.filter(
+									(r) => r.category === "data" && r.visibility === "indexed",
+								)
+								.map((r) => r.body ?? "")
+								.join("\n");
+							const logVisible = ctx.rows
+								.filter((r) => r.scheme === "log" && r.visibility === "indexed")
+								.map((r) => r.body ?? "")
+								.join("\n");
+							return [val || initialUser, visible, logVisible]
+								.filter(Boolean)
+								.join("\n");
 						},
 					},
 				},
 			},
 		};
+		return { rummy, emitted, setCalls, rows };
 	}
 
-	it("enforce returns ok when under budget (step 1 only, no emits)", async () => {
+	function logRow({
+		loop = 1,
+		turn,
+		seq,
+		action,
+		body,
+		visibility = "indexed",
+	}) {
+		return {
+			path: `log://${loop}/${turn}/${seq}/${action}`,
+			scheme: "log",
+			category: "logging",
+			visibility,
+			body,
+			aTokens: countTokens(body),
+		};
+	}
+
+	function dataRow({ path, scheme = "known", body, visibility = "indexed" }) {
+		return {
+			path,
+			scheme,
+			category: "data",
+			visibility,
+			body,
+			aTokens: countTokens(body),
+		};
+	}
+
+	it("returns ok when packet fits — no emits, no archives", async () => {
 		const budget = makeBudget();
-		const { rummy, emitted } = makeRummy();
+		const { rummy, emitted, setCalls } = makeRummy();
 		const result = await budget.enforce({
 			contextSize: 10000,
-			messages: [{ role: "system", content: "short" }],
+			messages: [
+				{ role: "system", content: "short" },
+				{ role: "user", content: "short" },
+			],
 			rows: [],
-			ctx: { runId: 1, turn: 1, loopId: 0 },
+			ctx: { runId: 1, turn: 2, loopId: 1 },
 			rummy,
 		});
-		assert.strictEqual(result.ok, true);
-		assert.ok(result.assembledTokens > 0);
-		assert.strictEqual(emitted.length, 0, "no 413 emitted under budget");
+		assert.equal(result.ok, true);
+		assert.equal(emitted.length, 0);
+		assert.equal(setCalls.length, 0);
 	});
 
-	it("enforce hits hard 413 when nothing in t-1 to archive", async () => {
+	it("layer 1: prior-turn log archive resolves overflow — hard 413, glob in body", async () => {
 		const budget = makeBudget();
-		const { rummy, emitted } = makeRummy({ archiveResult: [] });
+		const fat = "x".repeat(2000);
+		const { rummy, emitted, setCalls, rows } = makeRummy();
+		rows.push(
+			logRow({ turn: 1, seq: 1, action: "get", body: fat }),
+			logRow({ turn: 2, seq: 1, action: "prompt", body: "prompt" }),
+		);
 		const result = await budget.enforce({
-			contextSize: 10,
-			messages: [{ role: "system", content: "x".repeat(1000) }],
-			rows: [],
-			ctx: { runId: 1, turn: 1, loopId: 0 },
+			contextSize: 1000,
+			messages: [
+				{ role: "system", content: "sys" },
+				{ role: "user", content: fat },
+			],
+			rows,
+			ctx: { runId: 1, turn: 2, loopId: 1, mode: "ask" },
 			rummy,
 		});
-		assert.strictEqual(result.ok, false);
-		assert.ok(result.overflow > 0);
-		assert.strictEqual(emitted.length, 1, "hard 413 emitted exactly once");
-		assert.strictEqual(emitted[0].status, 413);
-		assert.strictEqual(emitted[0].attributes.archivedCount, 0);
+		assert.equal(result.ok, true);
+		assert.equal(setCalls.length, 1, "one archive call (the prior-turn log)");
+		assert.equal(setCalls[0].visibility, "archived");
+		assert.equal(setCalls[0].path, "log://1/1/1/get");
+		assert.equal(emitted.length, 1);
+		assert.equal(emitted[0].status, 413);
+		assert.equal(emitted[0].soft, false, "turn > 1 strikes");
+		assert.match(emitted[0].message, /log:\/\/1\/1\/\*\* archived\./);
 	});
 
-	it("enforce returns ok with no contextSize", async () => {
+	it("layer 2: index archive (repo://manifest preserved) when layer 1 isn't enough", async () => {
+		const budget = makeBudget();
+		const fatLog = "x".repeat(500);
+		const fatKnown = "k".repeat(2000);
+		const { rummy, emitted, setCalls, rows } = makeRummy();
+		rows.push(
+			logRow({ turn: 1, seq: 1, action: "get", body: fatLog }),
+			dataRow({ path: "known://big", body: fatKnown }),
+			dataRow({ path: "repo://manifest", scheme: "repo", body: "manifest" }),
+		);
+		const result = await budget.enforce({
+			contextSize: 1000,
+			messages: [
+				{ role: "system", content: "sys" },
+				{ role: "user", content: fatLog + fatKnown },
+			],
+			rows,
+			ctx: { runId: 1, turn: 2, loopId: 1, mode: "ask" },
+			rummy,
+		});
+		// Layer 1 archived the log; layer 2 archived known://big but not manifest.
+		const archived = setCalls.filter((c) => c.visibility === "archived");
+		const archivedPaths = archived.map((c) => c.path);
+		assert.ok(archivedPaths.includes("log://1/1/1/get"), "layer 1 fired");
+		assert.ok(archivedPaths.includes("known://big"), "layer 2 archived known");
+		assert.ok(!archivedPaths.includes("repo://manifest"), "manifest preserved");
+		const last = emitted[emitted.length - 1];
+		assert.equal(last.status, 413);
+		assert.match(
+			last.message,
+			/log:\/\/1\/1\/\*\* archived; index archived \(repo:\/\/manifest preserved\)\./,
+		);
+		assert.equal(last.soft, false, "turn > 1 strikes");
+		assert.equal(result.ok, true);
+	});
+
+	it("turn 1 overflow: layer 1 no-op, layer 2 fires soft (no strike)", async () => {
+		const budget = makeBudget();
+		const fatKnown = "k".repeat(3000);
+		const { rummy, emitted, setCalls, rows } = makeRummy();
+		rows.push(
+			dataRow({ path: "known://big", body: fatKnown }),
+			dataRow({ path: "repo://manifest", scheme: "repo", body: "manifest" }),
+		);
+		const _result = await budget.enforce({
+			contextSize: 1000,
+			messages: [
+				{ role: "system", content: "sys" },
+				{ role: "user", content: fatKnown },
+			],
+			rows,
+			ctx: { runId: 1, turn: 1, loopId: 1, mode: "ask" },
+			rummy,
+		});
+		// No layer 1 fire (no prior turn). Layer 2 archived known://big.
+		const archivedPaths = setCalls
+			.filter((c) => c.visibility === "archived")
+			.map((c) => c.path);
+		assert.deepEqual(archivedPaths, ["known://big"]);
+		assert.equal(emitted.length, 1);
+		assert.equal(
+			emitted[0].soft,
+			true,
+			"turn 1 is the unfair-strike exception",
+		);
+		assert.match(
+			emitted[0].message,
+			/^Budget overflow: index archived \(repo:\/\/manifest preserved\)\.$/,
+			"turn 1 body has no log glob (no prior turn to archive)",
+		);
+	});
+
+	it("layer 2 still overflows: hard fail returned, single emit", async () => {
+		const budget = makeBudget();
+		const fatSys = "S".repeat(5000);
+		const { rummy, emitted, setCalls, rows } = makeRummy({
+			systemContent: fatSys,
+		});
+		// No log entries, no archivable catalog — packet is pure static system.
+		const result = await budget.enforce({
+			contextSize: 1000,
+			messages: [
+				{ role: "system", content: fatSys },
+				{ role: "user", content: "u" },
+			],
+			rows,
+			ctx: { runId: 1, turn: 2, loopId: 1, mode: "ask" },
+			rummy,
+		});
+		assert.equal(result.ok, false);
+		assert.ok(result.overflow > 0);
+		assert.equal(emitted.length, 1, "single 413 even after layer 2 miss");
+		assert.equal(emitted[0].status, 413);
+		assert.equal(emitted[0].soft, false, "turn 2 hard fail strikes");
+	});
+
+	it("returns ok with no contextSize (gate disabled)", async () => {
 		const budget = makeBudget();
 		const result = await budget.enforce({
 			contextSize: null,
 			messages: [{ role: "system", content: "anything" }],
 			rows: [],
 		});
-		assert.strictEqual(result.ok, true);
-		assert.strictEqual(result.assembledTokens, 0);
+		assert.equal(result.ok, true);
+		assert.equal(result.assembledTokens, 0);
 	});
 });
 
@@ -361,52 +528,5 @@ describe("substituteBudgetPlaceholders", () => {
 		assert.ok(out.includes('tokenUsage="42"'));
 		assert.ok(out.includes("tokenUsage 42"));
 		assert.ok(out.includes("58 tokens free"));
-	});
-});
-
-// The 413 body is what the model reads. Names what was archived from
-// Names what fat replays were reclaimed so the model can re-fetch.
-describe("overflowBody — 413 error body shape", () => {
-	const contextSize = 10000;
-	const cap = ceiling(contextSize);
-
-	it("0 reclaimed: header only, no listing", () => {
-		const body = overflowBody(500, contextSize, []);
-		assert.ok(body.startsWith("Token Budget overflow:"));
-		assert.match(body, /0 fat replays \(0 tokens\) reclaimed\./);
-		assert.equal(body.includes("\n*"), false);
-	});
-
-	it("1 reclaimed: singular grammar; manifest line", () => {
-		const body = overflowBody(500, contextSize, [
-			{ path: "log://turn_7/get/x", tokens: 4418, turn: 7 },
-		]);
-		assert.match(body, /1 fat replay \(4418 tokens\) reclaimed\./);
-		assert.match(body, /\* log:\/\/turn_7\/get\/x - 4418 tokens/);
-	});
-
-	it("N reclaimed: plural; each path in manifest format (S8)", () => {
-		const body = overflowBody(2753, contextSize, [
-			{ path: "log://turn_3/get/b", tokens: 900, turn: 3 },
-			{ path: "log://turn_3/set/c", tokens: 250, turn: 3 },
-		]);
-		assert.match(body, /2 fat replays \(1150 tokens\) reclaimed\./);
-		assert.match(body, /\* log:\/\/turn_3\/get\/b - 900 tokens/);
-		assert.match(body, /\* log:\/\/turn_3\/set\/c - 250 tokens/);
-	});
-
-	it("packet size reported = ceiling + overflow", () => {
-		const overflow = 2753;
-		const body = overflowBody(overflow, contextSize, []);
-		assert.match(body, new RegExp(`packet was ${cap + overflow} tokens`));
-		assert.match(body, new RegExp(`ceiling is ${cap}`));
-	});
-
-	// tokensFree is the gate name the model sees on `<turn tokensFree=N>`.
-	// Surfacing it in the overflow header gives the model a verbatim
-	// pattern-link from the breach to the gate it should have consulted.
-	it("includes tokensFree=0 so the model pattern-links to its gate", () => {
-		const body = overflowBody(2753, contextSize, []);
-		assert.match(body, /tokensFree=0/);
 	});
 });
