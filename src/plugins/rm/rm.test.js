@@ -56,10 +56,14 @@ describe("Rm", () => {
 		assert.ok(log, "wrote a manifest log entry");
 		assert.match(log.body, /^MANIFEST rm path="known:\/\/temp_\*": 2 matched/);
 		assert.ok(
-			log.body.includes('{"path":"known://temp_a","tokens":100,"lines":1}'),
+			log.body.includes(
+				'{"path":"known://temp_a","tokens":100,"lines":1,"mimetype":"text/markdown"}',
+			),
 		);
 		assert.ok(
-			log.body.includes('{"path":"known://temp_b","tokens":50,"lines":1}'),
+			log.body.includes(
+				'{"path":"known://temp_b","tokens":50,"lines":1,"mimetype":"text/markdown"}',
+			),
 		);
 	});
 });

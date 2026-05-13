@@ -91,7 +91,18 @@ export async function storePatternResult(
 	const filter = bodyFilter ? ` body="${bodyFilter}"` : "";
 	const total = matches.reduce((s, m) => s + m.tokens, 0);
 	const listing = matches
-		.map((m) => manifestLine(m.path, m.tokens, lineCount(m.body)))
+		.map((m) => {
+			const attrs =
+				typeof m.attributes === "string"
+					? JSON.parse(m.attributes)
+					: m.attributes;
+			return manifestLine(
+				m.path,
+				m.tokens,
+				lineCount(m.body),
+				attrs?.mimetype ?? null,
+			);
+		})
 		.join("\n");
 	const prefix = manifest ? "MANIFEST " : "";
 	const body = `${prefix}${scheme} path="${path}"${filter}: ${matches.length} matched (${total} tokens)\n${listing}`;
@@ -110,12 +121,16 @@ export async function storePatternResult(
 // `{...} <<:::path` log-entry envelope so the model parses both with
 // the same primitive. `lines` is the file/entry line count (when
 // known); omitted when 0/null so empty entries aren't decorated.
-// Sister plugins (rummy.web, rummy.repo) import this helper rather
-// than reinventing the row shape.
-export function manifestLine(path, tokens, lines = null) {
-	return lines
-		? JSON.stringify({ path, tokens, lines })
-		: JSON.stringify({ path, tokens });
+// `mimetype` defaults to the engine default (`text/markdown`) per
+// SPEC #mimetype — every row carries it so the model knows the
+// content shape without re-deriving from extension. Sister plugins
+// (rummy.web, rummy.repo) import this helper rather than
+// reinventing the row shape.
+export function manifestLine(path, tokens, lines = null, mimetype = null) {
+	const row = { path, tokens };
+	if (lines) row.lines = lines;
+	row.mimetype = mimetype ?? "text/markdown";
+	return JSON.stringify(row);
 }
 
 function lineCount(body) {

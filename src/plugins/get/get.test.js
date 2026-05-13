@@ -345,8 +345,16 @@ describe("Get manifest mode", () => {
 			/^MANIFEST get path="src\/\*\.js": 2 matched \(350 tokens\)/,
 			"MANIFEST prefix, count, total tokens in header",
 		);
-		assert.ok(log.body.includes('{"path":"src/a.js","tokens":100,"lines":1}'));
-		assert.ok(log.body.includes('{"path":"src/b.js","tokens":250,"lines":1}'));
+		assert.ok(
+			log.body.includes(
+				'{"path":"src/a.js","tokens":100,"lines":1,"mimetype":"text/markdown"}',
+			),
+		);
+		assert.ok(
+			log.body.includes(
+				'{"path":"src/b.js","tokens":250,"lines":1,"mimetype":"text/markdown"}',
+			),
+		);
 	});
 });
 
@@ -458,6 +466,107 @@ describe("Get tag filter (folksonomic recall)", () => {
 		await plugin.handler(entry, makeRummy(store));
 		const log = store.upserted.find((u) => u.path?.startsWith("log://"));
 		assert.ok(log.body.includes("known://hydrology/rivers"));
+	});
+});
+
+describe("Get binary mimetype refusal (@mimetype)", () => {
+	it("binary single-match full read: soft 405, body is refusal message", async () => {
+		const store = makeStore([
+			{
+				path: "docs/diagram.png",
+				body: "\x89PNG\r\n\x1a\n...binary bytes...",
+				tokens: 0,
+				attributes: { mimetype: "image/png" },
+			},
+		]);
+		const rummy = makeRummy(store);
+		const entry = makeEntry({ path: "docs/diagram.png" });
+
+		await plugin.handler(entry, rummy);
+
+		const log = store.upserted[0];
+		assert.equal(log.state, "resolved");
+		assert.equal(log.outcome, "status:405");
+		assert.equal(log.body, "image/png fetch unsupported");
+		assert.equal(log.attributes.mimetype, "image/png");
+		assert.equal(log.attributes.path, "docs/diagram.png");
+	});
+
+	it("binary chunked read: soft 405, no line slice attempted", async () => {
+		const store = makeStore([
+			{
+				path: "docs/diagram.png",
+				body: "binary garbage",
+				tokens: 0,
+				attributes: { mimetype: "image/png" },
+			},
+		]);
+		const rummy = makeRummy(store);
+		const entry = makeEntry({
+			path: "docs/diagram.png",
+			linefirst: "1",
+			linefinal: "100",
+		});
+
+		await plugin.handler(entry, rummy);
+
+		const log = store.upserted[0];
+		assert.equal(log.outcome, "status:405");
+		assert.equal(log.body, "image/png fetch unsupported");
+	});
+
+	it("textual mimetype reads normally", async () => {
+		const body = "line 1\nline 2\nline 3";
+		const store = makeStore([
+			{
+				path: "docs/notes.md",
+				body,
+				tokens: 6,
+				attributes: { mimetype: "text/markdown" },
+			},
+		]);
+		const rummy = makeRummy(store);
+		const entry = makeEntry({ path: "docs/notes.md" });
+
+		await plugin.handler(entry, rummy);
+
+		const log = store.upserted[0];
+		assert.equal(log.state, "resolved");
+		assert.equal(log.outcome ?? null, null);
+		assert.equal(log.body, body);
+	});
+
+	it("unset mimetype reads normally (default text/markdown is textual)", async () => {
+		const body = "alpha\nbeta\ngamma";
+		const store = makeStore([
+			{ path: "src/x.js", body, tokens: 6 },
+		]);
+		const rummy = makeRummy(store);
+		const entry = makeEntry({ path: "src/x.js" });
+
+		await plugin.handler(entry, rummy);
+
+		const log = store.upserted[0];
+		assert.equal(log.body, body);
+	});
+
+	it("application/pdf is binary", async () => {
+		const store = makeStore([
+			{
+				path: "docs/spec.pdf",
+				body: "%PDF...",
+				tokens: 0,
+				attributes: { mimetype: "application/pdf" },
+			},
+		]);
+		const rummy = makeRummy(store);
+		const entry = makeEntry({ path: "docs/spec.pdf" });
+
+		await plugin.handler(entry, rummy);
+
+		const log = store.upserted[0];
+		assert.equal(log.outcome, "status:405");
+		assert.equal(log.body, "application/pdf fetch unsupported");
 	});
 });
 

@@ -74,9 +74,22 @@ and bare-file paths. Imposing scheme-specific defaults would invite
 paradigmatic confusion (entries handled differently because of their
 storage namespace rather than their declared content type).
 
-**Textual mimetypes.** Any `text/*` plus textual `application/*`
-types (`application/json`, `application/xml`, `application/yaml`,
-etc.). The engine floor for textual mimetypes:
+**Textual vs. binary classifier.** A mimetype is **textual** iff:
+
+1. Its top-level type is `text/*`, OR
+2. Its subtype carries an RFC 6838 structured-syntax suffix
+   (`+json`, `+xml`, `+yaml`) — covers `application/ld+json`,
+   `application/vnd.api+json`, `application/atom+xml`, etc., OR
+3. It's in the named-textual `application/*` allowlist: `json`,
+   `xml`, `yaml`, `x-yaml`, `javascript`, `typescript`,
+   `ecmascript`, `sql`, `toml`, `x-sh`, `x-shellscript`.
+
+Everything else is **binary**. The suffix rule means future text-
+bearing structured types (`application/vnd.foo+xml`) are
+classified correctly without code changes.
+
+**Textual mimetypes.** Any mimetype passing the classifier above.
+The engine floor for textual mimetypes:
 
 - `<get>` returns the body line-numbered (`N:\t<line>`), with `N`
   reflecting the absolute source line (see [token_accounting](#token_accounting)).

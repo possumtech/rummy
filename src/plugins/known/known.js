@@ -106,6 +106,9 @@ function renderContextTag(entry, projectedBody, expectedTokensFree = null) {
 	else if (entry.aTokens != null) meta.tokens = entry.aTokens;
 	if (entry.bodyLines != null) meta.lines = entry.bodyLines;
 	else if (entry.vLines != null) meta.lines = entry.vLines;
+	// mimetype on every index tile (SPEC #mimetype). Default
+	// `text/markdown` applies when unset — the model never has to guess.
+	meta.mimetype = attrs?.mimetype ?? "text/markdown";
 	// `overflow: true` when fetching this entry's full body would
 	// exceed available budget. Model uses it to gate `<get>` decisions
 	// without recomputing `tokens > tokensFree` mentally. Omitted when

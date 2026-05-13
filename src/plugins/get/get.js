@@ -1,7 +1,17 @@
 import Entries from "../../agent/Entries.js";
+import { DEFAULT_MIMETYPE, isBinary } from "../../agent/mimetype.js";
 import { countTokens } from "../../agent/tokens.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./getDoc.js";
+
+function getMimetype(match) {
+	if (!match.attributes) return DEFAULT_MIMETYPE;
+	const attrs =
+		typeof match.attributes === "string"
+			? JSON.parse(match.attributes)
+			: match.attributes;
+	return attrs.mimetype ?? DEFAULT_MIMETYPE;
+}
 
 export default class Get {
 	#core;
@@ -114,12 +124,34 @@ export default class Get {
 				});
 				return;
 			}
+			// Binary entries refuse chunked reads — line semantics don't
+			// apply. Single-match check; pattern reads of mixed-content
+			// directories aren't gated here (manifest path above handles them).
+			if (matches.length === 1) {
+				const mimetype = getMimetype(matches[0]);
+				if (isBinary(mimetype)) {
+					await store.set({
+						runId,
+						turn,
+						path: entry.resultPath,
+						body: `${mimetype} fetch unsupported`,
+						state: "resolved",
+						outcome: "status:405",
+						loopId,
+						attributes: { path: target, mimetype },
+					});
+					return;
+				}
+			}
 			const sections = matches.map((match) =>
 				sliceSection(match, lineFirst, lineFinal),
 			);
 			const sliceBody = sections.map((s) => s.text).join("\n\n");
+			const sliceMimetype =
+				matches.length === 1 ? getMimetype(matches[0]) : DEFAULT_MIMETYPE;
 			const attributes = {
 				path: target,
+				mimetype: sliceMimetype,
 				beforeActionTokens: 0,
 				afterActionTokens: countTokens(sliceBody),
 			};
@@ -179,11 +211,31 @@ export default class Get {
 			// <get> is the fat-fetch verb: log body = retrieved content
 			// (S6). Single match → body is the entry's body. Multi-match
 			// (rare in non-pattern path) → concatenated with path headers.
+			// Single-match binary entries refuse with soft 405 — model
+			// uses <env>/<sh>/stream if it really wants the bytes.
+			if (matches.length === 1) {
+				const mimetype = getMimetype(matches[0]);
+				if (isBinary(mimetype)) {
+					await store.set({
+						runId,
+						turn,
+						path: entry.resultPath,
+						body: `${mimetype} fetch unsupported`,
+						state: "resolved",
+						outcome: "status:405",
+						loopId,
+						attributes: { path: target, mimetype },
+					});
+					return;
+				}
+			}
 			const body =
 				matches.length === 1
 					? matches[0].body
 					: matches.map((m) => `${m.path}\n${m.body}`).join("\n\n");
 			const retrievedTokens = countTokens(body);
+			const mimetype =
+				matches.length === 1 ? getMimetype(matches[0]) : DEFAULT_MIMETYPE;
 			await store.set({
 				runId,
 				turn,
@@ -193,6 +245,7 @@ export default class Get {
 				loopId,
 				attributes: {
 					path: target,
+					mimetype,
 					beforeActionTokens: 0,
 					afterActionTokens: retrievedTokens,
 				},

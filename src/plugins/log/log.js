@@ -79,6 +79,11 @@ function renderLogTag(entry, _rowsByPath) {
 	if (attrs?.channel === 1) meta.channel = "stdout";
 	else if (attrs?.channel === 2) meta.channel = "stderr";
 	if (typeof attrs?.tags === "string") meta.tags = attrs.tags.slice(0, 80);
+	// mimetype on `<get>` action entries — model sees the content type
+	// of what it just fetched. Other actions don't carry mimetype.
+	if (action === "get" && typeof attrs?.mimetype === "string") {
+		meta.mimetype = attrs.mimetype;
+	}
 	if (isSlice) {
 		// Slice envelope carries resolved bounds + source total as
 		// discrete fields. Same vocabulary the model wrote in its
