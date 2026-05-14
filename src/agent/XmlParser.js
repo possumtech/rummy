@@ -1,5 +1,7 @@
-import { extractSingleHeredoc } from "../lib/hedberg/marker.js";
-import { parseModel as parseSetBody } from "../lib/hedberg/udiff.js";
+import {
+	extractSingleHeredoc,
+	parseHeredocOps,
+} from "../lib/hedberg/marker.js";
 
 // Edit-marker body opacity inside `<set>`. Two opener shapes recognized:
 // `<<IDENT` (edit syntax) and `<<:::IDENT` (packet-rendering shape).
@@ -61,18 +63,17 @@ function resolveCommand(name, a, rawBody) {
 
 		if (!trimmed) return { name, ...a, body: a.body || "" };
 
-		// A single `<<IDENT...IDENT` heredoc wrap is honored as content
-		// opacity for any tool — `<set>` included — so the model can
-		// emit a raw body that includes literal `</set>` or other
-		// tag-shaped substrings. The wrapped content is then parsed as
-		// udiffberg or treated as raw content depending on whether it
-		// leads with `@@`.
-		const heredoc = extractSingleHeredoc(rawBody);
-		const payload = heredoc ? heredoc.content : rawBody;
-		const parsed = parseSetBody(payload);
+		// `<set>` body is a sequence of heredoc operations:
+		// `<<NEW...NEW`, `<<APPEND...APPEND`, `<<PREPEND...PREPEND`,
+		// `<<REPLACE[N]...REPLACE[M]`, `<<DELETE[N]...DELETE[M]`.
+		// Bare-body (no opener) falls through as raw content — the set
+		// handler's recovery path treats it as a soft 422.
+		if (!rawBody.match(/<<[A-Z]/)) {
+			return { name, ...a, body: rawBody };
+		}
+		const parsed = parseHeredocOps(rawBody);
 		if (parsed.error) return { name, ...a, error: parsed.error };
-		if (parsed.hunks) return { name, ...a, hunks: parsed.hunks };
-		return { name, ...a, body: parsed.body.trim() };
+		return { name, ...a, ops: parsed.ops };
 	}
 
 	if (name === "update") {

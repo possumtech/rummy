@@ -566,6 +566,7 @@ export default class AgentLoop {
 				loopId: currentLoopId,
 				mode,
 				turns: loopIteration,
+				entries: this.#entries,
 			});
 		}
 	}

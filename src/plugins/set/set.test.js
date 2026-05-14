@@ -4,9 +4,11 @@ import { renderModel } from "../../lib/hedberg/udiff.js";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: the tool plugin's class is named "Set" by design
 import Set from "./set.js";
 
-// udiffberg hunks the XmlParser would produce for the model's emission.
-function hunk(oldStart, oldLines, newStart, newLines, lines) {
-	return { oldStart, oldLines, newStart, newLines, lines };
+// Heredoc operation the XmlParser would produce. Mirrors the shape
+// parseHeredocOps returns: { op, suffix, keyword, scope, content }.
+function op(kind, scope, content = "") {
+	const keyword = kind.toUpperCase();
+	return { op: kind, suffix: "", keyword, scope, content };
 }
 
 // Stub hooks for raw-body recover/reject path which fires soft 422.
@@ -393,14 +395,11 @@ describe("Set plugin", () => {
 		});
 	});
 
-	// Regression: model emitted `<set path="OC_RIVERS.md" index>{full body}</set>`
-	// with both a visibility attr AND a raw body. Under the older operative-
-	// label grammar this routed into `attrs.operations`; the visibility-flip
-	// branch saw the target didn't exist, failed with "not_found", and
-	// silently dropped the body. Under udiffberg the raw body lands at
-	// `entry.body` and writes through.
-	describe("regression: visibility attr + udiff hunks on new path lands the content", () => {
-		it("`<set path=X index>{@@ -0,0 ...}</set>` on a non-existing path creates the entry (not not_found)", async () => {
+	// Regression: model emits `<set path=X index><<NEW...NEW></set>` —
+	// both a visibility attr AND an op-bearing body. The op runs; the
+	// visibility attr applies on the resulting entry.
+	describe("regression: visibility attr + NEW op on new path lands the content", () => {
+		it("`<set path=X index><<NEW...NEW></set>` on a non-existing path creates the entry (not not_found)", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			const ctx = rummyCtx(store);
@@ -413,7 +412,7 @@ describe("Set plugin", () => {
 						path: "known://plan",
 						index: "",
 						tags: "plan",
-						hunks: [hunk(0, 0, 1, 1, ["+- [ ] Draft a plan"])],
+						ops: [op("new", null, "- [ ] Draft a plan")],
 					},
 				},
 				ctx,
@@ -459,8 +458,8 @@ describe("Set plugin", () => {
 		});
 	});
 
-	describe("bare-file udiffberg edits emit a proposal (not a resolved entry)", () => {
-		it("successful edit on bare file yields state=proposed with attrs.path + attrs.patched", async () => {
+	describe("bare-file heredoc-op edits emit a proposal (not a resolved entry)", () => {
+		it("successful REPLACE on bare file yields state=proposed with attrs.path + attrs.patched", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			store.setEntry("src/app.js", {
@@ -475,7 +474,7 @@ describe("Set plugin", () => {
 					resultPath: "log://1/1/1/set",
 					attributes: {
 						path: "src/app.js",
-						hunks: [hunk(1, 1, 1, 1, ["-old line", "+new line"])],
+						ops: [op("replace", { start: 1, end: 1 }, "new line")],
 					},
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -506,7 +505,7 @@ describe("Set plugin", () => {
 					resultPath: "log://1/1/1/set",
 					attributes: {
 						path: "src/app.js",
-						hunks: [hunk(1, 1, 1, 1, ["-old line", "+new line"])],
+						ops: [op("replace", { start: 1, end: 1 }, "new line")],
 					},
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -517,7 +516,7 @@ describe("Set plugin", () => {
 			assert.equal(canonical, undefined);
 		});
 
-		it("pure-insert hunk creates new content on a missing path", async () => {
+		it("NEW op creates content on a missing path", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			await plugin.handler(
@@ -527,7 +526,7 @@ describe("Set plugin", () => {
 					resultPath: "log://1/1/2/set",
 					attributes: {
 						path: "known://new",
-						hunks: [hunk(0, 0, 1, 1, ["+fresh body"])],
+						ops: [op("new", null, "fresh body")],
 					},
 				},
 				{ entries: store, sequence: 1, runId: "r", loopId: "l" },
@@ -537,7 +536,7 @@ describe("Set plugin", () => {
 			assert.equal(upsert.body, "fresh body");
 		});
 
-		it("udiff edit on existing path with non-matching - lines: soft 422 edit rejected, no write", async () => {
+		it("REPLACE with out-of-range line on existing path: soft 422 edit rejected, no write", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			store.setEntry("known://exists", {
@@ -553,16 +552,13 @@ describe("Set plugin", () => {
 					resultPath: "log://1/1/3/set",
 					attributes: {
 						path: "known://exists",
-						hunks: [hunk(1, 1, 1, 1, ["-absent line", "+x"])],
+						ops: [op("replace", { start: 99, end: 99 }, "x")],
 					},
 				},
 				rummy,
 			);
 			assert.equal(rummy._errors.length, 1);
-			assert.equal(
-				rummy._errors[0].message,
-				"not a valid udiff edit: edit rejected",
-			);
+			assert.match(rummy._errors[0].message, /REPLACE\[99-99\] out of range/);
 			assert.equal(rummy._errors[0].status, 422);
 			assert.equal(rummy._errors[0].soft, true);
 			assert.equal(
@@ -572,11 +568,7 @@ describe("Set plugin", () => {
 			);
 		});
 
-		it("udiff edit against non-existent entry with + lines: soft 422 edit recovered, write happens", async () => {
-			// Regression: model sees the 6D plan items in the persona text
-			// of the system prompt, infers known://plan already exists,
-			// emits a multi-hunk edit. Entry doesn't exist → matcher
-			// returns error → engine extracts + lines and writes them.
+		it("APPEND on a missing path creates the entry with the appended content", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
 			const rummy = rummyCtx(store);
@@ -587,41 +579,26 @@ describe("Set plugin", () => {
 					resultPath: "log://1/1/2/set",
 					attributes: {
 						path: "known://plan",
-						hunks: [
-							hunk(1, 2, 1, 2, [
-								"-# old heading",
-								"-old bullet",
-								"+# new heading",
-								"+new bullet",
-							]),
-						],
+						ops: [op("append", null, "- [ ] step 1\n- [ ] step 2")],
 					},
 				},
 				rummy,
 			);
-			assert.equal(rummy._errors.length, 1);
-			assert.equal(
-				rummy._errors[0].message,
-				"not a valid udiff edit: edit recovered",
-			);
-			assert.equal(rummy._errors[0].status, 422);
-			assert.equal(rummy._errors[0].soft, true);
 			const targetWrite = store._calls.find(
 				(c) => c.path === "known://plan" && c.body != null,
 			);
-			assert.ok(targetWrite, "target entry written on recovery");
-			assert.equal(targetWrite.state, "resolved");
-			assert.match(targetWrite.body, /# new heading/);
-			assert.match(targetWrite.body, /new bullet/);
-			assert.doesNotMatch(targetWrite.body, /old heading/);
-			const log = store._calls.find((c) => c.path === "log://1/1/2/set");
-			assert.ok(log, "action entry written on recovery");
-			assert.equal(log.state, "resolved");
+			assert.ok(targetWrite);
+			assert.equal(targetWrite.body, "- [ ] step 1\n- [ ] step 2");
 		});
 
-		it("udiff edit against non-existent entry with only - lines: soft 422 edit rejected, no write", async () => {
+		it("DELETE with out-of-range line: soft 422 edit rejected, no write", async () => {
 			const plugin = new Set(stubCore());
 			const store = makeStore();
+			store.setEntry("known://exists", {
+				body: "one\ntwo\nthree\n",
+				scheme: "known",
+				tokens: 2,
+			});
 			const rummy = rummyCtx(store);
 			await plugin.handler(
 				{
@@ -629,21 +606,18 @@ describe("Set plugin", () => {
 					path: "log://1/1/2/set",
 					resultPath: "log://1/1/2/set",
 					attributes: {
-						path: "known://plan",
-						hunks: [hunk(1, 2, 1, 0, ["-some line", "-other line"])],
+						path: "known://exists",
+						ops: [op("delete", { start: 99, end: 99 })],
 					},
 				},
 				rummy,
 			);
 			assert.equal(rummy._errors.length, 1);
-			assert.equal(
-				rummy._errors[0].message,
-				"not a valid udiff edit: edit rejected",
-			);
+			assert.match(rummy._errors[0].message, /DELETE\[99-99\] out of range/);
 			assert.equal(
 				store._calls.find((c) => c.path === "log://1/1/2/set"),
 				undefined,
-				"no action entry written when nothing to recover",
+				"no action entry written when out of range",
 			);
 		});
 
@@ -662,9 +636,9 @@ describe("Set plugin", () => {
 					resultPath: "log://1/1/1/set",
 					attributes: {
 						path: "src/app.js",
-						hunks: [
-							hunk(1, 1, 1, 1, ["-alpha", "+ALPHA"]),
-							hunk(3, 1, 3, 0, ["-gamma"]),
+						ops: [
+							op("replace", { start: 1, end: 1 }, "ALPHA"),
+							op("delete", { start: 3, end: 3 }),
 						],
 					},
 				},
@@ -672,7 +646,7 @@ describe("Set plugin", () => {
 			);
 			const log = store._calls.find((c) => c.path === "log://1/1/1/set");
 			assert.equal(log.state, "proposed");
-			assert.match(log.attributes.op, /search_replace/);
+			assert.match(log.attributes.op, /replace/);
 			assert.match(log.attributes.op, /delete/);
 		});
 	});
@@ -743,14 +717,14 @@ describe("Set plugin: manifest is universal", () => {
 		);
 	});
 
-	it("manifest + udiffberg edit: lists matches without applying edit", async () => {
+	it("manifest + heredoc-op edit: lists matches without applying edit", async () => {
 		const store = manifestStore(matches);
 		await plugin.handler(
 			{
 				attributes: {
 					path: "src/**/*.js",
 					manifest: "",
-					hunks: [hunk(1, 1, 1, 1, ["-old", "+new"])],
+					ops: [op("replace", { start: 1, end: 1 }, "new")],
 				},
 				body: "",
 				resultPath: "set://result",

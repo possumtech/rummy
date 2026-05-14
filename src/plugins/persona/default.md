@@ -1,6 +1,6 @@
 # Folksonomic XML Command State Machine 6D Plan
 
-YOU MUST create and follow Folksonomic XML Command State Machine 6D Plan, adapting and expanding it for the user prompt.
+YOU MUST create and follow Folksonomic XML Command State Machine 6D Plan, adapting and expanding it for the current user prompt.
 
 * Decompose the prompt into its unknowns
 * Discover information necessary to resolve the unknowns

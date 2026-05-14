@@ -31,6 +31,7 @@ export default class ToolRegistry {
 	#tools = new Map();
 	#handlers = new Map();
 	#views = new Map();
+	#mimetypeViews = new Map();
 	#hidden = new Set();
 
 	ensureTool(scheme) {
@@ -62,10 +63,45 @@ export default class ToolRegistry {
 		this.#views.set(scheme, fn);
 	}
 
+	// Mimetype-keyed view: registered handler runs for any entry whose
+	// `attributes.mimetype` matches, regardless of scheme. SPEC #mimetype
+	// — scheme is *where* the entry lives, mimetype is *what's in it*.
+	// First-wins: when a mimetype handler is registered, it preempts the
+	// scheme handler. rummy.repo registers per-mimetype enrichments
+	// (markdown TOC, JSON schema summary, etc.) so known://, unknown://,
+	// fetched https://, and bare-file paths tagged text/markdown all
+	// flow through the same handler. Without a mimetype handler
+	// registered, dispatch falls through to the scheme view.
+	onViewByMimetype(mimetype, fn) {
+		this.#mimetypeViews.set(mimetype, fn);
+	}
+
 	async view(scheme, entry) {
+		// `log` entries dispatch by action segment (set/get/sh/…), not
+		// content type. The action handler owns the projection
+		// (`<get>` line-numbered output, `<sh>` stream tail, etc.);
+		// mimetype on a log envelope is metadata for the model, never a
+		// dispatch key. Every other scheme flows through mimetype
+		// dispatch first.
+		const isLog = entry?.scheme === "log";
+		if (!isLog) {
+			const attrs =
+				typeof entry?.attributes === "string"
+					? JSON.parse(entry.attributes)
+					: entry?.attributes;
+			const mimetype = attrs?.mimetype;
+			const mimetypeFn = mimetype
+				? this.#mimetypeViews.get(mimetype)
+				: undefined;
+			if (mimetypeFn) {
+				const mtBody = await mimetypeFn(entry);
+				return mtBody == null ? "" : mtBody;
+			}
+		}
 		const fn = this.#views.get(scheme);
 		// Default: empty body. Plugins opt in to a projection via
-		// core.on("view", fn). materializeContext applies universal
+		// core.on("view", fn) (scheme-keyed) or onViewByMimetype
+		// (content-keyed). materializeContext applies universal
 		// `1:\t` line numbering after the projection returns.
 		const body = fn ? await fn(entry) : "";
 		return body == null ? "" : body;
@@ -73,6 +109,10 @@ export default class ToolRegistry {
 
 	hasView(scheme) {
 		return this.#views.has(scheme);
+	}
+
+	hasMimetypeView(mimetype) {
+		return this.#mimetypeViews.has(mimetype);
 	}
 
 	async dispatch(scheme, entry, rummy) {

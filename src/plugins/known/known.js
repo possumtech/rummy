@@ -13,8 +13,15 @@ export default class Known {
 		// body is the tile.
 		core.on("view", (entry) => entry.body);
 		core.filter("assembly.system", this.assembleIndex.bind(this), 200);
+		// The plan is per-loop scratch. Wipe it at loop end so the next
+		// fresh prompt on the same run starts with no stale steps.
+		core.hooks.loop.completed.on(this.#onLoopCompleted.bind(this));
 		// Written via <set path="known://...">; lifecycle in instructions-user.md.
 		core.markHidden();
+	}
+
+	async #onLoopCompleted({ runId, entries }) {
+		await entries.rm({ runId, path: "known://plan" });
 	}
 
 	async handler(entry, rummy) {

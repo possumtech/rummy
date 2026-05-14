@@ -36,9 +36,13 @@ describe("Story: autonomous web search returns the fact (@resolution)", () => {
 			(e) => e.scheme === "log" && /\/search$/.test(e.path),
 		);
 		assert.ok(searchLogs.length > 0, "search produced at least one log entry");
+		// Row shape: `{"path":"https://...", ...optional fields..., "tokens":N, "lines":M}`.
+		// rummy.web inserts `title` between path and tokens; assertion is
+		// flexible about intermediate fields so adding/removing optional
+		// row keys doesn't break the test.
 		assert.ok(
 			searchLogs.some((e) =>
-				/^\{"path":"https?:\/\/[^"]+","tokens":\d+,"lines":\d+\}/m.test(e.body),
+				/\{"path":"https?:\/\/[^"]+",.*"tokens":\d+,.*"lines":\d+/.test(e.body),
 			),
 			"at least one search log body lists results as JSON-per-row manifest",
 		);

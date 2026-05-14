@@ -736,13 +736,15 @@ Validates dotted decimal IPv4: each octet 0-255.
 			assert.strictEqual(commands[0].name, "update");
 		});
 
-		it("set with udiffberg single hunk routes to hunks[0]", () => {
-			const input = `<set path="src/x.js">@@ -1,1 +1,1 @@
--old
-+new</set>`;
+		it("set with REPLACE heredoc op routes to ops[0]", () => {
+			const input = `<set path="src/x.js"><<REPLACE[1]
+new
+REPLACE[1]
+</set>`;
 			expectOne(input, "set", (c) => {
-				assert.strictEqual(c.hunks?.[0]?.oldStart, 1);
-				assert.deepEqual(c.hunks[0].lines, ["-old", "+new"]);
+				assert.strictEqual(c.ops?.[0]?.op, "replace");
+				assert.deepEqual(c.ops[0].scope, { start: 1, end: 1 });
+				assert.strictEqual(c.ops[0].content, "new");
 			});
 		});
 	});

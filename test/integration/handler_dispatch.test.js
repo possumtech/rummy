@@ -175,13 +175,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/edit_me.js",
-					hunks: [
+					ops: [
 						{
-							oldStart: 1,
-							oldLines: 1,
-							newStart: 1,
-							newLines: 1,
-							lines: ["-const port = 3000;", "+const port = 8080;"],
+							op: "replace",
+							suffix: "",
+							keyword: "REPLACE",
+							scope: { start: 1, end: 1 },
+							content: "const port = 8080;",
 						},
 					],
 				},
@@ -200,9 +200,8 @@ describe("Handler dispatch", () => {
 			assert.equal(logState.state, "proposed", "bare-file edit is proposed");
 		});
 
-		it("fuzzy-matched edits land on materialization (no silent no-op)", async () => {
-			// File body has 4-space indent.
-			const original = "function add(a, b) {\n    return a + b;\n}\n";
+		it("strict REPLACE edits land on materialization (no silent no-op)", async () => {
+			const original = "function add(a, b) {\n\treturn a + b;\n}\n";
 			await store.set({
 				runId: RUN_ID,
 				loopId: LOOP_ID,
@@ -214,28 +213,19 @@ describe("Handler dispatch", () => {
 
 			const rummy = makeRummy(hooks, tdb.db, store, { sequence: 1 });
 			const logPath = "log://1/1/4/set";
-			// `-` lines have tab indent (mismatched against file's 4-space).
-			// Strict apply misses; Hedberg fallback heals the indent.
 			const entry = {
 				scheme: "set",
 				path: logPath,
 				body: "",
 				attributes: {
 					path: "src/fuzzy.js",
-					hunks: [
+					ops: [
 						{
-							oldStart: 1,
-							oldLines: 3,
-							newStart: 1,
-							newLines: 3,
-							lines: [
-								"-function add(a, b) {",
-								"-\treturn a + b;",
-								"-}",
-								"+function add(a, b) {",
-								"+\treturn a + b + 1;",
-								"+}",
-							],
+							op: "replace",
+							suffix: "",
+							keyword: "REPLACE",
+							scope: { start: 1, end: 3 },
+							content: "function add(a, b) {\n\treturn a + b + 1;\n}",
 						},
 					],
 				},
@@ -248,7 +238,6 @@ describe("Handler dispatch", () => {
 			assert.ok(attrs.patched, "attrs.patched stored");
 			assert.ok(attrs.patched.includes("a + b + 1"), "patched has new content");
 
-			// Fire proposal.accepted to trigger #materializeFile.
 			await hooks.proposal.accepted.emit({
 				runId: RUN_ID,
 				loopId: LOOP_ID,
@@ -295,13 +284,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
-					hunks: [
+					ops: [
 						{
-							oldStart: 2,
-							oldLines: 1,
-							newStart: 2,
-							newLines: 1,
-							lines: ["-7 - a = ", "+7 - a = 5"],
+							op: "replace",
+							suffix: "",
+							keyword: "REPLACE",
+							scope: { start: 2, end: 2 },
+							content: "7 - a = 5",
 						},
 					],
 				},
@@ -316,13 +305,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "src/math.txt",
-					hunks: [
+					ops: [
 						{
-							oldStart: 4,
-							oldLines: 1,
-							newStart: 4,
-							newLines: 1,
-							lines: ["-a + b = ", "+a + b = 14"],
+							op: "replace",
+							suffix: "",
+							keyword: "REPLACE",
+							scope: { start: 4, end: 4 },
+							content: "a + b = 14",
 						},
 					],
 				},
@@ -370,13 +359,13 @@ describe("Handler dispatch", () => {
 				body: "",
 				attributes: {
 					path: "known://config",
-					hunks: [
+					ops: [
 						{
-							oldStart: 1,
-							oldLines: 1,
-							newStart: 1,
-							newLines: 1,
-							lines: ["-port=3000", "+port=8080"],
+							op: "replace",
+							suffix: "",
+							keyword: "REPLACE",
+							scope: { start: 1, end: 1 },
+							content: "port=8080",
 						},
 					],
 				},
@@ -734,6 +723,30 @@ describe("Handler dispatch", () => {
 				1,
 				`identical unknown body collapses to one entry, got ${matches.length}`,
 			);
+		});
+
+		it("loop.completed erases known://plan so the next loop starts clean", async () => {
+			await store.set({
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				turn: 1,
+				path: "known://plan",
+				body: "- [x] done step\n- [ ] next step",
+				state: "resolved",
+			});
+			const before = await store.getBody(RUN_ID, "known://plan");
+			assert.equal(before, "- [x] done step\n- [ ] next step", "plan seeded");
+
+			await hooks.loop.completed.emit({
+				runId: RUN_ID,
+				loopId: LOOP_ID,
+				mode: "act",
+				turns: 1,
+				entries: store,
+			});
+
+			const after = await store.getBody(RUN_ID, "known://plan");
+			assert.strictEqual(after, null, "plan erased at loop end");
 		});
 
 		it("update handler writes a log entry under log://<L>/<T>/<S>/update", async () => {

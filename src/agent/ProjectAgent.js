@@ -47,6 +47,12 @@ export default class ProjectAgent {
 					message,
 					soft: true,
 				}),
+			// Mimetype resolution fires from #setImpl when the caller didn't
+			// provide attributes.mimetype. Filter chain seeded with the
+			// engine default (text/markdown); plugins (rummy.repo) join the
+			// chain to extension-resolve. SPEC #mimetype.
+			resolveMimetype: (ctx) =>
+				hooks.entry.mimetype.filter("text/markdown", ctx),
 		});
 		this.#entries.loadSchemes(db);
 

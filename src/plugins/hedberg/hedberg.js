@@ -8,12 +8,7 @@
 
 import Hedberg from "../../lib/hedberg/hedberg.js";
 import { hedmatch, hedsearch } from "../../lib/hedberg/patterns.js";
-import {
-	applyModel as applyUdiffberg,
-	parseModel as parseUdiffberg,
-	renderClient,
-	renderModel,
-} from "../../lib/hedberg/udiff.js";
+import { renderClient, renderModel } from "../../lib/hedberg/udiff.js";
 
 export default class HedbergPlugin {
 	#core;
@@ -24,12 +19,11 @@ export default class HedbergPlugin {
 			match: hedmatch,
 			search: hedsearch,
 			replace: Hedberg.replace,
-			// Edit pipeline exposed for external plugins. Three siblings of
-			// one edit — see src/lib/hedberg/udiff.js for the contract.
+			// Render-side udiff surface for external plugins. Model edits
+			// arrive through heredoc operations (see marker.js); these
+			// render the result back to clients and to the model's log view.
 			renderClient,
 			renderModel,
-			parseUdiffberg,
-			applyUdiffberg,
 		};
 	}
 }

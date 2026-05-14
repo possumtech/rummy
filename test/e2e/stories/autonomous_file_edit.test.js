@@ -19,7 +19,7 @@ describe("Story: autonomous file edit under yolo (@resolution)", () => {
 		timeout: TIMEOUT,
 	}, async () => {
 		const r = await story.act(
-			'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then use SEARCH/REPLACE.',
+			'In src/app.js, replace the TODO comment with "// error handler configured". Read the file first to find the exact text, then emit a udiff edit.',
 			{ yolo: true },
 		);
 		await story.client.assertRun(r, [200, 202], "edit");

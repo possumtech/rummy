@@ -1,13 +1,97 @@
 import Entries from "../../agent/Entries.js";
 import { countTokens } from "../../agent/tokens.js";
-import {
-	applyModel as applyUdiffberg,
-	renderClient,
-	renderModel,
-} from "../../lib/hedberg/udiff.js";
+import { renderClient, renderModel } from "../../lib/hedberg/udiff.js";
 import File from "../file/file.js";
 import { storePatternResult } from "../helpers.js";
 import docs from "./setDoc.js";
+
+// Apply a sequence of heredoc operations against `existing` (or "" for
+// a missing entry). Strict line-index targeting — no fuzzy matching.
+// Returns { newBody, opPositions } on success; { error } on validation
+// failure. `opPositions` carries per-op {kind, startLine, lineCount,
+// content} for the client wire shape.
+function applyHeredocOps(existing, ops) {
+	let body = existing == null ? "" : existing;
+	const opPositions = [];
+	for (const op of ops) {
+		// Suffixed ops (e.g. `NEWdoc`) are doc-only — skip silently.
+		if (op.suffix) continue;
+		const lines = body === "" ? [] : body.split("\n");
+		if (op.op === "new") {
+			body = op.content;
+			opPositions.push({
+				kind: "new",
+				startLine: 1,
+				lineCount: op.content === "" ? 0 : op.content.split("\n").length,
+				content: op.content,
+			});
+			continue;
+		}
+		if (op.op === "append") {
+			body = body === "" ? op.content : `${body}\n${op.content}`;
+			opPositions.push({
+				kind: "append",
+				startLine: lines.length + 1,
+				lineCount: op.content === "" ? 0 : op.content.split("\n").length,
+				content: op.content,
+			});
+			continue;
+		}
+		if (op.op === "prepend") {
+			body = body === "" ? op.content : `${op.content}\n${body}`;
+			opPositions.push({
+				kind: "prepend",
+				startLine: 1,
+				lineCount: op.content === "" ? 0 : op.content.split("\n").length,
+				content: op.content,
+			});
+			continue;
+		}
+		if (op.op === "replace") {
+			if (!op.scope) {
+				return { error: "REPLACE requires a line bracket: `<<REPLACE[N]`" };
+			}
+			const { start, end } = op.scope;
+			if (start < 1 || end < start || end > lines.length) {
+				return {
+					error: `REPLACE[${start}-${end}] out of range (entry has ${lines.length} line${lines.length === 1 ? "" : "s"})`,
+				};
+			}
+			const replacement = op.content === "" ? [] : op.content.split("\n");
+			lines.splice(start - 1, end - start + 1, ...replacement);
+			body = lines.join("\n");
+			opPositions.push({
+				kind: "replace",
+				startLine: start,
+				lineCount: replacement.length,
+				content: op.content,
+			});
+			continue;
+		}
+		if (op.op === "delete") {
+			if (!op.scope) {
+				return { error: "DELETE requires a line bracket: `<<DELETE[N]`" };
+			}
+			const { start, end } = op.scope;
+			if (start < 1 || end < start || end > lines.length) {
+				return {
+					error: `DELETE[${start}-${end}] out of range (entry has ${lines.length} line${lines.length === 1 ? "" : "s"})`,
+				};
+			}
+			lines.splice(start - 1, end - start + 1);
+			body = lines.join("\n");
+			opPositions.push({
+				kind: "delete",
+				startLine: start,
+				lineCount: 0,
+				content: "",
+			});
+			continue;
+		}
+		return { error: `unknown operation: ${op.keyword}` };
+	}
+	return { newBody: body, opPositions };
+}
 
 const LOG_ACTION_RE = /^log:\/\/\d+\/\d+\/\d+\/(\w+)$/;
 
@@ -191,14 +275,15 @@ export default class Set {
 		}
 
 		// Pure visibility/metadata change — no body content AND no
-		// edit hunks. `<set path="X" index>{udiff}</set>` parses the
-		// inner content into `attrs.hunks`, leaving `entry.body` empty;
-		// routing that through the visibility-flip-only branch would
-		// silently drop the model's write (and worse, return not_found
-		// on a missing path the model meant to CREATE). Visibility
-		// flips fall through to the edit branch below — apply content
-		// first, then visibility lands on the resulting entry.
-		if (!entry.body && !attrs.hunks && visibilityAttr && attrs.path) {
+		// heredoc ops. `<set path="X" index><<NEW...NEW></set>` parses
+		// the inner content into `attrs.ops`, leaving `entry.body`
+		// empty; routing that through the visibility-flip-only branch
+		// would silently drop the model's write (and worse, return
+		// not_found on a missing path the model meant to CREATE).
+		// Visibility flips fall through to the edit branch below —
+		// apply content first, then visibility lands on the resulting
+		// entry.
+		if (!entry.body && !attrs.ops && visibilityAttr && attrs.path) {
 			const target = attrs.path;
 			const matches = await store.getEntriesByPattern(
 				runId,
@@ -256,68 +341,29 @@ export default class Set {
 		if (!target) return;
 		let newContent;
 		let opPositions = null;
-		if (attrs.hunks) {
+		if (attrs.ops) {
 			const existing = await store.getBody(runId, target);
-			const result = applyUdiffberg(
-				existing == null ? "" : existing,
-				attrs.hunks,
-			);
+			const result = applyHeredocOps(existing, attrs.ops);
 			if (result.error) {
-				// udiff failed to apply. Recoverable iff entry does NOT
-				// exist AND any hunk carries `+` lines — those lines are
-				// deterministically the intended body. Same contract as
-				// bare-body recovery: soft 422, write happens, no strike.
-				// Otherwise (existing entry, or no `+` lines): no write,
-				// soft 422 "edit rejected".
-				const inserts =
-					existing == null
-						? attrs.hunks.flatMap((h) =>
-								h.lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1)),
-							)
-						: [];
-				if (inserts.length === 0) {
-					await rummy.hooks.error.log.emit({
-						store,
-						runId,
-						turn,
-						loopId,
-						message: "not a valid udiff edit: edit rejected",
-						status: 422,
-						soft: true,
-					});
-					return;
-				}
-				const recoveredHunks = [
-					{
-						oldStart: 0,
-						oldLines: 0,
-						newStart: 1,
-						newLines: inserts.length,
-						lines: inserts.map((l) => `+${l}`),
-					},
-				];
-				const recovered = applyUdiffberg("", recoveredHunks);
-				newContent = recovered.newBody;
-				opPositions = recovered.opPositions;
 				await rummy.hooks.error.log.emit({
 					store,
 					runId,
 					turn,
 					loopId,
-					message: "not a valid udiff edit: edit recovered",
+					message: `not a valid edit: ${result.error}`,
 					status: 422,
 					soft: true,
 				});
-			} else {
-				newContent = result.newBody;
-				opPositions = result.opPositions;
+				return;
 			}
+			newContent = result.newBody;
+			opPositions = result.opPositions;
 		} else if (entry.body) {
-			// Bare body (no `@@` hunk header). udiff is the documented
-			// grammar — bare bodies are a recovery path, not a contract:
+			// Bare body (no heredoc operations). Operative grammar is the
+			// contract — bare bodies are a recovery path:
 			//   - target does NOT exist → deterministically a NEW (the
-			//     body IS the content). Recover: write it as a pure-
-			//     insert hunk equivalent + soft 422 ("edit recovered").
+			//     body IS the content). Recover: write it + soft 422
+			//     ("edit recovered").
 			//   - target exists → ambiguous (replace? append?). Reject
 			//     with soft 422 ("edit rejected"); no write.
 			const existing = await store.getBody(runId, target);
@@ -327,31 +373,27 @@ export default class Set {
 					runId,
 					turn,
 					loopId,
-					message: "not a valid udiff edit: edit rejected",
+					message: "not a valid edit: edit rejected",
 					status: 422,
 					soft: true,
 				});
 				return;
 			}
-			const lines = entry.body.split("\n");
-			const recoveredHunks = [
+			newContent = entry.body;
+			opPositions = [
 				{
-					oldStart: 0,
-					oldLines: 0,
-					newStart: 1,
-					newLines: lines.length,
-					lines: lines.map((l) => `+${l}`),
+					kind: "new",
+					startLine: 1,
+					lineCount: entry.body === "" ? 0 : entry.body.split("\n").length,
+					content: entry.body,
 				},
 			];
-			const result = applyUdiffberg("", recoveredHunks);
-			newContent = result.newBody;
-			opPositions = result.opPositions;
 			await rummy.hooks.error.log.emit({
 				store,
 				runId,
 				turn,
 				loopId,
-				message: "not a valid udiff edit: edit recovered",
+				message: "not a valid edit: edit recovered",
 				status: 422,
 				soft: true,
 			});

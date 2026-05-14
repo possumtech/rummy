@@ -34,6 +34,7 @@ export default class Entries {
 	#onError;
 	#onFailed;
 	#onSoftError;
+	#resolveMimetype;
 	#schemes = new Map();
 	#schemesLoaded = null;
 	#seq = 0;
@@ -50,6 +51,7 @@ export default class Entries {
 			onError = null,
 			onFailed = null,
 			onSoftError = null,
+			resolveMimetype = null,
 		} = {},
 	) {
 		this.#db = db;
@@ -57,6 +59,7 @@ export default class Entries {
 		this.#onError = onError;
 		this.#onFailed = onFailed;
 		this.#onSoftError = onSoftError;
+		this.#resolveMimetype = resolveMimetype;
 	}
 
 	async loadSchemes(db) {
@@ -375,10 +378,37 @@ export default class Entries {
 			throw new PermissionError(scheme, writer, writers);
 		}
 		const scope = this.#resolveScope(kind, runId, projectId);
-		const effectiveAttributes = attributes ? { ...attributes } : null;
+		let effectiveAttributes = attributes ? { ...attributes } : null;
 		if (scheme === "log" && effectiveAttributes) {
 			const m = normalized.match(/^log:\/\/\d+\/\d+\/\d+\/(\w+)$/);
 			if (m) effectiveAttributes.action = m[1];
+		}
+		// Mimetype stamping. Every data entry carries a mimetype attribute
+		// (SPEC #mimetype). Engine default is text/markdown; the resolver
+		// callback (rummy.repo's extension lookup, e.g.) can override.
+		// Stamp only when neither the caller nor the existing entry has
+		// mimetype — preserves the upsert SQL's "null :attributes
+		// preserves existing" contract for plain state updates that
+		// shouldn't clobber other attrs. Log entries skip entirely:
+		// they dispatch by action segment, never mimetype.
+		if (scheme !== "log" && !effectiveAttributes?.mimetype) {
+			const existingAttrs = await this.getAttributes(runId, normalized);
+			if (!existingAttrs?.mimetype) {
+				let resolved = "text/markdown";
+				if (this.#resolveMimetype) {
+					const fromResolver = await this.#resolveMimetype({
+						path: normalized,
+						body,
+						scheme,
+						attributes: effectiveAttributes,
+					});
+					if (fromResolver) resolved = fromResolver;
+				}
+				if (effectiveAttributes == null) {
+					effectiveAttributes = existingAttrs ? { ...existingAttrs } : {};
+				}
+				effectiveAttributes.mimetype = resolved;
+			}
 		}
 		let entry;
 		try {

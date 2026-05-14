@@ -63,55 +63,75 @@ describe("XmlParser", () => {
 			assert.strictEqual(commands[0].options, "PG, SQLite");
 		});
 
-		it("parses set with udiffberg single hunk", () => {
-			const input = `<set path="src/config.js">@@ -1,1 +1,1 @@
--const port = 3000;
-+const port = 8080;</set>`;
+		it("parses set with a single REPLACE heredoc op", () => {
+			const input = `<set path="src/config.js"><<REPLACE[1]
+const port = 8080;
+REPLACE[1]
+</set>`;
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "src/config.js");
-			assert.strictEqual(commands[0].hunks.length, 1);
-			assert.deepEqual(commands[0].hunks[0].lines, [
-				"-const port = 3000;",
-				"+const port = 8080;",
-			]);
+			assert.strictEqual(commands[0].ops.length, 1);
+			assert.strictEqual(commands[0].ops[0].op, "replace");
+			assert.deepEqual(commands[0].ops[0].scope, { start: 1, end: 1 });
+			assert.strictEqual(commands[0].ops[0].content, "const port = 8080;");
 		});
 
-		it("parses set with multiple udiffberg hunks", () => {
-			const input = `<set path="src/config.js">@@ -1,1 +1,1 @@
--const port = 3000;
-+const port = 8080;
-@@ -5,1 +5,1 @@
--const host = "localhost";
-+const host = "0.0.0.0";</set>`;
+		it("parses set with multiple stacked heredoc ops", () => {
+			const input = `<set path="src/config.js"><<REPLACE[1]
+const port = 8080;
+REPLACE[1]
+<<REPLACE[5]
+const host = "0.0.0.0";
+REPLACE[5]
+</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].hunks.length, 2);
+			assert.strictEqual(commands[0].ops.length, 2);
+			assert.strictEqual(commands[0].ops[0].op, "replace");
+			assert.strictEqual(commands[0].ops[1].op, "replace");
 		});
 
-		it("parses set with raw body (create / overwrite — no @@ header)", () => {
+		it("parses set with raw body (create / overwrite — no heredoc opener)", () => {
 			const input = '<set path="src/new.js">export default {};</set>';
 			const { commands } = XmlParser.parse(input);
 			assert.strictEqual(commands[0].path, "src/new.js");
 			assert.strictEqual(commands[0].body, "export default {};");
-			assert.ok(!commands[0].hunks);
+			assert.ok(!commands[0].ops);
 		});
 
-		it("parses pure-insert hunk (new file content via @@ -0,0)", () => {
-			const input = `<set path="src/new.js">@@ -0,0 +1,2 @@
-+export default {};
-+// hello</set>`;
+		it("parses NEW heredoc op (create or overwrite entire body)", () => {
+			const input = `<set path="src/new.js"><<NEW
+export default {};
+// hello
+NEW
+</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].hunks.length, 1);
-			assert.strictEqual(commands[0].hunks[0].oldStart, 0);
-			assert.strictEqual(commands[0].hunks[0].oldLines, 0);
+			assert.strictEqual(commands[0].ops.length, 1);
+			assert.strictEqual(commands[0].ops[0].op, "new");
+			assert.strictEqual(
+				commands[0].ops[0].content,
+				"export default {};\n// hello",
+			);
 		});
 
-		it("parses pure-delete hunk (no + lines)", () => {
-			const input = `<set path="src/main.go">@@ -3,1 +3,0 @@
--deprecated_function()</set>`;
+		it("parses DELETE heredoc op with line range (empty body)", () => {
+			const input = `<set path="src/main.go"><<DELETE[3]
+DELETE[3]
+</set>`;
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands[0].hunks.length, 1);
-			assert.deepEqual(commands[0].hunks[0].lines, ["-deprecated_function()"]);
+			assert.strictEqual(commands[0].ops.length, 1);
+			assert.strictEqual(commands[0].ops[0].op, "delete");
+			assert.deepEqual(commands[0].ops[0].scope, { start: 3, end: 3 });
+			assert.strictEqual(commands[0].ops[0].content, "");
+		});
+
+		it("parses REPLACE with asymmetric line brackets (range edit)", () => {
+			const input = `<set path="src/x.js"><<REPLACE[5]
+replacement spanning original lines 5 through 10
+REPLACE[10]
+</set>`;
+			const { commands } = XmlParser.parse(input);
+			assert.deepEqual(commands[0].ops[0].scope, { start: 5, end: 10 });
 		});
 
 		it("parses multiple commands in one response", () => {
@@ -363,15 +383,15 @@ I need to check the port.
 			);
 		});
 
-		it("botched udiffberg without </set> recovers trailing <sh>/<update>", () => {
+		it("botched <set> without </set> recovers trailing <sh>/<update>", () => {
 			// Reduction of a real model failure pattern: a `<set>` whose
 			// body lacks the `</set>` tail. Without recovery the trailing
 			// `<sh>` and `<update>` get trapped in the unclosed body; the
 			// verdict reports a missing `<update>` even though one was
 			// emitted.
-			const input = `<set path="known://plan">@@ -1,1 +1,1 @@
--- [ ] go.mod w/ deps
-+- [x] go.mod w/ deps
+			const input = `<set path="known://plan"><<REPLACE[1]
+- [x] go.mod w/ deps
+REPLACE[1]
 <sh>chmod +x ./compile.sh && ./compile.sh</sh>
 <update status="102">go.mod created; deps ready</update>`;
 			const { commands, warnings } = XmlParser.parse(input);
@@ -415,44 +435,44 @@ I need to check the port.
 			assert.ok(commands[0].body.includes("<get"));
 		});
 
-		it("<<IDENT...IDENT heredoc wrap preserves arbitrary set content including </set> literals", () => {
+		it("<<NEW heredoc wrap preserves arbitrary set content including </set> literals", () => {
+			// Opacity for prose containing literal `</set>` or other
+			// tool tags is provided by the operative heredoc itself.
+			// `<<NEW...NEW` makes the body opaque to the outer tag
+			// scanner; the model can put markdown, embedded XML, etc.
+			// in the body without premature `</set>` matching.
 			const input = [
-				'<set path="docs.md"><<EOF',
+				'<set path="docs.md"><<NEW',
 				"# Heading",
 				"Tag examples: <env>x</env>, <set path='y'>z</set>",
 				"Even </set> in prose is opaque inside the wrapper.",
-				"EOF</set>",
+				"NEW",
+				"</set>",
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);
-			assert.strictEqual(
-				commands.length,
-				1,
-				"single command, no premature close",
-			);
+			assert.strictEqual(commands.length, 1);
 			assert.strictEqual(commands[0].name, "set");
 			assert.strictEqual(commands[0].path, "docs.md");
-			assert.ok(
-				commands[0].body.includes("</set> in prose is opaque"),
-				"literal </set> inside heredoc wrap is body content",
-			);
-			assert.ok(
-				commands[0].body.includes("<env>x</env>"),
-				"tag examples inside heredoc wrap are body content",
-			);
-			assert.ok(!commands[0].hunks, "raw body, no udiff hunks");
-			assert.deepEqual(warnings, [], "no Unclosed/Mismatched warnings");
+			assert.strictEqual(commands[0].ops.length, 1);
+			assert.strictEqual(commands[0].ops[0].op, "new");
+			assert.match(commands[0].ops[0].content, /<\/set> in prose is opaque/);
+			assert.match(commands[0].ops[0].content, /<env>x<\/env>/);
+			assert.deepEqual(warnings, []);
 		});
 
-		it("custom IDENT heredoc wrap (any uppercase identifier) yields raw body", () => {
+		it("suffixed heredoc op (e.g. `NEWdoc`) parses but the suffix marks it as documentation", () => {
+			// Suffix support lets bodies document the grammar without
+			// triggering side effects. Parser still recognizes the
+			// underlying op; set.js skips ops with non-empty suffix.
 			const input = [
-				'<set path="x.md"><<MARKER_42',
-				"content with EOF and END as words but they aren't the closer",
-				"MARKER_42</set>",
+				'<set path="grammar-explainer.md"><<NEWdoc',
+				"the NEW op replaces the entire body",
+				"NEWdoc",
+				"</set>",
 			].join("\n");
 			const { commands } = XmlParser.parse(input);
-			assert.strictEqual(commands.length, 1);
-			assert.match(commands[0].body, /content with EOF and END/);
-			assert.ok(!commands[0].hunks);
+			assert.strictEqual(commands[0].ops[0].op, "new");
+			assert.strictEqual(commands[0].ops[0].suffix, "doc");
 		});
 
 		it("packet-shape `<<:::path` falls through to raw body", () => {
@@ -475,25 +495,26 @@ I need to check the port.
 			assert.deepEqual(warnings, []);
 		});
 
-		it("opus-regression: markdown documentation table inside heredoc-wrapped set", () => {
+		it("opus-regression: markdown documentation table inside <<NEW heredoc", () => {
 			// Reproduction of the opus failure case. The markdown table
 			// has unclosed `<ask_user>` and stray `</mv>` references; the
-			// `<<DOC...DOC>` heredoc keeps them opaque to the body scanner
+			// `<<NEW...NEW` heredoc keeps them opaque to the body scanner
 			// so the trailing `<update>` parses correctly.
 			const input = [
-				'<set path="OPUS_ANALYSIS.md"><<DOC',
+				'<set path="OPUS_ANALYSIS.md"><<NEW',
 				"# rummy commands",
 				"| `<env/>` | `<env>git log</env>` |",
 				'| `<ask_user/>` | `<ask_user question="Which?">` |',
 				'| `<mv/>` | `<mv path="known://draft">known://final</mv>` |',
-				"DOC</set>",
+				"NEW",
+				"</set>",
 				'<update status="200">notes written</update>',
 			].join("\n");
 			const { commands, warnings } = XmlParser.parse(input);
 			assert.strictEqual(commands.length, 2, "set + update");
 			assert.strictEqual(commands[0].path, "OPUS_ANALYSIS.md");
 			assert.ok(
-				commands[0].body.includes(
+				commands[0].ops[0].content.includes(
 					'<mv path="known://draft">known://final</mv>',
 				),
 				"full table preserved in heredoc-wrapped body",

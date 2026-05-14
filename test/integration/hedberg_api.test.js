@@ -28,8 +28,6 @@ describe("hedberg API (@hedberg, @plugins_hedberg)", () => {
 			"replace",
 			"renderClient",
 			"renderModel",
-			"parseUdiffberg",
-			"applyUdiffberg",
 		]) {
 			assert.strictEqual(typeof h[name], "function", `${name} is callable`);
 		}

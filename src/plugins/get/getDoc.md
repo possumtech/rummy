@@ -1,4 +1,4 @@
-## <get path="[path]"/> - Read an entry's content into the log
+## <get path="[path]"/> - Retrieve an entry's content into the log
 
 YOU MUST check the `tokens` of the target entry and the turn's `tokensFree` to avoid a budget overflow error.
 YOU SHOULD use `lineFirst`/`lineFinal` to read a chunk of the entry per turn when `tokensFree` is low.

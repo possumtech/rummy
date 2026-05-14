@@ -131,6 +131,25 @@ order:
    suffix).
 3. Engine default (`text/markdown`).
 
+**Dispatch precedence (mimetype-first, scheme-fallback, with one
+explicit scheme bypass).** The view chain in `materializeContext`
+consults `ToolRegistry.view(scheme, entry)`. For most entries it
+looks up a handler registered via `onViewByMimetype(mimetype, fn)`
+against the entry's `attributes.mimetype`; if a mimetype-keyed
+handler exists, it runs and the scheme-keyed view is skipped.
+
+`log://` is the single explicit **bypass** — it always uses its
+scheme handler, never the mimetype dispatch. The log scheme
+dispatches by action segment (set/get/sh/…); the action handler
+owns the projection (`<get>` line-numbered output, `<sh>` stream
+tail, etc.). Mimetype on a log envelope is model-facing metadata
+only.
+
+Every other scheme flows through mimetype dispatch first. That
+means `known://`, `unknown://`, `https://wiki/page`, `repo://manifest`
+rows, fetched search results, and bare-file tiles all hit the same
+`text/markdown` handler when rummy.repo (or any plugin) registers one.
+
 The Content-Type response header (for web fetches) is consumed by
 the fetcher (rummy.web), which writes it onto `entry.attributes.mimetype`
 at write time — by the time downstream readers consult mimetype,
@@ -946,9 +965,9 @@ Engine-mediated state changes the model didn't author surface as
 synthetic log entries written in the model's own command grammar:
 
 - File appeared on disk between scans → `log://<L>/<T>/<S>/set` with
-  empty SEARCH and full REPLACE body.
-- File modified on disk → `log://<L>/<T>/<S>/set` with one
-  SEARCH/REPLACE pair per diff hunk in the body.
+  a synthetic `<<NEW...NEW` heredoc op carrying the full body.
+- File modified on disk → `log://<L>/<T>/<S>/set` with one or more
+  `<<REPLACE[N]...REPLACE[M]` heredoc ops per diff hunk.
 - File removed from disk → `log://<L>/<T>/<S>/rm`, empty body,
   followed by the actual entry removal.
 
@@ -1655,86 +1674,94 @@ are universal — not a feature of any single tool.
 
 ## Edit Syntax {#edit_grammar}
 
-The model expresses entry writes through `<set path="..."><udiff></set>`.
-The body is a unified diff. The model has seen millions of unified
-diffs in pretraining (git log, code review, patch files) — udiff is
-the cheapest grammar to teach.
+The model expresses entry writes through `<set path="..."><ops></set>`.
+The body is one or more heredoc operations. Each operation is a
+keyword-delimited block: `<<KEYWORD[range]\n...content...\nKEYWORD[range]`.
+Line numbers are strict (no fuzzy match), 1-based, against the
+post-prior-ops body. The model has seen millions of heredoc-like
+constructs (shell, Ruby, Perl) and read+write a single grammar.
 
-### Three Format Siblings
+### Two Format Siblings (render-only)
 
-The same edit takes three superficially-similar shapes across the
-pipeline. They are kept conceptually distinct in `src/lib/hedberg/udiff.js`;
-drift between them is how this surface breaks.
+The engine renders historical edits to clients and to the model
+through two superficially-similar shapes. They are kept conceptually
+distinct in `src/lib/hedberg/udiff.js`; drift between them is how the
+render surface breaks. The model-facing edit grammar is heredoc ops
+(see below), parsed in `src/lib/hedberg/marker.js`.
 
 | name | who emits | who consumes | shape |
 |---|---|---|---|
 | **udiff** | engine | clients (rummy.nvim, web UI) | full `createTwoFilesPatch`: `Index:`, `---`/`+++`, `@@`, 3 lines of context |
-| **udifflite** | engine | model (in `<log>` set bodies) | hunks only, no banner, `context: 0` |
-| **udiffberg** | model | engine (parsed at `<set>` resolution) | fuzzy-tolerant: `@@` line numbers are hints, content is the anchor; Hedberg's literal-then-fuzzy-then-indent-heal rescue per hunk |
+| **udifflite** | engine | model (in `<get>` log bodies) | hunks only, no banner, `context: 0` |
 
-Renderers and parser live in one file (`src/lib/hedberg/udiff.js`)
-so the contracts stay visibly adjacent. Tool docs and personas
-expose only the model-facing shape; the term "udiff" is what the
-model sees. The `lite`/`berg` distinctions are engine vocabulary.
+### Grammar (heredoc ops)
 
-### Grammar (udiffberg)
+    <<KEYWORD[range]
+    content
+    KEYWORD[range]
 
-    @@ -oldStart,oldLines +newStart,newLines @@
-    -lines to remove
-    +lines to add
-     context lines (optional, ride along on both sides)
+Operations:
 
-Counts default to 1 if omitted (`@@ -5 +5 @@` = `@@ -5,1 +5,1 @@`).
-Multiple hunks: each starts with its own `@@` header. Hunks apply in
-order against the body that resulted from prior hunks.
+| keyword | range | content | effect |
+|---|---|---|---|
+| `NEW` | — | full body | create or overwrite entire body |
+| `APPEND` | — | text | append content to end |
+| `PREPEND` | — | text | prepend content to start |
+| `REPLACE[N]` | `[N]` (single) or `[N]...REPLACE[M]` (range) | text | replace line N (or range N..M) |
+| `DELETE[N]` | `[N]` (single) or `[N]...DELETE[M]` (range) | empty | delete line N (or range N..M) |
 
-### Apply Strategy (strict → Hedberg fallback)
+The opener and closer keyword must match. Range edits use asymmetric
+brackets: the opener carries the start, the closer carries the end
+(e.g. `<<REPLACE[5]...REPLACE[10]` replaces lines 5–10 inclusive).
+Multiple ops in one `<set>` body apply in emission order; each op's
+line numbers are strict against the body that resulted from prior ops.
 
-1. **Strict apply**: do the hunk's `-` lines literally appear at
-   `oldStart`? Cheap precision when the model got coords right.
-2. **Hedberg fallback**: if strict misses, feed the `-` lines to
-   `Hedberg.replace` (literal line-bounded match → fuzzy tokenized
-   match → indent-healing). Same rescue path used for any string-
-   anchored edit. The `@@` line ref becomes a hint we ignored.
-3. **Unrescuable**: conflict (soft) with `attempted` (the `-` lines)
-   and `currentBody` so the model can author a correct delta on the
-   next turn.
+A keyword suffixed with alphanumerics (`<<NEWdoc...NEWdoc`) parses
+but does not execute — the suffix is the documentation hatch that
+lets tool docs and personas show the grammar without applying it.
+
+### Apply Strategy (strict)
+
+Line numbers are strict. No fuzzy match, no Hedberg fallback. If the
+range is out-of-bounds (line beyond body length, or `end < start`),
+the op fails as a conflict and no partial writes are retained.
 
 ### Bare-Body Recovery
 
-A `<set>` body that does NOT start with `@@` is bare content rather
-than a udiff. The engine treats it as a recovery path, not a contract:
+A `<set>` body that contains no `<<KEYWORD` opener is bare content
+rather than a heredoc-op edit. The engine treats it as a recovery
+path, not a contract:
 
 | Target state | Bare-body outcome |
 |---|---|
-| Path does not exist | Recover: synthesize a pure-insert hunk (`@@ -0,0 +1,N @@` over the body lines), apply, write the proposal. Soft 422: `<error status="422">not a valid udiff edit: edit recovered</error>` |
-| Path exists | Reject: ambiguous (overwrite? append?). No write. Soft 422: `<error status="422">not a valid udiff edit: edit rejected</error>` |
+| Path does not exist | Recover: write the bare body as a `NEW` op. Soft 422: `<error status="422">edit recovered</error>` |
+| Path exists | Reject: ambiguous (overwrite? append?). No write. Soft 422: `<error status="422">edit rejected</error>` |
 
 No fuzzy guessing when the guess can't be 100% sure. Tool docs and
-personas only teach the `@@` form so the model learns one grammar.
+personas only teach the heredoc-op form so the model learns one grammar.
 
 ### Errors
 
 | Condition | Outcome |
 |---|---|
-| Edit against missing path with `+` lines | Soft 422 "edit recovered" — `+` lines extracted as pure-insert |
-| Edit against missing path with no `+` lines | Soft 422 "edit rejected" — no write |
-| Edit against existing path with non-matching `-` lines (strict miss + Hedberg miss) | Soft 422 "edit rejected" — no write |
-| Multi-hunk: a later hunk fails | Soft 422 "edit rejected" — same path as single-hunk; earlier hunks not retained (no partial writes) |
-| Malformed `@@` header | Parse error (raised at XmlParser layer) |
+| Edit against missing path with `NEW`/`APPEND`/`PREPEND` op | Op applies (entry created) |
+| Edit against missing path with `REPLACE`/`DELETE` op | Soft 422 "edit rejected" — no write |
+| `REPLACE`/`DELETE` with out-of-range line numbers | Soft 422 "edit rejected" — no write |
+| Multi-op: a later op fails | Soft 422 "edit rejected" — earlier ops not retained (no partial writes) |
+| Malformed heredoc (no matching closer) | Parse error (raised at XmlParser layer) |
 | Bare body on existing path | Soft 422 "edit rejected" — no write |
-| Bare body on missing path | Soft 422 "edit recovered" — pure-insert written |
+| Bare body on missing path | Soft 422 "edit recovered" — body written as `NEW` |
 
 ### Wire Surface (proposal entries)
 
 When a `<set>` resolves to a `proposed` entry, the log entry carries:
 
-- `body` — udifflite (the trimmed model-facing rendering).
+- `body` — udifflite (the trimmed model-facing rendering of the resulting diff).
 - `attrs.path` — the target entry path.
 - `attrs.patch` — full udiff (`renderClient`) for client renderers.
 - `attrs.patched` — the full new content (the materializer reads
   this on accept to write disk + update the entry).
-- `attrs.opPositions` — per-hunk `{kind, startLine, lineCount, content}`
+- `attrs.opPositions` — per-op `{kind, startLine, lineCount, content}`
   breakdown clients use for visual layout.
 
 Pinned by `test/integration/proposal_wire_contract.test.js`.
@@ -1744,8 +1771,9 @@ Pinned by `test/integration/proposal_wire_contract.test.js`.
 ## Hedberg Pattern Library {#hedberg}
 
 The pattern library exposed to every plugin through `core.hooks.hedberg`.
-Used internally by the Edit Syntax (above) for `SEARCH` / `DELETE`
-matching and by `<get>` / `<rm>` for path globs.
+Used by `<get>` / `<rm>` for path globs and by FileScanner for content
+matching. The model-facing edit grammar is line-strict (no fuzzy);
+Hedberg is not on the `<set>` apply path.
 
 | Function | Purpose |
 |---|---|

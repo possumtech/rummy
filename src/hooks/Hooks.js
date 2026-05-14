@@ -99,6 +99,11 @@ export default function createHooks(debug = false) {
 			recording: createFilter("entry.recording"),
 			created: createEvent("entry.created"),
 			changed: createEvent("entry.changed"),
+			// Mimetype resolution filter. Fires from Entries.set when the
+			// caller didn't provide attrs.mimetype. Plugins (rummy.repo)
+			// join the chain to extension-resolve; the final fallback is
+			// the engine default text/markdown. SPEC #mimetype.
+			mimetype: createFilter("entry.mimetype"),
 		},
 		tool: {
 			before: createEvent("tool.before"),

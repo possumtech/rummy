@@ -11,6 +11,10 @@ function mockDb({ entryExists = () => null } = {}) {
 		next_turn_seq: { get: async () => ({ seq: 1 }) },
 		get_loop_sequence: { get: async () => ({ sequence: 1 }) },
 		get_entry_body: { get: async ({ path }) => entryExists(path) },
+		// Mimetype stamping reads existing attrs before fabricating new
+		// ones (avoids clobbering on update). Mock returns null → branch
+		// treats as fresh entry.
+		get_entry_attributes: { get: async () => null },
 	};
 }
 
