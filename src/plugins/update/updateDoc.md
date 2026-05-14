@@ -13,7 +13,7 @@ Example:
 	What is the population of France?
 	NEW</set>
 	
-	<set path="known://plan"><<NEW
+	<set path="known://plan" tags="plan, project,todo"><<NEW
 	- [ ] Decompose the prompt into unknowns
 	- [ ] Discover capital of France
 	- [ ] Discover population of France
@@ -37,7 +37,7 @@ Example:
 	<set path="https://www.britannica.com/biography/Paris" archive/>
 	<set path="log://1/4/1/get" archive/>
 	<set path="log://1/4/2/get" archive/>
-	{ ...archive all distilled or irrelevant log or index entries }
+	{ ...archive all distilled or irrelevant log or index entries every turn }
 	
 	<set path="known://plan"><<REPLACE[3]
 	- [x] Distill geography unknowns

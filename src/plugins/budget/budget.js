@@ -136,7 +136,22 @@ export default class Budget {
 		let warn = "";
 		if (mode === "ask") warn = ' warn="File editing disallowed."';
 
-		const opening = `<turn commands="${commands}"${warn} tokenCeiling="${cap}" tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">`;
+		// `source_turn` is the entry's origin turn (turn_context).
+		// `turn` on turn_context rows is the snapshot turn = ctx.turn,
+		// not useful for filtering by origin.
+		const lastTurn = ctx.turn - 1;
+		const lastTurnErrors =
+			lastTurn > 0
+				? rows.filter(
+						(r) =>
+							r.source_turn === lastTurn &&
+							r.scheme === "log" &&
+							r.path.endsWith("/error"),
+					).length
+				: 0;
+		const errorsAttr = lastTurnErrors > 0 ? ` errors="${lastTurnErrors}"` : "";
+
+		const opening = `<turn commands="${commands}"${warn}${errorsAttr} tokenCeiling="${cap}" tokenUsage="${TOKEN_USAGE_PLACEHOLDER}" tokensFree="${TOKENS_FREE_PLACEHOLDER}">`;
 		return `${content}${opening}\n${table}\n</turn>\n`;
 	}
 

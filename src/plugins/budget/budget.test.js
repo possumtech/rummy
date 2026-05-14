@@ -442,6 +442,86 @@ describe("assembleTurn — <turn> table (@token_accounting)", () => {
 		assert.strictEqual(out, "preamble");
 	});
 
+	it('<turn> carries errors="N" when prior turn had error log entries', () => {
+		const plugin = makePlugin();
+		const rows = [
+			row({ scheme: "log", vTokens: 50 }),
+			// Two prior-turn errors and one unrelated log row from the
+			// upcoming turn.
+			{
+				scheme: "log",
+				visibility: "indexed",
+				vTokens: 10,
+				aTokens: 10,
+				source_turn: 2,
+				path: "log://1/2/3/error",
+			},
+			{
+				scheme: "log",
+				visibility: "indexed",
+				vTokens: 10,
+				aTokens: 10,
+				source_turn: 2,
+				path: "log://1/2/4/error",
+			},
+			{
+				scheme: "log",
+				visibility: "indexed",
+				vTokens: 10,
+				aTokens: 10,
+				source_turn: 3,
+				path: "log://1/3/1/set",
+			},
+		];
+		const out = plugin.assembleTurn("", {
+			rows,
+			contextSize: 10000,
+			turn: 3,
+		});
+		assert.match(
+			out,
+			/<turn [^>]*errors="2"/,
+			`expected errors="2"; got: ${out}`,
+		);
+	});
+
+	it("<turn> omits errors attr when prior turn was clean", () => {
+		const plugin = makePlugin();
+		const rows = [row({ scheme: "log", vTokens: 50 })];
+		const out = plugin.assembleTurn("", {
+			rows,
+			contextSize: 10000,
+			turn: 3,
+		});
+		assert.ok(
+			!/errors=/.test(out),
+			`errors attr should be absent; got: ${out}`,
+		);
+	});
+
+	it("<turn> omits errors attr on turn 1 (no prior turn)", () => {
+		const plugin = makePlugin();
+		const rows = [
+			{
+				scheme: "log",
+				visibility: "indexed",
+				vTokens: 10,
+				aTokens: 10,
+				source_turn: 0,
+				path: "log://1/0/1/error",
+			},
+		];
+		const out = plugin.assembleTurn("", {
+			rows,
+			contextSize: 10000,
+			turn: 1,
+		});
+		assert.ok(
+			!/errors=/.test(out),
+			`errors attr should be absent on turn 1; got: ${out}`,
+		);
+	});
+
 	it("<turn> opening carries tokenCeiling, tokenUsage, tokensFree attrs", () => {
 		const plugin = makePlugin();
 		const out = plugin.assembleTurn("", {

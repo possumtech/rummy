@@ -151,6 +151,69 @@ describe("Budget headline math (single source of truth)", () => {
 		assert.ok(!user.includes("Total:"), "Total prose line removed from <turn>");
 	});
 
+	it("<turn errors=N> reflects prior-turn error log entries", async () => {
+		const { runId, loopId } = await tdb.seedRun({ alias: "headline_errors" });
+		// Turn 1: seed two error log entries (the "prior turn" from turn 2's PoV).
+		const errPath1 = await store.logPath(runId, loopId, 1, "error");
+		await store.set({
+			runId,
+			turn: 1,
+			loopId,
+			path: errPath1,
+			body: "first error",
+			state: "failed",
+			outcome: "status:422",
+			attributes: { status: 422 },
+		});
+		const errPath2 = await store.logPath(runId, loopId, 1, "error");
+		await store.set({
+			runId,
+			turn: 1,
+			loopId,
+			path: errPath2,
+			body: "second error",
+			state: "resolved",
+			attributes: { status: 400 },
+		});
+		await store.set({
+			runId,
+			turn: 2,
+			loopId,
+			path: "prompt://2",
+			body: "do thing",
+			state: "resolved",
+			attributes: { mode: "ask" },
+		});
+		await materialize(tdb.db, { runId, loopId, turn: 2, systemPrompt: "sys" });
+		const { messages } = await assemble(tdb, runId, 2, 32768);
+		const user = messages[1].content;
+		assert.match(
+			user,
+			/<turn [^>]*errors="2"/,
+			`expected errors="2" on <turn>; got: ${user.slice(0, 500)}`,
+		);
+	});
+
+	it("<turn> omits errors attr when prior turn had no error log entries", async () => {
+		const { runId, loopId } = await tdb.seedRun({ alias: "headline_no_errors" });
+		await store.set({
+			runId,
+			turn: 2,
+			loopId,
+			path: "prompt://2",
+			body: "do thing",
+			state: "resolved",
+			attributes: { mode: "ask" },
+		});
+		await materialize(tdb.db, { runId, loopId, turn: 2, systemPrompt: "sys" });
+		const { messages } = await assemble(tdb, runId, 2, 32768);
+		const user = messages[1].content;
+		assert.ok(
+			!/<turn [^>]*errors=/.test(user),
+			`errors attr should be absent; got: ${user.slice(0, 500)}`,
+		);
+	});
+
 	it("countTokens(system) + countTokens(user) is internally self-consistent", async () => {
 		// Sanity: the headline number we put into the wire matches a
 		// fresh measurement of the wire bytes on the system side. The
